@@ -94,4 +94,15 @@ impl ConversationMemory {
         tx.commit().await?;
         Ok(())
     }
+
+    pub async fn get_latest_summary(&self, guild_id: &str) -> Result<Option<String>, sqlx::Error> {
+        let row = sqlx::query(
+            "SELECT content FROM atrium_server_summaries WHERE guild_id = $1 ORDER BY created_at DESC LIMIT 1"
+        )
+        .bind(guild_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.map(|r| r.get("content")))
+    }
 }

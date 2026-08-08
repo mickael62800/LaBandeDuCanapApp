@@ -192,6 +192,13 @@ impl WelcomeService for WelcomeGrpc {
                 })?,
             None => String::new(),
         };
+        let mut final_context = input.server_context.clone();
+        if let Some(memory) = &self.memory {
+            if let Ok(Some(summary)) = memory.get_latest_summary(&input.guild_id).await {
+                final_context.push_str("\n\nRésumé de l'activité du serveur (récent) :\n");
+                final_context.push_str(&summary);
+            }
+        }
         let reply = self
             .welcome
             .reply(WelcomeRequest {
@@ -202,7 +209,7 @@ impl WelcomeService for WelcomeGrpc {
                 scope,
                 member_message: input.member_message,
                 conversation_history: history,
-                server_context: merge_context(&input.server_context, &retrieved),
+                server_context: merge_context(&final_context, &retrieved),
             })
             .await
             .map_err(|error| Status::invalid_argument(error.to_string()))?;
@@ -249,6 +256,13 @@ impl WelcomeService for WelcomeGrpc {
                 })?,
             None => String::new(),
         };
+        let mut final_context = input.server_context.clone();
+        if let Some(memory) = &self.memory {
+            if let Ok(Some(summary)) = memory.get_latest_summary(&input.guild_id).await {
+                final_context.push_str("\n\nRésumé de l'activité du serveur (récent) :\n");
+                final_context.push_str(&summary);
+            }
+        }
         let reply = self
             .welcome
             .reply(WelcomeRequest {
@@ -259,7 +273,7 @@ impl WelcomeService for WelcomeGrpc {
                 scope,
                 member_message: input.member_message,
                 conversation_history: history,
-                server_context: merge_context(&input.server_context, &retrieved),
+                server_context: merge_context(&final_context, &retrieved),
             })
             .await
             .map_err(|error| Status::invalid_argument(error.to_string()))?;

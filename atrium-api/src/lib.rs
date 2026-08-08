@@ -294,20 +294,27 @@ async fn welcome_reply(
             .map_err(|_| ApiError::bad_request("lecture de la memoire indisponible"))?,
         None => String::new(),
     };
+    let mut final_context = request.server_context.clone();
+    if let Some(memory) = &state.memory {
+        if let Ok(Some(summary)) = memory.get_latest_summary(&request.guild_id).await {
+            final_context.push_str("\n\nRésumé de l'activité du serveur (récent) :\n");
+            final_context.push_str(&summary);
+        }
+    }
     let guild_id = request.guild_id.clone();
     let member_id = request.member.id.clone();
     let member_message = request.message.clone();
     let reply = state
         .welcome
         .reply(WelcomeRequest {
-            guild_id: request.guild_id,
-            member_id: request.member.id,
+            guild_id: guild_id.clone(),
+            member_id: member_id.clone(),
             member_display_name: request.member.display_name,
             channel_id: request.channel.id,
             scope: request.channel.kind.into(),
-            member_message: request.message,
+            member_message: member_message.clone(),
             conversation_history: history,
-            server_context: merge_context(&request.server_context, &retrieved),
+            server_context: merge_context(&final_context, &retrieved),
         })
         .await
         .map_err(ApiError::from)?;

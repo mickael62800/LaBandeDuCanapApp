@@ -177,8 +177,14 @@ pub fn router_with_state(state: Arc<AppState>) -> Router {
 }
 
 pub fn welcome_use_case(config: &AppConfig) -> Arc<dyn GenerateWelcomeReplyUseCase> {
+    let client = Client::builder()
+        .pool_max_idle_per_host(10)
+        .tcp_keepalive(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .unwrap_or_default();
     let ai: Arc<dyn WelcomeAiGateway> = Arc::new(DeepSeekGateway {
-        client: Client::new(),
+        client,
         api_key: config.deepseek_api_key.clone(),
         model: config.model.clone(),
     });

@@ -78,6 +78,7 @@ struct Handler {
     channel: Channel,
     primary_guild: Arc<tokio::sync::RwLock<Option<GuildId>>>,
     calming_consumer_started: Arc<AtomicBool>,
+    directory_cache: std::sync::RwLock<Option<(std::time::Instant, String)>>,
 }
 
 impl Handler {
@@ -191,6 +192,15 @@ impl Handler {
         let Some(guild) = ctx.cache.guild(guild_id) else {
             return self.config.server_context.clone();
         };
+
+        if let Ok(guard) = self.directory_cache.read() {
+            if let Some((ts, cached)) = guard.as_ref() {
+                if ts.elapsed() < std::time::Duration::from_secs(60) {
+                    return cached.clone();
+                }
+            }
+        }
+
         let mut roles: Vec<_> = guild
             .roles
             .values()
@@ -236,7 +246,11 @@ impl Handler {
             }
             directory.push_str(&line);
         }
-        format!("{}{}", self.config.server_context, directory)
+        let result = format!("{}{}", self.config.server_context, directory);
+        if let Ok(mut guard) = self.directory_cache.write() {
+            *guard = Some((std::time::Instant::now(), result.clone()));
+        }
+        result
     }
 
     async fn control_reply(&self, command: &CommandInteraction) -> String {
@@ -463,6 +477,7 @@ async fn main() {
             channel,
             primary_guild,
             calming_consumer_started: Arc::new(AtomicBool::new(false)),
+            directory_cache: std::sync::RwLock::new(None),
         })
         .await
         .expect("creation client Discord");

@@ -355,12 +355,15 @@ pub(crate) async fn apply_member_sanction(
                 match crate::modules::moderation::role_mute::apply(ctx, gid, user_id, mute_secs)
                     .await
                 {
-                    Ok(true) => return true,
+                    Ok(crate::modules::moderation::role_mute::ApplyResult::Applied)
+                    | Ok(crate::modules::moderation::role_mute::ApplyResult::AlreadyActive) => {
+                        return true
+                    }
                     Err(e) => {
                         tracing::warn!(error = %e, user_id = %user_id, "Vote AutoMod : echec role de mute");
                         return false;
                     }
-                    Ok(false) => {}
+                    Ok(crate::modules::moderation::role_mute::ApplyResult::NotConfigured) => {}
                 }
                 let Ok(mut member) = gid.member(&ctx.http, user_id).await else {
                     return false;

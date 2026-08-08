@@ -6,6 +6,13 @@ use crate::shared::api_client::BaseApiClient;
 use crate::shared::heartbeat::ApiClientKey;
 use serenity::all::{Context, GuildId, RoleId, UserId};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ApplyResult {
+    NotConfigured,
+    Applied,
+    AlreadyActive,
+}
+
 /// Retourne le role de mute lorsque ce mode est explicitement active.
 pub async fn configured_role(ctx: &Context, guild_id: GuildId) -> Option<RoleId> {
     let api = {
@@ -34,9 +41,9 @@ pub async fn apply(
     guild_id: GuildId,
     user_id: UserId,
     duration_secs: u64,
-) -> Result<bool, String> {
+) -> Result<ApplyResult, String> {
     let Some(role_id) = configured_role(ctx, guild_id).await else {
-        return Ok(false);
+        return Ok(ApplyResult::NotConfigured);
     };
 
     // Dans le salon d'appel, AutoMod peut encore supprimer un message
@@ -48,7 +55,7 @@ pub async fn apply(
         .map_err(|e| format!("membre introuvable : {e}"))?;
     if member.roles.contains(&role_id) {
         tracing::debug!(guild = %guild_id, user = %user_id, role = %role_id, "Mute par role deja actif, echeance inchangee");
-        return Ok(true);
+        return Ok(ApplyResult::AlreadyActive);
     }
 
     let expires_at =
@@ -81,7 +88,7 @@ pub async fn apply(
     }
 
     tracing::info!(guild = %guild_id, user = %user_id, role = %role_id, "Mute applique via role temporaire");
-    Ok(true)
+    Ok(ApplyResult::Applied)
 }
 
 /// Retire le role de mute et annule son expiration persistée. Retourne `true`

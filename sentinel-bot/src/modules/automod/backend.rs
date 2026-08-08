@@ -127,8 +127,22 @@ pub(super) async fn apply_auto_protect(
     };
     let mut mute_ok = false;
     match crate::modules::moderation::role_mute::apply(ctx, guild_id, msg.author.id, safe).await {
-        Ok(true) => mute_ok = true,
-        Ok(false) => {
+        Ok(crate::modules::moderation::role_mute::ApplyResult::Applied) => mute_ok = true,
+        Ok(crate::modules::moderation::role_mute::ApplyResult::AlreadyActive) => {
+            let _ = msg.delete(&ctx.http).await;
+            crate::modules::moderation::appeal_behavior::record(
+                ctx,
+                msg.channel_id,
+                msg.author.id,
+                reason,
+            )
+            .await;
+            return (
+                Some("Message supprime : le membre est deja mute, echeance inchangee.".to_string()),
+                false,
+            );
+        }
+        Ok(crate::modules::moderation::role_mute::ApplyResult::NotConfigured) => {
             if let Ok(dt) = time::OffsetDateTime::from_unix_timestamp(now_secs + safe as i64) {
                 let timeout = serenity::model::Timestamp::from(dt);
                 match guild_id.member(&ctx.http, msg.author.id).await {
@@ -579,13 +593,22 @@ pub(super) async fn execute_action(
                 )
                 .await
                 {
-                    Ok(true) => {
+                    Ok(crate::modules::moderation::role_mute::ApplyResult::Applied) => {
                         info!(user = %msg.author.name, duration_secs = safe_duration, "Utilisateur mute via role");
                     }
                     Err(e) => {
                         warn!(error = %e, user = %msg.author.name, "Echec role de mute automatique")
                     }
-                    Ok(false) => {
+                    Ok(crate::modules::moderation::role_mute::ApplyResult::AlreadyActive) => {
+                        crate::modules::moderation::appeal_behavior::record(
+                            ctx,
+                            msg.channel_id,
+                            msg.author.id,
+                            reason_text,
+                        )
+                        .await;
+                    }
+                    Ok(crate::modules::moderation::role_mute::ApplyResult::NotConfigured) => {
                         let mut member = guild_id_val.member(&ctx.http, member.user.id).await?;
                         let secs = match std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)

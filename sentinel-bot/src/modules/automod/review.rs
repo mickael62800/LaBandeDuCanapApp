@@ -626,41 +626,50 @@ pub(super) async fn handle_review_button(
                 )
                 .await
                 {
-                    Ok(true) => {
+                    Ok(crate::modules::moderation::role_mute::ApplyResult::Applied) => {
                         info!(user_id = %uid, duration = mute_duration_secs, "Mute applique via role depuis review");
                         mute_applied = true;
                     }
+                    Ok(crate::modules::moderation::role_mute::ApplyResult::AlreadyActive) => {
+                        info!(user_id = %uid, "Mute deja actif via role, aucune prolongation");
+                    }
                     Err(e) => error!(error = %e, user_id = %uid, "Echec role de mute via review"),
-                    Ok(false) => match guild_id_val
-                        .member(&ctx.http, serenity::model::id::UserId::new(uid))
-                        .await
-                    {
-                        Ok(mut member) => {
-                            let secs = std::time::SystemTime::now()
-                                .duration_since(std::time::UNIX_EPOCH)
-                                .map(|d| d.as_secs() as i64 + mute_duration_secs as i64)
-                                .unwrap_or(0);
-                            match time::OffsetDateTime::from_unix_timestamp(secs) {
-                                Ok(dt) => {
-                                    let timeout = serenity::model::Timestamp::from(dt);
-                                    match member
-                                        .disable_communication_until_datetime(&ctx.http, timeout)
-                                        .await
-                                    {
-                                        Ok(_) => {
-                                            info!(user_id = %uid, duration = mute_duration_secs, "Mute applique via review");
-                                            mute_applied = true;
-                                        }
-                                        Err(e) => {
-                                            error!(error = %e, user_id = %uid, "Echec Discord disable_communication -- le bot a-t-il la permission MODERATE_MEMBERS ?")
+                    Ok(crate::modules::moderation::role_mute::ApplyResult::NotConfigured) => {
+                        match guild_id_val
+                            .member(&ctx.http, serenity::model::id::UserId::new(uid))
+                            .await
+                        {
+                            Ok(mut member) => {
+                                let secs = std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .map(|d| d.as_secs() as i64 + mute_duration_secs as i64)
+                                    .unwrap_or(0);
+                                match time::OffsetDateTime::from_unix_timestamp(secs) {
+                                    Ok(dt) => {
+                                        let timeout = serenity::model::Timestamp::from(dt);
+                                        match member
+                                            .disable_communication_until_datetime(
+                                                &ctx.http, timeout,
+                                            )
+                                            .await
+                                        {
+                                            Ok(_) => {
+                                                info!(user_id = %uid, duration = mute_duration_secs, "Mute applique via review");
+                                                mute_applied = true;
+                                            }
+                                            Err(e) => {
+                                                error!(error = %e, user_id = %uid, "Echec Discord disable_communication -- le bot a-t-il la permission MODERATE_MEMBERS ?")
+                                            }
                                         }
                                     }
+                                    Err(e) => error!(error = %e, "Timestamp invalide pour mute"),
                                 }
-                                Err(e) => error!(error = %e, "Timestamp invalide pour mute"),
+                            }
+                            Err(e) => {
+                                warn!(error = %e, user_id = %uid, "Membre introuvable pour mute")
                             }
                         }
-                        Err(e) => warn!(error = %e, user_id = %uid, "Membre introuvable pour mute"),
-                    },
+                    }
                 }
             } else {
                 warn!(guild_id = ?component.guild_id, user_id = %user_id_str, "guild_id ou user_id invalide pour mute");

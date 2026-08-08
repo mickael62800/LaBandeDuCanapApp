@@ -322,7 +322,19 @@ pub async fn execute_mute(
         match crate::modules::moderation::role_mute::apply(ctx, guild_id, target.id, timeout_secs)
             .await
         {
-            Ok(active) => active,
+            Ok(crate::modules::moderation::role_mute::ApplyResult::Applied) => true,
+            Ok(crate::modules::moderation::role_mute::ApplyResult::AlreadyActive) => {
+                if let Some(cmd) = command {
+                    edit_response_text(
+                        ctx,
+                        cmd,
+                        "Ce membre porte deja le role de mute : echeance inchangee.",
+                    )
+                    .await;
+                }
+                return;
+            }
+            Ok(crate::modules::moderation::role_mute::ApplyResult::NotConfigured) => false,
             Err(e) => {
                 error!(error = %e, "Impossible de mute l'utilisateur via role");
                 if let Some(cmd) = command {

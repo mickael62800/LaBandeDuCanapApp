@@ -4,6 +4,7 @@
 pub const MODULE_BOT_NAME: &str = "moderation-bot";
 
 pub mod api_client;
+pub mod appeal_behavior;
 pub mod commands;
 mod guild_reset;
 mod pending_actions;
@@ -343,6 +344,7 @@ pub async fn create_appeal_channel(
         msg = msg.components(vec![CreateActionRow::Buttons(buttons)]);
     }
     let _ = channel.send_message(&ctx.http, msg).await;
+    appeal_behavior::initialize(ctx, channel.id, UserId::new(appellant_id)).await;
 
     Some(channel.id)
 }

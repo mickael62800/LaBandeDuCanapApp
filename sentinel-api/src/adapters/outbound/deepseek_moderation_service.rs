@@ -25,7 +25,7 @@ impl DeepSeekModerationAdapter {
         let model = model.unwrap_or_else(|| DEFAULT_MODEL.to_string());
         let endpoint = endpoint.unwrap_or_else(|| DEFAULT_DEEPSEEK_URL.to_string());
         let client = Client::builder()
-            .timeout(std::time::Duration::from_secs(5))
+            .timeout(std::time::Duration::from_secs(3))
             .build()
             .unwrap_or_default();
 

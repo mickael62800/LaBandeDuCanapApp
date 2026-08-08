@@ -1,3 +1,4 @@
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -549,7 +550,33 @@ impl AnalyzeMessageUseCase for AnalyzeMessageService {
                         .iter()
                         .map(|c| format!("{}: {}", c.username, c.content))
                         .collect();
-                    match ds.analyze_message(&cmd.content, &context_texts).await {
+                    // Cache court par guilde + contenu + contexte : evite les
+                    // appels DeepSeek repetes sans reutiliser une analyse dans
+                    // une autre conversation ou un autre serveur.
+                    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+                    cmd.guild_id.hash(&mut hasher);
+                    cmd.content.hash(&mut hasher);
+                    context_texts.hash(&mut hasher);
+                    let cache_key = format!("ai:deepseek:v1:{:x}", hasher.finish());
+                    let cached = self
+                        .cache
+                        .get_json(&cache_key)
+                        .await
+                        .ok()
+                        .flatten()
+                        .and_then(|raw| serde_json::from_str(&raw).ok());
+                    let analysis = if let Some(analysis) = cached {
+                        Ok(analysis)
+                    } else {
+                        let result = ds.analyze_message(&cmd.content, &context_texts).await;
+                        if let Ok(ref analysis) = result {
+                            if let Ok(json) = serde_json::to_string(analysis) {
+                                let _ = self.cache.set_json(&cache_key, &json, 300).await;
+                            }
+                        }
+                        result
+                    };
+                    match analysis {
                         Ok(ds_analysis) => {
                             info!(score = ds_analysis.toxicity_score, sentiment = %ds_analysis.sentiment, reason = %ds_analysis.reason, "Reponse DeepSeek Moderation recue");
                             if let Some((ia_score, ia_flags, ds_reason)) = score_deepseek_analysis(

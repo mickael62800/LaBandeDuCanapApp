@@ -134,7 +134,7 @@ pub(super) async fn apply_auto_protect(
                 ctx,
                 msg.channel_id,
                 msg.author.id,
-                reason,
+                &reason,
             )
             .await;
             return (
@@ -173,54 +173,65 @@ pub(super) async fn apply_auto_protect(
     // l'historique de moderation (acteur = le bot lui-meme / AutoMod), au meme
     // titre qu'un mute valide par un humain (compte dans l'escalade).
     if mute_ok {
-        let (bot_id, bot_name) = {
-            let cu = ctx.cache.current_user();
-            (cu.id.to_string(), cu.name.clone())
-        };
-        super::vote::log_sanction_to_moderation(
-            ctx,
-            &guild_id.to_string(),
-            &msg.channel_id.to_string(),
-            &bot_id,
-            &bot_name,
-            &msg.author.id.to_string(),
-            &msg.author.name,
-            "mute",
-            &format!("Protection automatique AutoMod : {reason}"),
-            Some(safe),
-        )
-        .await;
+        // Une fois le message efface et la sanction appliquee, la
+        // journalisation/carte/MP ne doit plus bloquer la boucle AutoMod.
+        let ctx = ctx.clone();
+        let guild_id_str = guild_id.to_string();
+        let channel_id_str = msg.channel_id.to_string();
+        let user_id_str = msg.author.id.to_string();
+        let user_id = msg.author.id;
+        let user_name = msg.author.name.clone();
+        let reason = reason.to_string();
+        let safe_duration = safe;
+        let notify = notify_member;
+        tokio::spawn(async move {
+            let (bot_id, bot_name) = {
+                let cu = ctx.cache.current_user();
+                (cu.id.to_string(), cu.name.clone())
+            };
+            super::vote::log_sanction_to_moderation(
+                &ctx,
+                &guild_id_str,
+                &channel_id_str,
+                &bot_id,
+                &bot_name,
+                &user_id_str,
+                &user_name,
+                "mute",
+                &format!("Protection automatique AutoMod : {reason}"),
+                Some(safe_duration),
+            )
+            .await;
 
-        crate::shared::discord_helpers::post_sanction_card(
-            ctx,
-            &guild_id.to_string(),
-            crate::shared::discord_helpers::SanctionKind::Mute,
-            msg.author.id.get(),
-            Some(&msg.author.name),
-            "Automod",
-            reason,
-            Some(&format!("{}min", safe / 60)),
-        )
-        .await;
-    }
+            crate::shared::discord_helpers::post_sanction_card(
+                &ctx,
+                &guild_id_str,
+                crate::shared::discord_helpers::SanctionKind::Mute,
+                user_id.get(),
+                Some(&user_name),
+                "Automod",
+                &reason,
+                Some(&format!("{}min", safe_duration / 60)),
+            )
+            .await;
 
-    // Notification DSA au membre : motif + droit d'appel (best-effort, le DM
-    // peut echouer si le membre a ferme ses MP).
-    if notify_member && mute_ok {
-        let dm = format!(
+            if notify {
+                let dm = format!(
             "Une mesure de protection automatique (mute {} min) a ete appliquee a ton encontre.\n\
              Motif : {reason}\n\
              Si tu penses que c'est une erreur, tu peux contester via la commande **/appeal** sur le serveur.",
-            safe / 60
+            safe_duration / 60
         );
-        if let Ok(ch) = msg.author.create_dm_channel(&ctx.http).await {
-            let _ = ch
-                .send_message(
-                    &ctx.http,
-                    serenity::builder::CreateMessage::new().content(dm),
-                )
-                .await;
-        }
+                if let Ok(ch) = user_id.create_dm_channel(&ctx.http).await {
+                    let _ = ch
+                        .send_message(
+                            &ctx.http,
+                            serenity::builder::CreateMessage::new().content(dm),
+                        )
+                        .await;
+                }
+            }
+        });
     }
 
     let mins = safe / 60;

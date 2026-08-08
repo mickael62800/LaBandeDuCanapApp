@@ -68,9 +68,9 @@ fn find<'a>(items: &'a [BotGuildConfig], key: &str) -> Option<&'a str> {
 }
 
 fn parse_bool(s: Option<&str>, default: bool) -> bool {
-    match s {
-        Some("true") | Some("1") => true,
-        Some("false") | Some("0") => false,
+    match s.map(|v| v.trim().to_ascii_lowercase()).as_deref() {
+        Some("true") | Some("1") | Some("yes") | Some("on") => true,
+        Some("false") | Some("0") | Some("no") | Some("off") => false,
         _ => default,
     }
 }
@@ -134,6 +134,10 @@ fn sanitize_port_range(kind: &str, start: u16, end: u16) -> (u16, u16) {
     (s, e)
 }
 
+fn ranges_overlap(left_start: u16, left_end: u16, right_start: u16, right_end: u16) -> bool {
+    left_start <= right_end && right_start <= left_end
+}
+
 pub async fn load_game_portal_config(
     bot_config: &Arc<dyn BotConfigRepository>,
     guild_id: &str,
@@ -149,6 +153,16 @@ pub async fn load_game_portal_config(
         parse_u16(find(&entries, "rcon_port_range_start"), 25700),
         parse_u16(find(&entries, "rcon_port_range_end"), 25799),
     );
+    if ranges_overlap(
+        port_range_start,
+        port_range_end,
+        rcon_port_range_start,
+        rcon_port_range_end,
+    ) {
+        return Err(DomainError::ValidationError(format!(
+            "Les plages game ({port_range_start}-{port_range_end}) et RCON ({rcon_port_range_start}-{rcon_port_range_end}) ne doivent pas se chevaucher"
+        )));
+    }
     Ok(GamePortalConfig {
         enabled: parse_bool(find(&entries, "enabled"), true),
         max_servers_per_guild: parse_i32(find(&entries, "max_servers_per_guild"), 5),
@@ -236,5 +250,20 @@ mod tests {
     fn sanitize_end_below_start_in_valid_range() {
         // les deux >= 1024 mais end < start -> end ramene a start.
         assert_eq!(sanitize_port_range("game", 26000, 25000), (26000, 26000));
+    }
+
+    #[test]
+    fn parse_bool_accepts_case_and_common_admin_values() {
+        assert!(parse_bool(Some("TRUE"), false));
+        assert!(parse_bool(Some(" Yes "), false));
+        assert!(!parse_bool(Some("OFF"), true));
+        assert!(!parse_bool(Some("NO"), true));
+    }
+
+    #[test]
+    fn ranges_overlap_detects_shared_boundary_and_keeps_disjoint_ranges() {
+        assert!(ranges_overlap(25500, 25599, 25599, 25699));
+        assert!(ranges_overlap(25500, 25599, 25550, 25650));
+        assert!(!ranges_overlap(25500, 25599, 25600, 25699));
     }
 }

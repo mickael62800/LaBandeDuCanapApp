@@ -514,6 +514,7 @@ services:
       ATRIUM_API_BIND_ADDR: 0.0.0.0:8090
       ATRIUM_GRPC_BIND_ADDR: 0.0.0.0:8091
       ATRIUM_API_TOKEN: ${ATRIUM_API_TOKEN:-}
+      ATRIUM_GRPC_TOKEN: ${ATRIUM_GRPC_TOKEN:?ATRIUM_GRPC_TOKEN est requis}
       DEEPSEEK_API_KEY: ${ATRIUM_DEEPSEEK_API_KEY:-${DEEPSEEK_API_KEY:-}}
       DEEPSEEK_MODEL: ${ATRIUM_DEEPSEEK_MODEL:-${DEEPSEEK_MODEL:-deepseek-v4-flash}}
       ATRIUM_API_RATE_LIMIT_PER_SEC: ${ATRIUM_API_RATE_LIMIT_PER_SEC:-5}
@@ -609,10 +610,11 @@ services:
       retries: 3
       start_period: 20s
     environment:
-      DISCORD_TOKEN: ${ATRIUM_DISCORD_TOKEN:-}
+      ATRIUM_DISCORD_TOKEN: ${ATRIUM_DISCORD_TOKEN:-}
       # Consomme les demandes d'apaisement publiees par Sentinel AutoMod.
       REDIS_URL: redis://:${REDIS_PASSWORD:-sentinel_redis}@redis:6379
       ATRIUM_GRPC_URL: http://atrium-api:8091
+      ATRIUM_GRPC_TOKEN: ${ATRIUM_GRPC_TOKEN:?ATRIUM_GRPC_TOKEN est requis}
       ATRIUM_GENERAL_CHANNEL_ID: ${ATRIUM_GENERAL_CHANNEL_ID:-}
       ATRIUM_SERVER_CONTEXT: ${ATRIUM_SERVER_CONTEXT:-}
       RUST_LOG: ${RUST_LOG:-info}

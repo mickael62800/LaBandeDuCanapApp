@@ -216,6 +216,7 @@ impl RagService {
 
     pub async fn search_chunks(
         &self,
+        guild_id: &str,
         question: &str,
         limit: u32,
     ) -> Result<Vec<(String, String, f64)>, String> {
@@ -231,9 +232,9 @@ impl RagService {
         let results = sqlx::query_as::<_, SearchResult>(
             "SELECT c.content, d.title, d.source_url, 1 - (c.embedding <=> $1::vector) AS similarity \
              FROM atrium_knowledge_chunks c JOIN atrium_knowledge_documents d ON d.id = c.document_id \
-             WHERE d.enabled AND d.guild_id IN ('*', '*') ORDER BY c.embedding <=> $1::vector LIMIT $2",
+             WHERE d.enabled AND d.guild_id IN ($2, '*') ORDER BY c.embedding <=> $1::vector LIMIT $3",
         )
-        .bind(vector).bind(max).fetch_all(&self.pool).await
+        .bind(vector).bind(guild_id).bind(max).fetch_all(&self.pool).await
         .map_err(|error| error.to_string())?;
 
         Ok(results

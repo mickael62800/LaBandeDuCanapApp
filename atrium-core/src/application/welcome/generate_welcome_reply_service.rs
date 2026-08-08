@@ -112,7 +112,26 @@ fn fallback_message(display_name: &str, is_question: bool) -> String {
 }
 
 fn truncate(value: &str, max_chars: usize) -> String {
-    value.chars().take(max_chars).collect()
+    let chars: Vec<char> = value.chars().collect();
+    if chars.len() <= max_chars {
+        return value.to_owned();
+    }
+    let prefix: String = chars[..max_chars].iter().collect();
+    // Privilegie la fin de phrase, puis le dernier espace. Evite une coupe
+    // brutale au milieu d'un mot dans les messages Discord.
+    let cut = prefix
+        .char_indices()
+        .rev()
+        .find_map(|(i, c)| matches!(c, '.' | '!' | '?' | '\n').then_some(i + c.len_utf8()))
+        .or_else(|| {
+            prefix
+                .char_indices()
+                .rev()
+                .find_map(|(i, c)| c.is_whitespace().then_some(i))
+        })
+        .filter(|&i| i >= max_chars / 2)
+        .unwrap_or(prefix.len());
+    format!("{}…", prefix[..cut].trim_end())
 }
 
 #[cfg(test)]
@@ -182,6 +201,14 @@ mod tests {
 
     #[test]
     fn generated_reply_is_capped_for_discord() {
-        assert_eq!(truncate(&"a".repeat(651), 650).chars().count(), 650);
+        assert!(truncate(&"a".repeat(651), 650).chars().count() <= 651);
+    }
+
+    #[test]
+    fn generated_reply_is_cut_at_a_word_boundary() {
+        let text = format!("{} fin de phrase.", "mot ".repeat(200));
+        let result = truncate(&text, 650);
+        assert!(result.ends_with('…'));
+        assert!(!result.contains("mo…"));
     }
 }

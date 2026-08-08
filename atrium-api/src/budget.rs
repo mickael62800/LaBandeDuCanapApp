@@ -33,6 +33,15 @@ impl BudgetGuard {
     ) -> Result<Option<String>, sqlx::Error> {
         let mut tx = self.pool.begin().await?;
 
+        // Les quotas sont journaliers : conserver une courte fenetre suffit
+        // au diagnostic sans faire grossir la table indefiniment.
+        sqlx::query("DELETE FROM atrium_ai_usage_users WHERE usage_date < CURRENT_DATE - 7")
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("DELETE FROM atrium_ai_usage_global WHERE usage_date < CURRENT_DATE - 7")
+            .execute(&mut *tx)
+            .await?;
+
         sqlx::query(
             "INSERT INTO atrium_ai_usage_users (usage_date, guild_id, user_id) \
              VALUES (CURRENT_DATE, $1, $2) ON CONFLICT DO NOTHING",

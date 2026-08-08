@@ -82,6 +82,51 @@ impl PortAllocator for RedisPortAllocator {
         ))
     }
 
+    async fn allocate_block(
+        &self,
+        kind: PortKind,
+        range_start: u16,
+        range_end: u16,
+        width: u16,
+        owner_key: &str,
+    ) -> Result<u16, DomainError> {
+        if width == 0 || range_end.saturating_sub(range_start) + 1 < width {
+            return Err(DomainError::ValidationError(
+                "plage insuffisante pour le bloc de ports".into(),
+            ));
+        }
+        let last_start = range_end - (width - 1);
+        let mut conn = self
+            .client
+            .get_multiplexed_async_connection()
+            .await
+            .map_err(|e| DomainError::Internal(format!("redis conn: {e}")))?;
+        // Verifie puis reserve toutes les cles dans le MEME script Redis :
+        // aucun autre create ne peut prendre +1/+2 entre les deux etapes.
+        let script = redis::Script::new(
+            "for i=1,#KEYS do if redis.call('EXISTS', KEYS[i]) == 1 then return 0 end end \
+             for i=1,#KEYS do redis.call('SET', KEYS[i], ARGV[1], 'EX', ARGV[2]) end return 1",
+        );
+        for start in range_start..=last_start {
+            let mut invocation = script.prepare_invoke();
+            for port in start..start + width {
+                invocation.key(Self::key(kind, port));
+            }
+            let won: i32 = invocation
+                .arg(owner_key)
+                .arg(self.ttl_secs)
+                .invoke_async(&mut conn)
+                .await
+                .map_err(|e| DomainError::Internal(format!("redis reserve block: {e}")))?;
+            if won == 1 {
+                return Ok(start);
+            }
+        }
+        Err(DomainError::ValidationError(
+            "aucun bloc de ports libre dans le range configure".into(),
+        ))
+    }
+
     async fn release(&self, kind: PortKind, port: u16) -> Result<(), DomainError> {
         let mut conn = self
             .client

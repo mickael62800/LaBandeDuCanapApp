@@ -38,14 +38,39 @@ pub async fn serve(
     };
     let rag_service = RagGrpc { rag: Some(rag) };
     let control_service = BotControlGrpc { control };
+    let grpc_token = config.grpc_token.clone();
+    let auth = move |request: Request<()>| {
+        let expected = format!("Bearer {grpc_token}");
+        if request
+            .metadata()
+            .get("authorization")
+            .and_then(|v| v.to_str().ok())
+            == Some(expected.as_str())
+        {
+            Ok(request)
+        } else {
+            Err(Status::unauthenticated(
+                "jeton gRPC Atrium invalide ou absent",
+            ))
+        }
+    };
 
     tracing::info!(%addr, "Atrium gRPC démarré (Welcome & RAG)");
     tonic::transport::Server::builder()
-        .add_service(WelcomeServiceServer::new(welcome_service))
-        .add_service(proto::rag_service_server::RagServiceServer::new(
-            rag_service,
+        .add_service(WelcomeServiceServer::with_interceptor(
+            welcome_service,
+            auth.clone(),
         ))
-        .add_service(BotControlServiceServer::new(control_service))
+        .add_service(
+            proto::rag_service_server::RagServiceServer::with_interceptor(
+                rag_service,
+                auth.clone(),
+            ),
+        )
+        .add_service(BotControlServiceServer::with_interceptor(
+            control_service,
+            auth,
+        ))
         .serve(addr)
         .await
         .expect("serveur gRPC Atrium");
@@ -315,7 +340,7 @@ impl proto::rag_service_server::RagService for RagGrpc {
             .as_ref()
             .ok_or_else(|| Status::unavailable("RAG non configuré"))?;
         let chunks = rag
-            .search_chunks(&req.query, req.limit)
+            .search_chunks(&req.guild_id, &req.query, req.limit)
             .await
             .map_err(|e| Status::internal(e))?;
 

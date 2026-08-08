@@ -39,6 +39,18 @@ pub async fn apply(
         return Ok(false);
     };
 
+    // Dans le salon d'appel, AutoMod peut encore supprimer un message
+    // inacceptable. En revanche, un membre qui porte deja ce role ne doit pas
+    // etre mute une seconde fois ni voir son echeance repoussee.
+    let member = guild_id
+        .member(&ctx.http, user_id)
+        .await
+        .map_err(|e| format!("membre introuvable : {e}"))?;
+    if member.roles.contains(&role_id) {
+        tracing::debug!(guild = %guild_id, user = %user_id, role = %role_id, "Mute par role deja actif, echeance inchangee");
+        return Ok(true);
+    }
+
     let expires_at =
         (chrono::Utc::now() + chrono::Duration::seconds(duration_secs as i64)).to_rfc3339();
     let roles_api = {
@@ -57,10 +69,6 @@ pub async fn apply(
         )
         .await?;
 
-    let member = guild_id
-        .member(&ctx.http, user_id)
-        .await
-        .map_err(|e| format!("membre introuvable : {e}"))?;
     if let Err(e) = member.add_role(&ctx.http, role_id).await {
         roles_api
             .delete_temp_role(

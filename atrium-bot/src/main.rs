@@ -21,6 +21,7 @@ use serenity::{
     prelude::*,
 };
 use tonic::transport::Channel;
+use tonic::Request;
 
 mod logic;
 
@@ -49,6 +50,7 @@ struct CalmingEventData {
 struct Config {
     token: String,
     grpc_url: String,
+    grpc_token: String,
     general_channel_id: ChannelId,
     server_context: String,
 }
@@ -56,9 +58,10 @@ struct Config {
 impl Config {
     fn from_env() -> Self {
         Self {
-            token: std::env::var("DISCORD_TOKEN").expect("DISCORD_TOKEN manquant"),
+            token: std::env::var("ATRIUM_DISCORD_TOKEN").expect("ATRIUM_DISCORD_TOKEN manquant"),
             grpc_url: std::env::var("ATRIUM_GRPC_URL")
                 .unwrap_or_else(|_| "http://127.0.0.1:8091".into()),
+            grpc_token: std::env::var("ATRIUM_GRPC_TOKEN").expect("ATRIUM_GRPC_TOKEN manquant"),
             general_channel_id: ChannelId::new(
                 std::env::var("ATRIUM_GENERAL_CHANNEL_ID")
                     .expect("ATRIUM_GENERAL_CHANNEL_ID manquant")
@@ -78,6 +81,15 @@ struct Handler {
 }
 
 impl Handler {
+    fn grpc_request<T>(&self, message: T) -> Request<T> {
+        let mut request = Request::new(message);
+        let value = format!("Bearer {}", self.config.grpc_token)
+            .parse()
+            .expect("ATRIUM_GRPC_TOKEN invalide pour les metadonnees gRPC");
+        request.metadata_mut().insert("authorization", value);
+        request
+    }
+
     async fn handle_calming_event(
         ctx: Context,
         config: Arc<Config>,
@@ -161,7 +173,7 @@ impl Handler {
     ) -> Option<String> {
         let mut client = WelcomeServiceClient::new(self.channel.clone());
         client
-            .generate_reply(GenerateReplyRequest {
+            .generate_reply(self.grpc_request(GenerateReplyRequest {
                 guild_id,
                 member_id,
                 member_display_name: name,
@@ -169,7 +181,7 @@ impl Handler {
                 scope: scope as i32,
                 member_message: message,
                 server_context,
-            })
+            }))
             .await
             .ok()
             .map(|response| response.into_inner().reply)
@@ -248,25 +260,25 @@ impl Handler {
         let mut client = BotControlServiceClient::new(self.channel.clone());
         let result = match action {
             Some("activer") => client
-                .set_state(SetBotStateRequest {
+                .set_state(self.grpc_request(SetBotStateRequest {
                     guild_id: guild_id.to_string(),
                     enabled: true,
                     actor_id: command.user.id.to_string(),
-                })
+                }))
                 .await
                 .map(|response| response.into_inner()),
             Some("desactiver") => client
-                .set_state(SetBotStateRequest {
+                .set_state(self.grpc_request(SetBotStateRequest {
                     guild_id: guild_id.to_string(),
                     enabled: false,
                     actor_id: command.user.id.to_string(),
-                })
+                }))
                 .await
                 .map(|response| response.into_inner()),
             Some("statut") => client
-                .get_state(BotStateRequest {
+                .get_state(self.grpc_request(BotStateRequest {
                     guild_id: guild_id.to_string(),
-                })
+                }))
                 .await
                 .map(|response| response.into_inner()),
             _ => return "Sous-commande Atrium inconnue.".into(),

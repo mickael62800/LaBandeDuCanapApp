@@ -55,6 +55,7 @@ pub struct AppConfig {
     pub user_daily_limit: u32,
     pub global_daily_limit: u32,
     api_token: String,
+    pub grpc_token: String,
     deepseek_api_key: String,
     model: String,
 }
@@ -72,6 +73,7 @@ impl AppConfig {
             user_daily_limit: 30,
             global_daily_limit: 500,
             api_token: "test-token".into(),
+            grpc_token: "test-grpc-token".into(),
             deepseek_api_key: "test-ds-key".into(),
             model: "deepseek-v4-flash".into(),
         }
@@ -102,6 +104,7 @@ impl AppConfig {
             user_daily_limit: env_u32("ATRIUM_USER_DAILY_LIMIT", 30)?,
             global_daily_limit: env_u32("ATRIUM_GLOBAL_DAILY_LIMIT", 500)?,
             api_token: required("ATRIUM_API_TOKEN")?,
+            grpc_token: required("ATRIUM_GRPC_TOKEN")?,
             deepseek_api_key: required("DEEPSEEK_API_KEY")?,
             model: std::env::var("DEEPSEEK_MODEL").unwrap_or_else(|_| "deepseek-v4-flash".into()),
         })

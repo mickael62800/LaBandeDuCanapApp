@@ -42,6 +42,7 @@ message ReplyChunk {
 message SearchKnowledgeRequest {
   string query = 1;
   uint32 limit = 2;
+  string guild_id = 3;
 }
 
 message SearchKnowledgeChunk {

@@ -523,9 +523,27 @@ impl ManageGameServersUseCase for ManageGameServersService {
             }
         }
 
-        // Liberation des ports
+        // Liberation des ports. Valheim reserve un bloc de trois ports UDP
+        // consecutifs (jeu + query Steam + port additionnel).
         if let Some(p) = server.host_port {
-            let _ = self.port_allocator.release(PortKind::Game, p).await;
+            let width = self
+                .template_repo
+                .find_by_id(server.template_id)
+                .await
+                .ok()
+                .flatten()
+                .filter(|template| template.slug == "valheim")
+                .map(|_| 3)
+                .unwrap_or(1);
+            for offset in 0..width {
+                if let Err(e) = self
+                    .port_allocator
+                    .release(PortKind::Game, p + offset)
+                    .await
+                {
+                    warn!(error = %e, port = p + offset, "liberation port jeu apres delete echouee");
+                }
+            }
         }
         if let Some(p) = server.rcon_port {
             let _ = self.port_allocator.release(PortKind::Rcon, p).await;
@@ -599,16 +617,20 @@ impl ManageGameServersUseCase for ManageGameServersService {
             let game_port = match server.host_port {
                 Some(p) => p,
                 None => {
+                    let width = if template.slug == "valheim" { 3 } else { 1 };
                     let p = self
                         .port_allocator
-                        .allocate(
+                        .allocate_block(
                             PortKind::Game,
                             cfg.port_range_start,
                             cfg.port_range_end,
+                            width,
                             &server.id.to_string(),
                         )
                         .await?;
-                    newly_allocated.push((PortKind::Game, p));
+                    for offset in 0..width {
+                        newly_allocated.push((PortKind::Game, p + offset));
+                    }
                     p
                 }
             };

@@ -12,7 +12,6 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::Utc;
-use rand::SeedableRng;
 use uuid::Uuid;
 
 use crate::application::wallet_service::get_or_create_wallet;
@@ -93,10 +92,12 @@ impl PlayWheelUseCase for PlayWheelService {
                 personnalisees
             }
         };
-        let mut rng = rand::rngs::StdRng::from_entropy();
-        let outcome = spin_cases_with_rng(&cases, &mut rng).map_err(|e| {
-            DomainError::Validation(format!("La roue de ce serveur est mal reglee : {e}"))
-        })?;
+        let outcome = {
+            let mut rng = rand::thread_rng();
+            spin_cases_with_rng(&cases, &mut rng).map_err(|e| {
+                DomainError::Validation(format!("La roue de ce serveur est mal reglee : {e}"))
+            })?
+        };
         let payout = cfg.apply_payout(outcome.case.payout);
 
         // 3. Wallet : regles pures de credit/debit en memoire.

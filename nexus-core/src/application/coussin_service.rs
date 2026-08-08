@@ -123,10 +123,7 @@ impl CoussinProfileUseCase for CoussinService {
             chaos_events: 0,
         };
         self.repo.create_profile(&profile).await?;
-        self.repo
-            .find_profile(guild_id, user_id)
-            .await?
-            .ok_or_else(|| DomainError::Internal("profil Coussin non cree".into()))
+        Ok(profile)
     }
 
     async fn choose_class(

@@ -35,6 +35,7 @@ base64 = "0.22"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 once_cell = "1"
 resvg = "0.44"
+platform-common-bot = { version = "0.1.0", path = "../platform-common-bot" }
 
 [target.'cfg(not(target_env = "msvc"))'.dependencies]
 tikv-jemallocator = "0.6"

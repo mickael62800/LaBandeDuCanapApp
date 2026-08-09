@@ -54,40 +54,16 @@ struct Handler {
     game_portal_started: AtomicBool,
 }
 
-/// Extrait une option user par nom.
 fn option_user(cmd: &CommandInteraction, name: &str) -> Option<UserId> {
-    cmd.data
-        .options
-        .iter()
-        .find(|o| o.name == name)
-        .and_then(|o| match &o.value {
-            CommandDataOptionValue::User(id) => Some(*id),
-            _ => None,
-        })
+    platform_common_bot::discord_helpers::option_user(&cmd.data.options, name)
 }
 
-/// Extrait une option entiere par nom.
 fn option_integer(cmd: &CommandInteraction, name: &str) -> Option<i64> {
-    cmd.data
-        .options
-        .iter()
-        .find(|o| o.name == name)
-        .and_then(|o| match &o.value {
-            CommandDataOptionValue::Integer(v) => Some(*v),
-            _ => None,
-        })
+    platform_common_bot::discord_helpers::option_i64(&cmd.data.options, name)
 }
 
-/// Extrait une option string par nom.
 fn option_string(cmd: &CommandInteraction, name: &str) -> Option<String> {
-    cmd.data
-        .options
-        .iter()
-        .find(|o| o.name == name)
-        .and_then(|o| match &o.value {
-            CommandDataOptionValue::String(s) => Some(s.clone()),
-            _ => None,
-        })
+    platform_common_bot::discord_helpers::option_str(&cmd.data.options, name).map(|s| s.to_string())
 }
 
 impl Handler {

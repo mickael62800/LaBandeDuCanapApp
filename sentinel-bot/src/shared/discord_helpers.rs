@@ -7,146 +7,11 @@ use serenity::all::{
 };
 use tracing::warn;
 
-/// Extrait le `guild_id` d'une slash command. Si la commande est utilisee
-/// en DM (pas de guild), repond ephemerement et retourne `None`.
-///
-/// Pattern type au call site :
-/// ```ignore
-/// let Some(guild_id) = require_guild_id(ctx, command).await else { return; };
-/// ```
-///
-/// Elimine le bloc `match command.guild_id { Some(id) => id.to_string(),
-/// None => { reply_ephemeral(...); return; } }` duplique dans ~40 commandes.
-pub async fn require_guild_id(ctx: &Context, command: &CommandInteraction) -> Option<String> {
-    match command.guild_id {
-        Some(id) => Some(id.to_string()),
-        None => {
-            reply_ephemeral(ctx, command, "Commande serveur uniquement.").await;
-            None
-        }
-    }
-}
+pub use platform_common_bot::discord_helpers::{
+    defer_ephemeral, edit_response_embed, edit_response_feedback, edit_response_text,
+    followup_ephemeral_embed, reply_ephemeral, reply_ephemeral_embed, require_guild_id,
+};
 
-/// Defer une slash command en mode ephemere.
-/// A appeler en tout debut de handler si le traitement peut depasser 3s.
-/// Apres un defer, utiliser `followup_ephemeral_embed` au lieu de `reply_*`.
-pub async fn defer_ephemeral(ctx: &Context, command: &CommandInteraction) {
-    if let Err(e) = command
-        .create_response(
-            &ctx.http,
-            CreateInteractionResponse::Defer(
-                CreateInteractionResponseMessage::new().ephemeral(true),
-            ),
-        )
-        .await
-    {
-        warn!(error = %e, command = %command.data.name, "Echec defer ephemere");
-    }
-}
-
-/// Followup ephemere embed apres un `defer_ephemeral`.
-pub async fn followup_ephemeral_embed(
-    ctx: &Context,
-    command: &CommandInteraction,
-    embed: CreateEmbed,
-) {
-    if let Err(e) = command
-        .create_followup(
-            &ctx.http,
-            CreateInteractionResponseFollowup::new()
-                .embed(embed)
-                .ephemeral(true),
-        )
-        .await
-    {
-        warn!(error = %e, command = %command.data.name, "Echec followup ephemere embed");
-    }
-}
-
-/// Edit la reponse texte apres un defer (ex: defer + traitement long, puis reply texte).
-/// Pattern courant dans les commandes de moderation apres un `defer_with_confirmation`.
-pub async fn edit_response_text(ctx: &Context, command: &CommandInteraction, content: &str) {
-    if let Err(e) = command
-        .edit_response(
-            &ctx.http,
-            serenity::builder::EditInteractionResponse::new().content(content),
-        )
-        .await
-    {
-        warn!(error = %e, command = %command.data.name, "Echec edit response texte");
-    }
-}
-
-/// Edit la reponse (apres un `defer_ephemeral`) avec un embed.
-/// A utiliser a la place de `create_response` quand le handler a deja defere :
-/// un second `create_response` echoue avec "Interaction has already been
-/// acknowledged" et l'utilisateur ne voit jamais le resultat.
-pub async fn edit_response_embed(ctx: &Context, command: &CommandInteraction, embed: CreateEmbed) {
-    if let Err(e) = command
-        .edit_response(
-            &ctx.http,
-            serenity::builder::EditInteractionResponse::new().embed(embed),
-        )
-        .await
-    {
-        warn!(error = %e, command = %command.data.name, "Echec edit response embed");
-    }
-}
-
-/// Edit la reponse apres un defer avec un embed de feedback colore (cf.
-/// `embeds::feedback_embed`). A utiliser pour les retours d'erreur/succes apres
-/// `defer_with_confirmation`, quand on veut la coloration par severite plutot
-/// que `edit_response_text` (texte brut).
-pub async fn edit_response_feedback(ctx: &Context, command: &CommandInteraction, content: &str) {
-    if let Err(e) = command
-        .edit_response(
-            &ctx.http,
-            serenity::builder::EditInteractionResponse::new()
-                .embed(crate::shared::embeds::feedback_embed(content)),
-        )
-        .await
-    {
-        warn!(error = %e, command = %command.data.name, "Echec edit response feedback");
-    }
-}
-
-/// Reponse ephemere texte a une slash command.
-pub async fn reply_ephemeral(ctx: &Context, command: &CommandInteraction, content: &str) {
-    if let Err(e) = command
-        .create_response(
-            &ctx.http,
-            CreateInteractionResponse::Message(
-                CreateInteractionResponseMessage::new()
-                    .embed(crate::shared::embeds::feedback_embed(content))
-                    .ephemeral(true),
-            ),
-        )
-        .await
-    {
-        warn!(error = %e, command = %command.data.name, "Echec reponse ephemere texte");
-    }
-}
-
-/// Reponse ephemere embed a une slash command.
-pub async fn reply_ephemeral_embed(
-    ctx: &Context,
-    command: &CommandInteraction,
-    embed: CreateEmbed,
-) {
-    if let Err(e) = command
-        .create_response(
-            &ctx.http,
-            CreateInteractionResponse::Message(
-                CreateInteractionResponseMessage::new()
-                    .embed(embed)
-                    .ephemeral(true),
-            ),
-        )
-        .await
-    {
-        warn!(error = %e, command = %command.data.name, "Echec reponse ephemere embed");
-    }
-}
 
 /// Verifie si le module est active pour un guild. Charge la config sous le
 /// `bot_name` du module (ex: "automod-bot") et check la cle "enabled".
@@ -314,57 +179,9 @@ pub async fn guild_config_or_default(
         .unwrap_or_default()
 }
 
-/// Lit une option String d'une slash command par son nom.
-/// Remplace le boilerplate `options.iter().find(|o| o.name == name)
-/// .and_then(|o| match &o.value { String(s) => Some(s.as_str()), _ => None })`.
-pub fn option_str<'a>(
-    options: &'a [serenity::all::CommandDataOption],
-    name: &str,
-) -> Option<&'a str> {
-    options
-        .iter()
-        .find(|o| o.name == name)
-        .and_then(|o| match &o.value {
-            serenity::all::CommandDataOptionValue::String(s) => Some(s.as_str()),
-            _ => None,
-        })
-}
-
-/// Lit une option Integer d'une slash command par son nom.
-pub fn option_i64(options: &[serenity::all::CommandDataOption], name: &str) -> Option<i64> {
-    options
-        .iter()
-        .find(|o| o.name == name)
-        .and_then(|o| match &o.value {
-            serenity::all::CommandDataOptionValue::Integer(n) => Some(*n),
-            _ => None,
-        })
-}
-
-/// Lit une option Boolean d'une slash command par son nom.
-pub fn option_bool(options: &[serenity::all::CommandDataOption], name: &str) -> Option<bool> {
-    options
-        .iter()
-        .find(|o| o.name == name)
-        .and_then(|o| match &o.value {
-            serenity::all::CommandDataOptionValue::Boolean(b) => Some(*b),
-            _ => None,
-        })
-}
-
-/// Lit une option User d'une slash command par son nom.
-pub fn option_user(
-    options: &[serenity::all::CommandDataOption],
-    name: &str,
-) -> Option<serenity::all::UserId> {
-    options
-        .iter()
-        .find(|o| o.name == name)
-        .and_then(|o| match &o.value {
-            serenity::all::CommandDataOptionValue::User(id) => Some(*id),
-            _ => None,
-        })
-}
+pub use platform_common_bot::discord_helpers::{
+    option_bool, option_i64, option_str, option_user,
+};
 
 /// Lit un `ChannelId` depuis une cle arbitraire de la config guild du module.
 /// Retourne `None` si la cle est absente, vide, ou ne parse pas en id > 0.

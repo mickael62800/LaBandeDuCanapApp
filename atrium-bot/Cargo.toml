@@ -16,6 +16,7 @@ platform-common = { workspace = true }
 redis = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+platform-common-bot = { version = "0.1.0", path = "../platform-common-bot" }
 
 [lints]
 workspace = true

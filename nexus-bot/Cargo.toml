@@ -19,6 +19,7 @@ rand = { workspace = true }
 redis = { workspace = true }
 chrono = { workspace = true }
 futures-util = { workspace = true }
+platform-common-bot = { version = "0.1.0", path = "../platform-common-bot" }
 
 [lints]
 workspace = true

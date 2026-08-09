@@ -806,6 +806,7 @@ impl EventHandler for Handler {
         // reconnexion gateway, le consumer tourne deja.
         if !self.game_portal_started.swap(true, Ordering::SeqCst) {
             game_portal::spawn(ctx.clone(), self.api.clone());
+            games::spawn_listener(ctx.clone(), self.api.clone());
         }
         let commands = vec![
             CreateCommand::new("roue")
@@ -993,6 +994,14 @@ impl EventHandler for Handler {
             }
             _ => {}
         }
+    }
+
+    async fn reaction_add(&self, ctx: Context, add_reaction: serenity::all::Reaction) {
+        games::handle_reaction(&self.api, &ctx, &add_reaction, true).await;
+    }
+
+    async fn reaction_remove(&self, ctx: Context, removed_reaction: serenity::all::Reaction) {
+        games::handle_reaction(&self.api, &ctx, &removed_reaction, false).await;
     }
 }
 

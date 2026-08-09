@@ -518,8 +518,8 @@ async fn handle_panel(ctx: &Context, cmd: &CommandInteraction, api: &ApiClient, 
         }
     };
 
-    // 2) Sauve le panel en DB pour obtenir son UUID.
-    let panel = match api
+    // 2) Sauve le panel en DB.
+    let _panel = match api
         .save_panel(
             guild_id,
             &msg.channel_id.to_string(),
@@ -540,15 +540,15 @@ async fn handle_panel(ctx: &Context, cmd: &CommandInteraction, api: &ApiClient, 
         }
     };
 
-    // 3) Edite le message pour attacher les boutons-icones en utilisant panel.id.
-    let gid = cmd.guild_id.unwrap_or_default();
-    let components = build_panel_button_components(ctx, gid, &panel.id, &games_slice);
-    let mut msg_mut = msg;
-    if let Err(e) = msg_mut
-        .edit(&ctx.http, EditMessage::new().components(components))
-        .await
-    {
-        warn!(error = %e, "Erreur attachement components au panel");
+    // 3) Ajoute les reactions (emojis) sur le message du panel.
+    for game in &games_slice {
+        if let Some(emoji_str) = &game.emoji {
+            if let Some(rt) = parse_reaction_type(emoji_str) {
+                if let Err(e) = msg.react(&ctx.http, rt).await {
+                    warn!(error = %e, "Erreur ajout reaction pour {}", game.game_name);
+                }
+            }
+        }
     }
 
     reply(
@@ -606,7 +606,6 @@ async fn handle_refresh(ctx: &Context, cmd: &CommandInteraction, api: &ApiClient
 
     let embed = build_panel_embed(category.as_deref(), &games_slice);
     let gid = cmd.guild_id.unwrap_or_default();
-    let components = build_panel_button_components(ctx, gid, &panel.id, &games_slice);
 
     let channel_id: serenity::model::id::ChannelId = match panel.channel_id.parse::<u64>() {
         Ok(id) => serenity::model::id::ChannelId::new(id),
@@ -631,18 +630,25 @@ async fn handle_refresh(ctx: &Context, cmd: &CommandInteraction, api: &ApiClient
         }
     };
 
-    // Retire les eventuelles vieilles reactions (legacy panels pre-select-menu).
-    let _ = msg.delete_reactions(&ctx.http).await;
-
+    // Retire les components (boutons) s'il y en avait, et met a jour l'embed.
     if let Err(e) = msg
         .edit(
             &ctx.http,
-            EditMessage::new().embed(embed).components(components),
+            EditMessage::new().embed(embed).components(Vec::new()),
         )
         .await
     {
         reply(ctx, cmd, &format!("Erreur edition : {e}")).await;
         return;
+    }
+
+    // Ajoute/Restitue les reactions
+    for game in &games_slice {
+        if let Some(emoji_str) = &game.emoji {
+            if let Some(rt) = parse_reaction_type(emoji_str) {
+                let _ = msg.react(&ctx.http, rt).await;
+            }
+        }
     }
 
     reply(
@@ -672,7 +678,7 @@ pub(crate) fn build_panel_embed(category: Option<&str>, games: &[&Game]) -> Crea
             lines.push(format!("{}. {}**{}**", idx + 1, prefix, g.game_name));
         }
         let mut s = lines.join("\n");
-        s.push_str("\n\n*Clique sur l'icone d'un jeu ci-dessous pour t'abonner / te desabonner a ses notifications. Le nombre = abonnes.*");
+        s.push_str("\n\n*Clique sur l'icone d'un jeu ci-dessous (en réaction) pour t'abonner / te desabonner a ses notifications.*");
         s
     };
     info_embed(&title).description(desc)
@@ -1234,5 +1240,148 @@ async fn reply_component(ctx: &Context, component: &ComponentInteraction, conten
     );
     if let Err(e) = component.create_response(&ctx.http, response).await {
         warn!(error = %e, "Erreur reponse ephemeral games panel");
+    }
+}
+
+pub fn spawn_listener(ctx: Context, api: std::sync::Arc<ApiClient>) {
+    let ctx = ctx.clone();
+    let api = api.clone();
+    
+    // On ecoute la queue Redis de la meme maniere que game_portal.rs
+    tokio::spawn(async move {
+        crate::event_bus::listen_stream_group(
+            "nexus-bot-games".to_string(),
+            crate::event_bus::default_consumer_name(),
+            move |raw_event| {
+                let ctx_clone = ctx.clone();
+                let api_clone = api.clone();
+                async move {
+                    if let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw_event) {
+                        if let (Some(event), Some(data)) = (value.get("event").and_then(|v| v.as_str()), value.get("data")) {
+                            if event == "games_panel_deploy" {
+                                if let (Some(guild_id), Some(channel_id)) = (
+                                    data.get("guild_id").and_then(|v| v.as_str()),
+                                    data.get("channel_id").and_then(|v| v.as_str())
+                                ) {
+                                    let category = data.get("category").and_then(|v| v.as_str());
+                                    deploy_panel_from_event(&ctx_clone, &api_clone, guild_id, channel_id, category).await;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        ).await;
+    });
+}
+
+async fn deploy_panel_from_event(ctx: &Context, api: &ApiClient, guild_id: &str, channel_id: &str, category: Option<&str>) {
+    let games = match api.list_games_by_category(guild_id, category).await {
+        Ok(g) => g,
+        Err(e) => {
+            warn!(error = %e, "Impossible de lister les jeux pour le panel web");
+            return;
+        }
+    };
+
+    if games.is_empty() {
+        warn!("Aucun jeu dans cette categorie. Panel non deploye.");
+        return;
+    }
+
+    let games_slice: Vec<&Game> = games.iter().take(MAX_BUTTONS_PER_PANEL).collect();
+    let embed = build_panel_embed(category, &games_slice);
+
+    let chan_id: serenity::model::id::ChannelId = match channel_id.parse::<u64>() {
+        Ok(id) => serenity::model::id::ChannelId::new(id),
+        Err(_) => return,
+    };
+
+    let msg = match chan_id.send_message(&ctx.http, CreateMessage::new().embed(embed)).await {
+        Ok(m) => m,
+        Err(e) => {
+            warn!(error = %e, "Erreur envoi message panel");
+            return;
+        }
+    };
+
+    let _panel = match api.save_panel(guild_id, channel_id, &msg.id.to_string(), category).await {
+        Ok(p) => p,
+        Err(e) => {
+            warn!(error = %e, "Panel envoye mais erreur sauvegarde");
+            return;
+        }
+    };
+
+    for game in &games_slice {
+        if let Some(emoji_str) = &game.emoji {
+            if let Some(rt) = parse_reaction_type(emoji_str) {
+                if let Err(e) = msg.react(&ctx.http, rt).await {
+                    warn!(error = %e, "Erreur ajout reaction pour {}", game.game_name);
+                }
+            }
+        }
+    }
+}
+
+pub async fn handle_reaction(api: &ApiClient, ctx: &Context, reaction: &serenity::all::Reaction, is_add: bool) {
+    let guild_id = match reaction.guild_id {
+        Some(g) => g,
+        None => return,
+    };
+    
+    // On ignore les bots
+    if reaction.user_id == Some(ctx.cache.current_user().id) {
+        return;
+    }
+    let user_id = match reaction.user_id {
+        Some(id) => id,
+        None => return,
+    };
+    
+    // Obtenir la reaction textuelle
+    let reaction_str = match &reaction.emoji {
+        ReactionType::Custom { id, .. } => id.to_string(),
+        ReactionType::Unicode(u) => u.clone(),
+        _ => return,
+    };
+
+    // Cherche si l'emoji correspond a un jeu
+    let games = match api.list_games(&guild_id.to_string()).await {
+        Ok(g) => g,
+        Err(_) => return,
+    };
+    
+    let game = match games.iter().find(|g| {
+        if let Some(emoji) = &g.emoji {
+            emoji == &reaction_str || parse_reaction_type(emoji).map(|rt| {
+                match rt {
+                    ReactionType::Custom { id, .. } => id.to_string() == reaction_str,
+                    ReactionType::Unicode(u) => u == reaction_str,
+                    _ => false
+                }
+            }).unwrap_or(false)
+        } else {
+            false
+        }
+    }) {
+        Some(g) => g,
+        None => return,
+    };
+    
+    let role_id = match game.role_id.as_deref().and_then(|s| s.parse::<u64>().ok()) {
+        Some(id) => RoleId::new(id),
+        None => return,
+    };
+    
+    let member = match guild_id.member(&ctx.http, user_id).await {
+        Ok(m) => m,
+        Err(_) => return,
+    };
+    
+    if is_add {
+        let _ = member.add_role(&ctx.http, role_id).await;
+    } else {
+        let _ = member.remove_role(&ctx.http, role_id).await;
     }
 }

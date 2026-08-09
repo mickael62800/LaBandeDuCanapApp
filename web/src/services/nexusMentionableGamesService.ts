@@ -11,10 +11,11 @@ export interface MentionableGame {
 }
 
 export interface CreateMentionableGameDto {
-  name: string;
+  guild_id: string;
+  game_name: string;
   emoji?: string | null;
   category?: string | null;
-  actor_id: string;
+  created_by: string;
 }
 
 export interface DeployPanelDto {
@@ -28,7 +29,7 @@ export const nexusMentionableGamesService = {
   },
 
   createGame(guildId: string, dto: CreateMentionableGameDto): Promise<MentionableGame> {
-    return nexusPost<MentionableGame>(`/api/games/${encodeURIComponent(guildId)}`, guildId, dto);
+    return nexusPost<MentionableGame>(`/api/games`, guildId, dto);
   },
 
   deleteGame(guildId: string, gameId: string, actorId: string): Promise<void> {
@@ -36,6 +37,6 @@ export const nexusMentionableGamesService = {
   },
 
   deployPanel(guildId: string, dto: DeployPanelDto): Promise<{ message_id: string }> {
-    return nexusPost<{ message_id: string }>(`/api/games/${encodeURIComponent(guildId)}/panel`, guildId, dto);
+    return nexusPost<{ message_id: string }>(`/api/games/${encodeURIComponent(guildId)}/panel/deploy`, guildId, dto);
   }
 };

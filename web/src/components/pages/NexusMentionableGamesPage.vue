@@ -50,13 +50,14 @@ async function load() {
 watch(selectedGuildId, load, { immediate: true });
 
 async function onCreate() {
-  if (!selectedGuildId.value || !user.value || !newGameName.value) return;
+  if (!user.value || !selectedGuildId.value) return;
   try {
     await nexusMentionableGamesService.createGame(selectedGuildId.value, {
-      name: newGameName.value,
-      emoji: newGameEmoji.value || null,
-      category: newGameCategory.value || null,
-      actor_id: user.value.id,
+      guild_id: selectedGuildId.value,
+      game_name: newGameName.value,
+      emoji: newGameEmoji.value,
+      category: newGameCategory.value,
+      created_by: user.value.id
     });
     success("Jeu créé !");
     newGameName.value = "";

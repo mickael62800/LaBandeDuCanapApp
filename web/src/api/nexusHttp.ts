@@ -64,7 +64,7 @@ async function request<T>(
     throw new NexusHttpError(detail ?? `Erreur Nexus (${res.status})`, res.status);
   }
 
-  if (res.status === 204) return undefined as T;
+  if (res.status === 204 || res.status === 202) return undefined as T;
   return (await res.json()) as T;
 }
 

@@ -36,7 +36,7 @@ export const nexusMentionableGamesService = {
     return nexusDelete(`/api/games/${encodeURIComponent(guildId)}/${encodeURIComponent(gameId)}?actor_id=${encodeURIComponent(actorId)}`, guildId);
   },
 
-  deployPanel(guildId: string, dto: DeployPanelDto): Promise<{ message_id: string }> {
-    return nexusPost<{ message_id: string }>(`/api/games/${encodeURIComponent(guildId)}/panel/deploy`, guildId, dto);
+  deployPanel(guildId: string, dto: DeployPanelDto): Promise<void> {
+    return nexusPost<void>(`/api/games/${encodeURIComponent(guildId)}/panel/deploy`, guildId, dto);
   }
 };

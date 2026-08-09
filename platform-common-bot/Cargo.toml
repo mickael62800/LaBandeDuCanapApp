@@ -1,0 +1,15 @@
+[package]
+name = "platform-common-bot"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serenity = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+platform-common = { path = "../platform-common" }
+
+[lints]
+workspace = true

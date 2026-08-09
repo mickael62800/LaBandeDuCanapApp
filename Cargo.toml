@@ -19,7 +19,7 @@ members = [
     "atrium-core",
     "atrium-proto",
     "atrium-bot",
-    "atrium-worker",
+    "atrium-worker", "platform-common-bot",
 ]
 
 [workspace.package]

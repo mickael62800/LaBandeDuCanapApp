@@ -553,11 +553,16 @@ impl AnalyzeMessageUseCase for AnalyzeMessageService {
                     // Cache court par guilde + contenu + contexte : evite les
                     // appels DeepSeek repetes sans reutiliser une analyse dans
                     // une autre conversation ou un autre serveur.
-                    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-                    cmd.guild_id.hash(&mut hasher);
-                    cmd.content.hash(&mut hasher);
-                    context_texts.hash(&mut hasher);
-                    let cache_key = format!("ai:deepseek:v1:{:x}", hasher.finish());
+                    use sha2::{Sha256, Digest};
+                    let mut hasher = Sha256::new();
+                    hasher.update(cmd.guild_id.as_bytes());
+                    hasher.update(cmd.content.as_bytes());
+                    for ctx_msg in &context_texts {
+                        hasher.update(ctx_msg.as_bytes());
+                    }
+                    let hash_bytes = hasher.finalize();
+                    let cache_key = format!("ai:deepseek:v1:{:x}", hash_bytes);
+                    
                     let cached = self
                         .cache
                         .get_json(&cache_key)

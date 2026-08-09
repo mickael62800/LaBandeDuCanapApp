@@ -25,10 +25,10 @@ const DEFAULT_MUTE_DURATION_SECS: u64 = 3600;
 
 /// Main automod message handler. Called from the sentinel handler's message event.
 /// Analyzes messages for spam, insults, links, phishing, flood, caps, etc.
-pub(super) async fn process(ctx: &Context, msg: &Message) {
+pub(super) async fn process(ctx: &Context, msg: &Message) -> bool {
     // Pas d'automod en messages prives (aucune guild -> rien a moderer).
     if msg.guild_id.is_none() {
-        return;
+        return false;
     }
     // Deduplication : ignorer si deja traite
     {
@@ -39,7 +39,7 @@ pub(super) async fn process(ctx: &Context, msg: &Message) {
             // ete traite (redelivrance gateway concurrente) -> on sort. Evite
             // un contains_key+insert non atomique qui laissait passer 2 fois.
             if processed.insert(msg.id, now).is_some() {
-                return;
+        return false;
             }
             if processed.len() > 2000 {
                 processed.retain(|_, ts| now.duration_since(*ts).as_secs() < 300);
@@ -57,7 +57,7 @@ pub(super) async fn process(ctx: &Context, msg: &Message) {
     .await;
 
     if !BaseApiClient::config_bool(&config, "enabled", false) {
-        return;
+        return false;
     }
 
     let flood_max_messages =
@@ -128,7 +128,7 @@ pub(super) async fn process(ctx: &Context, msg: &Message) {
         let channel_id_str = msg.channel_id.get().to_string();
         let ignored: Vec<&str> = ignored_channels_str.split(',').map(|s| s.trim()).collect();
         if ignored.iter().any(|id| *id == channel_id_str) {
-            return;
+        return false;
         }
     }
 
@@ -140,7 +140,7 @@ pub(super) async fn process(ctx: &Context, msg: &Message) {
             for role_id_str in &ignored {
                 if let Ok(role_id) = role_id_str.parse::<u64>() {
                     if member.roles.iter().any(|r| r.get() == role_id) {
-                        return;
+        return false;
                     }
                 }
             }
@@ -232,7 +232,7 @@ pub(super) async fn process(ctx: &Context, msg: &Message) {
                 if let Some(base) = &base_opt {
                     base.send_log("warn", &guild_id, &log_msg);
                 }
-                return;
+        return false;
             }
         }
     }
@@ -420,7 +420,7 @@ pub(super) async fn process(ctx: &Context, msg: &Message) {
                     .await;
                 });
             }
-            return;
+        return false;
         }
     }
 
@@ -492,7 +492,7 @@ pub(super) async fn process(ctx: &Context, msg: &Message) {
         // Le caps est traite (carte de review OU avertissement) : on ne relance
         // PAS l'analyse IA sur le meme message (evitait un double traitement =
         // deux cartes / double strike). Comme les branches flood/fichier suspect.
-        return;
+        return false;
     }
 
     // Slowmode adaptatif
@@ -560,7 +560,7 @@ pub(super) async fn process(ctx: &Context, msg: &Message) {
         flags.spam || flags.insult || flags.link || flags.phishing || ia_text_enabled;
 
     if !should_analyze {
-        return;
+        return false;
     }
 
     let context_max_messages = BaseApiClient::config_u64(&config, "context_max_messages", 3) as u8;
@@ -569,35 +569,36 @@ pub(super) async fn process(ctx: &Context, msg: &Message) {
     let ctx_clone = ctx.clone();
     let msg_clone = msg.clone();
     let vision_enabled = BaseApiClient::config_bool(&config, "vision_enabled", true);
-    tokio::spawn(async move {
-        // Analyse texte : le ROUTAGE (carte/auto/rien + severe + suppression
-        // de lien) est decide cote serveur. Le bot execute la decision.
-        // `human_only` n'est conserve que pour le fallback "backend injoignable".
-        send_to_backend(
+    // Analyse texte : le ROUTAGE (carte/auto/rien + severe + suppression
+    // de lien) est decide cote serveur. Le bot execute la decision.
+    // `human_only` n'est conserve que pour le fallback "backend injoignable".
+    send_to_backend(
+        &ctx_clone,
+        &msg_clone,
+        flags,
+        mute_duration_secs,
+        log_channel_id,
+        &colors,
+        context_max_messages,
+        context_max_chars,
+        human_only,
+        auto_notify_member,
+        sanction_appeal,
+    )
+    .await;
+
+    // Analyse image : si le message contient des images, les analyser via l'API.
+    if vision_enabled {
+        analyze_message_images(
             &ctx_clone,
             &msg_clone,
-            flags,
             mute_duration_secs,
             log_channel_id,
             &colors,
-            context_max_messages,
-            context_max_chars,
-            human_only,
-            auto_notify_member,
-            sanction_appeal,
         )
         .await;
+    }
 
-        // Analyse image : si le message contient des images, les analyser via l'API.
-        if vision_enabled {
-            analyze_message_images(
-                &ctx_clone,
-                &msg_clone,
-                mute_duration_secs,
-                log_channel_id,
-                &colors,
-            )
-            .await;
-        }
-    });
+    // Si le message a été supprimé pendant l'analyse, l'API renverra une erreur HTTP NotFound (404)
+    msg.channel_id.message(&ctx.http, msg.id).await.is_err()
 }

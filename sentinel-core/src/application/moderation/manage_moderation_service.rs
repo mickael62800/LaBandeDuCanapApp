@@ -84,10 +84,6 @@ impl ManageModerationUseCase for ManageModerationService {
             created_at: chrono::Utc::now(),
         };
 
-        // Phase 4 : repo.save() est un no-op (legacy) — la persistence est
-        // gardee uniquement par audit_logs_uc.create. On retourne une erreur
-        // dure si audit_logs_uc n'est pas configure (mauvais wiring).
-        self.repo.save(&action).await?;
 
         let uc = self.audit_logs_uc.as_ref().ok_or_else(|| {
             DomainError::Internal("audit_logs_uc non injecte dans ManageModerationService".into())

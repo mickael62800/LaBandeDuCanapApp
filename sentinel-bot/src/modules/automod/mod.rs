@@ -349,10 +349,10 @@ const AM_PREFIX: &str = "am_";
 const DEFAULT_MUTE_DURATION_SECS: u64 = 3600;
 
 /// Main automod message handler. Called from the sentinel handler's message event.
-pub async fn on_message(ctx: &Context, msg: &Message) {
+pub async fn on_message(ctx: &Context, msg: &Message) -> bool {
     if let Some(guild_id) = msg.guild_id {
         if !is_module_enabled(ctx, &guild_id.to_string(), MODULE_BOT_NAME).await {
-            return;
+            return false;
         }
     }
     message_handler::process(ctx, msg).await

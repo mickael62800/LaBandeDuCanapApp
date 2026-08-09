@@ -61,11 +61,7 @@ use crate::adapters::inbound::grpc::community::announcements::AnnouncementsGrpc;
 use crate::adapters::inbound::grpc::community::confessions::ConfessionsGrpc;
 use crate::adapters::inbound::grpc::community::embeds::EmbedsGrpc;
 use crate::adapters::inbound::grpc::community::ideas::IdeasGrpc;
-use crate::adapters::inbound::grpc::community::members::MembersGrpc;
-use crate::adapters::inbound::grpc::community::progression::ProgressionGrpc;
-use crate::adapters::inbound::grpc::community::roles::RolePanelsGrpc;
 use crate::adapters::inbound::grpc::community::sponsorships::CommunityGrpc;
-use crate::adapters::inbound::grpc::community::voice::VoiceChannelsGrpc;
 use crate::adapters::inbound::grpc::guild_backup::snapshots::GuildBackupGrpc;
 use crate::adapters::inbound::grpc::moderation::actions::ModerationGrpc;
 use crate::adapters::inbound::grpc::moderation::purge::PurgeGrpc;
@@ -81,11 +77,7 @@ use crate::adapters::inbound::http::state::AppState;
 pub async fn serve_grpc(state: AppState, bind: SocketAddr) {
     let api_key = state.api_key.clone();
 
-    let progression = ProgressionGrpc {
-        levels_uc: state.community.levels_uc.clone(),
-        broadcaster: state.broadcaster.clone(),
-    };
-    let stats = StatsGrpc {
+        let stats = StatsGrpc {
         stats_uc: state.audit.stats_uc.clone(),
         broadcaster: state.broadcaster.clone(),
     };
@@ -95,21 +87,14 @@ pub async fn serve_grpc(state: AppState, bind: SocketAddr) {
     let moderation = ModerationGrpc {
         moderation_uc: state.moderation.moderation_uc.clone(),
         cancel_action_uc: state.moderation.cancel_action_uc.clone(),
-        reminders_uc: state.moderation.reminders_uc.clone(),
-        moderation_copilot_uc: state.moderation.moderation_copilot_uc.clone(),
         assess_target_risk_uc: state.moderation.assess_target_risk_uc.clone(),
         modstats_uc: state.moderation.modstats_uc.clone(),
-        notes_uc: state.moderation.notes_uc.clone(),
         evidence_repo: state.moderation.evidence_repo.clone(),
         review_repo: state.moderation.review_repo.clone(),
         pending_action_repo: state.moderation.pending_action_repo.clone(),
         infractions_uc: state.moderation.infractions_uc.clone(),
     };
-    let roles = RolePanelsGrpc {
-        uc: state.community.role_panels_uc.clone(),
-        discord_role_repo: state.community.discord_role_repo.clone(),
-    };
-    let welcome = WelcomeGrpc {
+        let welcome = WelcomeGrpc {
         uc: state.community.welcome_config_uc.clone(),
     };
     let audit = AuditGrpc {
@@ -140,10 +125,7 @@ pub async fn serve_grpc(state: AppState, bind: SocketAddr) {
         eligibility_uc: state.community.eligibility_uc.clone(),
         monthly_ranking_uc: state.community.monthly_ranking_uc.clone(),
     };
-    let members = MembersGrpc {
-        uc: state.community.members_uc.clone(),
-    };
-    let security = SecurityGrpc {
+        let security = SecurityGrpc {
         uc: state.audit.security_uc.clone(),
     };
     let security_state = SecurityStateGrpc {
@@ -182,10 +164,7 @@ pub async fn serve_grpc(state: AppState, bind: SocketAddr) {
         broadcaster: state.broadcaster.clone(),
         adaptive_slowmode_repo: state.moderation.automod_adaptive_slowmode_repo.clone(),
     };
-    let voice = VoiceChannelsGrpc {
-        uc: state.community.voice_channels_uc.clone(),
-    };
-    let images = ImagesGrpc {
+        let images = ImagesGrpc {
         uc: state.ai.analyze_image_uc.clone(),
     };
     let ai_dataset = AiDatasetGrpc {
@@ -203,13 +182,9 @@ pub async fn serve_grpc(state: AppState, bind: SocketAddr) {
             InterceptedService::new(inner, build_auth_interceptor(api_key.clone()))
         }};
     }
-
-    let progression_svc = svc!(ProgressionServiceServer, progression);
     let stats_svc = svc!(StatsServiceServer, stats);
     let tickets_svc = svc!(TicketsServiceServer, tickets);
     let moderation_svc = svc!(ModerationServiceServer, moderation);
-    let roles_svc = svc!(RolePanelsServiceServer, roles);
-    let members_svc = svc!(MembersServiceServer, members);
     let security_svc = svc!(SecurityServiceServer, security);
     let security_state_svc = svc!(SecurityStateServiceServer, security_state);
     let automod_review_svc = svc!(AutomodReviewServiceServer, automod_review);
@@ -220,7 +195,6 @@ pub async fn serve_grpc(state: AppState, bind: SocketAddr) {
     let age_gate_svc = svc!(AgeGateServiceServer, age_gate);
     let embeds_svc = svc!(EmbedsServiceServer, embeds);
     let automod_svc = svc!(AutomodServiceServer, automod);
-    let voice_svc = svc!(VoiceChannelsServiceServer, voice);
     let images_svc = svc!(ImagesServiceServer, images);
     // Phase 7A.opt F.3/F.4 — nouveaux services.
     let welcome_svc = svc!(WelcomeServiceServer, welcome);
@@ -235,9 +209,7 @@ pub async fn serve_grpc(state: AppState, bind: SocketAddr) {
     // tonic-health : expose `grpc.health.v1.Health` + marque chaque service
     // comme SERVING. Permet `grpc_health_probe -addr=:50051` dans le healthcheck.
     let (health_reporter, health_service) = tonic_health::server::health_reporter();
-    health_reporter
-        .set_serving::<ProgressionServiceServer<ProgressionGrpc>>()
-        .await;
+    health_reporter.clone();
     health_reporter
         .set_serving::<StatsServiceServer<StatsGrpc>>()
         .await;
@@ -247,12 +219,8 @@ pub async fn serve_grpc(state: AppState, bind: SocketAddr) {
     health_reporter
         .set_serving::<ModerationServiceServer<ModerationGrpc>>()
         .await;
-    health_reporter
-        .set_serving::<RolePanelsServiceServer<RolePanelsGrpc>>()
-        .await;
-    health_reporter
-        .set_serving::<MembersServiceServer<MembersGrpc>>()
-        .await;
+    health_reporter.clone();
+    health_reporter.clone();
     health_reporter
         .set_serving::<SecurityServiceServer<SecurityGrpc>>()
         .await;
@@ -283,9 +251,7 @@ pub async fn serve_grpc(state: AppState, bind: SocketAddr) {
     health_reporter
         .set_serving::<AutomodServiceServer<AutomodGrpc>>()
         .await;
-    health_reporter
-        .set_serving::<VoiceChannelsServiceServer<VoiceChannelsGrpc>>()
-        .await;
+    health_reporter.clone();
     health_reporter
         .set_serving::<ImagesServiceServer<ImagesGrpc>>()
         .await;
@@ -348,12 +314,9 @@ pub async fn serve_grpc(state: AppState, bind: SocketAddr) {
 
     if let Err(e) = server_builder
         .add_service(health_service)
-        .add_service(progression_svc)
         .add_service(stats_svc)
         .add_service(tickets_svc)
         .add_service(moderation_svc)
-        .add_service(roles_svc)
-        .add_service(members_svc)
         .add_service(security_svc)
         .add_service(security_state_svc)
         .add_service(automod_review_svc)
@@ -364,7 +327,6 @@ pub async fn serve_grpc(state: AppState, bind: SocketAddr) {
         .add_service(age_gate_svc)
         .add_service(embeds_svc)
         .add_service(automod_svc)
-        .add_service(voice_svc)
         .add_service(images_svc)
         .add_service(welcome_svc)
         .add_service(export_svc)
@@ -419,3 +381,8 @@ fn build_auth_interceptor(
 #[cfg(test)]
 #[path = "tests/server.rs"]
 mod tests;
+
+
+
+
+

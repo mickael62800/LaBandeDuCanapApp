@@ -13,9 +13,9 @@ async fn main() {
 
     info!("Démarrage du worker Atrium...");
 
-    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL manquant");
+    let database_url = platform_common_worker::load_database_url();
     let deepseek_api_key = std::env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY manquant");
-    let pool = PgPool::connect(&database_url).await.expect("Impossible de se connecter à la DB");
+    let pool = platform_common_worker::create_pg_pool(&database_url).await;
     
     let client = Client::new();
 
@@ -127,3 +127,4 @@ async fn generate_summary(pool: &PgPool, client: &Client, api_key: &str, guild_i
 
     Ok(content)
 }
+

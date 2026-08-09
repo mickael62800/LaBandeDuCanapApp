@@ -5,16 +5,12 @@ pub mod card;
 pub mod channel_control;
 pub mod compare;
 pub mod context;
-pub mod copilote;
 pub mod evidence;
-pub mod expirations;
 pub mod export;
 pub mod history;
 pub mod kick;
 pub mod mass;
-pub mod modstats;
 pub mod mute;
-pub mod notes;
 pub mod review;
 pub mod template;
 pub mod transcript;
@@ -273,16 +269,12 @@ pub fn all() -> Vec<CreateCommand> {
         channel_control::register_slowmode(),
         ban_sursis::register(),
         history::register(),
-        notes::register(),
         call::register(),
         card::register(),
         context::register(),
-        copilote::register(),
         appeal::register(),
         export::register(),
-        expirations::register(),
         compare::register(),
-        modstats::register(),
         evidence::register(),
         review::register(),
         template::register(),
@@ -294,3 +286,6 @@ pub fn all() -> Vec<CreateCommand> {
 }
 
 pub mod ban_sursis;
+
+
+

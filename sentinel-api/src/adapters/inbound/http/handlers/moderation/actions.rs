@@ -127,52 +127,7 @@ pub async fn log_action(
 
     // Auto-create reminder for temporary sanctions (regle metier : voir
     // `ModerationActionType::is_temporary` dans domain/value_objects).
-    if sentinel_core::domain::enums::moderation::moderation_action_type::ModerationActionType::is_temporary_str(&action_type) {
-        if let Some(dur) = duration {
-            let action_uuid = match dto.id.parse() {
-                Ok(uuid) => uuid,
-                Err(e) => {
-                    warn!(error = %e, id = %dto.id, "UUID action invalide pour rappel, utilisation UUID nil");
-                    uuid::Uuid::nil()
-                }
-            };
-            if let Err(e) = state.reminders_uc.create_reminder(CreateReminderCommand {
-                guild_id: guild_id.clone(),
-                moderator_id,
-                moderator_name: moderator_name.clone(),
-                target_id: target_id.clone(),
-                target_name: target_name.clone(),
-                action_type: action_type.clone(),
-                reason: reason.clone(),
-                action_id: action_uuid,
-                duration_secs: dur,
-                remind_before_secs: state.bot_config_reminder_advance_secs(&guild_id).await,
-            }).await {
-                // Niveau ERROR (pas warn) : une sanction temporaire sans
-                // rappel = durée perpétuelle jusqu'à intervention manuelle.
-                // Broadcast aussi pour alerting desktop.
-                tracing::error!(
-                    error = %e,
-                    guild_id = %guild_id,
-                    target_id = %target_id,
-                    action_id = %dto.id,
-                    duration_secs = dur,
-                    "INCOHERENCE : sanction temporaire sans reminder — intervention manuelle requise"
-                );
-                state.broadcaster.broadcast(
-                    "reminder_creation_failed",
-                    serde_json::json!({
-                        "version": "1",
-                        "guild_id": guild_id,
-                        "target_id": target_id,
-                        "action_id": dto.id,
-                        "action_type": action_type,
-                        "error": e.to_string(),
-                    }),
-                );
-            }
-        }
-    }
+
 
     Ok(Json(dto))
 }
@@ -373,30 +328,7 @@ pub async fn execute_unban(
         .delete_bans_for_user(&guild_id, &target_id)
         .await?;
 
-    // BUG #2 : un unban precoce doit annuler les rappels d'auto-unban encore
-    // actifs pour cet utilisateur, sinon le worker `expire_temp_bans` emettrait
-    // un `sanction_expired_unban` tardif a `expires_at` — qui pourrait lever un
-    // ban plus recent applique entre-temps. Best-effort : un echec ne bloque
-    // pas l'unban (deja applique cote Discord).
-    match state
-        .reminders_uc
-        .cancel_for_target(guild_id.as_str(), target_id.as_str())
-        .await
-    {
-        Ok(n) if n > 0 => tracing::info!(
-            guild_id = %guild_id,
-            target_id = %target_id,
-            cancelled = n,
-            "Rappels d'auto-unban annules suite a un unban manuel"
-        ),
-        Ok(_) => {}
-        Err(e) => tracing::warn!(
-            error = %e,
-            guild_id = %guild_id,
-            target_id = %target_id,
-            "Echec annulation des rappels d'auto-unban lors de l'unban manuel"
-        ),
-    }
+
 
     state.moderation_uc.log_action(command).await?;
 

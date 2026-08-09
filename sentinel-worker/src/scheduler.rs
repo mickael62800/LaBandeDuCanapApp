@@ -17,7 +17,7 @@ use sqlx::PgPool;
 use tokio::sync::watch;
 use tracing::info;
 
-use crate::common::spawn_periodic;
+use platform_common_worker::spawn_periodic;
 
 use crate::config::{CleanupConfig, WorkerConfig};
 use crate::domains;
@@ -626,3 +626,4 @@ pub fn start(
     // Variables inutilisees a ce stade.
     let _ = (pool, shutdown, redis_client, api_url);
 }
+

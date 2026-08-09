@@ -44,12 +44,12 @@ pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
         return Ok(());
     }
 
-    let mut conn = crate::common::redis_helpers::get_conn(redis).await?;
+    let mut conn = platform_common_worker::redis_helpers::get_conn(redis).await?;
 
     let mut closed = 0u32;
     for t in &candidates {
         // Guard : si ticket-bot desactive pour cette guild, on saute.
-        if !crate::common::is_worker_enabled(pool, &t.server, "ticket-bot").await {
+        if !platform_common_worker::is_worker_enabled(pool, &t.server, "ticket-bot").await {
             continue;
         }
         // Décisions du core : résolution du seuil configuré + breach
@@ -86,7 +86,7 @@ pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
             }
         });
 
-        let res = crate::common::redis_helpers::xadd_event(&mut conn, &payload.to_string()).await;
+        let res = platform_common_worker::redis_helpers::xadd_event(&mut conn, &payload.to_string()).await;
         if let Err(e) = res {
             warn!(error = %e, ticket_id = %t.id, "XADD ticket_auto_closed echoue");
         }
@@ -112,3 +112,4 @@ async fn load_timeouts(pool: &PgPool) -> HashMap<String, i64> {
         .filter_map(|(g, v)| v.parse::<i64>().ok().map(|n| (g, n)))
         .collect()
 }
+

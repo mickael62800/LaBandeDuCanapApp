@@ -30,11 +30,11 @@ pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
         return Ok(());
     }
 
-    let mut conn = crate::common::redis_helpers::get_conn(redis).await?;
+    let mut conn = platform_common_worker::redis_helpers::get_conn(redis).await?;
 
     let mut reverted = 0u32;
     for lk in &candidates {
-        if !crate::common::is_worker_enabled(pool, &lk.guild_id, "security-bot").await {
+        if !platform_common_worker::is_worker_enabled(pool, &lk.guild_id, "security-bot").await {
             continue;
         }
         // Claim atomique : DELETE avec garde expires_at.
@@ -57,7 +57,7 @@ pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
                 "saved_states": lk.saved_states,
             }
         });
-        let res = crate::common::redis_helpers::xadd_event(&mut conn, &payload.to_string()).await;
+        let res = platform_common_worker::redis_helpers::xadd_event(&mut conn, &payload.to_string()).await;
         if let Err(e) = res {
             warn!(error = %e, guild = %lk.guild_id, "XADD lockdown_expired echoue");
         }
@@ -72,3 +72,4 @@ pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
     }
     Ok(())
 }
+

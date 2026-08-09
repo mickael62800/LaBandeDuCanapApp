@@ -3,7 +3,7 @@ use serde::Serialize;
 use sqlx::PgPool;
 use tracing::{info, warn};
 
-use crate::common::is_worker_enabled;
+use platform_common_worker::is_worker_enabled;
 
 const CACHE_TTL_SECS: u64 = 7200; // 2 hours
 const DAYS: i32 = 30;
@@ -94,3 +94,4 @@ async fn compute_voice_stats(
     .await
     .map_err(|e| format!("voice_stats: {e}"))
 }
+

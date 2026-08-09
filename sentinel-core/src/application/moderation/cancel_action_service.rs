@@ -15,24 +15,20 @@ use crate::ports::inbound::moderation::cancel_action::{
     CancelModerationActionUseCase, CancelOutcome,
 };
 use crate::ports::inbound::moderation::manage_moderation::ManageModerationUseCase;
-use crate::ports::inbound::moderation::manage_reminders::ManageRemindersUseCase;
 use crate::ports::outbound::discord_api::DiscordApi;
 
 pub struct CancelModerationActionService {
     moderation_uc: Arc<dyn ManageModerationUseCase>,
-    reminders_uc: Arc<dyn ManageRemindersUseCase>,
     discord_api: Arc<dyn DiscordApi>,
 }
 
 impl CancelModerationActionService {
     pub fn new(
         moderation_uc: Arc<dyn ManageModerationUseCase>,
-        reminders_uc: Arc<dyn ManageRemindersUseCase>,
         discord_api: Arc<dyn DiscordApi>,
     ) -> Self {
         Self {
             moderation_uc,
-            reminders_uc,
             discord_api,
         }
     }
@@ -77,16 +73,7 @@ impl CancelModerationActionUseCase for CancelModerationActionService {
                 // Le ban annule peut porter un rappel d'auto-unban encore
                 // `pending`. Sans cette annulation, le worker rejouerait un
                 // unban tardif sur un membre potentiellement re-banni depuis.
-                if cancel_auto_unban_reminder {
-                    if let Err(e) = self.reminders_uc.cancel_for_action(action_id).await {
-                        warn!(
-                            error = %e,
-                            action_id = %action_id,
-                            "Echec annulation du rappel d'auto-unban"
-                        );
-                    }
-                }
-            }
+                            }
             ReversalEffect::RemoveTimeout => {
                 match self
                     .discord_api
@@ -117,3 +104,4 @@ impl CancelModerationActionUseCase for CancelModerationActionService {
         }
     }
 }
+

@@ -299,49 +299,6 @@ impl ApiClient {
 
     /// Copilote de moderation (gRPC) : contexte d'un membre + suggestion de
     /// sanction proportionnee et explicable. Lecture seule, consultatif.
-    pub async fn get_member_context(
-        &self,
-        guild_id: &str,
-        user_id: &str,
-        lookback_days: i64,
-        min_precedents: u32,
-    ) -> Result<MemberContext, String> {
-        let req = proto_mod::GetMemberContextRequest {
-            guild_id: guild_id.to_string(),
-            user_id: user_id.to_string(),
-            lookback_days,
-            min_precedents,
-        };
-        let ctx = crate::grpc_call!(self.grpc, moderation, get_member_context, req)?;
-        let map_counts = |v: Vec<proto_mod::ActionCount>| {
-            v.into_iter()
-                .map(|c| CopilotActionCount {
-                    action: c.action,
-                    count: c.count,
-                })
-                .collect::<Vec<_>>()
-        };
-        let precedents = ctx.precedents.unwrap_or_default();
-        let suggestion = ctx.suggestion.unwrap_or_default();
-        Ok(MemberContext {
-            active_strikes: ctx.active_strikes,
-            sanctions_by_type: map_counts(ctx.sanctions_by_type),
-            last_sanction_at: ctx.last_sanction_at,
-            open_reviews: ctx.open_reviews,
-            precedents: CopilotPrecedents {
-                flag_category: precedents.flag_category,
-                counts_by_action: map_counts(precedents.counts_by_action),
-                total: precedents.total,
-            },
-            suggestion: CopilotSuggestion {
-                action: suggestion.action,
-                basis: suggestion.basis,
-                rationale: suggestion.rationale,
-                precedent_count: suggestion.precedent_count,
-            },
-        })
-    }
-
     /// Evalue server-side le risque d'une cible (garde-fou UX confirmation).
     /// Le bot fournit les FAITS Discord ; l'API applique le seuil + la politique
     /// et renvoie `{risky, reason}`.
@@ -390,51 +347,6 @@ impl ApiClient {
         };
         let resp = crate::grpc_call!(self.grpc, moderation, cancel_action, req)?;
         Ok(resp.cancelled)
-    }
-
-    /// MOD #1 — Liste les sanctions temporaires actives (reminders pending) d'une guild.
-    pub async fn get_active_reminders(
-        &self,
-        guild_id: &str,
-    ) -> Result<Vec<SanctionReminder>, String> {
-        let req = proto_mod::ListActiveRemindersRequest {
-            guild_id: guild_id.to_string(),
-        };
-        let resp = crate::grpc_call!(self.grpc, moderation, list_active_reminders, req)?;
-        Ok(resp
-            .reminders
-            .into_iter()
-            .map(|r| SanctionReminder {
-                moderator_name: r.moderator_name,
-                target_id: r.target_id,
-                action_type: r.action_type,
-                reason: r.reason,
-                expires_at: r.expires_at,
-            })
-            .collect())
-    }
-
-    /// MOD #7 — Top 20 des moderateurs par nombre d'actions sur les 30 derniers jours.
-    pub async fn get_modstats(&self, guild_id: &str) -> Result<Vec<ModStatsEntry>, String> {
-        let req = proto_mod::GetModStatsRequest {
-            guild_id: guild_id.to_string(),
-            // 0 = fenetre par defaut du serveur (30 jours).
-            days: 0,
-        };
-        let resp = crate::grpc_call!(self.grpc, moderation, get_mod_stats, req)?;
-        Ok(resp
-            .entries
-            .into_iter()
-            .map(|e| ModStatsEntry {
-                moderator_id: e.moderator_id,
-                moderator_name: e.moderator_name,
-                total: e.total,
-                warns: e.warns,
-                mutes: e.mutes,
-                bans: e.bans,
-                kicks: e.kicks,
-            })
-            .collect())
     }
 
     /// MOD #2 — Attache une preuve a une action de moderation existante.
@@ -547,27 +459,6 @@ impl ApiClient {
     }
 
     /// Ajoute une note sur un utilisateur.
-    pub async fn add_note(
-        &self,
-        guild_id: &str,
-        user_id: &str,
-        author_id: &str,
-        author_name: &str,
-        content: &str,
-        category: &str,
-    ) -> Result<String, String> {
-        let req = proto_mod::AddNoteRequest {
-            guild_id: guild_id.to_string(),
-            user_id: user_id.to_string(),
-            author_id: author_id.to_string(),
-            author_name: author_name.to_string(),
-            content: content.to_string(),
-            category: category.to_string(),
-        };
-        let resp = crate::grpc_call!(self.grpc, moderation, add_note, req)?;
-        Ok(resp.id)
-    }
-
     // ── Ban en sursis (gRPC SursisService) ──
 
     /// Enregistre une mise en sursis (le delai d'appel est lu cote serveur).
@@ -644,3 +535,5 @@ fn review_from_proto(r: proto_mod::ReviewEntry) -> ReviewQueueEntry {
 }
 
 use crate::shared::grpc_client::grpc_err_to_string;
+
+

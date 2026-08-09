@@ -3,8 +3,5 @@ pub mod announcements;
 pub mod confessions;
 pub mod embeds;
 pub mod ideas;
-pub mod members;
-pub mod progression;
-pub mod roles;
 pub mod sponsorships;
-pub mod voice;
+

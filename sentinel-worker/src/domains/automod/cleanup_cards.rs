@@ -9,7 +9,7 @@
 use sqlx::PgPool;
 use tracing::{info, warn};
 
-use crate::common::api;
+use platform_common_worker::api;
 
 pub async fn run(_pool: &PgPool) -> Result<(), String> {
     let body = serde_json::json!({ "days": 30 });
@@ -28,3 +28,4 @@ pub async fn run(_pool: &PgPool) -> Result<(), String> {
         }
     }
 }
+

@@ -89,7 +89,7 @@ pub fn start(redis_client: redis::Client, config: MonitorConfig) {
                         }
                     });
                     if let Err(e) =
-                        crate::common::redis_helpers::xadd_event(&mut conn, &event.to_string())
+                        platform_common_worker::redis_helpers::xadd_event(&mut conn, &event.to_string())
                             .await
                     {
                         warn!(error = %e, "Erreur publication event offline sur Redis");
@@ -128,7 +128,7 @@ pub fn start(redis_client: redis::Client, config: MonitorConfig) {
                         }
                     });
                     if let Err(e) =
-                        crate::common::redis_helpers::xadd_event(&mut conn, &event.to_string())
+                        platform_common_worker::redis_helpers::xadd_event(&mut conn, &event.to_string())
                             .await
                     {
                         warn!(error = %e, "Erreur publication event online sur Redis");
@@ -175,3 +175,4 @@ mod tests {
         assert_eq!(service_label("custom-service"), "Bot");
     }
 }
+

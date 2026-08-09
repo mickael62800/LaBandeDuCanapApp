@@ -43,16 +43,9 @@ use sentinel_core::application::audit::manage_audit_logs_service::ManageAuditLog
 use sentinel_core::application::audit::manage_security_service::ManageSecurityService;
 use sentinel_core::application::audit::manage_stats_service::ManageStatsService;
 use sentinel_core::application::audit::manage_watched_users_service::ManageWatchedUsersService;
-use sentinel_core::application::community::manage_levels_service::ManageLevelsService;
-use sentinel_core::application::community::manage_members_service::ManageMembersService;
-use sentinel_core::application::community::manage_role_panels_service::ManageRolePanelsService;
-use sentinel_core::application::community::voice_channels::ManageVoiceChannelsService;
 use sentinel_core::application::moderation::manage_infractions_service::ManageInfractionsService;
 use sentinel_core::application::moderation::manage_moderation_service::ManageModerationService;
-use sentinel_core::application::moderation::manage_notes_service::ManageNotesService;
-use sentinel_core::application::moderation::manage_reminders_service::ManageRemindersService;
 use sentinel_core::application::moderation::manage_rules_service::ManageRulesService;
-use sentinel_core::application::moderation::manage_strikes_service::ManageStrikesService;
 use sentinel_core::application::system::export_service::ExportService;
 use sentinel_core::application::system::manage_tickets_service::ManageTicketsService;
 
@@ -384,23 +377,6 @@ pub async fn build_app_state(
             confession_repo,
         ),
     );
-                // Copilote de moderation (lecture seule) : reutilise le use case strikes
-    // (ladder d'escalade) + un port focalise pour l'historique & la
-    // jurisprudence automod (anti-ancrage : exclut les reviews 'voting').
-    let moderation_copilot_repo: Arc<
-        dyn sentinel_core::ports::outbound::moderation::moderation_copilot_repository::ModerationCopilotRepository,
-    > = Arc::new(
-        crate::adapters::outbound::postgres::moderation::moderation_copilot_repository::PgModerationCopilotRepository::new(pg_pool.clone()),
-    );
-    let moderation_copilot_uc: Arc<
-        dyn sentinel_core::ports::inbound::moderation::moderation_copilot::ModerationCopilotUseCase,
-    > = Arc::new(
-        sentinel_core::application::moderation::manage_moderation_copilot_service::ManageModerationCopilotService::new(
-            strikes_uc.clone()
-                as Arc<dyn sentinel_core::ports::inbound::moderation::manage_strikes::ManageStrikesUseCase>,
-            moderation_copilot_repo,
-        ),
-    );
     // Evaluation server-side du risque de cible (garde-fou UX confirmation) :
     // lit le seuil `risk_recent_account_days` (moderation-bot, defaut 7j) et
     // applique la politique. Le bot ne fournit que les faits Discord.
@@ -413,8 +389,6 @@ pub async fn build_app_state(
     );
     let moderation_uc = Arc::new(
         ManageModerationService::new(moderation_repo.clone(), strike_repo.clone(), cache.clone())
-            .with_strikes_uc(strikes_uc.clone()
-                as Arc<dyn sentinel_core::ports::inbound::moderation::manage_strikes::ManageStrikesUseCase>)
             .with_audit_logs_uc(audit_logs_uc.clone()
                 as Arc<
                     dyn sentinel_core::ports::inbound::audit::manage_audit_logs::ManageAuditLogsUseCase,
@@ -679,7 +653,6 @@ pub async fn build_app_state(
         infractions_uc.clone(),
         moderation_uc.clone(),
         security_uc.clone(),
-        notes_uc.clone(),
     ));
 
     
@@ -747,7 +720,6 @@ pub async fn build_app_state(
         cancel_action_uc: Arc::new(
             sentinel_core::application::moderation::cancel_action_service::CancelModerationActionService::new(
                 moderation_uc.clone(),
-                reminders_uc.clone(),
                 discord_api.clone(),
             ),
         ),
@@ -898,3 +870,5 @@ pub async fn build_app_state(
         superadmin_user_ids: Arc::new(config.superadmin_user_ids.clone()),
     }
 }
+
+

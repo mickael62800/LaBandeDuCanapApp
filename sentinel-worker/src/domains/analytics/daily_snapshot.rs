@@ -8,7 +8,7 @@
 use sqlx::PgPool;
 use tracing::info;
 
-use crate::common::api;
+use platform_common_worker::api;
 
 #[derive(serde::Deserialize)]
 struct JobReport {
@@ -27,3 +27,4 @@ pub async fn run(_pool: &PgPool) -> Result<(), String> {
     }
     Ok(())
 }
+

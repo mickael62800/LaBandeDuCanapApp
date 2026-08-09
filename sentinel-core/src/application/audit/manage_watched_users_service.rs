@@ -10,7 +10,6 @@ use crate::ports::inbound::audit::manage_watched_users::UserDossier;
 use crate::ports::inbound::moderation::manage_infractions::InfractionFilters;
 use crate::ports::inbound::moderation::manage_infractions::ManageInfractionsUseCase;
 use crate::ports::inbound::moderation::manage_moderation::ManageModerationUseCase;
-use crate::ports::inbound::moderation::manage_notes::ManageNotesUseCase;
 use crate::ports::outbound::audit::watched_user_repository::WatchedUserRepository;
 
 pub struct ManageWatchedUsersService {
@@ -18,7 +17,6 @@ pub struct ManageWatchedUsersService {
     infractions_uc: Arc<dyn ManageInfractionsUseCase>,
     moderation_uc: Arc<dyn ManageModerationUseCase>,
     security_uc: Arc<dyn ManageSecurityUseCase>,
-    notes_uc: Arc<dyn ManageNotesUseCase>,
 }
 
 impl ManageWatchedUsersService {
@@ -27,14 +25,12 @@ impl ManageWatchedUsersService {
         infractions_uc: Arc<dyn ManageInfractionsUseCase>,
         moderation_uc: Arc<dyn ManageModerationUseCase>,
         security_uc: Arc<dyn ManageSecurityUseCase>,
-        notes_uc: Arc<dyn ManageNotesUseCase>,
     ) -> Self {
         Self {
             watched_repo,
             infractions_uc,
             moderation_uc,
             security_uc,
-            notes_uc,
         }
     }
 }
@@ -85,10 +81,7 @@ impl ManageWatchedUsersUseCase for ManageWatchedUsersService {
             .filter(|e| e.user_ids.contains(&user_id.to_string()))
             .collect();
 
-        let notes = self.notes_uc.get_notes(guild_id, user_id).await.unwrap_or_else(|e| {
-            tracing::warn!(error = %e, guild_id, user_id, "Echec chargement notes pour dossier");
-            vec![]
-        });
+        let notes = vec![];
 
         Ok(UserDossier {
             user,
@@ -121,3 +114,4 @@ impl ManageWatchedUsersUseCase for ManageWatchedUsersService {
 #[cfg(test)]
 #[path = "tests/manage_watched_users.rs"]
 mod tests;
+

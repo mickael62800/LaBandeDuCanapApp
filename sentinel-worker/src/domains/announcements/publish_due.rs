@@ -8,7 +8,7 @@ use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
 use tracing::{error, info, warn};
 
-use crate::common;
+use platform_common_worker;
 
 const WORKER_NAME: &str = "announcements";
 const STREAM_KEY: &str = "sentinel:events";
@@ -84,7 +84,7 @@ pub fn start(api_url: String, redis_client: redis::Client, publish_interval_secs
             interval.tick().await;
             if let Err(e) = run_one_tick(&http_client, &api_url, &api_key, &redis_client).await {
                 error!(error = %e, "announcements tick error");
-                common::send_worker_log(
+                platform_common_worker::send_worker_log(
                     &api_url,
                     WORKER_NAME,
                     "error",
@@ -172,7 +172,7 @@ async fn run_one_tick(
             }
             Err(e) => {
                 warn!(error = %e, run_id = %p.run_id, "XADD failed");
-                common::send_worker_log(
+                platform_common_worker::send_worker_log(
                     api_url,
                     WORKER_NAME,
                     "warn",
@@ -189,7 +189,7 @@ async fn run_one_tick(
         }
     }
 
-    common::send_worker_log(
+    platform_common_worker::send_worker_log(
         api_url,
         WORKER_NAME,
         "info",
@@ -204,3 +204,4 @@ async fn run_one_tick(
 
     Ok(())
 }
+

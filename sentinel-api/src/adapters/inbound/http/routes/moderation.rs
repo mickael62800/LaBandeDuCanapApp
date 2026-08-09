@@ -55,11 +55,7 @@ fn moderation_inner() -> Router<AppState> {
             "/history/{guild_id}/{user_id}",
             get(handlers::moderation::actions::get_history),
         )
-        .route(
-            "/{guild_id}/copilot/{user_id}",
-            get(handlers::moderation::copilot::get_member_context),
-        )
-        .route(
+                .route(
             "/{guild_id}/assess-target-risk",
             post(handlers::moderation::target_risk::assess_target_risk),
         )
@@ -90,51 +86,10 @@ fn moderation_inner() -> Router<AppState> {
         )
 }
 
-fn strikes_inner() -> Router<AppState> {
-    Router::new()
-        .route(
-            "/config/{guild_id}",
-            get(handlers::moderation::strikes::get_config)
-                .put(handlers::moderation::strikes::save_config),
-        )
-        .route(
-            "/{guild_id}/{user_id}",
-            get(handlers::moderation::strikes::get_active_strikes)
-                .delete(handlers::moderation::strikes::reset_strikes),
-        )
-        .route("/", post(handlers::moderation::strikes::add_strike))
-}
-
-fn notes_inner() -> Router<AppState> {
-    Router::new()
-        .route("/", post(handlers::moderation::notes::add_note))
-        .route(
-            "/{guild_id}/{user_id}",
-            get(handlers::moderation::notes::get_notes),
-        )
-        .route("/{id}", delete(handlers::moderation::notes::delete_note))
-}
-
-fn reminders_inner() -> Router<AppState> {
-    Router::new()
-        .route("/", post(handlers::moderation::reminders::create_reminder))
-        .route(
-            "/pending",
-            get(handlers::moderation::reminders::get_pending),
-        )
-        .route(
-            "/{guild_id}",
-            get(handlers::moderation::reminders::list_by_guild),
-        )
-}
-
 pub fn routes() -> Router<AppState> {
     Router::new()
         .nest("/api/moderation", moderation_inner())
-        .nest("/api/strikes", strikes_inner())
-        .nest("/api/notes", notes_inner())
-        .nest("/api/reminders", reminders_inner())
-}
+                        }
 
 #[cfg(test)]
 mod tests {
@@ -149,3 +104,5 @@ mod tests {
         let _ = routes();
     }
 }
+
+

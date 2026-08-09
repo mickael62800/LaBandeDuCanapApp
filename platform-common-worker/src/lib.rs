@@ -372,6 +372,11 @@ pub async fn send_worker_log(
     message: &str,
     details: serde_json::Value,
 ) {
+    match level {
+        "error" => tracing::error!(worker = worker_name, job = job_name, ?details, "{message}"),
+        "warn" => tracing::warn!(worker = worker_name, job = job_name, ?details, "{message}"),
+        _ => tracing::info!(worker = worker_name, job = job_name, ?details, "{message}"),
+    }
     let api_key = std::env::var("SENTINEL_API_KEY").unwrap_or_default();
     let client = reqwest::Client::new();
     // Merge job dans les details pour retrouver facilement
@@ -565,3 +570,4 @@ mod tests {
         assert_eq!(result, 50);
     }
 }
+

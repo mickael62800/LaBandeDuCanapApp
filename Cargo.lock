@@ -243,6 +243,7 @@ dependencies = [
  "atrium-core",
  "chrono",
  "dotenvy",
+ "platform-common-worker",
  "reqwest",
  "serde",
  "serde_json",
@@ -2200,6 +2201,7 @@ version = "0.1.0"
 dependencies = [
  "dotenvy",
  "nexus-core",
+ "platform-common-worker",
  "reqwest",
  "serde",
  "serde_json",
@@ -2563,6 +2565,30 @@ dependencies = [
  "serenity",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "platform-common-worker"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "dotenvy",
+ "metrics",
+ "metrics-exporter-prometheus",
+ "redis",
+ "reqwest",
+ "sentinel-core",
+ "sentinel-proto",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "tokio-metrics",
+ "tonic",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]
@@ -3543,6 +3569,7 @@ dependencies = [
  "dotenvy",
  "metrics",
  "metrics-exporter-prometheus",
+ "platform-common-worker",
  "rand 0.8.6",
  "redis",
  "reqwest",

@@ -24,7 +24,6 @@
 #[global_allocator]
 static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
-mod common;
 mod config;
 mod domains;
 mod scheduler;
@@ -38,16 +37,16 @@ const WORKER_NAME: &str = "sentinel-worker";
 
 #[tokio::main]
 async fn main() {
-    common::init_tracing("sentinel_worker=info");
-    common::metrics::init_observability(WORKER_NAME);
+    platform_common_worker::init_tracing("sentinel_worker=info");
+    platform_common_worker::metrics::init_observability(WORKER_NAME);
 
     let mut config = WorkerConfig::from_env();
     info!("Demarrage de Sentinel Worker (orchestrateur unifie)");
 
-    let pg_pool = common::create_pg_pool(&config.database_url).await;
+    let pg_pool = platform_common_worker::create_pg_pool(&config.database_url).await;
     info!("PostgreSQL connecte");
 
-    let redis_client = common::redis_helpers::open_or_exit(config.redis_url.as_str());
+    let redis_client = platform_common_worker::redis_helpers::open_or_exit(config.redis_url.as_str());
     match redis_client.get_multiplexed_async_connection().await {
         Ok(_) => info!("Redis connecte"),
         Err(e) => {
@@ -57,7 +56,7 @@ async fn main() {
     }
 
     // Surcharge eventuelle depuis bot_guild_config (config dynamique).
-    let db_config = common::load_worker_config(&pg_pool, WORKER_NAME).await;
+    let db_config = platform_common_worker::load_worker_config(&pg_pool, WORKER_NAME).await;
     if !db_config.is_empty() {
         config.apply_db_config(&db_config);
         info!(keys = db_config.len(), "Config DB chargee");
@@ -66,9 +65,9 @@ async fn main() {
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
     scheduler::start(&config, pg_pool.clone(), redis_client, shutdown_rx);
-    common::start_heartbeat(config.api_url.clone(), WORKER_NAME);
+    platform_common_worker::start_heartbeat(config.api_url.clone(), WORKER_NAME);
 
-    common::send_lifecycle_log(
+    platform_common_worker::send_lifecycle_log(
         &config.api_url,
         WORKER_NAME,
         "info",
@@ -78,9 +77,9 @@ async fn main() {
 
     info!("Sentinel Worker pret");
 
-    common::shutdown_signal().await;
+    platform_common_worker::shutdown_signal().await;
 
-    common::send_lifecycle_log(
+    platform_common_worker::send_lifecycle_log(
         &config.api_url,
         WORKER_NAME,
         "warn",
@@ -94,3 +93,5 @@ async fn main() {
     pg_pool.close().await;
     info!("Sentinel Worker arrete proprement");
 }
+
+

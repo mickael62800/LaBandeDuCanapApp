@@ -3,7 +3,7 @@ use serde::Serialize;
 use sqlx::PgPool;
 use tracing::{info, warn};
 
-use crate::common::is_worker_enabled;
+use platform_common_worker::is_worker_enabled;
 
 const CACHE_TTL_SECS: u64 = 900; // 15 minutes
 
@@ -108,3 +108,4 @@ async fn compute_dashboard(pool: &PgPool, guild_id: &str) -> Result<DashboardOve
         active_members: active_members.0,
     })
 }
+

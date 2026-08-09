@@ -7,7 +7,7 @@
 
 use std::collections::HashMap;
 
-use crate::common::{
+use platform_common_worker::{
     config_or_env, load_api_url, load_database_url, load_env, load_env_bool, load_redis_url,
     SECS_PER_HOUR, SECS_PER_MINUTE,
 };
@@ -697,3 +697,4 @@ impl From<&WorkerConfig> for CleanupConfig {
         }
     }
 }
+

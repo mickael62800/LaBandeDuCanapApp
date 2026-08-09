@@ -17,7 +17,7 @@ use sqlx::PgPool;
 use tracing::{info, warn};
 use uuid::Uuid;
 
-use crate::common::api;
+use platform_common_worker::api;
 
 use super::DEFAULT_VOTE_QUORUM;
 
@@ -78,3 +78,4 @@ pub async fn run(pool: &PgPool) -> Result<(), String> {
     info!(expired = rows.len(), closed, "Votes automod clotures");
     Ok(())
 }
+

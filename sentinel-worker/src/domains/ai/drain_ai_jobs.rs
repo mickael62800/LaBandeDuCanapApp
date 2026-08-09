@@ -82,7 +82,7 @@ pub async fn run(
         let job_id = job.id;
         // Guard top-level : si la guild a desactive le module ai, on
         // marque le job comme 'dead' au lieu de le traiter.
-        if !crate::common::is_worker_enabled(pool, &job.guild_id, "ai").await {
+        if !platform_common_worker::is_worker_enabled(pool, &job.guild_id, "ai").await {
             let _ = sqlx::query(
                 "UPDATE ai_jobs SET status = 'dead', \
                         error_message = 'module ai disabled for guild', \
@@ -212,3 +212,4 @@ async fn publish_result(redis: &redis::Client, job_id: Uuid, payload: &serde_jso
         }
     }
 }
+

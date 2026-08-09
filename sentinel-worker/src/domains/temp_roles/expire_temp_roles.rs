@@ -39,7 +39,7 @@ pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
         return Ok(());
     }
 
-    let mut conn = crate::common::redis_helpers::get_conn(redis).await?;
+    let mut conn = platform_common_worker::redis_helpers::get_conn(redis).await?;
 
     let mut published = 0u32;
     for role in &expired {
@@ -63,7 +63,7 @@ pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
             }
         };
 
-        let res = crate::common::redis_helpers::xadd_event(&mut conn, &serialized).await;
+        let res = platform_common_worker::redis_helpers::xadd_event(&mut conn, &serialized).await;
         match res {
             Ok(_) => published += 1,
             Err(e) => warn!(role_id = %role.id, error = %e, "XADD failed"),
@@ -80,3 +80,4 @@ pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
 
     Ok(())
 }
+

@@ -60,13 +60,13 @@ pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
         return Ok(());
     }
 
-    let mut conn = crate::common::redis_helpers::get_conn(redis).await?;
+    let mut conn = platform_common_worker::redis_helpers::get_conn(redis).await?;
 
     let now = Utc::now();
     let mut escalated = 0u32;
 
     for t in &candidates {
-        if !crate::common::is_worker_enabled(pool, &t.server, "ticket-bot").await {
+        if !platform_common_worker::is_worker_enabled(pool, &t.server, "ticket-bot").await {
             continue;
         }
         let escalation_minutes = effective_threshold(
@@ -104,7 +104,7 @@ pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
                 "escalation_minutes": escalation_minutes,
             }
         });
-        let res = crate::common::redis_helpers::xadd_event(&mut conn, &payload.to_string()).await;
+        let res = platform_common_worker::redis_helpers::xadd_event(&mut conn, &payload.to_string()).await;
         if let Err(e) = res {
             warn!(error = %e, ticket_id = %t.id, "XADD ticket_sla_escalated echoue");
         }
@@ -163,11 +163,11 @@ async fn scan_and_warn(
     if candidates.is_empty() {
         return Ok(());
     }
-    let mut conn = crate::common::redis_helpers::get_conn(redis).await?;
+    let mut conn = platform_common_worker::redis_helpers::get_conn(redis).await?;
     let now = Utc::now();
     let mut warned = 0u32;
     for t in &candidates {
-        if !crate::common::is_worker_enabled(pool, &t.server, "ticket-bot").await {
+        if !platform_common_worker::is_worker_enabled(pool, &t.server, "ticket-bot").await {
             continue;
         }
         let warn_minutes =
@@ -198,7 +198,7 @@ async fn scan_and_warn(
                 "warn_minutes": warn_minutes,
             }
         });
-        let res = crate::common::redis_helpers::xadd_event(&mut conn, &payload.to_string()).await;
+        let res = platform_common_worker::redis_helpers::xadd_event(&mut conn, &payload.to_string()).await;
         if let Err(e) = res {
             warn!(error = %e, ticket_id = %t.id, "XADD ticket_sla_warned echoue");
         }
@@ -209,3 +209,4 @@ async fn scan_and_warn(
     }
     Ok(())
 }
+

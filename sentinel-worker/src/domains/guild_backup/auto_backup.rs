@@ -24,7 +24,7 @@ use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use tracing::{debug, info, warn};
 
-use crate::common::redis_helpers;
+use platform_common_worker::redis_helpers;
 
 const BOT_NAME: &str = "guild-backup-bot";
 const EVENT_CAPTURE: &str = "guild_backup:capture_requested";
@@ -136,7 +136,7 @@ async fn load_configs(pool: &PgPool) -> HashMap<String, GuildAuto> {
             interval_hours: DEFAULT_INTERVAL_HOURS,
         });
         match key.as_str() {
-            "auto_backup_enabled" => entry.enabled = crate::common::parse_bool_str(&value),
+            "auto_backup_enabled" => entry.enabled = platform_common_worker::parse_bool_str(&value),
             "auto_backup_interval_hours" => {
                 if let Ok(h) = value.parse::<i64>() {
                     entry.interval_hours = h;
@@ -204,3 +204,4 @@ mod tests {
         assert!(!is_due(Some(t(1)), -5, Utc::now()));
     }
 }
+

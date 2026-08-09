@@ -94,8 +94,6 @@ fn protected_domain_routes() -> Router<AppState> {
         .merge(routes::security::routes())
         .merge(routes::automod::routes())
         .merge(routes::moderation::routes())
-        .merge(routes::voice_channels::routes())
-        .merge(routes::progression::routes())
         .merge(routes::stats::routes())
         // Dashboard & config routes + charts
         .merge(routes::dashboard::routes())
@@ -104,7 +102,6 @@ fn protected_domain_routes() -> Router<AppState> {
         // Bot persistence (fire-and-forget)
         .merge(routes::bot_persistence::routes())
         // Members + guild direct API
-        .merge(routes::members::routes())
         .merge(routes::guild_backup::routes())
         .merge(routes::guild_structure::routes())
         .merge(routes::community::routes())
@@ -400,3 +397,4 @@ pub fn build(
         .layer(build_cors(allowed_origins))
         .with_state(state)
 }
+

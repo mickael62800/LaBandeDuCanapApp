@@ -49,7 +49,7 @@ pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
         return Ok(());
     }
 
-    let mut conn = crate::common::redis_helpers::get_conn(redis).await?;
+    let mut conn = platform_common_worker::redis_helpers::get_conn(redis).await?;
 
     let now = Utc::now();
     let mut escalated = 0u32;
@@ -59,7 +59,7 @@ pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
         // Garde per-guild alignée sur les jumeaux tickets/escalate_sla et
         // close_inactive (oubli historique : appeal_sla escaladait même pour
         // les guilds ayant désactivé ticket-bot).
-        if !crate::common::is_worker_enabled(pool, &ticket.server, "ticket-bot").await {
+        if !platform_common_worker::is_worker_enabled(pool, &ticket.server, "ticket-bot").await {
             skipped += 1;
             continue;
         }
@@ -126,7 +126,7 @@ pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
             }
         };
 
-        let res = crate::common::redis_helpers::xadd_event(&mut conn, &serialized).await;
+        let res = platform_common_worker::redis_helpers::xadd_event(&mut conn, &serialized).await;
 
         match res {
             Ok(_) => {
@@ -210,3 +210,4 @@ async fn load_sla_configs(pool: &PgPool) -> Result<HashMap<String, GuildSlaConfi
 
     Ok(map)
 }
+

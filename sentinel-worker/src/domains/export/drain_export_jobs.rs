@@ -80,7 +80,7 @@ pub async fn run(
 
     // Guard top-level : si la guild a desactive le module export, on
     // marque le job comme 'dead' (le user devra reactiver pour rejouer).
-    if !crate::common::is_worker_enabled(pool, &job.guild_id, "export").await {
+    if !platform_common_worker::is_worker_enabled(pool, &job.guild_id, "export").await {
         let _ = sqlx::query(
             "UPDATE export_jobs SET status = 'dead', \
                     error_message = 'module export disabled for guild', \
@@ -158,9 +158,9 @@ async fn call_export_api(
 ) -> Result<(String, usize), String> {
     let api_key = std::env::var("API_KEY").unwrap_or_default();
 
-    // Delegue a crate::common::grpc::connect() pour beneficier
+    // Delegue a platform_common_worker::grpc::connect() pour beneficier
     // du mTLS optionnel (GRPC_TLS_DIR) en coherence avec les autres callers.
-    let channel = crate::common::grpc::connect().await?;
+    let channel = platform_common_worker::grpc::connect().await?;
 
     let mut client = ExportServiceClient::new(channel);
     let mut req = Request::new(ExecuteExportRequest {
@@ -182,3 +182,4 @@ async fn call_export_api(
 
     Ok((resp.data, resp.row_count as usize))
 }
+

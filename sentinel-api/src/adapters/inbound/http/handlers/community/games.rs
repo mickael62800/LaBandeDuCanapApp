@@ -123,15 +123,7 @@ fn client(
 /// coins et apparait dans le classement. Le laisser au client permettrait de
 /// s'y afficher sous le nom de quelqu'un d'autre.
 async fn display_name(state: &AppState, guild_id: &str, user_id: &str) -> String {
-    match state
-        .community
-        .members_uc
-        .get_member(guild_id, user_id)
-        .await
-    {
-        Ok(m) => m.display_name.unwrap_or(m.username),
-        Err(_) => String::new(),
-    }
+    user_id.to_string()
 }
 
 // ── Coussin Piégé ──
@@ -307,3 +299,5 @@ pub async fn spin_wheel(
         is_memorable: r.is_memorable,
     }))
 }
+
+

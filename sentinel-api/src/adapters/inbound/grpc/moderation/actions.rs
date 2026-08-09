@@ -43,19 +43,9 @@ pub struct ModerationGrpc {
     pub moderation_uc: Arc<dyn ManageModerationUseCase>,
     /// Annulation d'une action (/unwarn). Meme use case que le HTTP.
     pub cancel_action_uc: Arc<dyn CancelModerationActionUseCase>,
-    /// Auto-creation des rappels/enregistrements d'expiration pour les sanctions
-    /// temporaires journalisees par le bot (chemin gRPC). Aligne le comportement
-    /// sur le handler HTTP `log_action`.
-    pub reminders_uc: Arc<dyn ManageRemindersUseCase>,
-    /// Copilote de moderation (lecture seule, consultatif). Chemin bot/interne
-    /// de confiance : aucune autorisation ici (le bot verifie la permission de
-    /// moderation Discord avant d'appeler), coherent avec `log_action`/`get_history`.
-    pub moderation_copilot_uc: Arc<dyn ModerationCopilotUseCase>,
-
     // ── Ports du dossier de moderation (ex-HTTP) ──
     pub assess_target_risk_uc: Arc<dyn AssessTargetRiskUseCase>,
     pub modstats_uc: Arc<dyn ReadModstatsUseCase>,
-    pub notes_uc: Arc<dyn ManageNotesUseCase>,
     pub evidence_repo: Arc<dyn EvidenceRepository>,
     pub review_repo: Arc<dyn ReviewRepository>,
     pub pending_action_repo: Arc<dyn PendingActionRepository>,
@@ -111,73 +101,9 @@ impl ModerationService for ModerationGrpc {
             pa
         };
 
-        // BUG #1 : un unban (quel que soit le chemin — bot `/unban`, client, HTTP)
-        // doit annuler les rappels d'auto-unban encore actifs pour cet utilisateur,
-        // sinon le worker leverait un ban plus recent applique entre-temps. On
-        // centralise ici pour couvrir le bot `/unban` qui journalise directement.
-        // Best-effort : un echec ne bloque pas l'action (deja appliquee cote Discord).
-        if action_type == "unban" {
-            match self
-                .reminders_uc
-                .cancel_for_target(
-                    proto_action.guild_id.as_str(),
-                    proto_action.target_id.as_str(),
-                )
-                .await
-            {
-                Ok(n) if n > 0 => tracing::info!(
-                    guild_id = %proto_action.guild_id,
-                    target_id = %proto_action.target_id,
-                    cancelled = n,
-                    "Rappels d'auto-unban annules suite a un unban (gRPC)"
-                ),
-                Ok(_) => {}
-                Err(e) => tracing::warn!(
-                    error = %e,
-                    guild_id = %proto_action.guild_id,
-                    target_id = %proto_action.target_id,
-                    "Echec annulation des rappels d'auto-unban lors de l'unban (gRPC)"
-                ),
-            }
-        }
 
-        // BUG #8 : creation du rappel d'expiration UNIQUEMENT pour les bans
-        // temporaires. Les mutes temporaires (`mute_temp`, y compris l'escalade)
-        // expirent seuls via le timeout Discord : leur creer un rappel produirait
-        // un DM "1h avant" qui se declenche pour rien. Seul `ban_temp` alimente le
-        // job worker d'auto-unban a l'expiration.
-        if action_type == "ban_temp" {
-            if let Some(dur) = duration {
-                let action_uuid = proto_action
-                    .id
-                    .parse()
-                    .unwrap_or_else(|_| uuid::Uuid::nil());
-                if let Err(e) = self
-                    .reminders_uc
-                    .create_reminder(CreateReminderCommand {
-                        guild_id: proto_action.guild_id.clone().into(),
-                        moderator_id: proto_action.moderator_id.clone(),
-                        moderator_name: proto_action.moderator_name.clone(),
-                        target_id: proto_action.target_id.clone(),
-                        target_name: proto_action.target_name.clone(),
-                        action_type: action_type.clone(),
-                        reason: proto_action.reason.clone(),
-                        action_id: action_uuid,
-                        duration_secs: dur,
-                        // Sur le chemin gRPC on applique le defaut (1h) cote service.
-                        remind_before_secs: 0,
-                    })
-                    .await
-                {
-                    tracing::error!(
-                        error = %e,
-                        action_id = %proto_action.id,
-                        action_type = %action_type,
-                        "INCOHERENCE : sanction temporaire sans reminder (gRPC)"
-                    );
-                }
-            }
-        }
+
+
 
         Ok(Response::new(proto_action))
     }
@@ -193,24 +119,6 @@ impl ModerationService for ModerationGrpc {
             .await
             .map_err(domain_to_status)?;
         Ok(Response::new(user_history_to_proto(history)))
-    }
-
-    async fn get_member_context(
-        &self,
-        request: Request<proto::GetMemberContextRequest>,
-    ) -> Result<Response<proto::MemberModerationContext>, Status> {
-        let req = request.into_inner();
-        let context = self
-            .moderation_copilot_uc
-            .get_member_context(
-                &req.guild_id,
-                &req.user_id,
-                req.lookback_days,
-                req.min_precedents,
-            )
-            .await
-            .map_err(domain_to_status)?;
-        Ok(Response::new(member_context_to_proto(context)))
     }
 
     async fn cancel_action(
@@ -273,82 +181,6 @@ impl ModerationService for ModerationGrpc {
         }))
     }
 
-    // ── Dossier et suivi ──
-
-    async fn list_active_reminders(
-        &self,
-        request: Request<proto::ListActiveRemindersRequest>,
-    ) -> Result<Response<proto::ListActiveRemindersResponse>, Status> {
-        let req = request.into_inner();
-        let reminders = self
-            .reminders_uc
-            .list_by_guild(&req.guild_id)
-            .await
-            .map_err(domain_to_status)?;
-        Ok(Response::new(proto::ListActiveRemindersResponse {
-            reminders: reminders
-                .into_iter()
-                .map(|r| proto::SanctionReminder {
-                    moderator_name: r.moderator_name,
-                    target_id: r.target_id,
-                    action_type: r.action_type,
-                    reason: r.reason,
-                    expires_at: r.expires_at.to_rfc3339(),
-                })
-                .collect(),
-        }))
-    }
-
-    async fn get_mod_stats(
-        &self,
-        request: Request<proto::GetModStatsRequest>,
-    ) -> Result<Response<proto::GetModStatsResponse>, Status> {
-        let req = request.into_inner();
-        // 0 = « laisse le serveur decider » : evite d'imposer au bot de
-        // connaitre la fenetre par defaut.
-        let days = if req.days <= 0 { 30 } else { req.days };
-        let entries = self
-            .modstats_uc
-            .modstats(&req.guild_id, days)
-            .await
-            .map_err(domain_to_status)?;
-        Ok(Response::new(proto::GetModStatsResponse {
-            entries: entries
-                .into_iter()
-                .map(|m| proto::ModStatsEntry {
-                    moderator_id: m.moderator_id,
-                    moderator_name: m.moderator_name,
-                    total: m.total,
-                    warns: m.warns,
-                    mutes: m.mutes,
-                    bans: m.bans,
-                    kicks: m.kicks,
-                })
-                .collect(),
-        }))
-    }
-
-    async fn add_note(
-        &self,
-        request: Request<proto::AddNoteRequest>,
-    ) -> Result<Response<proto::AddNoteResponse>, Status> {
-        let req = request.into_inner();
-        let note = self
-            .notes_uc
-            .add_note(AddNoteCommand {
-                guild_id: req.guild_id.into(),
-                user_id: req.user_id.into(),
-                author_id: req.author_id,
-                author_name: req.author_name,
-                content: req.content,
-                category: req.category,
-            })
-            .await
-            .map_err(domain_to_status)?;
-        Ok(Response::new(proto::AddNoteResponse {
-            id: note.id.to_string(),
-        }))
-    }
 
     // ── Preuves ──
 
@@ -561,41 +393,10 @@ fn user_history_to_proto(h: UserModerationHistory) -> proto::UserHistory {
     }
 }
 
-fn counts_to_proto(counts: Vec<(String, u32)>) -> Vec<proto::ActionCount> {
-    counts
-        .into_iter()
-        .map(|(action, count)| proto::ActionCount { action, count })
-        .collect()
-}
 
-fn precedents_to_proto(p: PrecedentDistribution) -> proto::PrecedentDistribution {
-    proto::PrecedentDistribution {
-        flag_category: p.flag_category,
-        counts_by_action: counts_to_proto(p.counts_by_action),
-        total: p.total,
-    }
-}
-
-fn suggestion_to_proto(s: SanctionSuggestion) -> proto::SanctionSuggestion {
-    proto::SanctionSuggestion {
-        action: s.action.map(|a| a.as_str().to_string()),
-        basis: s.basis.as_str().to_string(),
-        rationale: s.rationale,
-        precedent_count: s.precedent_count,
-    }
-}
-
-fn member_context_to_proto(c: MemberModerationContext) -> proto::MemberModerationContext {
-    proto::MemberModerationContext {
-        active_strikes: c.active_strikes,
-        sanctions_by_type: counts_to_proto(c.sanctions_by_type),
-        last_sanction_at: c.last_sanction_at.map(|d| d.to_rfc3339()),
-        open_reviews: c.open_reviews,
-        precedents: Some(precedents_to_proto(c.precedents)),
-        suggestion: Some(suggestion_to_proto(c.suggestion)),
-    }
-}
 
 #[cfg(test)]
 #[path = "tests/actions.rs"]
 mod tests;
+
+

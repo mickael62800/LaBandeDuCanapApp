@@ -94,15 +94,11 @@ pub async fn handle_command(ctx: &Context, command: &CommandInteraction) {
         "unlock" => commands::channel_control::handle_unlock(ctx, command).await,
         "slowmode" => commands::channel_control::handle_slowmode(ctx, command).await,
         "history" => commands::history::handle(ctx, command).await,
-        "note" => commands::notes::handle(ctx, command).await,
         "call" => commands::call::handle(ctx, command).await,
         "signalement" => commands::card::handle(ctx, command).await,
         "context" => commands::context::handle(ctx, command).await,
-        "copilote" => commands::copilote::handle(ctx, command).await,
         "appeal" => commands::appeal::handle(ctx, command).await,
-        "expirations" => commands::expirations::handle(ctx, command).await,
         "compare" => commands::compare::handle(ctx, command).await,
-        "modstats" => commands::modstats::handle(ctx, command).await,
         "evidence" => commands::evidence::handle(ctx, command).await,
         "review" => commands::review::handle(ctx, command).await,
         "template" => commands::template::handle(ctx, command).await,
@@ -369,3 +365,6 @@ pub fn spawn_background(ctx: Context) {
         .await;
     });
 }
+
+
+

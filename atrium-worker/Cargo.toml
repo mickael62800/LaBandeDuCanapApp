@@ -5,6 +5,7 @@ edition = "2021"
 description = "Worker asynchrone pour l'IA d'accueil Atrium - planifie et génère la météo de l'ambiance du serveur"
 
 [dependencies]
+platform-common-worker = { path = "../platform-common-worker" }
 atrium-core = { path = "../atrium-core" }
 dotenvy = { workspace = true }
 reqwest = { workspace = true }
@@ -19,3 +20,5 @@ uuid = { workspace = true }
 
 [lints]
 workspace = true
+
+

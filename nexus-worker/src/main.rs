@@ -4,7 +4,6 @@
 //! endpoints internes de nexus-api (`/api/games/internal/jobs/{job}`), qui
 //! porte toute la logique metier. Config simple par variables d'environnement.
 
-mod common;
 mod game_portal;
 
 /// Lit une variable d'env u64, sinon retourne le defaut (valeur invalide
@@ -51,3 +50,4 @@ async fn main() {
     }
     tracing::info!("signal recu — arret de nexus-worker");
 }
+

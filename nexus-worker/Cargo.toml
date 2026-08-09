@@ -5,6 +5,7 @@ edition = "2021"
 description = "Worker asynchrone (tokio) de la plateforme jeux Nexus — jobs de fond autour de nexus-core"
 
 [dependencies]
+platform-common-worker = { path = "../platform-common-worker" }
 nexus-core = { path = "../nexus-core" }
 dotenvy = { workspace = true }
 reqwest = { workspace = true }
@@ -16,3 +17,5 @@ tracing-subscriber = { workspace = true }
 
 [lints]
 workspace = true
+
+

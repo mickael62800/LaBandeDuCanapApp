@@ -60,28 +60,8 @@ pub async fn public_pulse(
 ) -> Result<Json<PulseDto>, ApiError> {
     ensure_guild_id(&guild_id)?;
 
-    let anniversaries = vec![];
-
-    let newcomers = vec![];
-
     Ok(Json(PulseDto {
-        anniversaries: anniversaries
-            .into_iter()
-            .map(|a| AnniversaryDto {
-                username: a.username,
-                avatar: a.avatar,
-                years: a.years,
-                joined_at: a.joined_at.to_rfc3339(),
-            })
-            .collect(),
-        newcomers: newcomers
-            .into_iter()
-            .map(|m| NewcomerDto {
-                username: m.display_name.unwrap_or(m.username),
-                avatar: m.avatar,
-                joined_at: m.joined_at.map(|d| d.to_rfc3339()),
-            })
-            .collect(),
+        anniversaries: vec![],
+        newcomers: vec![],
     }))
 }
-

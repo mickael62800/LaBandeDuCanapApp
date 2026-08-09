@@ -48,7 +48,7 @@ pub async fn run(pool: &PgPool, redis: &redis::Client, query_limit: i64) -> Resu
         serde_json::to_string(&user_ids).map_err(|e| format!("serialize user_ids: {e}"))?;
 
     // 2. Push dans Redis (SET avec TTL)
-    let mut conn = crate::common::redis_helpers::get_conn(redis).await?;
+    let mut conn = platform_common_worker::redis_helpers::get_conn(redis).await?;
 
     use redis::AsyncCommands;
     conn.set_ex::<_, _, ()>(REDIS_KEY, &serialized, REDIS_TTL_SECS)
@@ -65,7 +65,7 @@ pub async fn run(pool: &PgPool, redis: &redis::Client, query_limit: i64) -> Resu
     });
 
     let event_str = event_payload.to_string();
-    let res = crate::common::redis_helpers::xadd_event(&mut conn, &event_str).await;
+    let res = platform_common_worker::redis_helpers::xadd_event(&mut conn, &event_str).await;
 
     if let Err(e) = res {
         warn!(error = %e, "XADD watched_users_refreshed failed");
@@ -74,3 +74,4 @@ pub async fn run(pool: &PgPool, redis: &redis::Client, query_limit: i64) -> Resu
     info!(count, "watched_users cache refreshed");
     Ok(())
 }
+

@@ -15,9 +15,7 @@ service ModerationService {
   rpc GetHistory(GetHistoryRequest) returns (UserHistory);
   // Copilote de moderation (lecture seule, consultatif) : contexte d'un membre
   // et suggestion de sanction proportionnee. Chemin bot/interne de confiance ;
-  // le bot verifie la permission de moderation Discord avant d'appeler.
-  rpc GetMemberContext(GetMemberContextRequest) returns (MemberModerationContext);
-  // Annule une action (/unwarn) : applique l'effet Discord inverse
+  // le bot verifie la permission de moderation Discord avant d'appeler.  // Annule une action (/unwarn) : applique l'effet Discord inverse
   // (unban / retrait de timeout) puis supprime la ligne. L'API decide de
   // l'effet a partir du type d'action, le bot n'a rien a orchestrer.
   rpc CancelAction(CancelActionRequest) returns (CancelActionResponse);
@@ -28,11 +26,7 @@ service ModerationService {
   // Quota d'actions par moderateur sur une fenetre glissante.
   rpc CountModeratorActions(CountModeratorActionsRequest) returns (CountModeratorActionsResponse);
 
-  // ── Dossier et suivi ──
-  rpc ListActiveReminders(ListActiveRemindersRequest) returns (ListActiveRemindersResponse);
-  rpc GetModStats(GetModStatsRequest) returns (GetModStatsResponse);
-  rpc AddNote(AddNoteRequest) returns (AddNoteResponse);
-
+  // ── Dossier et suivi ──  rpc GetModStats(GetModStatsRequest) returns (GetModStatsResponse);
   // ── Preuves ──
   rpc AddEvidence(AddEvidenceRequest) returns (EvidenceEntry);
   rpc ListEvidence(ListEvidenceRequest) returns (ListEvidenceResponse);
@@ -111,14 +105,6 @@ message UserHistory {
 
 // ── Copilote de moderation ──
 
-message GetMemberContextRequest {
-  string guild_id = 1;
-  string user_id = 2;
-  // Fenetre d'agregation en jours (defaut 90, borne 1..=365 cote service).
-  int64 lookback_days = 3;
-  // Nombre minimal de precedents pour suivre la jurisprudence (defaut 3).
-  uint32 min_precedents = 4;
-}
 
 // Compte d'une action (sanction par type OU precedent par action retenue).
 message ActionCount {
@@ -143,15 +129,6 @@ message SanctionSuggestion {
   uint32 precedent_count = 4;
 }
 
-message MemberModerationContext {
-  uint32 active_strikes = 1;
-  repeated ActionCount sanctions_by_type = 2;
-  // RFC3339, absent si aucune sanction.
-  optional string last_sanction_at = 3;
-  uint32 open_reviews = 4;
-  PrecedentDistribution precedents = 5;
-  SanctionSuggestion suggestion = 6;
-}
 
 message CancelActionRequest {
   string action_id = 1;
@@ -188,9 +165,6 @@ message CountModeratorActionsResponse {
 
 // ── Sanctions temporaires actives ──
 
-message ListActiveRemindersRequest {
-  string guild_id = 1;
-}
 
 // Sous-ensemble consomme par `/expirations`. Les champs d'audit
 // (identifiants, horodatages de creation) restent cote HTTP pour le web.
@@ -203,9 +177,6 @@ message SanctionReminder {
   string expires_at = 5;
 }
 
-message ListActiveRemindersResponse {
-  repeated SanctionReminder reminders = 1;
-}
 
 // ── Statistiques moderateurs ──
 
@@ -231,18 +202,7 @@ message GetModStatsResponse {
 
 // ── Notes ──
 
-message AddNoteRequest {
-  string guild_id = 1;
-  string user_id = 2;
-  string author_id = 3;
-  string author_name = 4;
-  string content = 5;
-  string category = 6;
-}
 
-message AddNoteResponse {
-  string id = 1;
-}
 
 // ── Preuves ──
 
@@ -350,3 +310,4 @@ message UserInfractionCounts {
   // Toutes natures confondues, y compris celles non detaillees ci-dessus.
   uint32 total = 5;
 }
+

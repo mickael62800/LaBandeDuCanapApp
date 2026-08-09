@@ -5,6 +5,7 @@ edition = "2021"
 description = "Worker unifie DiscordSentinel — orchestrateur de tous les jobs periodiques (cleanup, moderation, analytics, tickets, etc.) dans un seul binaire. Fusion progressive des anciens workers eclates."
 
 [dependencies]
+platform-common-worker = { path = "../platform-common-worker" }
 # Coeur hexagonal partagé. Le worker n'instancie pas les adapters/use cases de
 # sentinel-api (pas de dépendance croisée) : il assume du SQL ensembliste
 # (scans, claims atomiques `UPDATE ... WHERE`, XADD) et importe du core les
@@ -34,3 +35,5 @@ axum = "0.8"
 # jemalloc en allocateur global (Linux/macOS uniquement).
 [target.'cfg(not(target_env = "msvc"))'.dependencies]
 tikv-jemallocator = "0.6"
+
+

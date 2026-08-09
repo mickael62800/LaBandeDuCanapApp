@@ -2,7 +2,7 @@ use sqlx::PgPool;
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
-use crate::common::is_worker_enabled;
+use platform_common_worker::is_worker_enabled;
 
 /// Auto-deban des bans de verification d'age arrives a echeance.
 ///
@@ -44,7 +44,7 @@ pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
         return Ok(());
     }
 
-    let mut conn = crate::common::redis_helpers::get_conn(redis).await?;
+    let mut conn = platform_common_worker::redis_helpers::get_conn(redis).await?;
 
     for ban in &due {
         if !is_worker_enabled(pool, &ban.guild_id, "welcome-bot").await {
@@ -61,7 +61,7 @@ pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
             }
         });
 
-        if let Err(e) = crate::common::redis_helpers::xadd_event_json(&mut conn, &payload).await {
+        if let Err(e) = platform_common_worker::redis_helpers::xadd_event_json(&mut conn, &payload).await {
             warn!(id = %ban.id, error = %e, "XADD age_ban_lift failed");
         }
 
@@ -76,3 +76,4 @@ pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
     info!(count = due.len(), "Bans d'age echus traites");
     Ok(())
 }
+

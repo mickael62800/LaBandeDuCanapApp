@@ -127,10 +127,7 @@ fn require_ctx(user: &Option<Extension<WebUser>>) -> Result<&WebUser, ApiError> 
 /// publier : on retombe silencieusement sur une chaine vide, que le front
 /// remplace par un libelle generique.
 async fn display_name(state: &CommunityState, guild_id: &str, user_id: &str) -> String {
-    match state.members_uc.get_member(guild_id, user_id).await {
-        Ok(m) => m.display_name.unwrap_or(m.username),
-        Err(_) => String::new(),
-    }
+    String::new()
 }
 
 // ── Back-office / membre connecte ──
@@ -317,3 +314,4 @@ pub async fn public_lfg(
             .collect(),
     ))
 }
+

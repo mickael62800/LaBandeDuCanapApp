@@ -1,7 +1,6 @@
 use serenity::all::{
-    ChannelId, CommandInteraction, ComponentInteraction, Context, CreateEmbed,
+    CommandInteraction, Context, CreateEmbed,
     CreateInteractionResponse, CreateInteractionResponseFollowup, CreateInteractionResponseMessage,
-    ModalInteraction,
 };
 use tracing::warn;
 

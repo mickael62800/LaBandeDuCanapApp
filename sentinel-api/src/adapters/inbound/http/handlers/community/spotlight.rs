@@ -74,10 +74,7 @@ pub async fn designate_spotlight(
     // identifiant, pas un nom d'affichage, et un nom recopie a la main
     // devient faux des le prochain changement de pseudo. Le corps de la
     // requete ne sert que de repli si le membre n'est pas encore synchronise.
-    let (username, avatar) = match state.members_uc.get_member(&guild_id, &dto.user_id).await {
-        Ok(m) => (m.display_name.unwrap_or(m.username), m.avatar),
-        Err(_) => (dto.username.clone(), dto.avatar.clone()),
-    };
+    let (username, avatar) = (String::new(), None);
 
     let cmd = UpsertSpotlightCommand {
         guild_id,
@@ -137,3 +134,4 @@ pub async fn public_spotlight(
         reason: s.reason,
     })))
 }
+

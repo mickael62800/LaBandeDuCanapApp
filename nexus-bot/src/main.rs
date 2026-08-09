@@ -25,7 +25,6 @@ use std::sync::Arc;
 
 use serenity::all::ButtonStyle;
 use serenity::all::Command;
-use serenity::all::CommandDataOptionValue;
 use serenity::all::CommandInteraction;
 use serenity::all::CommandOptionType;
 use serenity::all::Context;

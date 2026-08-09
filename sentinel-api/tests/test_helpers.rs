@@ -716,56 +716,7 @@ impl sentinel_core::ports::inbound::audit::manage_snapshots::ManageSnapshotsUseC
     }
 }
 
-pub struct StubLevels;
-#[async_trait]
-impl ManageLevelsUseCase for StubLevels {
-    async fn record_text_activity(
-        &self,
-        _: manage_levels::RecordTextActivityCommand,
-    ) -> Result<manage_levels::RecordActivityResult, DomainError> {
-        unimplemented!()
-    }
-    async fn record_voice_activity(
-        &self,
-        _: manage_levels::RecordVoiceActivityCommand,
-    ) -> Result<manage_levels::RecordActivityResult, DomainError> {
-        unimplemented!()
-    }
-    async fn add_xp(
-        &self,
-        _: manage_levels::AddXpCommand,
-    ) -> Result<manage_levels::AddXpResult, DomainError> {
-        unimplemented!()
-    }
-    async fn get_user_level(&self, _: &str, _: &str) -> Result<UserLevel, DomainError> {
-        unimplemented!()
-    }
-    async fn get_leaderboard(&self, _: &str, _: i64) -> Result<Vec<UserLevel>, DomainError> {
-        unimplemented!()
-    }
-    async fn get_leaderboard_by_source(
-        &self,
-        _: &str,
-        _: XpSource,
-        _: i64,
-    ) -> Result<Vec<UserLevel>, DomainError> {
-        unimplemented!()
-    }
-    async fn set_user_xp(
-        &self,
-        _: manage_levels::SetUserXpCommand,
-    ) -> Result<UserLevel, DomainError> {
-        unimplemented!()
-    }
-    async fn reset_user_xp(
-        &self,
-        _: &str,
-        _: &str,
-        _: manage_levels::ResetTarget,
-    ) -> Result<UserLevel, DomainError> {
-        unimplemented!()
-    }
-}
+
 
 pub struct StubAnnouncements;
 #[async_trait]
@@ -1149,172 +1100,15 @@ impl sentinel_core::ports::inbound::community::manage_confessions::ManageConfess
     }
 }
 
-pub struct StubRolePanels;
-#[async_trait]
-impl ManageRolePanelsUseCase for StubRolePanels {
-    async fn create_panel(
-        &self,
-        _: manage_role_panels::CreateRolePanelCommand,
-    ) -> Result<RolePanelDetail, DomainError> {
-        unimplemented!()
-    }
-    async fn get_panel(&self, _: &str) -> Result<RolePanelDetail, DomainError> {
-        unimplemented!()
-    }
-    async fn get_panel_by_message(&self, _: &str) -> Result<Option<RolePanelDetail>, DomainError> {
-        unimplemented!()
-    }
-    async fn list_panels(&self, _: &str) -> Result<Vec<RolePanel>, DomainError> {
-        unimplemented!()
-    }
-    async fn set_message_id(
-        &self,
-        _: manage_role_panels::SetMessageIdCommand,
-    ) -> Result<(), DomainError> {
-        unimplemented!()
-    }
-    async fn delete_panel(&self, _: &str) -> Result<(), DomainError> {
-        unimplemented!()
-    }
-    async fn list_auto_roles(&self, _: &str) -> Result<Vec<AutoRole>, DomainError> {
-        unimplemented!()
-    }
-    async fn add_auto_role(
-        &self,
-        _: manage_role_panels::CreateAutoRoleCommand,
-    ) -> Result<AutoRole, DomainError> {
-        unimplemented!()
-    }
-    async fn delete_auto_role(&self, _: &str, _: &str) -> Result<(), DomainError> {
-        unimplemented!()
-    }
-}
 
-pub struct StubReminders;
-#[async_trait]
-impl ManageRemindersUseCase for StubReminders {
-    async fn create_reminder(
-        &self,
-        cmd: manage_reminders::CreateReminderCommand,
-    ) -> Result<SanctionReminder, DomainError> {
-        Ok(SanctionReminder {
-            id: Uuid::new_v4(),
-            guild_id: cmd.guild_id,
-            moderator_id: cmd.moderator_id,
-            moderator_name: cmd.moderator_name,
-            target_id: cmd.target_id,
-            target_name: cmd.target_name,
-            action_type: cmd.action_type,
-            reason: cmd.reason,
-            action_id: cmd.action_id,
-            remind_at: chrono::Utc::now(),
-            expires_at: chrono::Utc::now(),
-            status: "pending".into(),
-            created_at: chrono::Utc::now(),
-        })
-    }
-    async fn get_pending_reminders(&self) -> Result<Vec<SanctionReminder>, DomainError> {
-        Ok(vec![])
-    }
-    async fn mark_sent(&self, _: Uuid) -> Result<(), DomainError> {
-        Ok(())
-    }
-    async fn cancel_for_action(&self, _: Uuid) -> Result<(), DomainError> {
-        Ok(())
-    }
-    async fn list_by_guild(&self, _: &str) -> Result<Vec<SanctionReminder>, DomainError> {
-        Ok(vec![])
-    }
-}
 
-pub struct StubNotes;
-#[async_trait]
-impl ManageNotesUseCase for StubNotes {
-    async fn add_note(&self, _: manage_notes::AddNoteCommand) -> Result<UserNote, DomainError> {
-        unimplemented!()
-    }
-    async fn get_notes(&self, _: &str, _: &str) -> Result<Vec<UserNote>, DomainError> {
-        Ok(vec![])
-    }
-    async fn delete_note(&self, _: &str) -> Result<(), DomainError> {
-        Ok(())
-    }
-    async fn note_guild_id(&self, _: &str) -> Result<Option<String>, DomainError> {
-        Ok(None)
-    }
-}
 
-pub struct StubStrikes;
-#[async_trait]
-impl ManageStrikesUseCase for StubStrikes {
-    async fn add_strike(
-        &self,
-        cmd: manage_strikes::AddStrikeCommand,
-    ) -> Result<StrikeResult, DomainError> {
-        Ok(StrikeResult {
-            strike: UserStrike {
-                id: Uuid::new_v4(),
-                guild_id: cmd.guild_id,
-                user_id: cmd.user_id,
-                reason: cmd.reason,
-                source: cmd.source,
-                infraction_id: None,
-                expires_at: None,
-                created_at: chrono::Utc::now(),
-            },
-            active_count: 1,
-            escalation_action: None,
-            escalation_duration: None,
-        })
-    }
-    async fn get_active_strikes(&self, _: &str, _: &str) -> Result<Vec<UserStrike>, DomainError> {
-        Ok(vec![])
-    }
-    async fn reset_strikes(&self, _: &str, _: &str) -> Result<(), DomainError> {
-        Ok(())
-    }
-    async fn get_config(&self, guild_id: &str) -> Result<StrikeConfig, DomainError> {
-        Ok(StrikeConfig::default_for_guild(guild_id))
-    }
-    async fn save_config(
-        &self,
-        _: manage_strikes::SaveStrikeConfigCommand,
-    ) -> Result<StrikeConfig, DomainError> {
-        unimplemented!()
-    }
-}
 
-pub struct StubModerationCopilot;
-#[async_trait]
-impl sentinel_core::ports::inbound::moderation::moderation_copilot::ModerationCopilotUseCase
-    for StubModerationCopilot
-{
-    async fn get_member_context(
-        &self,
-        _guild_id: &str,
-        _user_id: &str,
-        _lookback_days: i64,
-        _min_precedents: u32,
-    ) -> Result<
-        sentinel_core::domain::entities::moderation::copilot::MemberModerationContext,
-        DomainError,
-    > {
-        use sentinel_core::domain::entities::moderation::copilot::*;
-        Ok(MemberModerationContext {
-            active_strikes: 0,
-            sanctions_by_type: vec![],
-            last_sanction_at: None,
-            open_reviews: 0,
-            precedents: PrecedentDistribution::default(),
-            suggestion: SanctionSuggestion {
-                action: None,
-                basis: SuggestionBasis::Insufficient,
-                rationale: "stub".into(),
-                precedent_count: 0,
-            },
-        })
-    }
-}
+
+
+
+
+
 
 // ══════════════════════════════════════════════════════════
 // Stub Repositories (outbound)
@@ -1479,77 +1273,7 @@ impl DiscordRoleRepository for StubDiscordRoleRepo {
     }
 }
 
-pub struct StubMembers;
-#[async_trait]
-impl ManageMembersUseCase for StubMembers {
-    async fn list_members(&self, _: &str) -> Result<Vec<GuildMember>, DomainError> {
-        unimplemented!()
-    }
-    async fn get_member(&self, _: &str, _: &str) -> Result<GuildMember, DomainError> {
-        unimplemented!()
-    }
-    async fn get_member_summary(&self, _: &str, _: &str) -> Result<MemberSummary, DomainError> {
-        unimplemented!()
-    }
-    async fn sync_members(
-        &self,
-        _: manage_members::SyncMembersCommand,
-    ) -> Result<u64, DomainError> {
-        unimplemented!()
-    }
-    async fn register_member(
-        &self,
-        _: manage_members::RegisterMemberCommand,
-    ) -> Result<(), DomainError> {
-        unimplemented!()
-    }
-    async fn remove_member(&self, _: &str, _: &str) -> Result<(), DomainError> {
-        unimplemented!()
-    }
-    async fn update_member(
-        &self,
-        _: manage_members::UpdateMemberCommand,
-    ) -> Result<(), DomainError> {
-        unimplemented!()
-    }
-    async fn reset_member(
-        &self,
-        _: &str,
-        _: &str,
-    ) -> Result<Vec<(&'static str, u64)>, DomainError> {
-        unimplemented!()
-    }
-    async fn leave_member(&self, _: &str, _: &str) -> Result<u64, DomainError> {
-        unimplemented!()
-    }
-    async fn rejoin_member(&self, _: &str, _: &str) -> Result<u64, DomainError> {
-        unimplemented!()
-    }
 
-    // Lectures servant la page membre : hors du perimetre de ces tests.
-    async fn upcoming_anniversaries(
-        &self,
-        _: &str,
-        _: i32,
-    ) -> Result<
-        Vec<sentinel_core::domain::entities::community::milestone::JoinAnniversary>,
-        DomainError,
-    > {
-        Ok(vec![])
-    }
-
-    async fn recent_joins(
-        &self,
-        _: &str,
-        _: i32,
-        _: i64,
-    ) -> Result<
-        Vec<sentinel_core::domain::entities::community::guild_member::GuildMember>,
-        DomainError,
-    > {
-        Ok(vec![])
-    }
-}
 
 // ── Stubs pour les nouveaux repos ──
 
@@ -2236,31 +1960,7 @@ impl sentinel_core::ports::inbound::system::lookup_geoip::LookupGeoIpUseCase for
 // Stubs additionnels (champs AppState recents)
 // ══════════════════════════════════════════════════════════
 
-pub struct StubBump;
-#[async_trait]
-impl sentinel_core::ports::inbound::community::manage_bump::ManageBumpUseCase for StubBump {
-    async fn record_bump(
-        &self,
-        _: sentinel_core::ports::inbound::community::manage_bump::RecordBumpCommand,
-    ) -> Result<sentinel_core::domain::entities::community::bump::BumpReward, DomainError> {
-        Err(DomainError::Internal("stub".into()))
-    }
-    async fn due_reminders(
-        &self,
-    ) -> Result<Vec<sentinel_core::domain::entities::community::bump::DueReminder>, DomainError>
-    {
-        Ok(vec![])
-    }
-    async fn mark_reminder_sent(&self, _: &str, _: Option<String>) -> Result<(), DomainError> {
-        Ok(())
-    }
-    async fn guild_status(
-        &self,
-        _: &str,
-    ) -> Result<Vec<sentinel_core::domain::entities::community::bump::BumpState>, DomainError> {
-        Ok(vec![])
-    }
-}
+
 
 pub struct StubEligibility;
 #[async_trait]
@@ -2753,9 +2453,9 @@ fn base_state() -> AppState {
         infractions_uc: Arc::new(StubInfractions),
         moderation_uc: Arc::new(StubModeration),
         modstats_uc: Arc::new(sentinel_core::application::moderation::read_modstats_service::ReadModstatsService::new(Arc::new(StubModstatsRepo))),
-        notes_uc: Arc::new(StubNotes),
-        reminders_uc: Arc::new(StubReminders),
-        strikes_uc: Arc::new(StubStrikes),
+        
+        
+        
         moderation_copilot_uc: Arc::new(StubModerationCopilot),
         assess_target_risk_uc: Arc::new(
             sentinel_core::application::moderation::assess_target_risk_service::AssessTargetRiskService::new(
@@ -2828,13 +2528,13 @@ fn base_state() -> AppState {
         confessions_uc: Arc::new(StubConfessions),
         announcements_uc: Arc::new(StubAnnouncements),
         embeds_uc: Arc::new(StubEmbeds),
-        bump_uc: Arc::new(StubBump),
+        
         presence_uc: Arc::new(StubCommunityLife),
-        members_uc: Arc::new(StubMembers),
-        levels_uc: Arc::new(StubLevels),
+        
+        
         monthly_ranking_uc: Arc::new(StubMonthlyRanking),
-        role_panels_uc: Arc::new(StubRolePanels),
-        voice_channels_uc: Arc::new(StubVoiceChannels),
+        
+        
         welcome_config_uc: Arc::new(
             sentinel_core::application::community::manage_welcome_config_service::ManageWelcomeConfigService::new(
                 Arc::new(StubWelcomeConfigRepo),
@@ -2952,11 +2652,7 @@ pub fn build_test_state_tickets(tickets_uc: Arc<dyn ManageTicketsUseCase>) -> Ap
 }
 
 /// Construit un AppState avec un mock strikes injecte.
-pub fn build_test_state_strikes(strikes_uc: Arc<dyn ManageStrikesUseCase>) -> AppState {
-    let mut state = base_state();
-    state.moderation.strikes_uc = strikes_uc;
-    state
-}
+
 
 /// Construit un AppState avec un mock rules injecte.
 pub fn build_test_state_rules(rules_uc: Arc<dyn ManageRulesUseCase>) -> AppState {
@@ -3012,11 +2708,7 @@ pub fn build_test_state_security(security_uc: Arc<dyn ManageSecurityUseCase>) ->
 }
 
 /// Construit un AppState avec un mock levels use case injecte.
-pub fn build_test_state_levels(levels_uc: Arc<dyn ManageLevelsUseCase>) -> AppState {
-    let mut state = base_state();
-    state.community.levels_uc = levels_uc;
-    state
-}
+
 
 /// Construit un AppState avec un mock stats use case injecte.
 pub fn build_test_state_stats(stats_uc: Arc<dyn ManageStatsUseCase>) -> AppState {
@@ -3056,11 +2748,7 @@ pub fn build_test_state_analytics(analytics_repo: Arc<dyn AnalyticsRepository>) 
 }
 
 /// Construit un AppState avec un mock role panels use case injecte.
-pub fn build_test_state_role_panels(role_panels_uc: Arc<dyn ManageRolePanelsUseCase>) -> AppState {
-    let mut state = base_state();
-    state.community.role_panels_uc = role_panels_uc;
-    state
-}
+
 
 /// Construit un AppState avec un mock welcome config repository injecte.
 /// Le repo est wrappe dans le service applicatif pour exposer le use case
@@ -3197,141 +2885,4 @@ impl DiscordApi for MockDiscordApi {
 
 // ── Stub Voice Channels (needed for base_state) ──
 
-pub struct StubVoiceChannels;
-#[async_trait]
-impl ManageVoiceChannelsUseCase for StubVoiceChannels {
-    async fn list_all_channels(&self) -> Result<Vec<VoiceChannel>, DomainError> {
-        unimplemented!()
-    }
-    async fn list_channels(&self, _: &str) -> Result<Vec<VoiceChannel>, DomainError> {
-        unimplemented!()
-    }
-    async fn list_history_channels(
-        &self,
-        _: &str,
-        _: i64,
-    ) -> Result<Vec<VoiceChannel>, DomainError> {
-        unimplemented!()
-    }
-    async fn get_voice_config(&self, _: &str) -> Result<VoiceChannelConfig, DomainError> {
-        Ok(VoiceChannelConfig::default())
-    }
-    async fn get_channel_detail(&self, _: &str) -> Result<VoiceChannelDetail, DomainError> {
-        unimplemented!()
-    }
-    async fn create_channel(
-        &self,
-        _: CreateVoiceChannelCommand,
-    ) -> Result<VoiceChannel, DomainError> {
-        unimplemented!()
-    }
-    async fn close_channel(&self, _: &str) -> Result<(), DomainError> {
-        unimplemented!()
-    }
-    async fn delete_channel(&self, _: &str) -> Result<(), DomainError> {
-        unimplemented!()
-    }
-    async fn find_guild_id(&self, _: &str) -> Result<Option<String>, DomainError> {
-        Ok(None)
-    }
-    async fn purge_channel(&self, _: &str) -> Result<bool, DomainError> {
-        Ok(false)
-    }
-    async fn purge_history(&self, _: &str) -> Result<u64, DomainError> {
-        Ok(0)
-    }
-    async fn update_channel(&self, _: UpdateVoiceChannelCommand) -> Result<(), DomainError> {
-        unimplemented!()
-    }
-    async fn transfer_ownership(&self, _: TransferOwnershipCommand) -> Result<(), DomainError> {
-        unimplemented!()
-    }
-    async fn add_co_admin(&self, _: ManageCoAdminCommand) -> Result<(), DomainError> {
-        unimplemented!()
-    }
-    async fn remove_co_admin(&self, _: &str, _: &str) -> Result<(), DomainError> {
-        unimplemented!()
-    }
-    async fn get_whitelist(
-        &self,
-        _: &str,
-        _: &str,
-    ) -> Result<Vec<VoiceChannelWhitelistEntry>, DomainError> {
-        unimplemented!()
-    }
-    async fn add_to_whitelist(&self, _: ManageWhitelistCommand) -> Result<(), DomainError> {
-        unimplemented!()
-    }
-    async fn remove_from_whitelist(&self, _: &str, _: &str, _: &str) -> Result<(), DomainError> {
-        unimplemented!()
-    }
-    async fn get_preset(
-        &self,
-        _: &str,
-        _: &str,
-    ) -> Result<
-        Option<sentinel_core::domain::entities::community::voice_channel::VoiceChannelPreset>,
-        DomainError,
-    > {
-        unimplemented!()
-    }
-    async fn save_preset(
-        &self,
-        _: sentinel_core::ports::inbound::community::manage_voice_channels::SavePresetCommand,
-    ) -> Result<(), DomainError> {
-        unimplemented!()
-    }
-    async fn ban_from_channel(&self, _: BanFromChannelCommand) -> Result<(), DomainError> {
-        unimplemented!()
-    }
-    async fn unban_from_channel(&self, _: &str, _: &str) -> Result<(), DomainError> {
-        unimplemented!()
-    }
-    async fn is_banned(&self, _: &str, _: &str) -> Result<bool, DomainError> {
-        unimplemented!()
-    }
-    async fn list_owner_bans(
-        &self,
-        _: &str,
-        _: &str,
-    ) -> Result<
-        Vec<sentinel_core::domain::entities::community::voice_channel::VoiceChannelBan>,
-        DomainError,
-    > {
-        unimplemented!()
-    }
-    async fn create_invite_link(
-        &self,
-        _: CreateInviteLinkCommand,
-    ) -> Result<VoiceChannelInviteLink, DomainError> {
-        unimplemented!()
-    }
-    async fn list_invite_links(&self, _: &str) -> Result<Vec<VoiceChannelInviteLink>, DomainError> {
-        unimplemented!()
-    }
-    async fn use_invite_link(
-        &self,
-        _: UseInviteLinkCommand,
-    ) -> Result<VoiceChannelInviteLink, DomainError> {
-        unimplemented!()
-    }
-    async fn revoke_invite_link(&self, _: &str, _: &str) -> Result<(), DomainError> {
-        unimplemented!()
-    }
-    async fn list_themes(&self, _: &str) -> Result<Vec<VoiceChannelTheme>, DomainError> {
-        unimplemented!()
-    }
-    async fn create_theme(&self, _: CreateThemeCommand) -> Result<VoiceChannelTheme, DomainError> {
-        unimplemented!()
-    }
-    async fn update_theme(
-        &self,
-        _: &str,
-        _: CreateThemeCommand,
-    ) -> Result<VoiceChannelTheme, DomainError> {
-        unimplemented!()
-    }
-    async fn delete_theme(&self, _: &str, _: &str) -> Result<(), DomainError> {
-        unimplemented!()
-    }
-}
+

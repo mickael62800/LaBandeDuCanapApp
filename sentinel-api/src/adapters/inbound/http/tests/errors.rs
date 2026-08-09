@@ -1,5 +1,6 @@
 use super::*;
 use axum::body::to_bytes;
+use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use sentinel_core::domain::errors::DomainError;
 

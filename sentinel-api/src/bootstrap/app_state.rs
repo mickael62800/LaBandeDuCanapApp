@@ -346,21 +346,11 @@ pub async fn build_app_state(
         cache.clone(),
         service_registry,
     ));
-    let voice_channels_uc = Arc::new(ManageVoiceChannelsService::new(
-        voice_channel_repo.clone(),
-        cache.clone(),
-        bot_config_repo.clone(),
-    ));
-    let role_panel_repo = Arc::new(PgRolePanelRepository::new(pg_pool.clone()));
-    let role_panels_uc = Arc::new(ManageRolePanelsService::new(role_panel_repo));
-    let analytics_repo = Arc::new(PgAnalyticsRepository::new(pg_pool.clone()));
+        let role_panel_repo = Arc::new(PgRolePanelRepository::new(pg_pool.clone()));
+        let analytics_repo = Arc::new(PgAnalyticsRepository::new(pg_pool.clone()));
     let daily_activity_repo = Arc::new(PgDailyActivityRepository::new(pg_pool.clone()));
     let level_repo = Arc::new(PgLevelRepository::new(pg_pool.clone()));
-    let levels_uc = Arc::new(ManageLevelsService::new(
-        level_repo,
-        bot_config_repo.clone(),
-    ));
-    let announcement_repo = Arc::new(crate::adapters::outbound::postgres::community::announcement_repository::PgAnnouncementRepository::new(pg_pool.clone()));
+        let announcement_repo = Arc::new(crate::adapters::outbound::postgres::community::announcement_repository::PgAnnouncementRepository::new(pg_pool.clone()));
     let announcements_uc: Arc<dyn sentinel_core::ports::inbound::community::manage_announcements::ManageAnnouncementsUseCase> = Arc::new(sentinel_core::application::community::manage_announcements_service::ManageAnnouncementsService::new(announcement_repo, bot_config_repo.clone()));
     let embed_repo = Arc::new(
         crate::adapters::outbound::postgres::community::embed_repository::PgEmbedRepository::new(
@@ -394,10 +384,7 @@ pub async fn build_app_state(
             confession_repo,
         ),
     );
-    let notes_uc = Arc::new(ManageNotesService::new(notes_repo));
-    let reminders_uc = Arc::new(ManageRemindersService::new(reminder_repo));
-    let strikes_uc = Arc::new(ManageStrikesService::new(strike_repo.clone()));
-    // Copilote de moderation (lecture seule) : reutilise le use case strikes
+                // Copilote de moderation (lecture seule) : reutilise le use case strikes
     // (ladder d'escalade) + un port focalise pour l'historique & la
     // jurisprudence automod (anti-ancrage : exclut les reviews 'voting').
     let moderation_copilot_repo: Arc<
@@ -695,13 +682,7 @@ pub async fn build_app_state(
         notes_uc.clone(),
     ));
 
-    let members_uc = Arc::new(ManageMembersService::new(
-        member_repo,
-        infractions_uc.clone(),
-        moderation_uc.clone(),
-        stats_uc.clone(),
-    ));
-
+    
     // ── Discord API service : instance deja creee plus haut.
     // On re-declare ici pour garder la variable accessible dans la suite du
     // bootstrap (AppState.discord_api).
@@ -759,10 +740,6 @@ pub async fn build_app_state(
         infractions_uc: infractions_uc.clone(),
         moderation_uc: moderation_uc.clone(),
         modstats_uc: modstats_uc.clone(),
-        notes_uc: notes_uc.clone(),
-        reminders_uc: reminders_uc.clone(),
-        strikes_uc: strikes_uc.clone(),
-        moderation_copilot_uc: moderation_copilot_uc.clone(),
         assess_target_risk_uc: assess_target_risk_uc.clone(),
         automod_reviews_uc: automod_reviews_uc.clone(),
         automod_adaptive_slowmode_repo: automod_adaptive_slowmode_repo.clone(),
@@ -847,11 +824,7 @@ pub async fn build_app_state(
         announcements_uc: announcements_uc.clone(),
         embeds_uc: embeds_uc.clone(),
         presence_uc: presence_uc.clone(),
-        members_uc: members_uc.clone(),
-        levels_uc: levels_uc.clone(),
         monthly_ranking_uc: monthly_ranking_uc.clone(),
-        role_panels_uc: role_panels_uc.clone(),
-        voice_channels_uc: voice_channels_uc.clone(),
         welcome_config_uc: welcome_config_uc.clone(),
         eligibility_uc: eligibility_uc.clone(),
         age_check_uc: age_check_uc.clone(),

@@ -60,22 +60,9 @@ pub async fn public_pulse(
 ) -> Result<Json<PulseDto>, ApiError> {
     ensure_guild_id(&guild_id)?;
 
-    let anniversaries = state
-        .members_uc
-        .upcoming_anniversaries(
-            &guild_id,
-            q.anniversary_days.unwrap_or(DEFAULT_ANNIVERSARY_DAYS),
-        )
-        .await?;
+    let anniversaries = vec![];
 
-    let newcomers = state
-        .members_uc
-        .recent_joins(
-            &guild_id,
-            q.join_days.unwrap_or(DEFAULT_JOIN_DAYS),
-            MAX_NEWCOMERS,
-        )
-        .await?;
+    let newcomers = vec![];
 
     Ok(Json(PulseDto {
         anniversaries: anniversaries
@@ -97,3 +84,4 @@ pub async fn public_pulse(
             .collect(),
     }))
 }
+

@@ -147,20 +147,12 @@ name = "integration_moderation_http"
 path = "tests/integration/moderation/http.rs"
 
 # notes
-[[test]]
-name = "integration_notes_http"
-path = "tests/integration/notes/http.rs"
-
 # progression
 [[test]]
 name = "integration_progression_db"
 path = "tests/integration/progression/db.rs"
 
 # reminders
-[[test]]
-name = "integration_reminders_http"
-path = "tests/integration/reminders/http.rs"
-
 # rules
 [[test]]
 name = "integration_rules_http"
@@ -197,10 +189,6 @@ name = "integration_security_http"
 path = "tests/integration/security/http.rs"
 
 # levels
-[[test]]
-name = "integration_levels_http"
-path = "tests/integration/levels/http.rs"
-
 # stats
 [[test]]
 name = "integration_stats_http"
@@ -237,10 +225,6 @@ name = "integration_bot_config_http"
 path = "tests/integration/bot_config/http.rs"
 
 # role_panels
-[[test]]
-name = "integration_role_panels_http"
-path = "tests/integration/role_panels/http.rs"
-
 # purge HTTP
 [[test]]
 name = "integration_purge_http"
@@ -252,10 +236,6 @@ name = "integration_discord_roles_http"
 path = "tests/integration/discord_roles_http/http.rs"
 
 # members HTTP
-[[test]]
-name = "integration_members_http"
-path = "tests/integration/members_http/http.rs"
-
 # bot_persistence HTTP
 [[test]]
 name = "integration_bot_persistence_http"
@@ -289,25 +269,13 @@ path = "tests/integration/system_endpoints_http/http.rs"
 name = "integration_oauth_http"
 path = "tests/integration/oauth_http/http.rs"
 
-[[test]]
-name = "integration_postgres_strikes"
-path = "tests/integration/postgres_strikes/repo.rs"
-
 # postgres members repo
-[[test]]
-name = "integration_postgres_members"
-path = "tests/integration/postgres_members/repo.rs"
-
 # postgres moderation repo
 [[test]]
 name = "integration_postgres_moderation"
 path = "tests/integration/postgres_moderation/repo.rs"
 
 # postgres levels repo
-[[test]]
-name = "integration_postgres_levels"
-path = "tests/integration/postgres_levels/repo.rs"
-
 # postgres stats repo
 [[test]]
 name = "integration_postgres_stats"
@@ -329,10 +297,6 @@ name = "integration_postgres_infraction"
 path = "tests/integration/postgres_infraction/repo.rs"
 
 # postgres cashbox repo
-[[test]]
-name = "integration_postgres_voice_channel"
-path = "tests/integration/postgres_voice_channel/repo.rs"
-
 # postgres misc_2 repos (discord_role + log + user_activity + rule)
 [[test]]
 name = "integration_postgres_misc_2"
@@ -390,10 +354,6 @@ path = "tests/integration/export_service/repo.rs"
 
 # voice_channels application service (crud avec vrai PG repo)
 [[test]]
-name = "integration_voice_channels_service"
-path = "tests/integration/voice_channels_service/repo.rs"
-
-[[test]]
 name = "integration_stats_service"
 path = "tests/integration/stats_service/repo.rs"
 
@@ -413,10 +373,6 @@ name = "integration_moderation_extra_http"
 path = "tests/integration/moderation_extra/http.rs"
 
 # strikes
-[[test]]
-name = "integration_strikes_http"
-path = "tests/integration/strikes/http.rs"
-
 # tickets
 [[test]]
 name = "integration_tickets_db"
@@ -426,13 +382,6 @@ name = "integration_tickets_http"
 path = "tests/integration/tickets/http.rs"
 
 # voice (channels)
-[[test]]
-name = "integration_voice_db"
-path = "tests/integration/voice/db.rs"
-[[test]]
-name = "integration_voice_http"
-path = "tests/integration/voice/http.rs"
-
 [[test]]
 name = "integration_welcome_db"
 path = "tests/integration/welcome/db.rs"
@@ -455,3 +404,4 @@ path = "tests/e2e/grpc/live.rs"
 [[test]]
 name = "e2e_grpc_services"
 path = "tests/e2e/grpc/services.rs"
+

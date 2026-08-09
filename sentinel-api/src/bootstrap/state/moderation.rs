@@ -8,12 +8,8 @@ use sentinel_core::ports::inbound::moderation::cancel_action::CancelModerationAc
 use sentinel_core::ports::inbound::moderation::manage_automod_reviews::ManageAutomodReviewsUseCase;
 use sentinel_core::ports::inbound::moderation::manage_infractions::ManageInfractionsUseCase;
 use sentinel_core::ports::inbound::moderation::manage_moderation::ManageModerationUseCase;
-use sentinel_core::ports::inbound::moderation::manage_notes::ManageNotesUseCase;
-use sentinel_core::ports::inbound::moderation::manage_reminders::ManageRemindersUseCase;
 use sentinel_core::ports::inbound::moderation::manage_rules::ManageRulesUseCase;
-use sentinel_core::ports::inbound::moderation::manage_strikes::ManageStrikesUseCase;
 use sentinel_core::ports::inbound::moderation::manage_sursis::ManageSursisUseCase;
-use sentinel_core::ports::inbound::moderation::moderation_copilot::ModerationCopilotUseCase;
 use sentinel_core::ports::inbound::moderation::read_modstats::ReadModstatsUseCase;
 use sentinel_core::ports::outbound::audit::modstats_repository::ModstatsRepository;
 use sentinel_core::ports::outbound::moderation::adaptive_slowmode_repository::AdaptiveSlowmodeRepository;
@@ -43,10 +39,6 @@ pub struct ModerationState {
     pub infractions_uc: Arc<dyn ManageInfractionsUseCase>,
     pub moderation_uc: Arc<dyn ManageModerationUseCase>,
     pub modstats_uc: Arc<dyn ReadModstatsUseCase>,
-    pub notes_uc: Arc<dyn ManageNotesUseCase>,
-    pub reminders_uc: Arc<dyn ManageRemindersUseCase>,
-    pub strikes_uc: Arc<dyn ManageStrikesUseCase>,
-    pub moderation_copilot_uc: Arc<dyn ModerationCopilotUseCase>,
     /// Evaluation server-side du risque d'une cible (seuil + politique de
     /// confirmation). Le bot fournit les faits Discord, l'API decide.
     pub assess_target_risk_uc: Arc<dyn AssessTargetRiskUseCase>,
@@ -94,3 +86,4 @@ impl FromRef<AppState> for ModerationState {
         state.moderation.clone()
     }
 }
+

@@ -2,7 +2,7 @@
 /// Evite la duplication des reply_text, reply_ephemeral, etc.
 use serenity::all::{
     ChannelId, Colour, CommandInteraction, ComponentInteraction, Context, CreateEmbed,
-    CreateInteractionResponse, CreateInteractionResponseFollowup, CreateInteractionResponseMessage,
+    CreateInteractionResponse, CreateInteractionResponseMessage,
     CreateMessage, ModalInteraction,
 };
 use tracing::warn;

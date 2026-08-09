@@ -14,16 +14,12 @@ use sentinel_core::ports::inbound::community::manage_confessions::ManageConfessi
 use sentinel_core::ports::inbound::community::manage_embeds::ManageEmbedsUseCase;
 use sentinel_core::ports::inbound::community::manage_events::ManageEventsUseCase;
 use sentinel_core::ports::inbound::community::manage_ideas::ManageIdeasUseCase;
-use sentinel_core::ports::inbound::community::manage_levels::ManageLevelsUseCase;
 use sentinel_core::ports::inbound::community::manage_lfg::ManageLfgUseCase;
-use sentinel_core::ports::inbound::community::manage_members::ManageMembersUseCase;
 use sentinel_core::ports::inbound::community::manage_monthly_ranking::ManageMonthlyRankingUseCase;
 use sentinel_core::ports::inbound::community::manage_news::ManageNewsUseCase;
 use sentinel_core::ports::inbound::community::manage_polls::ManagePollsUseCase;
-use sentinel_core::ports::inbound::community::manage_role_panels::ManageRolePanelsUseCase;
 use sentinel_core::ports::inbound::community::manage_sponsorships::ManageSponsorshipsUseCase;
 use sentinel_core::ports::inbound::community::manage_spotlight::ManageSpotlightUseCase;
-use sentinel_core::ports::inbound::community::manage_voice_channels::ManageVoiceChannelsUseCase;
 use sentinel_core::ports::inbound::community::manage_welcome_config::ManageWelcomeConfigUseCase;
 use sentinel_core::ports::inbound::community::read_presence::ReadPresenceUseCase;
 use sentinel_core::ports::outbound::community::age_ban_repository::AgeBanRepository;
@@ -55,11 +51,7 @@ pub struct CommunityState {
     pub presence_uc: Arc<dyn ReadPresenceUseCase>,
 
     // ── Membres, roles, progression ──
-    pub members_uc: Arc<dyn ManageMembersUseCase>,
-    pub levels_uc: Arc<dyn ManageLevelsUseCase>,
     pub monthly_ranking_uc: Arc<dyn ManageMonthlyRankingUseCase>,
-    pub role_panels_uc: Arc<dyn ManageRolePanelsUseCase>,
-    pub voice_channels_uc: Arc<dyn ManageVoiceChannelsUseCase>,
     pub welcome_config_uc: Arc<dyn ManageWelcomeConfigUseCase>,
     pub eligibility_uc: Arc<dyn CheckEligibilityUseCase>,
     /// Verification d'age : decision server-side (seuil pass/ban + duree).
@@ -88,3 +80,4 @@ impl FromRef<AppState> for CommunityState {
         state.community.clone()
     }
 }
+

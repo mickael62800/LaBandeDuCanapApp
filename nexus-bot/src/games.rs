@@ -11,7 +11,7 @@ use serenity::all::{
     ButtonStyle, Colour, CommandDataOptionValue, CommandInteraction, CommandOptionType,
     ComponentInteraction, ComponentInteractionDataKind, Context, CreateActionRow, CreateButton,
     CreateCommand, CreateCommandOption, CreateInteractionResponse,
-    CreateInteractionResponseMessage, CreateMessage, EditMessage, EditRole, EmojiId, GuildId,
+    CreateInteractionResponseMessage, CreateMessage, EditMessage, EditRole, GuildId,
     ReactionType, RoleId,
 };
 use serenity::builder::CreateEmbed;
@@ -506,7 +506,7 @@ async fn handle_panel(ctx: &Context, cmd: &CommandInteraction, api: &ApiClient, 
     let embed = build_panel_embed(category.as_deref(), &games_slice);
 
     // 1) Envoie un message initial avec l'embed seulement (pas encore de components).
-    let msg = match cmd
+    let mut msg = match cmd
         .channel_id
         .send_message(&ctx.http, CreateMessage::new().embed(embed))
         .await
@@ -540,18 +540,15 @@ async fn handle_panel(ctx: &Context, cmd: &CommandInteraction, api: &ApiClient, 
         }
     };
 
-    // 3) Ajoute les reactions (emojis) sur le message du panel.
-    for game in &games_slice {
-        if let Some(emoji_str) = &game.emoji {
-            tracing::info!(game_name = %game.game_name, emoji = %emoji_str, "Ajout de la reaction au panel (commande)");
-            if let Some(rt) = parse_reaction_type(emoji_str) {
-                if let Err(e) = msg.react(&ctx.http, rt).await {
-                    tracing::warn!(error = %e, game_name = %game.game_name, "Erreur ajout reaction");
-                }
-            } else {
-                tracing::warn!(game_name = %game.game_name, emoji = %emoji_str, "Impossible de parser l'emoji");
-            }
-        }
+    // 3) Ajoute les boutons sur le message du panel.
+    let components = build_panel_button_components(
+        ctx,
+        cmd.guild_id.unwrap(),
+        &_panel.id.to_string(),
+        &games_slice,
+    );
+    if let Err(e) = msg.edit(&ctx.http, EditMessage::new().components(components)).await {
+        tracing::warn!(error = %e, "Erreur edition message pour ajouter les boutons");
     }
 
     reply(
@@ -608,7 +605,7 @@ async fn handle_refresh(ctx: &Context, cmd: &CommandInteraction, api: &ApiClient
     let games_slice: Vec<&Game> = games.iter().take(MAX_BUTTONS_PER_PANEL).collect();
 
     let embed = build_panel_embed(category.as_deref(), &games_slice);
-    let gid = cmd.guild_id.unwrap_or_default();
+    let _gid = cmd.guild_id.unwrap_or_default();
 
     let channel_id: serenity::model::id::ChannelId = match panel.channel_id.parse::<u64>() {
         Ok(id) => serenity::model::id::ChannelId::new(id),
@@ -633,25 +630,22 @@ async fn handle_refresh(ctx: &Context, cmd: &CommandInteraction, api: &ApiClient
         }
     };
 
-    // Retire les components (boutons) s'il y en avait, et met a jour l'embed.
+    // Met a jour l'embed et les boutons
+    let components = build_panel_button_components(
+        ctx,
+        cmd.guild_id.unwrap(),
+        &panel.id.to_string(),
+        &games_slice,
+    );
     if let Err(e) = msg
         .edit(
             &ctx.http,
-            EditMessage::new().embed(embed).components(Vec::new()),
+            EditMessage::new().embed(embed).components(components),
         )
         .await
     {
         reply(ctx, cmd, &format!("Erreur edition : {e}")).await;
         return;
-    }
-
-    // Ajoute/Restitue les reactions
-    for game in &games_slice {
-        if let Some(emoji_str) = &game.emoji {
-            if let Some(rt) = parse_reaction_type(emoji_str) {
-                let _ = msg.react(&ctx.http, rt).await;
-            }
-        }
     }
 
     reply(
@@ -1281,7 +1275,7 @@ async fn deploy_panel_from_event(ctx: &Context, api: &ApiClient, guild_id: &str,
         Err(_) => return,
     };
 
-    let msg = match chan_id.send_message(&ctx.http, CreateMessage::new().embed(embed)).await {
+    let mut msg = match chan_id.send_message(&ctx.http, CreateMessage::new().embed(embed)).await {
         Ok(m) => m,
         Err(e) => {
             warn!(error = %e, "Erreur envoi message panel");
@@ -1297,17 +1291,18 @@ async fn deploy_panel_from_event(ctx: &Context, api: &ApiClient, guild_id: &str,
         }
     };
 
-    for game in &games_slice {
-        if let Some(emoji_str) = &game.emoji {
-            tracing::info!(game_name = %game.game_name, emoji = %emoji_str, "Ajout de la reaction au panel");
-            if let Some(rt) = parse_reaction_type(emoji_str) {
-                if let Err(e) = msg.react(&ctx.http, rt).await {
-                    tracing::warn!(error = %e, game_name = %game.game_name, "Erreur ajout reaction");
-                }
-            } else {
-                tracing::warn!(game_name = %game.game_name, emoji = %emoji_str, "Impossible de parser l'emoji");
-            }
-        }
+    let guild_id_obj = match guild_id.parse::<u64>() {
+        Ok(id) => serenity::all::GuildId::new(id),
+        Err(_) => return,
+    };
+    let components = build_panel_button_components(
+        ctx,
+        guild_id_obj,
+        &_panel.id.to_string(),
+        &games_slice,
+    );
+    if let Err(e) = msg.edit(&ctx.http, EditMessage::new().components(components)).await {
+        tracing::warn!(error = %e, "Erreur edition message panel web pour composants");
     }
 }
 

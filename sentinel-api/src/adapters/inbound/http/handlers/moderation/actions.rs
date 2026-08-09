@@ -10,7 +10,6 @@ use crate::adapters::inbound::http::dto::moderation::actions::BanEntryDto;
 use crate::adapters::inbound::http::dto::moderation::actions::LogActionDto;
 use crate::adapters::inbound::http::dto::moderation::actions::ModerationActionResponseDto;
 use crate::adapters::inbound::http::dto::moderation::actions::UserHistoryDto;
-use tracing::warn;
 
 use crate::adapters::inbound::http::errors::ApiError;
 use crate::adapters::inbound::http::helpers::map_to_dtos;
@@ -21,7 +20,6 @@ use crate::adapters::inbound::http::validation;
 use crate::bootstrap::state::ModerationState;
 use sentinel_core::domain::entities::system::discord_ids::GuildId;
 use sentinel_core::domain::entities::system::discord_ids::UserId;
-use sentinel_core::ports::inbound::moderation::manage_reminders::CreateReminderCommand;
 
 /// S1/S4 — Resout l'identite moderateur a journaliser.
 ///
@@ -82,8 +80,8 @@ pub async fn log_action(
 
     let guild_id = dto.guild_id.clone();
     let target_id = dto.target_id.clone();
-    let moderator_id = dto.moderator_id.clone();
-    let duration = dto.duration;
+    let _moderator_id = dto.moderator_id.clone();
+    let _duration = dto.duration;
 
     let command = dto.into();
     // Orchestration atomique (action + strike) dans le service.

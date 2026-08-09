@@ -16,19 +16,13 @@ use crate::adapters::outbound::postgres::audit::user_activity_repository::PgUser
 use crate::adapters::outbound::postgres::audit::watched_user_repository::PgWatchedUserRepository;
 use crate::adapters::outbound::postgres::community::daily_activity_repository::PgDailyActivityRepository;
 use crate::adapters::outbound::postgres::community::discord_role_repository::PgDiscordRoleRepository;
-use crate::adapters::outbound::postgres::community::level_repository::PgLevelRepository;
-use crate::adapters::outbound::postgres::community::member_repository::PgMemberRepository;
-use crate::adapters::outbound::postgres::community::role_panel_repository::PgRolePanelRepository;
 use crate::adapters::outbound::postgres::community::sponsorship_repository::PgSponsorshipRepository;
 use crate::adapters::outbound::postgres::community::temp_role_repository::PgTempRoleRepository;
-use crate::adapters::outbound::postgres::community::voice_channel_repository::PgVoiceChannelRepository;
 use crate::adapters::outbound::postgres::community::welcome_config_repository::PgWelcomeConfigRepository;
 use crate::adapters::outbound::postgres::moderation::evidence_repository::PgEvidenceRepository;
 use crate::adapters::outbound::postgres::moderation::infraction_repository::PgInfractionRepository;
 use crate::adapters::outbound::postgres::moderation::moderation_repository::PgModerationRepository;
-use crate::adapters::outbound::postgres::moderation::notes_repository::PgNotesRepository;
 use crate::adapters::outbound::postgres::moderation::pending_action_repository::PgPendingActionRepository;
-use crate::adapters::outbound::postgres::moderation::reminder_repository::PgReminderRepository;
 use crate::adapters::outbound::postgres::moderation::review_repository::PgReviewRepository;
 use crate::adapters::outbound::postgres::moderation::rule_repository::PgRuleRepository;
 use crate::adapters::outbound::postgres::moderation::strike_repository::PgStrikeRepository;
@@ -63,7 +57,6 @@ pub async fn build_app_state(
     let security_repo = Arc::new(PgSecurityEventRepository::new(pg_pool.clone()));
     let moderation_repo = Arc::new(PgModerationRepository::new(pg_pool.clone()));
     let stats_repo = Arc::new(PgStatsRepository::new(pg_pool.clone()));
-    let voice_channel_repo = Arc::new(PgVoiceChannelRepository::new(pg_pool.clone()));
     let age_ban_repo = Arc::new(
         crate::adapters::outbound::postgres::community::age_ban_repository::PgAgeBanRepository::new(
             pg_pool.clone(),
@@ -82,8 +75,6 @@ pub async fn build_app_state(
         Arc::new(sentinel_core::application::system::manage_system_logs_service::ManageSystemLogsService::new(
             log_repo.clone(),
         ));
-    let notes_repo = Arc::new(PgNotesRepository::new(pg_pool.clone()));
-    let reminder_repo = Arc::new(PgReminderRepository::new(pg_pool.clone()));
     let strike_repo = Arc::new(PgStrikeRepository::new(pg_pool.clone()));
     let cache = Arc::new(
         RedisCache::new(redis_client.clone())
@@ -339,10 +330,8 @@ pub async fn build_app_state(
         cache.clone(),
         service_registry,
     ));
-        let role_panel_repo = Arc::new(PgRolePanelRepository::new(pg_pool.clone()));
         let analytics_repo = Arc::new(PgAnalyticsRepository::new(pg_pool.clone()));
     let daily_activity_repo = Arc::new(PgDailyActivityRepository::new(pg_pool.clone()));
-    let level_repo = Arc::new(PgLevelRepository::new(pg_pool.clone()));
         let announcement_repo = Arc::new(crate::adapters::outbound::postgres::community::announcement_repository::PgAnnouncementRepository::new(pg_pool.clone()));
     let announcements_uc: Arc<dyn sentinel_core::ports::inbound::community::manage_announcements::ManageAnnouncementsUseCase> = Arc::new(sentinel_core::application::community::manage_announcements_service::ManageAnnouncementsService::new(announcement_repo, bot_config_repo.clone()));
     let embed_repo = Arc::new(
@@ -394,7 +383,6 @@ pub async fn build_app_state(
                     dyn sentinel_core::ports::inbound::audit::manage_audit_logs::ManageAuditLogsUseCase,
                 >),
     );
-    let member_repo = Arc::new(PgMemberRepository::new(pg_pool.clone()));
     let discord_role_repo = Arc::new(PgDiscordRoleRepository::new(pg_pool.clone()));
 
     // Eligibilite Community : decisions server-side (prerequis de role +
@@ -870,5 +858,6 @@ pub async fn build_app_state(
         superadmin_user_ids: Arc::new(config.superadmin_user_ids.clone()),
     }
 }
+
 
 

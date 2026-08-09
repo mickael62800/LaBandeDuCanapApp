@@ -48,9 +48,7 @@ impl CancelModerationActionUseCase for CancelModerationActionService {
         // La REGLE (quel effet inverse pour quel type) vit dans le domaine ;
         // ce service n'orchestre que les appels sortants.
         match reversal_effect(&info.action_type) {
-            ReversalEffect::Unban {
-                cancel_auto_unban_reminder,
-            } => {
+            ReversalEffect::Unban { .. } => {
                 match self
                     .discord_api
                     .unban_user(&info.guild_id, &info.target_id)
@@ -104,4 +102,6 @@ impl CancelModerationActionUseCase for CancelModerationActionService {
         }
     }
 }
+
+
 

@@ -4,20 +4,16 @@
 //! Un seul endpoint public renvoie les deux listes — la page les affiche cote
 //! a cote, deux requetes seraient deux allers-retours pour rien.
 
-use axum::extract::{Path, Query, State};
+use axum::extract::Path;
 use axum::Json;
 use serde::{Deserialize, Serialize};
 
 use crate::adapters::inbound::http::errors::ApiError;
 use crate::adapters::inbound::http::handlers::community::public_guard::ensure_guild_id;
-use crate::bootstrap::state::CommunityState;
 
 /// Fenetres par defaut. Une semaine pour les nouveaux venus : au-dela, un
 /// membre n'est plus vraiment « nouveau ». Deux semaines pour les
 /// anniversaires, pour qu'une visite hebdomadaire n'en rate aucun.
-const DEFAULT_ANNIVERSARY_DAYS: i32 = 14;
-const DEFAULT_JOIN_DAYS: i32 = 7;
-const MAX_NEWCOMERS: i64 = 12;
 
 #[derive(Debug, Deserialize)]
 pub struct PulseQuery {
@@ -54,9 +50,7 @@ pub struct PulseDto {
 
 /// GET /api/public/pulse/{guild_id}
 pub async fn public_pulse(
-    State(state): State<CommunityState>,
     Path(guild_id): Path<String>,
-    Query(q): Query<PulseQuery>,
 ) -> Result<Json<PulseDto>, ApiError> {
     ensure_guild_id(&guild_id)?;
 
@@ -65,3 +59,4 @@ pub async fn public_pulse(
         newcomers: vec![],
     }))
 }
+

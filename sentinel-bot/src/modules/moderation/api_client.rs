@@ -87,73 +87,6 @@ pub struct ReviewQueueEntry {
     pub target_name: Option<String>,
 }
 
-/// MOD #7 — Agregation d'actions de moderation par moderateur.
-/// Ligne du classement des moderateurs. Le bot n'affiche que le nom et les
-/// compteurs ; `moderator_id` sert au dashboard web pour lier vers le profil.
-#[derive(Debug)]
-#[allow(dead_code)]
-pub struct ModStatsEntry {
-    pub moderator_id: String,
-    pub moderator_name: String,
-    pub total: i64,
-    pub warns: i64,
-    pub mutes: i64,
-    pub bans: i64,
-    pub kicks: i64,
-}
-
-/// Sanction temporaire active (reminder pending).
-///
-/// Reduit aux 5 champs affiches par `/expirations`. Les champs d'audit
-/// (identifiants, horodatages de creation, statut) restent cote HTTP : seul le
-/// dashboard web les exploite.
-#[derive(Debug)]
-pub struct SanctionReminder {
-    pub moderator_name: String,
-    pub target_id: String,
-    pub action_type: String,
-    pub reason: String,
-    pub expires_at: String,
-}
-
-/// Copilote — compte d'une action (sanction par type ou precedent par action).
-#[derive(Debug, Clone)]
-pub struct CopilotActionCount {
-    pub action: String,
-    pub count: u32,
-}
-
-/// Copilote — distribution des precedents (jurisprudence) pour la categorie
-/// dominante du membre.
-#[derive(Debug, Clone)]
-pub struct CopilotPrecedents {
-    pub flag_category: String,
-    pub counts_by_action: Vec<CopilotActionCount>,
-    pub total: u32,
-}
-
-/// Copilote — suggestion de sanction consultative + explication.
-#[derive(Debug, Clone)]
-pub struct CopilotSuggestion {
-    /// Action suggeree (`warn`|`mute`|`ban`|...) ou `None` si base insuffisante.
-    pub action: Option<String>,
-    /// Fondement : `escalation` | `precedent` | `both` | `insufficient`.
-    pub basis: String,
-    pub rationale: String,
-    pub precedent_count: u32,
-}
-
-/// Copilote — contexte de moderation complet d'un membre (lecture seule).
-#[derive(Debug, Clone)]
-pub struct MemberContext {
-    pub active_strikes: u32,
-    pub sanctions_by_type: Vec<CopilotActionCount>,
-    /// Derniere sanction (RFC 3339), le cas echeant.
-    pub last_sanction_at: Option<String>,
-    pub open_reviews: u32,
-    pub precedents: CopilotPrecedents,
-    pub suggestion: CopilotSuggestion,
-}
 
 /// Faits Discord d'une cible envoyes a l'API pour l'evaluation de risque.
 #[derive(Debug)]
@@ -535,5 +468,6 @@ fn review_from_proto(r: proto_mod::ReviewEntry) -> ReviewQueueEntry {
 }
 
 use crate::shared::grpc_client::grpc_err_to_string;
+
 
 

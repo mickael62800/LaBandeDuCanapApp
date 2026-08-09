@@ -19,9 +19,6 @@ use tonic::Status;
 use crate::adapters::inbound::grpc::errors::domain_to_status;
 use sentinel_core::domain::entities::moderation::action::applied::ModerationAction;
 use sentinel_core::domain::entities::moderation::action::applied::UserModerationHistory;
-use sentinel_core::domain::entities::moderation::copilot::MemberModerationContext;
-use sentinel_core::domain::entities::moderation::copilot::PrecedentDistribution;
-use sentinel_core::domain::entities::moderation::copilot::SanctionSuggestion;
 use sentinel_core::ports::inbound::moderation::assess_target_risk::{
     AssessTargetRiskCommand, AssessTargetRiskUseCase,
 };
@@ -31,10 +28,6 @@ use sentinel_core::ports::inbound::moderation::cancel_action::{
 use sentinel_core::ports::inbound::moderation::manage_infractions::ManageInfractionsUseCase;
 use sentinel_core::ports::inbound::moderation::manage_moderation::LogModerationCommand;
 use sentinel_core::ports::inbound::moderation::manage_moderation::ManageModerationUseCase;
-use sentinel_core::ports::inbound::moderation::manage_notes::{AddNoteCommand, ManageNotesUseCase};
-use sentinel_core::ports::inbound::moderation::manage_reminders::CreateReminderCommand;
-use sentinel_core::ports::inbound::moderation::manage_reminders::ManageRemindersUseCase;
-use sentinel_core::ports::inbound::moderation::moderation_copilot::ModerationCopilotUseCase;
 use sentinel_core::ports::inbound::moderation::read_modstats::ReadModstatsUseCase;
 use sentinel_core::ports::outbound::moderation::evidence_repository::EvidenceRepository;
 use sentinel_core::ports::outbound::moderation::pending_action_repository::PendingActionRepository;
@@ -60,8 +53,6 @@ impl ModerationService for ModerationGrpc {
     ) -> Result<Response<proto::ModerationAction>, Status> {
         let req = request.into_inner();
         let skip_strike = req.skip_strike;
-        let action_type = req.action_type.clone();
-        let duration = req.duration;
         let cmd = LogModerationCommand {
             guild_id: req.guild_id.into(),
             channel_id: req.channel_id.into(),
@@ -398,5 +389,6 @@ fn user_history_to_proto(h: UserModerationHistory) -> proto::UserHistory {
 #[cfg(test)]
 #[path = "tests/actions.rs"]
 mod tests;
+
 
 

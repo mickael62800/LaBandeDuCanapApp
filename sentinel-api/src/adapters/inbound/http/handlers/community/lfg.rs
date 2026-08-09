@@ -126,7 +126,7 @@ fn require_ctx(user: &Option<Extension<WebUser>>) -> Result<&WebUser, ApiError> 
 /// Un membre absent de la table (jamais synchronise) ne doit pas empecher de
 /// publier : on retombe silencieusement sur une chaine vide, que le front
 /// remplace par un libelle generique.
-async fn display_name(state: &CommunityState, guild_id: &str, user_id: &str) -> String {
+async fn display_name(_state: &CommunityState, _guild_id: &str, _user_id: &str) -> String {
     String::new()
 }
 

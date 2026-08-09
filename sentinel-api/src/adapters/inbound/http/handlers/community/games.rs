@@ -122,7 +122,7 @@ fn client(
 /// Jamais lu depuis la requete : il est enregistre avec chaque mouvement de
 /// coins et apparait dans le classement. Le laisser au client permettrait de
 /// s'y afficher sous le nom de quelqu'un d'autre.
-async fn display_name(state: &AppState, guild_id: &str, user_id: &str) -> String {
+async fn display_name(_state: &AppState, _guild_id: &str, user_id: &str) -> String {
     user_id.to_string()
 }
 

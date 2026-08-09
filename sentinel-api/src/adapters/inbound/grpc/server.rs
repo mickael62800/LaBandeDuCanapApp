@@ -28,17 +28,13 @@ use sentinel_proto::export::v1::export_service_server::ExportServiceServer;
 use sentinel_proto::guild_backup::v1::guild_backup_service_server::GuildBackupServiceServer;
 use sentinel_proto::ideas::v1::ideas_service_server::IdeasServiceServer;
 use sentinel_proto::images::v1::images_service_server::ImagesServiceServer;
-use sentinel_proto::members::v1::members_service_server::MembersServiceServer;
 use sentinel_proto::moderation::v1::moderation_service_server::ModerationServiceServer;
-use sentinel_proto::progression::v1::progression_service_server::ProgressionServiceServer;
 use sentinel_proto::purge::v1::purge_service_server::PurgeServiceServer;
-use sentinel_proto::roles::v1::role_panels_service_server::RolePanelsServiceServer;
 use sentinel_proto::security::v1::security_service_server::SecurityServiceServer;
 use sentinel_proto::security_state::v1::security_state_service_server::SecurityStateServiceServer;
 use sentinel_proto::stats::v1::stats_service_server::StatsServiceServer;
 use sentinel_proto::sursis::v1::sursis_service_server::SursisServiceServer;
 use sentinel_proto::tickets::v1::tickets_service_server::TicketsServiceServer;
-use sentinel_proto::voice::v1::voice_channels_service_server::VoiceChannelsServiceServer;
 use sentinel_proto::welcome::v1::welcome_service_server::WelcomeServiceServer;
 use tonic::codec::CompressionEncoding;
 use tonic::metadata::MetadataValue;
@@ -209,7 +205,6 @@ pub async fn serve_grpc(state: AppState, bind: SocketAddr) {
     // tonic-health : expose `grpc.health.v1.Health` + marque chaque service
     // comme SERVING. Permet `grpc_health_probe -addr=:50051` dans le healthcheck.
     let (health_reporter, health_service) = tonic_health::server::health_reporter();
-    health_reporter.clone();
     health_reporter
         .set_serving::<StatsServiceServer<StatsGrpc>>()
         .await;
@@ -219,8 +214,6 @@ pub async fn serve_grpc(state: AppState, bind: SocketAddr) {
     health_reporter
         .set_serving::<ModerationServiceServer<ModerationGrpc>>()
         .await;
-    health_reporter.clone();
-    health_reporter.clone();
     health_reporter
         .set_serving::<SecurityServiceServer<SecurityGrpc>>()
         .await;
@@ -251,7 +244,6 @@ pub async fn serve_grpc(state: AppState, bind: SocketAddr) {
     health_reporter
         .set_serving::<AutomodServiceServer<AutomodGrpc>>()
         .await;
-    health_reporter.clone();
     health_reporter
         .set_serving::<ImagesServiceServer<ImagesGrpc>>()
         .await;
@@ -381,6 +373,7 @@ fn build_auth_interceptor(
 #[cfg(test)]
 #[path = "tests/server.rs"]
 mod tests;
+
 
 
 

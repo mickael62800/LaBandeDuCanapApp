@@ -62,7 +62,6 @@ const ALL_SECTIONS: DashboardSection[] = [
     label: "Jeux mentionnables",
     icon: "target",
     universe: "nexus",
-    requiredBot: "game-bot",
   },
   {
     key: "nexus.config",

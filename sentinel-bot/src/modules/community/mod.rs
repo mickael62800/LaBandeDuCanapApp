@@ -171,15 +171,14 @@ pub async fn on_member_add(ctx: &Context, new_member: &Member) {
 }
 
 /// Charge les roles temporaires actifs depuis l'API au demarrage.
-pub async fn load_temp_roles(ctx: &Context, guild_ids: &[serenity::model::id::GuildId]) {
+pub async fn load_temp_roles(ctx: &Context, guild_id: serenity::model::id::GuildId) {
     let data = ctx.data.read().await;
     if let (Some(api), Some(tracker)) = (data.get::<RolesApiKey>(), data.get::<TempRoleKey>()) {
-        for guild_id in guild_ids {
-            let gid = guild_id.to_string();
-            match api.list_temp_roles(&gid).await {
-                Ok(entries) => {
-                    let mut loaded = 0u32;
-                    for entry in entries {
+        let gid = guild_id.to_string();
+        match api.list_temp_roles(&gid).await {
+            Ok(entries) => {
+                let mut loaded = 0u32;
+                for entry in entries {
                         let g = entry.guild_id.parse::<u64>().unwrap_or(0);
                         let u = entry.user_id.parse::<u64>().unwrap_or(0);
                         let r = entry.role_id.parse::<u64>().unwrap_or(0);
@@ -196,7 +195,6 @@ pub async fn load_temp_roles(ctx: &Context, guild_ids: &[serenity::model::id::Gu
                     warn!(error = %e, guild = %gid, "Echec chargement roles temporaires");
                 }
             }
-        }
     }
 }
 

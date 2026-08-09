@@ -139,8 +139,11 @@ impl EventHandler for Handler {
         // sont visibles partout meme apres bascule per-guild.
         let _ =
             serenity::model::application::Command::set_global_commands(&ctx.http, Vec::new()).await;
-        let guild_ids: Vec<_> = ready.guilds.iter().map(|g| g.id).collect();
-        crate::command_registry::refresh_all_guilds(&ctx, &guild_ids).await;
+        
+        let guild_id = ready.guilds.first().map(|g| g.id);
+        if let Some(gid) = guild_id {
+            crate::command_registry::refresh_guild_commands(&ctx, gid).await;
+        }
 
         // ── Demarrage UNIQUE (une seule fois par process) ──
         // `ready()` refire a CHAQUE reconnexion Discord (et par shard). Tout ce
@@ -158,12 +161,16 @@ impl EventHandler for Handler {
         // Panneau d'aide auto-genere : publie/maintient dans un salon le
         // catalogue de toutes les commandes (trie par categorie). Idempotent
         // (remplace ses anciens messages), n'affiche que les modules actifs.
-        modules::help_panel::deploy_all(&ctx, ready.user.id, &guild_ids).await;
+        if let Some(gid) = guild_id {
+            let _ = modules::help_panel::deploy(&ctx, ready.user.id, gid).await;
+        }
 
         // Listener Redis pour les events bot_enabled_changed -> re-register
         // les commandes guild a la volee quand un admin toggle on/off.
         crate::command_registry::spawn_consumer(ctx.clone());
-        modules::community::load_temp_roles(&ctx, &guild_ids).await;
+        if let Some(gid) = guild_id {
+            modules::community::load_temp_roles(&ctx, gid).await;
+        }
         modules::community::spawn_temp_role_cleanup(ctx.clone());
 
         modules::bump::spawn_background(ctx.clone());

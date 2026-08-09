@@ -113,19 +113,6 @@ pub async fn refresh_guild_commands(ctx: &Context, guild_id: GuildId) {
     }
 }
 
-/// Au boot du bot : pour chaque guild connue, calcule + enregistre les
-/// commandes filtrees. Remplace l'ancien set_global_commands qui
-/// enregistrait TOUT pour TOUTES les guilds.
-pub async fn refresh_all_guilds(ctx: &Context, guild_ids: &[GuildId]) {
-    info!(
-        guilds = guild_ids.len(),
-        "Refreshing slash commands per guild..."
-    );
-    for &gid in guild_ids {
-        refresh_guild_commands(ctx, gid).await;
-    }
-}
-
 /// Listener Redis stream : ecoute les events "bot_enabled_changed"
 /// envoyes par l'API quand un admin toggle on/off un module via la
 /// page Composants. Re-register les commandes de la guild concernee.

@@ -152,33 +152,23 @@ const CATEGORIES: &[Section] = &[
     ("🧹 Nettoyage", &[("cleanup", "🧹 Nettoyage")]),
 ];
 
-/// Deploie les panneaux sur toutes les guilds connues (appele une fois au boot).
-pub async fn deploy_all(ctx: &Context, bot_id: UserId, guild_ids: &[GuildId]) {
+pub async fn deploy(
+    ctx: &Context,
+    bot_id: UserId,
+    guild_id: GuildId,
+) -> Result<(), String> {
     let api = {
         let data = ctx.data.read().await;
         match data.get::<ApiClientKey>() {
             Some(a) => a.clone(),
             None => {
                 warn!("help_panel: ApiClientKey absent, deploiement ignore");
-                return;
+                return Ok(());
             }
         }
     };
-    for &gid in guild_ids {
-        if let Err(e) = deploy_for_guild(ctx, &api, bot_id, gid).await {
-            warn!(guild_id = %gid, error = %e, "help_panel: deploiement echoue");
-        }
-    }
-}
-
-async fn deploy_for_guild(
-    ctx: &Context,
-    api: &BaseApiClient,
-    bot_id: UserId,
-    guild_id: GuildId,
-) -> Result<(), String> {
     let gid = guild_id.to_string();
-    if !is_bot_enabled(api, &gid, BOT_NAME).await {
+    if !is_bot_enabled(&api, &gid, BOT_NAME).await {
         return Ok(());
     }
 
@@ -188,7 +178,7 @@ async fn deploy_for_guild(
     for (cat_label, subs) in CATEGORIES {
         let mut per_aud: [Vec<SubSection>; 3] = [Vec::new(), Vec::new(), Vec::new()];
         for (bot_name, sub_label) in *subs {
-            if !is_bot_enabled(api, &gid, bot_name).await {
+            if !is_bot_enabled(&api, &gid, bot_name).await {
                 continue;
             }
             // Les commandes d'un module peuvent viser des audiences differentes :

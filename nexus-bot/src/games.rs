@@ -543,10 +543,13 @@ async fn handle_panel(ctx: &Context, cmd: &CommandInteraction, api: &ApiClient, 
     // 3) Ajoute les reactions (emojis) sur le message du panel.
     for game in &games_slice {
         if let Some(emoji_str) = &game.emoji {
+            tracing::info!(game_name = %game.game_name, emoji = %emoji_str, "Ajout de la reaction au panel (commande)");
             if let Some(rt) = parse_reaction_type(emoji_str) {
                 if let Err(e) = msg.react(&ctx.http, rt).await {
-                    warn!(error = %e, "Erreur ajout reaction pour {}", game.game_name);
+                    tracing::warn!(error = %e, game_name = %game.game_name, "Erreur ajout reaction");
                 }
+            } else {
+                tracing::warn!(game_name = %game.game_name, emoji = %emoji_str, "Impossible de parser l'emoji");
             }
         }
     }
@@ -1140,31 +1143,12 @@ pub(crate) fn parse_reaction_type(raw: &str) -> Option<ReactionType> {
     if s.is_empty() {
         return None;
     }
-    if let Some(custom) = parse_custom(s) {
-        return Some(custom);
+    // Serenity parse nativement les emojis custom ("<:name:id>", "<a:name:id>") 
+    // et les emojis unicode.
+    match ReactionType::try_from(s) {
+        Ok(rt) => Some(rt),
+        Err(_) => Some(ReactionType::Unicode(s.to_string())),
     }
-    // Fallback : unicode. Discord rejettera au besoin.
-    Some(ReactionType::Unicode(s.to_string()))
-}
-
-/// Decode `<:name:id>` / `<a:name:id>` (version locale minimaliste du helper
-/// `parse_emoji_ref` de sentinel-core).
-fn parse_custom(s: &str) -> Option<ReactionType> {
-    let inner = s.strip_prefix('<')?.strip_suffix('>')?;
-    let (animated, rest) = match inner.strip_prefix("a:") {
-        Some(r) => (true, r),
-        None => (false, inner.strip_prefix(':')?),
-    };
-    let (name, id_str) = rest.split_once(':')?;
-    if name.is_empty() {
-        return None;
-    }
-    let id = id_str.parse::<u64>().ok()?;
-    Some(ReactionType::Custom {
-        animated,
-        id: EmojiId::new(id),
-        name: Some(name.to_string()),
-    })
 }
 
 // ── Helpers ──
@@ -1315,10 +1299,13 @@ async fn deploy_panel_from_event(ctx: &Context, api: &ApiClient, guild_id: &str,
 
     for game in &games_slice {
         if let Some(emoji_str) = &game.emoji {
+            tracing::info!(game_name = %game.game_name, emoji = %emoji_str, "Ajout de la reaction au panel");
             if let Some(rt) = parse_reaction_type(emoji_str) {
                 if let Err(e) = msg.react(&ctx.http, rt).await {
-                    warn!(error = %e, "Erreur ajout reaction pour {}", game.game_name);
+                    tracing::warn!(error = %e, game_name = %game.game_name, "Erreur ajout reaction");
                 }
+            } else {
+                tracing::warn!(game_name = %game.game_name, emoji = %emoji_str, "Impossible de parser l'emoji");
             }
         }
     }

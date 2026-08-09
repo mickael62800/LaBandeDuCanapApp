@@ -103,7 +103,8 @@ fn protected_domain_routes() -> Router<AppState> {
         .merge(routes::bot_persistence::routes())
         // Members + guild direct API
 .merge(routes::guild_backup::routes())
-        .merge(routes::guilds::routes())
+.merge(routes::guilds::routes())
+        .merge(routes::progression::routes())
         .merge(routes::guild_structure::routes())
         .merge(routes::community::routes())
         // Système + jobs async + RBAC + welcome
@@ -398,5 +399,6 @@ pub fn build(
         .layer(build_cors(allowed_origins))
         .with_state(state)
 }
+
 
 

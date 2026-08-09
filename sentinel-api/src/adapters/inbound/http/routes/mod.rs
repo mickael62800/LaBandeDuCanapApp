@@ -22,3 +22,5 @@ pub mod ticket;
 
 pub mod guilds;
 
+pub mod progression;
+

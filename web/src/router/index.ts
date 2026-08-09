@@ -132,6 +132,11 @@ export const routes: RouteRecordRaw[] = [
     component: () => import("@/components/pages/NexusCoussinPage.vue"),
   },
   {
+    path: "/nexus/jeux",
+    name: "nexus-games",
+    component: () => import("@/components/pages/NexusMentionableGamesPage.vue"),
+  },
+  {
     path: "/nexus/config",
     name: "nexus-config",
     component: () => import("@/components/pages/NexusConfigPage.vue"),

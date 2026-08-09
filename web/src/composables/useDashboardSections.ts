@@ -57,6 +57,14 @@ const ALL_SECTIONS: DashboardSection[] = [
     universe: "nexus",
   },
   {
+    key: "nexus.games",
+    path: "/nexus/jeux",
+    label: "Jeux mentionnables",
+    icon: "target",
+    universe: "nexus",
+    requiredBot: "game-bot",
+  },
+  {
     key: "nexus.config",
     path: "/nexus/config",
     label: "Configuration",

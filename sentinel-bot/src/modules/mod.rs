@@ -4,7 +4,6 @@ pub mod ai_dataset;
 pub mod announcements;
 pub mod audit;
 pub mod automod;
-pub mod bump;
 pub mod cleanup;
 pub mod command_channel;
 pub mod community;

@@ -25,7 +25,6 @@ use crate::modules;
 pub(crate) fn module_commands(bot_name: &str) -> Vec<CreateCommand> {
     match bot_name {
         "cleanup" => modules::cleanup::register_commands(),
-        "bump-bot" => modules::bump::register_commands(),
         "community-bot" => modules::community::register_commands(),
         "audit-bot" => modules::audit::register_commands(),
         "progression-bot" => modules::progression::register_commands(),

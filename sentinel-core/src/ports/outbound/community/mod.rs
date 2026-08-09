@@ -1,6 +1,5 @@
 pub mod age_ban_repository;
 pub mod announcement_repository;
-pub mod bump_repository;
 pub mod confession_repository;
 pub mod daily_activity_repository;
 pub mod discord_role_repository;

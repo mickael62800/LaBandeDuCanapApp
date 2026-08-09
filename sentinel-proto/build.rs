@@ -28,7 +28,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "proto/audit.proto",
                 "proto/automod.proto",
                 "proto/automod_review.proto",
-                "proto/bump.proto",
                 "proto/common.proto",
                 "proto/community.proto",
                 "proto/confessions.proto",

@@ -173,7 +173,6 @@ impl EventHandler for Handler {
         }
         modules::community::spawn_temp_role_cleanup(ctx.clone());
 
-        modules::bump::spawn_background(ctx.clone());
         // Presence vocale : republication periodique. Sans elle, la page
         // membre perd un salon des que personne n'y bouge pendant trois
         // minutes — l'API considere alors l'instantane perime.
@@ -262,11 +261,7 @@ impl EventHandler for Handler {
         // des logs. Le reste du pipeline ignore les bots.
         modules::audit::cache_message(&ctx, &msg).await;
 
-        // Bump : la confirmation de /bump est postee par Disboard (un BOT). On
-        // doit donc traiter ce module AVANT le filtre bot ci-dessous, sinon la
-        // detection ne se declenche jamais. (Le module filtre lui-meme sur l'id
-        // Disboard.)
-        modules::bump::on_message(&ctx, &msg).await;
+        // Automod
 
         if msg.author.bot {
             return;
@@ -310,9 +305,6 @@ impl EventHandler for Handler {
         new: Option<Message>,
         event: MessageUpdateEvent,
     ) {
-        // Bump : DiscordL edite un message vide pour y mettre l'embed de
-        // resultat -> on re-detecte a l'edition (avant le move de `event`).
-        modules::bump::on_message_update(&ctx, &event).await;
         // Automod : re-analyse le contenu edite (contournement post-benin/edit).
         modules::automod::on_message_update(&ctx, &event).await;
         modules::audit::on_message_update(&ctx, old, new, event).await;
@@ -629,7 +621,6 @@ impl EventHandler for Handler {
                         "purge" | "cleanup" => {
                             modules::cleanup::handle_command(&ctx, &command).await
                         }
-                        "bump-statut" => modules::bump::handle_command(&ctx, &command).await,
                         "roles-panel" | "parrain" => {
                             modules::community::handle_command(&ctx, &command).await
                         }

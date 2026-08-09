@@ -106,9 +106,7 @@ fn protected_domain_routes() -> Router<AppState> {
         // Members + guild direct API
         .merge(routes::members::routes())
         .merge(routes::guild_backup::routes())
-        // Constructeur de salons/categories pilote depuis le web
         .merge(routes::guild_structure::routes())
-        .merge(routes::bump::routes())
         .merge(routes::community::routes())
         // Système + jobs async + RBAC + welcome
         .merge(routes::system::routes())

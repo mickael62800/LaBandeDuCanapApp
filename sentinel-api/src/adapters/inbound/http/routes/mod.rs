@@ -8,7 +8,6 @@ pub mod audit;
 pub mod automod;
 pub mod bot;
 pub mod bot_persistence;
-pub mod bump;
 pub mod community;
 pub mod dashboard;
 pub mod guild_backup;

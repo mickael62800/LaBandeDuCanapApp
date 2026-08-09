@@ -44,7 +44,6 @@ use sentinel_proto::announcements::v1::announcements_service_client::Announcemen
 use sentinel_proto::audit::v1::audit_service_client::AuditServiceClient;
 use sentinel_proto::automod::v1::automod_service_client::AutomodServiceClient;
 use sentinel_proto::automod_review::v1::automod_review_service_client::AutomodReviewServiceClient;
-use sentinel_proto::bump::v1::bump_service_client::BumpServiceClient;
 use sentinel_proto::community::v1::community_service_client::CommunityServiceClient;
 use sentinel_proto::confessions::v1::confessions_service_client::ConfessionsServiceClient;
 use sentinel_proto::discord_messages::v1::discord_action_messages_service_client::DiscordActionMessagesServiceClient;
@@ -395,13 +394,6 @@ impl SentinelGrpcClient {
         &self,
     ) -> ConfessionsServiceClient<InterceptedService<Channel, AuthInterceptor>> {
         ConfessionsServiceClient::with_interceptor(self.channel.clone(), self.interceptor.clone())
-            .send_compressed(CompressionEncoding::Gzip)
-            .accept_compressed(CompressionEncoding::Gzip)
-    }
-
-    /// Retourne un client `BumpService` (recompenses /bump).
-    pub fn bump(&self) -> BumpServiceClient<InterceptedService<Channel, AuthInterceptor>> {
-        BumpServiceClient::with_interceptor(self.channel.clone(), self.interceptor.clone())
             .send_compressed(CompressionEncoding::Gzip)
             .accept_compressed(CompressionEncoding::Gzip)
     }

@@ -435,20 +435,6 @@ pub async fn build_app_state(
     );
     let member_repo = Arc::new(PgMemberRepository::new(pg_pool.clone()));
     let discord_role_repo = Arc::new(PgDiscordRoleRepository::new(pg_pool.clone()));
-    // Bump : repo Postgres + use case (recompense graduee, cooldown atomique,
-    // seuil VIP). Toute la regle metier vit dans le service.
-    let bump_repo = Arc::new(
-        crate::adapters::outbound::postgres::community::bump_repository::PgBumpRepository::new(
-            pg_pool.clone(),
-        ),
-    );
-    let bump_uc: Arc<dyn sentinel_core::ports::inbound::community::manage_bump::ManageBumpUseCase> =
-        Arc::new(
-            sentinel_core::application::community::manage_bump_service::ManageBumpService::new(
-                bot_config_repo.clone(),
-                bump_repo,
-            ),
-        );
 
     // Eligibilite Community : decisions server-side (prerequis de role +
     // validation de parrainage). Lit la config via bot_config_repo ; regles
@@ -860,7 +846,6 @@ pub async fn build_app_state(
         confessions_uc: confessions_uc.clone(),
         announcements_uc: announcements_uc.clone(),
         embeds_uc: embeds_uc.clone(),
-        bump_uc: bump_uc.clone(),
         presence_uc: presence_uc.clone(),
         members_uc: members_uc.clone(),
         levels_uc: levels_uc.clone(),

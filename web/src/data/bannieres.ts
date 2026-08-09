@@ -41,7 +41,6 @@ export const BANNIERES: Banniere[] = [
   { fichier: "sondage_banner.jpg", libelle: "Sondage", categorie: "Annonces et votes" },
   { fichier: "vote_banner.jpg", libelle: "Vote", categorie: "Annonces et votes" },
   { fichier: "resultat_vote_banner.jpg", libelle: "Résultat de vote", categorie: "Annonces et votes" },
-  { fichier: "bump_banner.jpg", libelle: "Bump", categorie: "Annonces et votes" },
 
   // ── Événements ──
   { fichier: "gaming_night_banner.jpg", libelle: "Soirée jeux", categorie: "Événements" },

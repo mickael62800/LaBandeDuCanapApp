@@ -20,7 +20,6 @@ use sentinel_proto::announcements::v1::announcements_service_server::Announcemen
 use sentinel_proto::audit::v1::audit_service_server::AuditServiceServer;
 use sentinel_proto::automod::v1::automod_service_server::AutomodServiceServer;
 use sentinel_proto::automod_review::v1::automod_review_service_server::AutomodReviewServiceServer;
-use sentinel_proto::bump::v1::bump_service_server::BumpServiceServer;
 use sentinel_proto::community::v1::community_service_server::CommunityServiceServer;
 use sentinel_proto::confessions::v1::confessions_service_server::ConfessionsServiceServer;
 use sentinel_proto::discord_messages::v1::discord_action_messages_service_server::DiscordActionMessagesServiceServer;
@@ -59,7 +58,6 @@ use crate::adapters::inbound::grpc::audit::security::SecurityGrpc;
 use crate::adapters::inbound::grpc::audit::stats::StatsGrpc;
 use crate::adapters::inbound::grpc::community::age_gate::AgeGateGrpc;
 use crate::adapters::inbound::grpc::community::announcements::AnnouncementsGrpc;
-use crate::adapters::inbound::grpc::community::bump::BumpGrpc;
 use crate::adapters::inbound::grpc::community::confessions::ConfessionsGrpc;
 use crate::adapters::inbound::grpc::community::embeds::EmbedsGrpc;
 use crate::adapters::inbound::grpc::community::ideas::IdeasGrpc;
@@ -166,9 +164,6 @@ pub async fn serve_grpc(state: AppState, bind: SocketAddr) {
         sursis_uc: state.moderation.sursis_uc.clone(),
         bot_config_repo: state.moderation.bot_config_repo.clone(),
     };
-    let bump = BumpGrpc {
-        uc: state.community.bump_uc.clone(),
-    };
     let confessions = ConfessionsGrpc {
         uc: state.community.confessions_uc.clone(),
     };
@@ -220,7 +215,6 @@ pub async fn serve_grpc(state: AppState, bind: SocketAddr) {
     let automod_review_svc = svc!(AutomodReviewServiceServer, automod_review);
     let action_messages_svc = svc!(DiscordActionMessagesServiceServer, action_messages);
     let sursis_svc = svc!(SursisServiceServer, sursis);
-    let bump_svc = svc!(BumpServiceServer, bump);
     let confessions_svc = svc!(ConfessionsServiceServer, confessions);
     let announcements_svc = svc!(AnnouncementsServiceServer, announcements);
     let age_gate_svc = svc!(AgeGateServiceServer, age_gate);
@@ -273,9 +267,6 @@ pub async fn serve_grpc(state: AppState, bind: SocketAddr) {
         .await;
     health_reporter
         .set_serving::<SursisServiceServer<SursisGrpc>>()
-        .await;
-    health_reporter
-        .set_serving::<BumpServiceServer<BumpGrpc>>()
         .await;
     health_reporter
         .set_serving::<ConfessionsServiceServer<ConfessionsGrpc>>()
@@ -368,7 +359,6 @@ pub async fn serve_grpc(state: AppState, bind: SocketAddr) {
         .add_service(automod_review_svc)
         .add_service(action_messages_svc)
         .add_service(sursis_svc)
-        .add_service(bump_svc)
         .add_service(confessions_svc)
         .add_service(announcements_svc)
         .add_service(age_gate_svc)

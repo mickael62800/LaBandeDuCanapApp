@@ -10,7 +10,6 @@ use axum::extract::FromRef;
 use sentinel_core::ports::inbound::community::check_eligibility::CheckEligibilityUseCase;
 use sentinel_core::ports::inbound::community::evaluate_age_declaration::EvaluateAgeDeclarationUseCase;
 use sentinel_core::ports::inbound::community::manage_announcements::ManageAnnouncementsUseCase;
-use sentinel_core::ports::inbound::community::manage_bump::ManageBumpUseCase;
 use sentinel_core::ports::inbound::community::manage_confessions::ManageConfessionsUseCase;
 use sentinel_core::ports::inbound::community::manage_embeds::ManageEmbedsUseCase;
 use sentinel_core::ports::inbound::community::manage_events::ManageEventsUseCase;
@@ -51,7 +50,6 @@ pub struct CommunityState {
     pub confessions_uc: Arc<dyn ManageConfessionsUseCase>,
     pub announcements_uc: Arc<dyn ManageAnnouncementsUseCase>,
     pub embeds_uc: Arc<dyn ManageEmbedsUseCase>,
-    pub bump_uc: Arc<dyn ManageBumpUseCase>,
     /// Presence en direct, publiee par le bot dans Redis. Alimente une page
     /// PUBLIQUE : le bot ne publie que les salons visibles par `@everyone`.
     pub presence_uc: Arc<dyn ReadPresenceUseCase>,

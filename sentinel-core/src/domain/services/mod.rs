@@ -2,7 +2,6 @@
 pub mod ai;
 pub mod audit;
 pub mod automod;
-pub mod bump;
 pub mod community;
 pub mod cooldown_map;
 pub mod moderation;

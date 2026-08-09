@@ -22,7 +22,6 @@ use serenity::prelude::Context;
 use tracing::{info, warn};
 
 use crate::command_registry::module_commands;
-use crate::shared::api_client::BaseApiClient;
 use crate::shared::discord_helpers::{guild_config_or_default, is_bot_enabled};
 use crate::shared::heartbeat::ApiClientKey;
 

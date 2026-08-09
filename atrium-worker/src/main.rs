@@ -1,5 +1,5 @@
 use std::time::Duration;
-use tracing::{info, error, warn};
+use tracing::{info, error};
 use sqlx::PgPool;
 use uuid::Uuid;
 use chrono::Utc;

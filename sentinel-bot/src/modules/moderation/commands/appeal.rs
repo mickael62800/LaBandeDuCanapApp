@@ -45,21 +45,20 @@ fn appeal_cooldowns() -> &'static Mutex<HashMap<(String, String), Instant>> {
     MAP.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-/// Renvoie `true` si l'utilisateur est encore en cooldown (appel a ignorer).
+/// Tente de démarrer un appel. Renvoie `true` si autorisé, `false` si en cooldown.
 /// Purge au passage les entrees expirees pour borner la memoire.
-fn appeal_on_cooldown(guild_id: &str, user_id: &str) -> bool {
+fn try_start_appeal(guild_id: &str, user_id: &str) -> bool {
     let mut map = appeal_cooldowns().lock().unwrap();
     let now = Instant::now();
     map.retain(|_, last| now.duration_since(*last) < APPEAL_COOLDOWN);
-    map.contains_key(&(guild_id.to_string(), user_id.to_string()))
-}
-
-/// Enregistre un appel accepte pour demarrer le cooldown.
-fn record_appeal(guild_id: &str, user_id: &str) {
-    appeal_cooldowns()
-        .lock()
-        .unwrap()
-        .insert((guild_id.to_string(), user_id.to_string()), Instant::now());
+    
+    let key = (guild_id.to_string(), user_id.to_string());
+    if map.contains_key(&key) {
+        false
+    } else {
+        map.insert(key, now);
+        true
+    }
 }
 
 pub fn register() -> CreateCommand {
@@ -78,8 +77,8 @@ pub async fn handle(ctx: &Context, command: &CommandInteraction) {
 
     let user_id = command.user.id.to_string();
 
-    // MOD #9 (b) — anti-spam : cooldown in-process par (guild, user).
-    if appeal_on_cooldown(&guild_id.to_string(), &user_id) {
+    // MOD #9 (b) — anti-spam : cooldown in-process par (guild, user) atomique.
+    if !try_start_appeal(&guild_id.to_string(), &user_id) {
         reply_ephemeral(
             ctx,
             command,
@@ -137,7 +136,6 @@ pub async fn handle(ctx: &Context, command: &CommandInteraction) {
         warn!(error = %e, "Ticket appel (dashboard) non cree — on continue");
     }
 
-    record_appeal(&guild_id.to_string(), &user_id);
     finalize_appeal(
         ctx,
         &guild_id.to_string(),
@@ -322,6 +320,21 @@ pub async fn handle_appeal_button(ctx: &Context, component: &ComponentInteractio
             return;
         }
     };
+
+    let user_id = component.user.id.to_string();
+    if !try_start_appeal(&found_guild, &user_id) {
+        let _ = component
+            .create_response(
+                &ctx.http,
+                CreateInteractionResponse::Message(
+                    CreateInteractionResponseMessage::new()
+                        .content("Vous avez déjà soumis un appel récemment. Patientez quelques minutes.")
+                        .ephemeral(true),
+                ),
+            )
+            .await;
+        return;
+    }
 
     // Ticket dashboard (best-effort). On lit le client puis on relache le lock.
     if let Some(grpc) = ctx.data.read().await.get::<GrpcClientKey>().cloned() {

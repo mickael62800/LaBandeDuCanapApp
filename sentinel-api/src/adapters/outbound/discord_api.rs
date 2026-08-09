@@ -2,7 +2,7 @@ use async_trait::async_trait;
 
 use sentinel_core::domain::errors::DomainError;
 pub use sentinel_core::ports::outbound::discord_api::{
-    DiscordApi, DiscordChannel, DiscordMember, DiscordRoleInfo, DiscordUser, NewChannel, UserGuild,
+    DiscordApi, DiscordChannel, DiscordEmoji, DiscordMember, DiscordRoleInfo, DiscordUser, NewChannel, UserGuild,
 };
 
 /// Service pour les appels a l'API Discord.
@@ -332,6 +332,27 @@ impl DiscordApi for DiscordApiService {
             )));
         }
         Ok(())
+    }
+
+    async fn list_emojis(&self, guild_id: &str) -> Result<Vec<DiscordEmoji>, DomainError> {
+        ensure_snowflake(guild_id)?;
+        self.ensure_configured()?;
+        let url = format!("https://discord.com/api/v10/guilds/{guild_id}/emojis");
+        
+        let res = self.client.get(&url).header("Authorization", format!("Bot {}", self.token)).send().await;
+        let res = match res {
+            Ok(r) => r,
+            Err(e) => return Err(DomainError::Internal(format!("HTTP error list_emojis: {e}"))),
+        };
+        
+        if !res.status().is_success() {
+            let status = res.status();
+            let body = res.text().await.unwrap_or_default();
+            return Err(DomainError::Internal(format!("Discord API list_emojis {status}: {body}")));
+        }
+        
+        let emojis: Vec<DiscordEmoji> = res.json().await.map_err(|e| DomainError::Internal(format!("Parse error list_emojis: {e}")))?;
+        Ok(emojis)
     }
 
     /// Upload un emoji custom sur un serveur Discord.

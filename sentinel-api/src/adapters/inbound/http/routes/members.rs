@@ -64,4 +64,9 @@ pub fn routes() -> Router<AppState> {
             "/api/guilds/{guild_id}/channels/all",
             get(handlers::community::guild_channels::list_all_channels),
         )
+        // Guild emojis (direct Discord API)
+        .route(
+            "/api/guilds/{guild_id}/emojis",
+            get(handlers::community::guild_emojis::list_emojis),
+        )
 }

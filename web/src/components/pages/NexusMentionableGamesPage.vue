@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { ref, watch, computed } from "vue";
 import { useGuildSelector } from "../../composables/useGuildSelector";
 import { useAuth } from "../../composables/useAuth";
 import { useToast } from "../../composables/useToast";
@@ -26,6 +26,11 @@ const newGameCategory = ref("");
 
 const deployChannelId = ref("");
 const deployCategory = ref("");
+
+const availableCategories = computed(() => {
+  const cats = new Set(games.value.map(g => g.category).filter(c => c !== null && c.trim() !== ""));
+  return Array.from(cats) as string[];
+});
 
 async function load() {
   if (!selectedGuildId.value) {
@@ -124,7 +129,10 @@ function getEmojiUrl(emojiStr: string | null): string | null {
           <h3>Déployer un panel</h3>
           <div class="form-row">
             <ChannelSelect v-model="deployChannelId" :guild-id="selectedGuildId" style="width: 250px" />
-            <input v-model="deployCategory" placeholder="Catégorie (optionnel)" class="input-base" />
+            <select v-model="deployCategory" class="input-base">
+              <option value="">— Toutes les catégories (optionnel) —</option>
+              <option v-for="cat in availableCategories" :key="cat" :value="cat">{{ cat }}</option>
+            </select>
             <button @click="onDeploy" class="btn-primary" :disabled="!deployChannelId">Déployer</button>
           </div>
           <p class="help-text">Déploie ou rafraîchit le panneau Discord contenant les boutons d'abonnement aux jeux.</p>

@@ -13,6 +13,10 @@ pub trait DiscordApi: Send + Sync {
     /// chacun annote avec son `kind`. Utilise par les pickers config qui
     /// s'appliquent aux deux types (xp_channel_multipliers).
     async fn list_all_channels(&self, guild_id: &str) -> Result<Vec<DiscordChannel>, DomainError>;
+    /// Liste les emojis custom du serveur.
+    async fn list_emojis(&self, _guild_id: &str) -> Result<Vec<DiscordEmoji>, DomainError> {
+        Err(DomainError::Internal("Liste des emojis non supportee".into()))
+    }
     /// Cree un salon (ou une categorie) et renvoie son ID Discord.
     ///
     /// Implementation par defaut en erreur : la plupart des doubles de test ne
@@ -147,6 +151,13 @@ pub struct DiscordRoleInfo {
     pub position: i64,
     #[serde(default)]
     pub managed: bool,
+}
+
+#[derive(Debug, serde::Serialize, Deserialize, Clone)]
+pub struct DiscordEmoji {
+    pub id: String,
+    pub name: String,
+    pub animated: bool,
 }
 
 #[derive(Debug, Clone, serde::Serialize, Deserialize)]

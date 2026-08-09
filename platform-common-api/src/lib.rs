@@ -21,6 +21,7 @@
 pub mod http;
 pub mod metrics;
 pub mod rate_limit;
+pub mod errors;
 
 pub use rate_limit::rate_limit_middleware;
 pub use rate_limit::RateLimiter;

@@ -18,6 +18,7 @@
 //! evite qu'un bot compile axum et tower-http pour rien.
 
 pub mod event_bus;
+pub mod errors;
 
 pub use event_bus::default_consumer_name;
 pub use event_bus::EventBus;

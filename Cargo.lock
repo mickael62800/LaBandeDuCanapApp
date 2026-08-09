@@ -2161,6 +2161,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "chrono",
+ "platform-common",
  "rand 0.8.6",
  "regex",
  "serde",
@@ -2528,6 +2529,7 @@ dependencies = [
  "futures-util",
  "redis",
  "serde_json",
+ "thiserror 2.0.18",
  "tokio",
  "tracing",
 ]
@@ -2539,6 +2541,8 @@ dependencies = [
  "axum",
  "metrics",
  "metrics-exporter-prometheus",
+ "platform-common",
+ "serde_json",
  "subtle",
  "tokio",
  "tokio-metrics",
@@ -3475,6 +3479,7 @@ dependencies = [
  "dashmap 6.1.0",
  "image",
  "ndarray",
+ "platform-common",
  "rand 0.8.6",
  "regex",
  "serde",

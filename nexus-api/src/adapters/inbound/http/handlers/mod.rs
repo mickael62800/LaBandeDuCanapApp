@@ -5,44 +5,8 @@ pub mod game;
 pub mod wallet;
 pub mod wheel;
 
-use axum::http::StatusCode;
-use axum::response::IntoResponse;
-use axum::response::Response;
-use axum::Json;
+pub use platform_common_api::errors::ApiError;
 use nexus_core::domain::errors::DomainError;
-
-/// Enveloppe d'erreur API : mappe DomainError -> statut HTTP + JSON.
-pub struct ApiError(pub DomainError);
-
-impl From<DomainError> for ApiError {
-    fn from(e: DomainError) -> Self {
-        Self(e)
-    }
-}
-
-impl IntoResponse for ApiError {
-    fn into_response(self) -> Response {
-        let (status, msg) = match &self.0 {
-            DomainError::Validation(m) | DomainError::ValidationError(m) => {
-                (StatusCode::BAD_REQUEST, m.clone())
-            }
-            DomainError::NotFound(m) => (StatusCode::NOT_FOUND, m.clone()),
-            DomainError::Conflict(m) => (StatusCode::CONFLICT, m.clone()),
-            DomainError::Forbidden(m) => (StatusCode::FORBIDDEN, m.clone()),
-            DomainError::RateLimited(m) => (StatusCode::TOO_MANY_REQUESTS, m.clone()),
-            DomainError::Timeout(m) => (StatusCode::GATEWAY_TIMEOUT, m.clone()),
-            DomainError::NotImplemented(m) => (StatusCode::NOT_IMPLEMENTED, m.clone()),
-            DomainError::Infrastructure(m) | DomainError::Internal(m) => {
-                tracing::error!(error = %m, "erreur infrastructure nexus-api");
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "erreur interne".to_string(),
-                )
-            }
-        };
-        (status, Json(serde_json::json!({ "error": msg }))).into_response()
-    }
-}
 
 /// Validation minimale d'un snowflake Discord (remplace le module
 /// `validation` de sentinel-api) : chiffres uniquement, longueur bornee.

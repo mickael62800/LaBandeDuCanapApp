@@ -8,6 +8,7 @@ description = "Coeur hexagonal pur de la plateforme jeux Nexus — sans dependan
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
+platform-common = { path = "../platform-common" }
 thiserror = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }

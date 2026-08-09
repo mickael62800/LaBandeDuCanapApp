@@ -9,6 +9,8 @@ import {
   type MentionableGame
 } from "@/services/nexusMentionableGamesService";
 import AdminPageShell from "../layouts/AdminPageShell.vue";
+import ChannelSelect from "@/components/atoms/ChannelSelect.vue";
+import EmojiSelect from "@/components/atoms/EmojiSelect.vue";
 
 const { selectedGuildId } = useGuildSelector();
 const { user } = useAuth();
@@ -88,6 +90,16 @@ async function onDeploy() {
     showError(e instanceof Error ? e.message : "Erreur déploiement");
   }
 }
+
+function getEmojiUrl(emojiStr: string | null): string | null {
+  if (!emojiStr) return null;
+  const match = emojiStr.match(/<a?:.+:(\d+)>/);
+  if (match && match[1]) {
+    const ext = emojiStr.startsWith('<a:') ? 'gif' : 'png';
+    return `https://cdn.discordapp.com/emojis/${match[1]}.${ext}`;
+  }
+  return null;
+}
 </script>
 
 <template>
@@ -102,7 +114,7 @@ async function onDeploy() {
           <h3>Ajouter un jeu</h3>
           <div class="form-row">
             <input v-model="newGameName" placeholder="Nom du jeu" class="input-base" />
-            <input v-model="newGameEmoji" placeholder="Emoji (optionnel)" class="input-base" />
+            <EmojiSelect v-model="newGameEmoji" :guild-id="selectedGuildId" style="width: 250px" />
             <input v-model="newGameCategory" placeholder="Catégorie (optionnel)" class="input-base" />
             <button @click="onCreate" class="btn-primary" :disabled="!newGameName">Créer</button>
           </div>
@@ -111,7 +123,7 @@ async function onDeploy() {
         <section class="deploy-section">
           <h3>Déployer un panel</h3>
           <div class="form-row">
-            <input v-model="deployChannelId" placeholder="ID du salon" class="input-base" />
+            <ChannelSelect v-model="deployChannelId" :guild-id="selectedGuildId" style="width: 250px" />
             <input v-model="deployCategory" placeholder="Catégorie (optionnel)" class="input-base" />
             <button @click="onDeploy" class="btn-primary" :disabled="!deployChannelId">Déployer</button>
           </div>
@@ -133,7 +145,8 @@ async function onDeploy() {
             <tbody>
               <tr v-for="g in games" :key="g.id">
                 <td>
-                  <span v-if="g.emoji">{{ g.emoji }}</span>
+                  <img v-if="getEmojiUrl(g.emoji)" :src="getEmojiUrl(g.emoji)!" class="table-emoji" />
+                  <span v-else-if="g.emoji" class="table-emoji">{{ g.emoji }}</span>
                   <strong>{{ g.game_name }}</strong>
                 </td>
                 <td>{{ g.category || '—' }}</td>
@@ -239,6 +252,13 @@ section h3 {
   text-align: center;
   background: var(--bg-card);
   border-radius: var(--radius-md);
+}
+
+.table-emoji {
+  width: 24px;
+  height: 24px;
+  vertical-align: middle;
+  margin-right: 8px;
 }
 
 .loading {

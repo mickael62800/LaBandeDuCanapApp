@@ -7,6 +7,12 @@ export interface DiscordTextChannel {
   position: number;
 }
 
+export interface DiscordEmoji {
+  id: string;
+  name: string;
+  animated: boolean;
+}
+
 export const guildsService = {
   getAll(): Promise<Guild[]> { return httpGet("/api/guilds"); },
   getMembers(guildId: string): Promise<GuildMember[]> {
@@ -14,5 +20,8 @@ export const guildsService = {
   },
   getTextChannels(guildId: string): Promise<DiscordTextChannel[]> {
     return httpGet(`/api/guilds/${guildId}/channels`);
+  },
+  getEmojis(guildId: string): Promise<DiscordEmoji[]> {
+    return httpGet(`/api/guilds/${guildId}/emojis`);
   },
 };

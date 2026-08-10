@@ -20,3 +20,5 @@ pub mod pulse;
 pub mod spotlight;
 pub mod welcome;
 
+pub mod levels;
+

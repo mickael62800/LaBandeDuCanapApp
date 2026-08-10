@@ -14,6 +14,7 @@ use sentinel_core::ports::inbound::community::manage_confessions::ManageConfessi
 use sentinel_core::ports::inbound::community::manage_embeds::ManageEmbedsUseCase;
 use sentinel_core::ports::inbound::community::manage_events::ManageEventsUseCase;
 use sentinel_core::ports::inbound::community::manage_ideas::ManageIdeasUseCase;
+use sentinel_core::ports::inbound::community::manage_levels::ManageLevelsUseCase;
 use sentinel_core::ports::inbound::community::manage_lfg::ManageLfgUseCase;
 use sentinel_core::ports::inbound::community::manage_monthly_ranking::ManageMonthlyRankingUseCase;
 use sentinel_core::ports::inbound::community::manage_news::ManageNewsUseCase;
@@ -51,6 +52,7 @@ pub struct CommunityState {
     pub presence_uc: Arc<dyn ReadPresenceUseCase>,
 
     // ── Membres, roles, progression ──
+pub levels_uc: Arc<dyn ManageLevelsUseCase>,
     pub monthly_ranking_uc: Arc<dyn ManageMonthlyRankingUseCase>,
     pub welcome_config_uc: Arc<dyn ManageWelcomeConfigUseCase>,
     pub eligibility_uc: Arc<dyn CheckEligibilityUseCase>,
@@ -80,4 +82,5 @@ impl FromRef<AppState> for CommunityState {
         state.community.clone()
     }
 }
+
 

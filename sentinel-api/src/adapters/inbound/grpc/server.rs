@@ -29,6 +29,7 @@ use sentinel_proto::guild_backup::v1::guild_backup_service_server::GuildBackupSe
 use sentinel_proto::ideas::v1::ideas_service_server::IdeasServiceServer;
 use sentinel_proto::images::v1::images_service_server::ImagesServiceServer;
 use sentinel_proto::moderation::v1::moderation_service_server::ModerationServiceServer;
+use sentinel_proto::progression::v1::progression_service_server::ProgressionServiceServer;
 use sentinel_proto::purge::v1::purge_service_server::PurgeServiceServer;
 use sentinel_proto::security::v1::security_service_server::SecurityServiceServer;
 use sentinel_proto::security_state::v1::security_state_service_server::SecurityStateServiceServer;
@@ -51,6 +52,7 @@ use crate::adapters::inbound::grpc::ai::images::ImagesGrpc;
 use crate::adapters::inbound::grpc::audit::action_messages::DiscordActionMessagesGrpc;
 use crate::adapters::inbound::grpc::audit::journal::AuditGrpc;
 use crate::adapters::inbound::grpc::audit::security::SecurityGrpc;
+use crate::adapters::inbound::grpc::community::progression::ProgressionGrpc;
 use crate::adapters::inbound::grpc::audit::stats::StatsGrpc;
 use crate::adapters::inbound::grpc::community::age_gate::AgeGateGrpc;
 use crate::adapters::inbound::grpc::community::announcements::AnnouncementsGrpc;
@@ -73,7 +75,11 @@ use crate::adapters::inbound::http::state::AppState;
 pub async fn serve_grpc(state: AppState, bind: SocketAddr) {
     let api_key = state.api_key.clone();
 
-        let stats = StatsGrpc {
+        let progression = ProgressionGrpc {
+        levels_uc: state.community.levels_uc.clone(),
+        broadcaster: state.broadcaster.clone(),
+    };
+    let stats = StatsGrpc {
         stats_uc: state.audit.stats_uc.clone(),
         broadcaster: state.broadcaster.clone(),
     };
@@ -178,6 +184,7 @@ pub async fn serve_grpc(state: AppState, bind: SocketAddr) {
             InterceptedService::new(inner, build_auth_interceptor(api_key.clone()))
         }};
     }
+let progression_svc = svc!(ProgressionServiceServer, progression);
     let stats_svc = svc!(StatsServiceServer, stats);
     let tickets_svc = svc!(TicketsServiceServer, tickets);
     let moderation_svc = svc!(ModerationServiceServer, moderation);
@@ -205,6 +212,9 @@ pub async fn serve_grpc(state: AppState, bind: SocketAddr) {
     // tonic-health : expose `grpc.health.v1.Health` + marque chaque service
     // comme SERVING. Permet `grpc_health_probe -addr=:50051` dans le healthcheck.
     let (health_reporter, health_service) = tonic_health::server::health_reporter();
+    health_reporter
+.set_serving::<ProgressionServiceServer<ProgressionGrpc>>()
+        .await;
     health_reporter
         .set_serving::<StatsServiceServer<StatsGrpc>>()
         .await;
@@ -306,6 +316,7 @@ pub async fn serve_grpc(state: AppState, bind: SocketAddr) {
 
     if let Err(e) = server_builder
         .add_service(health_service)
+.add_service(progression_svc)
         .add_service(stats_svc)
         .add_service(tickets_svc)
         .add_service(moderation_svc)
@@ -373,6 +384,9 @@ fn build_auth_interceptor(
 #[cfg(test)]
 #[path = "tests/server.rs"]
 mod tests;
+
+
+
 
 
 

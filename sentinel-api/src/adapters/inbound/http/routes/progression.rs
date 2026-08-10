@@ -9,6 +9,28 @@ use axum::Router;
 use super::super::handlers;
 use super::super::state::AppState;
 
+fn level_inner() -> Router<AppState> {
+    Router::new()
+        .route("/xp", post(handlers::community::levels::add_xp))
+        .route(
+            "/{guild_id}/{user_id}",
+            get(handlers::community::levels::get_user_level),
+        )
+        .route(
+            "/{guild_id}/leaderboard",
+            get(handlers::community::levels::get_leaderboard),
+        )
+        // Admin overrides : set valeur exacte XP texte/voix, reset 0.
+        .route(
+            "/admin/set-xp",
+            post(handlers::community::levels::set_user_xp),
+        )
+        .route(
+            "/admin/reset-xp",
+            post(handlers::community::levels::reset_user_xp),
+        )
+}
+
 fn announcement_inner() -> Router<AppState> {
     Router::new()
         .route(
@@ -288,6 +310,7 @@ pub fn routes() -> Router<AppState> {
             put(handlers::community::news::update_news)
                 .delete(handlers::community::news::delete_news),
         )
+        .nest("/api/levels", level_inner())
         .nest("/api/announcements", announcement_inner())
         .nest("/api/embeds", embed_inner())
         .route(
@@ -297,5 +320,6 @@ pub fn routes() -> Router<AppState> {
         .nest("/api/confessions", confession_inner())
         .nest("/api/age-bans", age_ban_inner())
 }
+
 
 

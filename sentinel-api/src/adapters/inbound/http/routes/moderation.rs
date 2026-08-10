@@ -102,10 +102,34 @@ fn strikes_inner() -> Router<AppState> {
         .route("/", post(handlers::moderation::strikes::add_strike))
 }
 
+/// Notes moderateurs, montees sous `/api/notes`.
+fn notes_inner() -> Router<AppState> {
+    Router::new()
+        .route("/", post(handlers::moderation::notes::add_note))
+        .route(
+            "/{guild_id}/{user_id}",
+            get(handlers::moderation::notes::get_notes),
+        )
+        .route("/{id}", delete(handlers::moderation::notes::delete_note))
+}
+
+/// Rappels de sanction, montes sous `/api/reminders`.
+fn reminders_inner() -> Router<AppState> {
+    Router::new()
+        .route("/", post(handlers::moderation::reminders::create_reminder))
+        .route("/pending", get(handlers::moderation::reminders::get_pending))
+        .route(
+            "/{guild_id}",
+            get(handlers::moderation::reminders::list_by_guild),
+        )
+}
+
 pub fn routes() -> Router<AppState> {
     Router::new()
         .nest("/api/moderation", moderation_inner())
         .nest("/api/strikes", strikes_inner())
+        .nest("/api/notes", notes_inner())
+        .nest("/api/reminders", reminders_inner())
 }
 
 #[cfg(test)]

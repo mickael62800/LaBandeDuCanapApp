@@ -1,7 +1,9 @@
 pub mod actions;
 pub mod automod;
 pub mod infractions;
+pub mod notes;
 pub mod purge;
+pub mod reminders;
 pub mod rules;
 pub mod strikes;
 pub mod target_risk;

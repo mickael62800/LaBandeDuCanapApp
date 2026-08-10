@@ -637,6 +637,9 @@ let level_repo = Arc::new(PgLevelRepository::new(pg_pool.clone()));
         manage_reminders_uc: Arc::new(sentinel_core::application::moderation::manage_reminders_service::ManageRemindersService::new(
             Arc::new(crate::adapters::outbound::postgres::moderation::reminder_repository::PgReminderRepository::new(pg_pool.clone()))
         )),
+        notes_uc: Arc::new(sentinel_core::application::moderation::manage_notes_service::ManageNotesService::new(
+            Arc::new(crate::adapters::outbound::postgres::moderation::notes_repository::PgNotesRepository::new(pg_pool.clone()))
+        )),
         broadcaster: broadcaster.clone(),
         discord_api: discord_api.clone(),
         bot_config_repo: bot_config_repo.clone(),

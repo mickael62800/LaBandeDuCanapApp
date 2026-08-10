@@ -45,6 +45,12 @@ COPY web/docker-entrypoint-nexus.sh /docker-entrypoint.d/30-nexus-key.sh
 RUN sed -i 's/\r$//' /docker-entrypoint.d/30-nexus-key.sh \
     && chmod +x /docker-entrypoint.d/30-nexus-key.sh
 
+# Idem pour le jeton Atrium (proxy /atrium-api/). Meme contrainte d'ordre :
+# l'include de nginx.conf doit exister avant le demarrage de nginx.
+COPY web/docker-entrypoint-atrium.sh /docker-entrypoint.d/31-atrium-key.sh
+RUN sed -i 's/\r$//' /docker-entrypoint.d/31-atrium-key.sh \
+    && chmod +x /docker-entrypoint.d/31-atrium-key.sh
+
 # Assets statiques
 COPY --from=builder /app/dist /usr/share/nginx/html
 

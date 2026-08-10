@@ -356,7 +356,7 @@ impl proto::rag_service_server::RagService for RagGrpc {
         let chunks = rag
             .search_chunks(&req.guild_id, &req.query, req.limit)
             .await
-            .map_err(|e| Status::internal(e))?;
+            .map_err(Status::internal)?;
 
         let proto_chunks = chunks
             .into_iter()

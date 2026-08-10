@@ -38,17 +38,16 @@ function styleColor(style: string): string {
 </script>
 
 <template>
-  <div class="role-panels page--constrained">
+  <!-- Contenu d'onglet : l'en-tete de page appartient a `RolesHubPage`.
+       Le lien croise vers les roles Discord a disparu : l'onglet voisin fait
+       exactement ce qu'il faisait, en mieux. -->
+  <div class="role-panels">
     <div class="page-header-row">
-      <h1>Roles & Auto-Roles</h1>
-      <div class="header-actions">
-        <router-link
-          v-if="selectedGuildId"
-          to="/role-panels/new"
-          class="btn-primary"
-        >+ Nouveau panel</router-link>
-        <router-link to="/discord-roles" class="cross-link">Voir tous les roles Discord &rarr;</router-link>
-      </div>
+      <router-link
+        v-if="selectedGuildId"
+        to="/role-panels/new"
+        class="btn-primary"
+      >+ Nouveau panel</router-link>
     </div>
 
     <div v-if="!selectedGuildId && !loading" class="empty">

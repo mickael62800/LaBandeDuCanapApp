@@ -65,6 +65,21 @@ export const NEXUS: Brand = {
   tagline: "Plateforme jeux",
 };
 
+export const ATRIUM: Brand = {
+  name: "Atrium",
+  mark: "/atrium_logo.png",
+  tagline: "Accueil assiste par IA",
+};
+
+/// Exploitation : la machine hote, pas un produit Discord. Pas de logo
+/// dedie — `onLogoError` masque proprement l'image absente, il n'y a donc
+/// rien a fournir tant qu'on ne veut pas d'icone ici.
+export const OPS: Brand = {
+  name: "Exploitation",
+  mark: "/ops_logo.png",
+  tagline: "Machine, services et securite de l'hote",
+};
+
 /// Logo grand format : le wordmark s'il existe, sinon le symbole seul.
 export function wordmarkOf(brand: Brand): string {
   return brand.wordmark ?? brand.mark;

@@ -807,7 +807,7 @@ async fn test_nexus_grpc_service_execute_rcon() {
     let inner = res.into_inner();
     assert_eq!(inner.server_id, id);
     assert_eq!(inner.response, "OK");
-    assert_eq!(inner.success, true);
+    assert!(inner.success);
 }
 
 #[tokio::test]

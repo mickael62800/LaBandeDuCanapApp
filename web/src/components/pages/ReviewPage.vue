@@ -6,7 +6,6 @@ import { useToast } from "@/composables/useToast";
 import { reviewService } from "@/services/moderationAdvancedService";
 import type { ReviewQueueEntry } from "@/types/moderation-advanced";
 import AppTextarea from "@/components/atoms/AppTextarea.vue";
-import AdminPageShell from "@/components/layouts/AdminPageShell.vue";
 import { useFormatDate } from "@/composables/useFormatDate";
 
 const { guildIdFilter } = useGuildSelector();
@@ -62,13 +61,12 @@ watch(guildIdFilter, fetchPending);
 </script>
 
 <template>
-  <AdminPageShell title="Reviews modération" icon="🔍">
-    <template #lede>
-      File d'attente des actions de modération qui requièrent une seconde
-      opinion. Les modérateurs créent une review depuis Discord
-      (<code>/review add</code>), les seniors valident ici (Approved /
-      Rejected / Changed).
-    </template>
+  <!-- Contenu d'onglet : l'en-tete de page appartient a `ModerationHubPage`. -->
+  <div class="review-tab">
+    <p class="tab-note">
+      Les modérateurs créent une review depuis Discord (<code>/review add</code>),
+      les seniors valident ici (Approved / Rejected / Changed).
+    </p>
 
     <section class="card">
       <h2>Reviews en attente</h2>
@@ -114,11 +112,18 @@ watch(guildIdFilter, fetchPending);
         </div>
       </div>
     </div>
-  </AdminPageShell>
+  </div>
 </template>
 
 <style scoped>
 @import "./_admin-page-shared.css";
+
+.tab-note {
+  color: var(--text-secondary);
+  font-size: 13px;
+  margin: 0 0 16px;
+}
+
 .reviews-list {
   list-style: none;
   padding: 0;

@@ -1,0 +1,420 @@
+<script setup lang="ts">
+// Accueil IA Atrium — premier ecran d'administration de l'univers.
+//
+// Atrium etait jusqu'ici pilotable uniquement depuis Discord : son etat, ses
+// quotas et sa base de connaissances n'existaient qu'en gRPC, a l'usage
+// d'`atrium-bot`. Cette page est la premiere fenetre du back-office dessus,
+// via la passerelle nginx `/atrium-api/`.
+//
+// Tout ce qui est affiche ici est desormais reglable PAR SERVEUR : les quotas
+// sont passes des variables d'environnement a `bot_guild_config`, conformement
+// a la regle du depot. Un serveur qui n'a rien regle retombe sur les valeurs
+// d'environnement — l'ecran indique laquelle des deux s'applique.
+
+import { computed, onMounted, ref } from "vue";
+import AdminPageShell from "../layouts/AdminPageShell.vue";
+import AppToggle from "../atoms/AppToggle.vue";
+import AppButton from "../atoms/AppButton.vue";
+import AppInput from "../atoms/AppInput.vue";
+import ErrorState from "../atoms/ErrorState.vue";
+import EmptyState from "../atoms/EmptyState.vue";
+import LoadingState from "../atoms/LoadingState.vue";
+import { useGuildSelector } from "@/composables/useGuildSelector";
+import { useAuth } from "@/composables/useAuth";
+import { useToast } from "@/composables/useToast";
+import { errMsg } from "@/utils/errMsg";
+import {
+  atriumService,
+  type AtriumDocument,
+  type AtriumUsage,
+} from "@/services/atriumService";
+
+const { selectedGuildId } = useGuildSelector();
+const { user } = useAuth();
+const { success, error: toastError } = useToast();
+
+const loading = ref(false);
+const loadError = ref<string | null>(null);
+const saving = ref(false);
+
+const enabled = ref(false);
+const usage = ref<AtriumUsage | null>(null);
+const documents = ref<AtriumDocument[]>([]);
+
+// Formulaire des quotas. En chaines : `AppInput` travaille en `string`, et
+// convertir a la volee ferait disparaitre un champ vide en cours de saisie.
+const form = ref({
+  user_daily_limit: "",
+  user_cooldown_secs: "",
+  global_daily_limit: "",
+});
+// Copie de reference pour savoir ce qui a change et n'envoyer QUE cela.
+const saved = ref({ ...form.value });
+const savingConfig = ref(false);
+
+const dirty = computed(() =>
+  (Object.keys(form.value) as (keyof typeof form.value)[]).some(
+    (k) => form.value[k] !== saved.value[k],
+  ),
+);
+
+function fillForm(u: AtriumUsage) {
+  form.value = {
+    user_daily_limit: String(u.user_daily_limit),
+    user_cooldown_secs: String(u.user_cooldown_secs),
+    global_daily_limit: String(u.global_daily_limit),
+  };
+  saved.value = { ...form.value };
+}
+
+function resetForm() {
+  form.value = { ...saved.value };
+}
+
+async function saveConfig() {
+  const guildId = selectedGuildId.value;
+  if (!guildId) return;
+  // N'envoyer que les cles modifiees : ecrire les trois a chaque fois
+  // materialiserait en base des valeurs que l'admin n'a jamais choisies, et
+  // ferait perdre le repli sur la configuration d'installation.
+  const values: Record<string, string> = {};
+  for (const k of Object.keys(form.value) as (keyof typeof form.value)[]) {
+    if (form.value[k] !== saved.value[k]) values[k] = form.value[k].trim();
+  }
+  if (Object.keys(values).length === 0) return;
+
+  savingConfig.value = true;
+  try {
+    await atriumService.setConfig(guildId, values);
+    saved.value = { ...form.value };
+    success("Quotas enregistrés.");
+    // Relecture : les compteurs du jour et les limites appliquees viennent du
+    // serveur, pas du formulaire.
+    usage.value = await atriumService.usage(guildId);
+  } catch (e: unknown) {
+    toastError(errMsg(e));
+  } finally {
+    savingConfig.value = false;
+  }
+}
+
+/// Part du quota global consommee aujourd'hui, bornee a 100 %.
+/// Une limite a zero signifie « pas de plafond » : afficher une jauge dans ce
+/// cas ferait croire a une saturation imminente.
+const globalPct = computed(() => {
+  const u = usage.value;
+  if (!u || u.global_daily_limit <= 0) return null;
+  return Math.min(100, Math.round((u.global_used_today / u.global_daily_limit) * 100));
+});
+
+async function load() {
+  const guildId = selectedGuildId.value;
+  if (!guildId) return;
+  loading.value = true;
+  loadError.value = null;
+  try {
+    // En parallele : les trois lectures sont independantes, et l'ecran n'a
+    // d'interet qu'une fois les trois disponibles.
+    const [state, stats, docs] = await Promise.all([
+      atriumService.state(guildId),
+      atriumService.usage(guildId),
+      atriumService.knowledge(guildId),
+    ]);
+    enabled.value = state.enabled;
+    usage.value = stats;
+    documents.value = docs;
+    fillForm(stats);
+  } catch (e: unknown) {
+    loadError.value = errMsg(e);
+  } finally {
+    loading.value = false;
+  }
+}
+
+async function toggleEnabled(next: boolean) {
+  const guildId = selectedGuildId.value;
+  // Garde ici et pas via une prop `disabled` : `AppToggle` n'en expose pas,
+  // l'attribut retomberait sur le <label> sans rien empecher. Deux clics
+  // rapides enverraient alors deux bascules concurrentes.
+  if (!guildId || !user.value || saving.value) return;
+  saving.value = true;
+  // Optimiste : l'interrupteur suit le doigt, et revient en arriere si l'API
+  // refuse. Attendre l'aller-retour donnait un bouton qui semble ne rien faire.
+  const previous = enabled.value;
+  enabled.value = next;
+  try {
+    await atriumService.setState(guildId, next, user.value.id);
+    success(next ? "Atrium activé sur ce serveur." : "Atrium désactivé sur ce serveur.");
+  } catch (e: unknown) {
+    enabled.value = previous;
+    toastError(errMsg(e));
+  } finally {
+    saving.value = false;
+  }
+}
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleString("fr-FR", {
+    dateStyle: "short",
+    timeStyle: "short",
+  });
+}
+
+onMounted(load);
+</script>
+
+<template>
+  <AdminPageShell title="Accueil IA" icon="🌿" class="atrium-page">
+    <template #lede>
+      Atrium accueille les nouveaux membres et répond à leurs questions à
+      partir de la base de connaissances du serveur.
+    </template>
+    <template #actions>
+      <AppButton variant="secondary" :disabled="loading" @click="load">
+        Actualiser
+      </AppButton>
+    </template>
+
+    <ErrorState
+      v-if="loadError"
+      :message="loadError"
+      :retryable="true"
+      @retry="load"
+    />
+
+    <LoadingState v-else-if="loading" />
+
+    <template v-else>
+      <section class="card at-switch">
+        <div class="at-switch-text">
+          <h2>Atrium sur ce serveur</h2>
+          <p>
+            Désactivé, le bot continue de tourner mais répond qu'il est hors
+            service au lieu d'appeler le modèle — aucun quota n'est consommé.
+          </p>
+        </div>
+        <AppToggle :model-value="enabled" @update:model-value="toggleEnabled" />
+      </section>
+
+      <section v-if="usage" class="card">
+        <h2>Consommation du jour</h2>
+        <div class="at-stats">
+          <div class="at-stat">
+            <span class="at-value">{{ usage.guild_used_today }}</span>
+            <span class="at-label">requêtes sur ce serveur</span>
+          </div>
+          <div class="at-stat">
+            <span class="at-value">{{ usage.guild_active_users_today }}</span>
+            <span class="at-label">membres actifs</span>
+          </div>
+          <div class="at-stat">
+            <span class="at-value">
+              {{ usage.global_used_today }}
+              <small v-if="usage.global_daily_limit > 0">
+                / {{ usage.global_daily_limit }}
+              </small>
+            </span>
+            <span class="at-label">requêtes toutes guildes</span>
+          </div>
+        </div>
+
+        <div v-if="globalPct !== null" class="at-gauge" :title="`${globalPct} % du quota global`">
+          <i :style="{ width: `${globalPct}%` }" :class="{ hot: globalPct >= 80 }"></i>
+        </div>
+
+      </section>
+
+      <section class="card">
+        <h2>Quotas de ce serveur</h2>
+        <p class="at-note">
+          Ces limites protègent la facture du fournisseur de modèle.
+          <strong>0 signifie « illimité ».</strong> Non renseignées, elles
+          retombent sur les valeurs d'installation
+          (<code>ATRIUM_USER_DAILY_LIMIT</code>,
+          <code>ATRIUM_USER_COOLDOWN_SECS</code>,
+          <code>ATRIUM_GLOBAL_DAILY_LIMIT</code>).
+        </p>
+
+        <div class="at-form">
+          <label class="at-field">
+            <span>Requêtes par membre et par jour</span>
+            <AppInput v-model="form.user_daily_limit" type="number" :min="0" />
+          </label>
+          <label class="at-field">
+            <span>Délai entre deux questions (s)</span>
+            <AppInput v-model="form.user_cooldown_secs" type="number" :min="0" />
+          </label>
+          <label class="at-field">
+            <span>Plafond quotidien du serveur</span>
+            <AppInput v-model="form.global_daily_limit" type="number" :min="0" />
+          </label>
+        </div>
+
+        <div class="at-form-actions">
+          <AppButton
+            variant="primary"
+            :disabled="!dirty || savingConfig"
+            @click="saveConfig"
+          >
+            Enregistrer
+          </AppButton>
+          <AppButton variant="secondary" :disabled="!dirty" @click="resetForm">
+            Annuler
+          </AppButton>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Base de connaissances</h2>
+        <EmptyState
+          v-if="documents.length === 0"
+          message="Aucun document indexé pour ce serveur."
+        />
+        <table v-else class="at-table">
+          <thead>
+            <tr>
+              <th>Document</th>
+              <th>Fragments</th>
+              <th>État</th>
+              <th>Mis à jour</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="d in documents" :key="d.id">
+              <td>
+                <span class="at-title">{{ d.title }}</span>
+                <span v-if="d.source_url" class="at-source">{{ d.source_url }}</span>
+              </td>
+              <td>
+                <!-- Zero fragment = document enregistre mais jamais vectorise,
+                     donc invisible pour les reponses. C'est la panne
+                     silencieuse la plus probable ici : on la signale. -->
+                <span :class="{ 'at-warn': d.chunk_count === 0 }">
+                  {{ d.chunk_count }}
+                </span>
+              </td>
+              <td>{{ d.enabled ? "Actif" : "Inactif" }}</td>
+              <td>{{ formatDate(d.updated_at) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+    </template>
+  </AdminPageShell>
+</template>
+
+<style scoped>
+@import "./_admin-page-shared.css";
+
+.at-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+.at-switch-text p {
+  color: var(--text-secondary);
+  font-size: 13px;
+  margin: 4px 0 0;
+  max-width: 60ch;
+}
+
+.at-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 32px;
+  margin: 16px 0;
+}
+.at-stat {
+  display: flex;
+  flex-direction: column;
+}
+.at-value {
+  font-size: 26px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--universe-accent, var(--accent));
+}
+.at-value small {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.at-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.at-gauge {
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-card);
+  overflow: hidden;
+}
+.at-gauge i {
+  display: block;
+  height: 100%;
+  background: var(--universe-accent, var(--accent));
+  border-radius: var(--radius-pill);
+}
+.at-gauge i.hot {
+  background: var(--accent-warm, #e67e22);
+}
+
+.at-note {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 0 0 16px;
+}
+
+.at-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+.at-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.at-form-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.at-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.at-table th,
+.at-table td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.at-title {
+  display: block;
+  font-weight: 600;
+}
+.at-source {
+  display: block;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.at-warn {
+  color: var(--accent-warm, #e67e22);
+  font-weight: 700;
+}
+
+@media (max-width: 700px) {
+  .at-switch {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+</style>

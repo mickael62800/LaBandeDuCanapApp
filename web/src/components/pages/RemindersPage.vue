@@ -4,7 +4,6 @@ import { useGuildSelector } from "@/composables/useGuildSelector";
 import { useToast } from "@/composables/useToast";
 import { remindersService } from "@/services/moderationAdvancedService";
 import type { SanctionReminder } from "@/types/moderation-advanced";
-import AdminPageShell from "@/components/layouts/AdminPageShell.vue";
 import { useFormatDate } from "@/composables/useFormatDate";
 
 const { guildIdFilter } = useGuildSelector();
@@ -42,13 +41,13 @@ function statusColor(s: string): string {
 </script>
 
 <template>
-  <AdminPageShell title="Reminders modération" icon="⏰">
-    <template #lede>
-      Rappels datés sur les actions de modération (ex. notification quand un
-      mute temporaire approche de son terme). Créés automatiquement par les
-      commandes <code>/mute duration</code> et <code>/ban duration</code>,
-      consultables ici.
-    </template>
+  <!-- Contenu d'onglet : l'en-tete de page appartient a `ModerationHubPage`. -->
+  <div class="reminders-tab">
+    <p class="tab-note">
+      Créés automatiquement par les commandes <code>/mute duration</code> et
+      <code>/ban duration</code> (ex. notification quand un mute temporaire
+      approche de son terme), consultables ici.
+    </p>
 
     <section class="card">
       <h2>Reminders du serveur</h2>
@@ -86,9 +85,15 @@ function statusColor(s: string): string {
         </tbody>
       </table>
     </section>
-  </AdminPageShell>
+  </div>
 </template>
 
 <style scoped>
 @import "./_admin-page-shared.css";
+
+.tab-note {
+  color: var(--text-secondary);
+  font-size: 13px;
+  margin: 0 0 16px;
+}
 </style>

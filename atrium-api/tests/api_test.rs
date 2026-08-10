@@ -55,6 +55,9 @@ fn setup_test_app(should_fail: bool) -> axum::Router {
         budget: None,
         control: None,
         memory: None,
+        // Aucune base dans ces tests : les routes d'administration repondent
+        // 503, ce qui est exactement le comportement attendu sans dependance.
+        config_pool: None,
     });
     router_with_state(state)
 }
@@ -181,7 +184,7 @@ async fn test_grpc_generate_reply_success() {
     let inner = res.into_inner();
 
     assert_eq!(inner.reply, "Bienvenue Bob sur le serveur 12345 !");
-    assert_eq!(inner.generated_by_ai, true);
+    assert!(inner.generated_by_ai);
 }
 
 #[tokio::test]

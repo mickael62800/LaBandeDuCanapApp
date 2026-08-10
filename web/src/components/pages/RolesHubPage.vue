@@ -1,14 +1,30 @@
 <script setup lang="ts">
-import { ref, watch } from "vue";
+// Hub Rôles : panneaux d'auto-attribution + rôles Discord, en onglets.
+//
+// C'est LE HUB qui porte l'en-tete de page. Les deux onglets affichaient
+// chacun leur titre ET un lien croise vers l'autre (« Voir tous les roles
+// Discord → », « ← Panels de roles ») : une navigation en doublon de la barre
+// d'onglets, heritee de l'epoque ou c'etaient deux pages separees.
+
+import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import AppTabs from "../molecules/AppTabs.vue";
+import AdminPageShell from "../layouts/AdminPageShell.vue";
 import RolePanelsPage from "./RolePanelsPage.vue";
 import DiscordRolesPage from "./DiscordRolesPage.vue";
 
 type TabKey = "panels" | "roles";
 const tabs = [
-  { key: "panels", label: "Panneaux de rôles" },
-  { key: "roles", label: "Rôles Discord" },
+  {
+    key: "panels",
+    label: "Panneaux de rôles",
+    lede: "Panneaux d'auto-attribution de rôles postés sur Discord.",
+  },
+  {
+    key: "roles",
+    label: "Rôles Discord",
+    lede: "Tous les rôles du serveur, avec leur hiérarchie et leurs membres.",
+  },
 ];
 
 const route = useRoute();
@@ -35,16 +51,22 @@ function onTabChange(key: string) {
   if (route.path !== target) router.replace(target);
   activeTab.value = key as TabKey;
 }
+
+const activeLede = computed(
+  () => tabs.find((t) => t.key === activeTab.value)?.lede ?? "",
+);
 </script>
 
 <template>
-  <div class="roles-hub">
+  <AdminPageShell title="Rôles" icon="🎭" class="roles-hub">
+    <template #lede>{{ activeLede }}</template>
+
     <div class="hub-tabs-wrap">
       <AppTabs :model-value="activeTab" :tabs="tabs" @update:model-value="onTabChange" />
     </div>
     <RolePanelsPage v-if="activeTab === 'panels'" />
     <DiscordRolesPage v-else />
-  </div>
+  </AdminPageShell>
 </template>
 
 <style scoped>

@@ -4,6 +4,7 @@ import { useGuildSelector } from "../../composables/useGuildSelector";
 import { useToast } from "../../composables/useToast";
 import type { UpdateRuleParams } from "../../types";
 import RuleCard from "../organisms/RuleCard.vue";
+import AdminPageShell from "../layouts/AdminPageShell.vue";
 
 const { success, error: showError } = useToast();
 const { selectedGuildId } = useGuildSelector();
@@ -31,8 +32,10 @@ async function handleToggle(rule: Parameters<typeof toggleRule>[0]) {
 </script>
 
 <template>
-  <div class="rules page--constrained">
-    <h1 class="page-title">Regles de moderation</h1>
+  <AdminPageShell title="Règles de modération" icon="🛡️" class="rules">
+    <template #lede>
+      Poids et seuils par type de flag. Ces règles alimentent l'automod.
+    </template>
 
     <details class="rules-help">
       <summary>📖 Comment ca marche ?</summary>
@@ -88,14 +91,10 @@ async function handleToggle(rule: Parameters<typeof toggleRule>[0]) {
         @save="handleSave"
       />
     </div>
-  </div>
+  </AdminPageShell>
 </template>
 
 <style scoped>
-.rules h1 {
-  margin-bottom: 24px;
-}
-
 .rules-grid {
   display: grid;
   /* 3 cols >=1900px, 2 cols 1400-1900px, 1 col <1400px.

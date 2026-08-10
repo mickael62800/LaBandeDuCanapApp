@@ -2,7 +2,6 @@
 import { ref } from "vue";
 import { useVoiceChannels, useVoiceChannelDetail } from "../../composables/useVoiceChannels";
 import { useRealtimeRefresh } from "../../composables/useRealtimeRefresh";
-import AdminPageShell from "../layouts/AdminPageShell.vue";
 import VoiceChannelDetailPanel from "../organisms/VoiceChannelDetailPanel.vue";
 import VoiceChannelsActiveList from "../organisms/VoiceChannelsActiveList.vue";
 import VoiceChannelsHistoryList from "../organisms/VoiceChannelsHistoryList.vue";
@@ -51,11 +50,8 @@ function backToList() {
 </script>
 
 <template>
-  <AdminPageShell title="Salons vocaux">
-    <template #lede>
-      Salons vocaux temporaires actifs
-    </template>
-
+  <!-- Contenu d'onglet : l'en-tete de page appartient a `VoiceHubPage`. -->
+  <div class="voice-channels-tab">
     <div class="stats-row">
       <div class="stat-card">
         <span class="stat-value">{{ totalCount }}</span>
@@ -84,7 +80,7 @@ function backToList() {
       <VoiceChannelsActiveList @select="selectChannel" />
       <VoiceChannelsHistoryList @select="selectChannel" />
     </template>
-  </AdminPageShell>
+  </div>
 </template>
 
 <style scoped>

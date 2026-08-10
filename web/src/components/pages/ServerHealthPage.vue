@@ -8,6 +8,7 @@ import ServerHealthBanner from "@/components/organisms/ServerHealthBanner.vue";
 import ServerHealthResources from "@/components/organisms/ServerHealthResources.vue";
 import ServerHealthDisks from "@/components/organisms/ServerHealthDisks.vue";
 import ServerHealthServices from "@/components/organisms/ServerHealthServices.vue";
+import AdminPageShell from "@/components/layouts/AdminPageShell.vue";
 
 const { error: showError } = useToast();
 
@@ -54,10 +55,12 @@ onUnmounted(stopPolling);
 </script>
 
 <template>
-  <div class="dashboard page--constrained">
-    <div class="dashboard-header">
-      <h1>État du serveur</h1>
-      <div class="header-actions">
+  <AdminPageShell title="État de la machine" icon="🖥️" class="dashboard">
+    <template #lede>
+      Ressources, disques, services et conteneurs de la machine hôte — celle
+      qui héberge Sentinel, Nexus et Atrium. Rien ici ne concerne Discord.
+    </template>
+    <template #actions>
         <button
           class="auto-toggle"
           :class="{ active: autoRefresh }"
@@ -90,8 +93,7 @@ onUnmounted(stopPolling);
           </svg>
           <span>Actualiser</span>
         </button>
-      </div>
-    </div>
+    </template>
 
     <div v-if="loading" class="loading">Chargement…</div>
 
@@ -107,28 +109,12 @@ onUnmounted(stopPolling);
       <!-- Administration Docker (overview, conteneurs, images, volumes, networks, prune) -->
       <DockerAdminSection />
     </template>
-  </div>
+  </AdminPageShell>
 </template>
 
 <style scoped>
-.dashboard-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
-  margin-bottom: 24px;
-  padding-bottom: 18px;
-  background:
-    linear-gradient(to right,
-      transparent 0%,
-      color-mix(in srgb, var(--accent) 35%, transparent) 30%,
-      color-mix(in srgb, var(--accent) 35%, transparent) 70%,
-      transparent 100%) bottom / 100% 1px no-repeat;
-}
-.dashboard-header h1 { margin: 0; font-size: 1.6rem; font-weight: 700; }
-
-.header-actions { display: flex; gap: 10px; align-items: center; }
+/* L'en-tete (titre + bordure degradee) vient d'`AdminPageShell`. Elle etait
+   recopiee ici a l'identique, gradient compris. */
 
 .auto-toggle {
   display: inline-flex;

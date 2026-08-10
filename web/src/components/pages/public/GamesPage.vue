@@ -17,9 +17,9 @@
 
 import { computed, onMounted, ref, watch } from "vue";
 
-import ActionButton from "../atoms/ActionButton.vue";
-import SiteHero from "../molecules/SiteHero.vue";
-import { useAuth } from "../../composables/useAuth";
+import ActionButton from "@/components/atoms/ActionButton.vue";
+import SiteHero from "@/components/molecules/SiteHero.vue";
+import { useAuth } from "@/composables/useAuth";
 import {
   gamesService,
   type Rank,
@@ -345,14 +345,14 @@ const fondRoue = computed(() => {
 
 <template>
   <div class="jx theme-communaute">
-    <header class="jx-bar">
-      <ActionButton to="/membre" variant="ghost" size="md">
-        ← L'espace membre
-      </ActionButton>
-      <span v-if="user" class="jx-solde" :class="{ pulse: !!resultat }">
+    <!-- Le lien de retour vers l'espace membre est parti dans `SiteHeader`,
+         qui porte la navigation des trois pages publiques. Ne reste ici que
+         le solde : lui est propre a cette page. -->
+    <div v-if="user" class="jx-bar">
+      <span class="jx-solde" :class="{ pulse: !!resultat }">
         🪙 {{ fmtCoins(solde) }}
       </span>
-    </header>
+    </div>
 
     <SiteHero
       taille="compact"
@@ -693,7 +693,7 @@ const fondRoue = computed(() => {
 .jx-bar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 1rem;
 }
 

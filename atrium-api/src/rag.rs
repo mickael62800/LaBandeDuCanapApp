@@ -123,7 +123,42 @@ pub struct RagService {
     embeddings: EmbeddingsClient,
 }
 
+/// Un document INDEXE en base, vu par l'administration.
+///
+/// A ne pas confondre avec `KnowledgeDocument` plus haut, qui decrit les
+/// fichiers Markdown embarques dans le binaire *avant* indexation.
+///
+/// Le contenu n'est PAS renvoye : la page liste ce qu'Atrium sait, elle n'est
+/// pas une visionneuse de documents. `chunk_count` a zero signale un document
+/// enregistre mais jamais vectorise — donc invisible pour les reponses.
+#[derive(Debug, FromRow, Serialize)]
+pub struct IndexedDocument {
+    pub id: Uuid,
+    pub title: String,
+    pub source_url: Option<String>,
+    pub enabled: bool,
+    pub chunk_count: i64,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
 impl RagService {
+    /// Documents indexes pour une guilde, les plus recemment modifies d'abord.
+    pub async fn documents(&self, guild_id: &str) -> Result<Vec<IndexedDocument>, sqlx::Error> {
+        sqlx::query_as::<_, IndexedDocument>(
+            "SELECT d.id, d.title, d.source_url, d.enabled, \
+                    COUNT(c.id)::bigint AS chunk_count, d.updated_at \
+             FROM atrium_knowledge_documents d \
+             LEFT JOIN atrium_knowledge_chunks c ON c.document_id = d.id \
+             WHERE d.guild_id = $1 \
+             GROUP BY d.id \
+             ORDER BY d.updated_at DESC \
+             LIMIT 200",
+        )
+        .bind(guild_id)
+        .fetch_all(&self.pool)
+        .await
+    }
+
     pub fn new(pool: PgPool, config: &AppConfig) -> Self {
         Self {
             pool,

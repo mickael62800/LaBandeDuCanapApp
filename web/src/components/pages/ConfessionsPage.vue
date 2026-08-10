@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import AppCheckbox from "../atoms/AppCheckbox.vue";
+import AdminPageShell from "../layouts/AdminPageShell.vue";
 import { computed } from "vue";
 
 import { useConfessions } from "@/composables/useConfessions";
@@ -19,18 +20,13 @@ const TABS = computed(() => [
 </script>
 
 <template>
-  <div class="confessions-page page--constrained">
-    <header class="page-head">
-      <div>
-        <h1 class="page-title">📝 Modération des confessions</h1>
-        <p class="muted small">
-          Confessions anonymes postées via /confess. Seul le owner voit l'auteur réel.
-        </p>
-      </div>
-      <div class="actions">
-        <AppCheckbox v-model="showDeleted">Afficher supprimées</AppCheckbox>
-      </div>
-    </header>
+  <AdminPageShell title="Modération des confessions" icon="📝" class="confessions-page">
+    <template #lede>
+      Confessions anonymes postées via /confess. Seul le owner voit l'auteur réel.
+    </template>
+    <template #actions>
+      <AppCheckbox v-model="showDeleted">Afficher supprimées</AppCheckbox>
+    </template>
 
     <AppTabs
       :model-value="tab"
@@ -43,13 +39,11 @@ const TABS = computed(() => [
     <ConfessionsReportsTable v-else-if="tab === 'reports'" />
 
     <ConfessionRepliesModal />
-  </div>
+  </AdminPageShell>
 </template>
 
 <style scoped>
 .confessions-page { padding: 0; }
-.page-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
-.page-head h1 { margin: 0; font-size: 24px; }
 .muted { color: var(--text-secondary); }
 .small { font-size: 12px; }
 </style>

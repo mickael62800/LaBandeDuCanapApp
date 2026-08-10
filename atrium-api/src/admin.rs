@@ -1,0 +1,197 @@
+//! Surface HTTP d'administration d'Atrium.
+//!
+//! POURQUOI CE MODULE EXISTE
+//!
+//! Tout le pilotage d'Atrium — etat par serveur, quotas, base de
+//! connaissances — n'existait qu'en gRPC, a l'usage exclusif d'`atrium-bot`.
+//! Le back-office n'avait donc AUCUN moyen d'afficher ni de modifier quoi que
+//! ce soit : la plateforme etait pilotable depuis Discord et invisible depuis
+//! le web. Ces routes comblent ce trou, sans dupliquer la logique : elles
+//! s'appuient sur les memes stores (`control`, `budget`, `rag`).
+//!
+//! SECURITE
+//!
+//! Meme jeton `ATRIUM_API_TOKEN` que le reste de l'API, verifie par
+//! `authorize`. Le navigateur ne le connait jamais : nginx l'injecte cote
+//! serveur sur `/atrium-api/`, apres avoir valide la session Discord et
+//! l'appartenance a SUPERADMIN_USER_IDS (`auth_request`). C'est exactement le
+//! montage retenu pour Nexus — un seul modele de passerelle a comprendre.
+//!
+//! Les quotas sont en LECTURE SEULE : ils viennent de la configuration du
+//! processus (variables d'environnement), pas de la base. Les rendre editables
+//! ici laisserait croire a un reglage par serveur qui n'existe pas.
+
+use std::sync::Arc;
+
+use axum::{
+    extract::{Extension, Path},
+    http::HeaderMap,
+    Json,
+};
+use serde::{Deserialize, Serialize};
+
+use crate::{
+    authorize, budget::BudgetStats, guild_config, rag::IndexedDocument, ApiError, AppState,
+};
+
+#[derive(Serialize)]
+pub struct StateResponse {
+    pub guild_id: String,
+    pub enabled: bool,
+}
+
+#[derive(Deserialize)]
+pub struct SetStateRequest {
+    pub enabled: bool,
+    /// Identifiant Discord de l'administrateur a l'origine du changement,
+    /// conserve dans `atrium_guild_settings.updated_by`. Une bascule sans
+    /// auteur rend l'historique inexploitable le jour ou l'on se demande qui
+    /// a coupe Atrium.
+    pub actor_id: String,
+}
+
+/// Etat active/desactive d'Atrium pour un serveur.
+pub async fn get_state(
+    Extension(state): Extension<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(guild_id): Path<String>,
+) -> Result<Json<StateResponse>, ApiError> {
+    authorize(&headers, &state.config)?;
+    let control = state
+        .control
+        .as_ref()
+        .ok_or_else(|| ApiError::unavailable("pilotage Atrium indisponible"))?;
+    let enabled = control.is_enabled(&guild_id).await.map_err(|error| {
+        tracing::error!(%error, "Lecture de l'etat Atrium impossible");
+        ApiError::unavailable("lecture de l'etat impossible")
+    })?;
+    Ok(Json(StateResponse { guild_id, enabled }))
+}
+
+pub async fn set_state(
+    Extension(state): Extension<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(guild_id): Path<String>,
+    Json(request): Json<SetStateRequest>,
+) -> Result<Json<StateResponse>, ApiError> {
+    authorize(&headers, &state.config)?;
+    if request.actor_id.trim().is_empty() {
+        return Err(ApiError::bad_request("actor_id requis"));
+    }
+    let control = state
+        .control
+        .as_ref()
+        .ok_or_else(|| ApiError::unavailable("pilotage Atrium indisponible"))?;
+    control
+        .set_enabled(&guild_id, request.enabled, request.actor_id.trim())
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "Ecriture de l'etat Atrium impossible");
+            ApiError::unavailable("ecriture de l'etat impossible")
+        })?;
+    tracing::info!(
+        guild_id = %guild_id,
+        enabled = request.enabled,
+        actor = %request.actor_id,
+        "Etat Atrium modifie depuis le back-office"
+    );
+    Ok(Json(StateResponse {
+        guild_id,
+        enabled: request.enabled,
+    }))
+}
+
+/// Consommation du jour + limites configurees.
+pub async fn get_usage(
+    Extension(state): Extension<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(guild_id): Path<String>,
+) -> Result<Json<BudgetStats>, ApiError> {
+    authorize(&headers, &state.config)?;
+    let budget = state
+        .budget
+        .as_ref()
+        .ok_or_else(|| ApiError::unavailable("quotas indisponibles"))?;
+    let stats = budget.stats(&guild_id).await.map_err(|error| {
+        tracing::error!(%error, "Lecture des quotas Atrium impossible");
+        ApiError::unavailable("lecture des quotas impossible")
+    })?;
+    Ok(Json(stats))
+}
+
+#[derive(Deserialize)]
+pub struct SetConfigRequest {
+    /// Cles a ecrire. Une cle absente n'est pas touchee ; une valeur vide
+    /// serait ecrite telle quelle, donc le front n'envoie que ce qu'il edite.
+    pub values: std::collections::HashMap<String, String>,
+}
+
+/// Reglages par serveur, en ecriture.
+///
+/// Seules les cles declarees dans `bot_definitions.config_schema` sont
+/// acceptees : sans ce filtre, n'importe quelle cle pourrait etre inseree dans
+/// `bot_guild_config`, ou elle resterait invisible et sans effet — une
+/// configuration fantome que personne ne saurait expliquer plus tard.
+pub async fn set_config(
+    Extension(state): Extension<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(guild_id): Path<String>,
+    Json(request): Json<SetConfigRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    authorize(&headers, &state.config)?;
+    let pool = state
+        .config_pool
+        .as_ref()
+        .ok_or_else(|| ApiError::unavailable("configuration indisponible"))?;
+
+    const ALLOWED: [&str; 4] = [
+        "enabled",
+        "user_daily_limit",
+        "user_cooldown_secs",
+        "global_daily_limit",
+    ];
+
+    for (key, value) in &request.values {
+        if !ALLOWED.contains(&key.as_str()) {
+            return Err(ApiError::bad_request("cle de configuration inconnue"));
+        }
+        // Les bornes du schema sont declaratives cote formulaire ; l'API refait
+        // le controle, car un appel direct ne passe pas par le formulaire.
+        if key != "enabled" && value.trim().parse::<i64>().map(|n| n < 0).unwrap_or(true) {
+            return Err(ApiError::bad_request(
+                "valeur numerique attendue, positive ou nulle",
+            ));
+        }
+        guild_config::set(pool, &guild_id, key, value.trim())
+            .await
+            .map_err(|error| {
+                tracing::error!(%error, "Ecriture de la config Atrium impossible");
+                ApiError::unavailable("ecriture de la configuration impossible")
+            })?;
+    }
+
+    tracing::info!(
+        guild_id = %guild_id,
+        cles = request.values.len(),
+        "Configuration Atrium modifiee depuis le back-office"
+    );
+    Ok(Json(serde_json::json!({ "updated": request.values.len() })))
+}
+
+/// Documents indexes dans la base de connaissances de la guilde.
+pub async fn get_knowledge(
+    Extension(state): Extension<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(guild_id): Path<String>,
+) -> Result<Json<Vec<IndexedDocument>>, ApiError> {
+    authorize(&headers, &state.config)?;
+    let rag = state
+        .rag
+        .as_ref()
+        .ok_or_else(|| ApiError::unavailable("base de connaissances indisponible"))?;
+    let documents = rag.documents(&guild_id).await.map_err(|error| {
+        tracing::error!(%error, "Lecture des documents Atrium impossible");
+        ApiError::unavailable("lecture des documents impossible")
+    })?;
+    Ok(Json(documents))
+}

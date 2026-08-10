@@ -53,7 +53,7 @@ async fn test_cannot_place_bet_below_min() {
     let service = CoussinBetService::new(
         Arc::new(MockBetRepo::default()),
         Arc::new(EmptyBotConfigRepository),
-        Arc::new(MockCooldownRepo::default()),
+        Arc::new(MockCooldownRepo),
     );
     // Min is 10 by default
     let res = service
@@ -68,7 +68,7 @@ async fn test_place_bet_success() {
     let service = CoussinBetService::new(
         repo.clone(),
         Arc::new(EmptyBotConfigRepository),
-        Arc::new(MockCooldownRepo::default()),
+        Arc::new(MockCooldownRepo),
     );
     let combat_id = uuid::Uuid::new_v4();
     let res = service

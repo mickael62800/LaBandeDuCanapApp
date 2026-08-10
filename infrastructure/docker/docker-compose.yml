@@ -650,6 +650,10 @@ services:
       # navigateur : nexus-api n'a qu'une cle statique, la divulguer donnerait
       # un acces admin complet a la plateforme jeux.
       NEXUS_API_KEY: ${NEXUS_API_KEY:-}
+      # Meme principe pour le proxy /atrium-api/, injecte par
+      # /docker-entrypoint.d/31-atrium-key.sh. atrium-api n'est pas publie sur
+      # l'hote : cette passerelle est le SEUL chemin du back-office vers lui.
+      ATRIUM_API_TOKEN: ${ATRIUM_API_TOKEN:-}
       # Configuration PUBLIQUE du site, ecrite dans site-config.json au
       # demarrage. Sans PUBLIC_GUILD_ID, l'espace membre n'affiche aucune
       # section : il ne sait pas de quel serveur parler.

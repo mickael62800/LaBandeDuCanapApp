@@ -1,7 +1,15 @@
 <script setup lang="ts">
-import { ref } from "vue";
+// Hub Moderation : journal, bannis, suivi utilisateur, revue, rappels.
+//
+// C'est LE HUB qui porte l'en-tete de page. Ses onglets etaient de trois
+// formes differentes : `AdminPageShell` complet (Revue, Rappels), simple
+// `<h1>` (Preuves, Notes), ou rien du tout (Journal, Bannis). Changer
+// d'onglet changeait donc la presence et la forme du titre.
+
+import { computed, ref } from "vue";
 import { useSharedUserLookup } from "../../composables/useSharedUserLookup";
 import AppTabs from "../molecules/AppTabs.vue";
+import AdminPageShell from "../layouts/AdminPageShell.vue";
 import ModerationJournalTab from "../organisms/ModerationJournalTab.vue";
 import ModerationBansTab from "../organisms/ModerationBansTab.vue";
 import ModerationTrackingTab from "../organisms/ModerationTrackingTab.vue";
@@ -13,12 +21,36 @@ type TabKey = "journal" | "bans" | "tracking" | "review" | "reminders";
 const activeTab = ref<TabKey>("journal");
 
 const hubTabs = [
-  { key: "journal", label: "Journal" },
-  { key: "bans", label: "Bannis actifs" },
-  { key: "tracking", label: "Suivi utilisateur" },
-  { key: "review", label: "Revue manuelle" },
-  { key: "reminders", label: "Rappels" },
+  {
+    key: "journal",
+    label: "Journal",
+    lede: "Historique des sanctions appliquées sur le serveur.",
+  },
+  {
+    key: "bans",
+    label: "Bannis actifs",
+    lede: "Membres actuellement bannis, avec le motif et l'auteur du ban.",
+  },
+  {
+    key: "tracking",
+    label: "Suivi utilisateur",
+    lede: "Notes, preuves et avertissements rattachés à un membre.",
+  },
+  {
+    key: "review",
+    label: "Revue manuelle",
+    lede: "Signalements en attente d'une décision humaine.",
+  },
+  {
+    key: "reminders",
+    label: "Rappels",
+    lede: "Rappels programmés pour un suivi de modération.",
+  },
 ];
+
+const activeLede = computed(
+  () => hubTabs.find((t) => t.key === activeTab.value)?.lede ?? "",
+);
 
 const { sharedUserId } = useSharedUserLookup();
 
@@ -35,8 +67,8 @@ function handleOpenNotesEvidence(userId: string) {
 </script>
 
 <template>
-  <div class="moderation-hub page--constrained">
-    <h1 class="page-title">Moderation</h1>
+  <AdminPageShell title="Modération" icon="⚖️" class="moderation-hub">
+    <template #lede>{{ activeLede }}</template>
 
     <AppTabs
       :model-value="activeTab"
@@ -58,33 +90,13 @@ function handleOpenNotesEvidence(userId: string) {
       <ReviewPage v-else-if="activeTab === 'review'" />
       <RemindersPage v-else-if="activeTab === 'reminders'" />
     </div>
-  </div>
+  </AdminPageShell>
 </template>
 
 <style scoped>
-.moderation-hub h1 {
-  margin-bottom: 18px;
-  font-size: 1.6rem;
-  font-weight: 700;
-  background: linear-gradient(
-    90deg,
-    var(--text-primary) 0%,
-    color-mix(in srgb, var(--accent) 60%, var(--text-primary)) 50%,
-    var(--text-primary) 100%
-  );
-  background-size: 200% auto;
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: transparent;
-  animation: mod-title-shimmer 10s linear infinite;
-  letter-spacing: 0.3px;
-}
-@keyframes mod-title-shimmer {
-  0%   { background-position: 200% center; }
-  100% { background-position: -200% center; }
-}
-
+/* Le titre degrade vivait ici, en 3e exemplaire (apres `StatsPage` et
+   `ModstatsPage`), avec sa propre animation `mod-title-shimmer`. Il vient
+   desormais d'`AdminPageShell`. */
 .hub-tabs-wrap { margin-bottom: 24px; }
 
 .tab-content { animation: fadeSlideIn 0.3s ease-out; }
@@ -94,12 +106,6 @@ function handleOpenNotesEvidence(userId: string) {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .moderation-hub h1 {
-    animation: none;
-    background: none;
-    -webkit-text-fill-color: var(--text-primary);
-    color: var(--text-primary);
-  }
   .tab-content { animation: none; }
 }
 </style>

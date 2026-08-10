@@ -2,6 +2,7 @@
 import { ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import MainLayout from "./components/templates/MainLayout.vue";
+import PublicLayout from "./components/templates/PublicLayout.vue";
 import ConfirmDialog from "./components/molecules/ConfirmDialog.vue";
 import ToastContainer from "./components/molecules/ToastContainer.vue";
 
@@ -19,10 +20,20 @@ router.isReady().then(() => { ready.value = true; });
 
 <template>
   <template v-if="ready">
-    <!-- Login page: no sidebar layout -->
-    <router-view v-if="route.meta.public" />
+    <!-- La mise en page suit `meta.layout`, plus `meta.public`. Les deux
+         etaient confondus : toute page publique se retrouvait donc sans
+         aucun chrome, ce qui laissait le site communautaire sans navigation
+         et obligeait chaque page a redessiner sa propre barre. -->
 
-    <!-- Authenticated pages: sidebar layout -->
+    <!-- Connexion et retour OAuth : volontairement nus. -->
+    <router-view v-if="route.meta.layout === 'bare'" />
+
+    <!-- Site public communautaire. -->
+    <PublicLayout v-else-if="route.meta.layout === 'site'">
+      <router-view />
+    </PublicLayout>
+
+    <!-- Back-office (defaut). -->
     <MainLayout v-else>
       <router-view />
     </MainLayout>

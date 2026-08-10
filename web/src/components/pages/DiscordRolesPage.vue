@@ -31,15 +31,13 @@ function closeEdit() {
 </script>
 
 <template>
-  <div class="discord-roles page--constrained">
-    <div class="header">
-      <h1 class="page-title">Roles Discord</h1>
-      <span class="role-count">{{ totalRoles }} roles</span>
-      <router-link to="/role-panels" class="cross-link">&larr; Panels de roles</router-link>
-    </div>
-
+  <!-- Contenu d'onglet : l'en-tete de page appartient a `RolesHubPage`.
+       Le lien croise vers les panneaux a disparu : l'onglet voisin fait
+       exactement ce qu'il faisait, en mieux. -->
+  <div class="discord-roles">
     <div class="toolbar">
       <AppInput v-model="search" placeholder="Rechercher un role..." />
+      <span class="role-count">{{ totalRoles }} roles</span>
       <button class="btn-create" @click="showCreateModal = true">+ Creer un role</button>
     </div>
 

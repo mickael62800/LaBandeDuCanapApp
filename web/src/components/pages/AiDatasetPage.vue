@@ -2,6 +2,7 @@
 import DatasetFilters from "../organisms/DatasetFilters.vue";
 import DatasetStatsBar from "../organisms/DatasetStatsBar.vue";
 import DatasetMessagesTable from "../organisms/DatasetMessagesTable.vue";
+import AdminPageShell from "../layouts/AdminPageShell.vue";
 </script>
 
 <template>
@@ -18,24 +19,25 @@ import DatasetMessagesTable from "../organisms/DatasetMessagesTable.vue";
       </div>
     </div>
 
-    <div class="page-header">
-      <h1>📚 Dataset IA — collecte de messages</h1>
-      <p class="muted">
+    <!-- Le shell est imbrique, pas racine : le blocage mobile ci-dessous
+         repose sur `.dataset-page > :not(.mobile-only-block)`, qui a besoin
+         que tout le contenu de la page reste un enfant DIRECT de la racine. -->
+    <AdminPageShell title="Dataset IA — collecte de messages" icon="📚">
+      <template #lede>
         Sélectionne les messages stockés et étiquette-les manuellement. À l'export, deux fichiers CSV
         (<code>safe</code> et <code>severe</code>) sont téléchargés et les messages exportés sont
         supprimés de la base.
-      </p>
-    </div>
+      </template>
 
-    <DatasetFilters />
-    <DatasetStatsBar />
-    <DatasetMessagesTable />
+      <DatasetFilters />
+      <DatasetStatsBar />
+      <DatasetMessagesTable />
+    </AdminPageShell>
   </div>
 </template>
 
 <style scoped>
 .dataset-page { padding: 16px; }
-.page-header h1 { margin: 0 0 4px; }
 .muted { color: var(--text-secondary); font-size: 12px; }
 .mobile-only-block { display: none; }
 @media (max-width: 768px) {

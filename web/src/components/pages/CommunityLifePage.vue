@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import AppCheckbox from "../atoms/AppCheckbox.vue";
 import AppButton from "../atoms/AppButton.vue";
+import AdminPageShell from "../layouts/AdminPageShell.vue";
 // Back-office de la vie communautaire.
 //
 // Quatre entités sur un seul écran à onglets : elles alimentent la même page
@@ -216,18 +217,15 @@ const expire = (iso: string) => new Date(iso) <= new Date();
 </script>
 
 <template>
-  <div class="cl-page page--constrained">
-    <header class="page-head">
-      <div>
-        <h1 class="page-title">🛋️ Vie de la communauté</h1>
-        <p class="muted small">
-          Ce qui alimente l'espace membre du site. Les annonces de recherche de
-          joueurs sont écrites par les membres&nbsp;: on les modère, on ne les
-          rédige pas.
-        </p>
-      </div>
+  <AdminPageShell title="Vie de la communauté" icon="🛋️" class="cl-page">
+    <template #lede>
+      Ce qui alimente l'espace membre du site. Les annonces de recherche de
+      joueurs sont écrites par les membres&nbsp;: on les modère, on ne les
+      rédige pas.
+    </template>
+    <template #actions>
       <AppCheckbox v-model="showArchived">Afficher les éléments clos et brouillons</AppCheckbox>
-    </header>
+    </template>
 
     <!-- `AppTabs` parle en `string` ; l'onglet est un type fermé. On projette
          dans un sens et on restreint dans l'autre plutôt que d'élargir le
@@ -525,25 +523,12 @@ const expire = (iso: string) => new Date(iso) <= new Date();
     </template>
 
     <ConfirmDialog />
-  </div>
+  </AdminPageShell>
 </template>
 
 <style scoped>
 .cl-page {
   padding: 0;
-}
-
-.page-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 1rem;
-  margin-bottom: 16px;
-}
-
-.page-head h1 {
-  margin: 0;
-  font-size: 24px;
 }
 
 .muted {
@@ -783,10 +768,8 @@ const expire = (iso: string) => new Date(iso) <= new Date();
 }
 
 @media (max-width: 700px) {
-  .page-head {
-    flex-direction: column;
-  }
-
+  /* L'empilement de l'en-tete en petite largeur est desormais gere par
+     `AdminPageShell`, commun a toutes les pages. */
   .cl-item {
     flex-direction: column;
   }

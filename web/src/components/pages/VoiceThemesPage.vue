@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { ref } from "vue";
-import AdminPageShell from "@/components/layouts/AdminPageShell.vue";
 import VoiceThemesTable from "../organisms/VoiceThemesTable.vue";
 import VoiceThemeFormModal from "../organisms/VoiceThemeFormModal.vue";
 import type { VoiceChannelTheme } from "@/types/voice-extended";
@@ -23,19 +22,23 @@ function onClose() {
 </script>
 
 <template>
-  <AdminPageShell title="Thèmes voice channels" icon="🎙️">
-    <template #lede>
-      Gabarits de salons vocaux temporaires (nom, limite, bitrate, visibilité,
-      slowmode, queue, stage). Quand un membre rejoint le salon trigger
-      configuré, le bot crée un salon dérivé du thème par défaut.
-      Variables : <code>{username}</code>, <code>{theme}</code>.
-    </template>
+  <!-- Contenu d'onglet : l'en-tete de page appartient a `VoiceHubPage`. -->
+  <div class="voice-themes-tab">
+    <p class="tab-note">
+      Variables disponibles : <code>{username}</code>, <code>{theme}</code>.
+    </p>
 
     <VoiceThemesTable @create="onCreate" @edit="onEdit" />
     <VoiceThemeFormModal :open="showForm" :editing="editing" @close="onClose" />
-  </AdminPageShell>
+  </div>
 </template>
 
 <style scoped>
 @import "./_admin-page-shared.css";
+
+.tab-note {
+  color: var(--text-secondary);
+  font-size: 13px;
+  margin: 0 0 16px;
+}
 </style>

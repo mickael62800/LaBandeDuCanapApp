@@ -2,6 +2,7 @@
 import { ref } from "vue";
 import LogsColumn from "../organisms/LogsColumn.vue";
 import AppSelect from "@/components/atoms/AppSelect.vue";
+import AdminPageShell from "../layouts/AdminPageShell.vue";
 
 // Filtre de niveau global propage aux 4 colonnes. Chaque colonne garde
 // la possibilite d'override en local (le select de la colonne reste).
@@ -9,16 +10,13 @@ const globalLevel = ref<"all" | "info" | "warn" | "error">("all");
 </script>
 
 <template>
-  <div class="system-logs page--constrained">
-    <header class="page-head">
-      <div>
-        <h1 class="page-title">⚙️ Logs système</h1>
-        <p class="page-hint">
-          Logs des bots Discord, workers, requêtes API et WebSocket — affichés
-          en parallèle pour faciliter le diagnostic d'incidents qui touchent
-          plusieurs catégories en même temps.
-        </p>
-      </div>
+  <AdminPageShell title="Logs techniques" icon="⚙️" width="wide" class="system-logs">
+    <template #lede>
+      Logs des bots Discord, workers, requêtes API et WebSocket — affichés
+      en parallèle pour faciliter le diagnostic d'incidents qui touchent
+      plusieurs catégories en même temps.
+    </template>
+    <template #actions>
       <div class="global-filter">
         <label for="lvl-global">Niveau global</label>
         <AppSelect id="lvl-global" v-model="globalLevel" class="lvl-select">
@@ -28,7 +26,7 @@ const globalLevel = ref<"all" | "info" | "warn" | "error">("all");
           <option value="error">Error</option>
         </AppSelect>
       </div>
-    </header>
+    </template>
 
     <div class="system-grid">
       <LogsColumn title="Bots" category="bot" :force-level="globalLevel" />
@@ -36,24 +34,11 @@ const globalLevel = ref<"all" | "info" | "warn" | "error">("all");
       <LogsColumn title="API" category="api" :force-level="globalLevel" />
       <LogsColumn title="WebSocket" category="websocket" :force-level="globalLevel" />
     </div>
-  </div>
+  </AdminPageShell>
 </template>
 
 <style scoped>
 .system-logs { padding: 0; }
-.page-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 24px;
-  margin-bottom: 16px;
-}
-.page-title { margin: 0 0 8px 0; font-size: 24px; }
-.page-hint {
-  color: var(--text-secondary);
-  font-size: 13px;
-  margin: 0;
-}
 .global-filter {
   display: flex;
   flex-direction: column;

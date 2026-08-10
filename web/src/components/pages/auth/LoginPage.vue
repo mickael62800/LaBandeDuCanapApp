@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useRouter, useRoute } from "vue-router";
-import { useAuth } from "../../composables/useAuth";
-import AppButton from "../atoms/AppButton.vue";
+import { useAuth } from "@/composables/useAuth";
+import AppButton from "@/components/atoms/AppButton.vue";
 import { COMMUNITY, onWordmarkError, wordmarkOf } from "@/branding";
 import { rememberEntrySpace, takeEntryDestination } from "@/entrySpace";
 

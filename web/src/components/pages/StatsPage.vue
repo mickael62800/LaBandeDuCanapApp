@@ -61,9 +61,12 @@ const periods = computed(() => [7, 14, 30, 90]);
 </script>
 
 <template>
-  <div class="dashboard page--constrained">
-    <div class="dashboard-header">
-      <h1>Statistiques du serveur</h1>
+  <!-- Contenu d'onglet : l'en-tete de page appartient a `StatsHubPage`.
+       Le titre degrade et sa bordure vivaient ici — c'est d'ailleurs d'ici
+       qu'`AdminPageShell` les a repris. Le shell est desormais la reference,
+       cette page n'en garde que sa barre d'outils. -->
+  <div class="dashboard">
+    <div class="tab-toolbar">
       <div class="header-actions">
         <div class="period-selector">
           <button
@@ -127,46 +130,15 @@ const periods = computed(() => [7, 14, 30, 90]);
 </template>
 
 <style scoped>
-.dashboard-header {
+/* Barre d'outils de l'onglet (periode, actualisation). Le titre et sa
+   bordure degradee sont partis dans `AdminPageShell`, porte par le hub. */
+.tab-toolbar {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
   gap: 16px;
   flex-wrap: wrap;
-  margin-bottom: 24px;
-  padding-bottom: 18px;
-  /* Bordure douce dégradée sous le header pour structurer la page. */
-  border-bottom: 1px solid transparent;
-  background:
-    linear-gradient(to right,
-      transparent 0%,
-      color-mix(in srgb, var(--accent) 35%, transparent) 30%,
-      color-mix(in srgb, var(--accent) 35%, transparent) 70%,
-      transparent 100%) bottom / 100% 1px no-repeat;
-}
-
-.dashboard-header h1 {
-  margin: 0;
-  font-size: 1.6rem;
-  font-weight: 700;
-  /* Gradient text discret : juste une touche au mot, pas trop flashy. */
-  background: linear-gradient(
-    90deg,
-    var(--text-primary) 0%,
-    color-mix(in srgb, var(--accent) 60%, var(--text-primary)) 50%,
-    var(--text-primary) 100%
-  );
-  background-size: 200% auto;
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: transparent;
-  animation: stats-title-shimmer 10s linear infinite;
-  letter-spacing: 0.3px;
-}
-@keyframes stats-title-shimmer {
-  0%   { background-position: 200% center; }
-  100% { background-position: -200% center; }
+  margin-bottom: 20px;
 }
 
 .header-actions {
@@ -340,12 +312,7 @@ const periods = computed(() => [7, 14, 30, 90]);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .dashboard-header h1 {
-    animation: none;
-    background: none;
-    -webkit-text-fill-color: var(--text-primary);
-    color: var(--text-primary);
-  }
+  /* L'animation du titre est desormais geree par `AdminPageShell`. */
   .period-btn,
   .period-btn:hover,
   .period-btn:active,

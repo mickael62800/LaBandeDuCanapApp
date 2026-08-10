@@ -15,7 +15,6 @@ use crate::domain::entities::audit::watched_user::WatchedUser;
 use crate::domain::entities::moderation::action::applied::ModerationAction;
 use crate::domain::entities::moderation::action::applied::UserModerationHistory;
 use crate::domain::entities::moderation::infraction::Infraction;
-use crate::domain::entities::moderation::user_note::UserNote;
 use crate::domain::errors::DomainError;
 use crate::ports::inbound::audit::manage_security::AnalyzeNewMemberCommand;
 use crate::ports::inbound::audit::manage_security::ManageSecurityUseCase;
@@ -28,8 +27,6 @@ use crate::ports::inbound::moderation::manage_infractions::InfractionFilters;
 use crate::ports::inbound::moderation::manage_infractions::ManageInfractionsUseCase;
 use crate::ports::inbound::moderation::manage_moderation::LogModerationCommand;
 use crate::ports::inbound::moderation::manage_moderation::ManageModerationUseCase;
-use crate::ports::inbound::moderation::manage_notes::AddNoteCommand;
-use crate::ports::inbound::moderation::manage_notes::ManageNotesUseCase;
 use crate::ports::outbound::audit::watched_user_repository::WatchedUserRepository;
 
 fn sample_watched(uid: &str) -> WatchedUser {
@@ -185,24 +182,8 @@ impl ManageSecurityUseCase for StubSec {
     }
 }
 
-struct StubNotes;
-#[async_trait]
-impl ManageNotesUseCase for StubNotes {
-    async fn add_note(&self, _: AddNoteCommand) -> Result<UserNote, DomainError> {
-        unimplemented!()
-    }
-    async fn get_notes(&self, _: &str, _: &str) -> Result<Vec<UserNote>, DomainError> {
-        Ok(vec![])
-    }
-    async fn delete_note(&self, _: &str) -> Result<(), DomainError> {
-        Ok(())
-    }
-    async fn note_guild_id(&self, _: &str) -> Result<Option<String>, DomainError> {
-        Ok(None)
-    }
-}
-
-// Stats pas utilise par WatchedUsersService, on laisse tomber.
+// Notes et Stats ne sont plus des dependances de ManageWatchedUsersService :
+// leurs stubs ont ete retires avec le 5e argument du constructeur.
 
 fn make_service(repo: Arc<MockRepo>) -> ManageWatchedUsersService {
     ManageWatchedUsersService::new(
@@ -210,7 +191,6 @@ fn make_service(repo: Arc<MockRepo>) -> ManageWatchedUsersService {
         Arc::new(StubInf),
         Arc::new(StubMod),
         Arc::new(StubSec),
-        Arc::new(StubNotes),
     )
 }
 
@@ -335,7 +315,6 @@ async fn get_user_dossier_filters_security_events_by_user_id() {
         Arc::new(StubInf),
         Arc::new(StubMod),
         Arc::new(RichSec),
-        Arc::new(StubNotes),
     );
     let d = svc.get_user_dossier("g", "u1").await.unwrap();
     // Seul l'evenement qui contient "u1" dans user_ids doit etre retenu.

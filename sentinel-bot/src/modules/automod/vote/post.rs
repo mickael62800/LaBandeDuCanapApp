@@ -223,21 +223,6 @@ pub(crate) async fn post_vote_card(
     info!(review_id, "Carte de vote automod postee");
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn card_for_a_signal_below_threshold_starts_at_warn() {
-        assert!(matches!(card_suggested_action(&Action::None), Action::Warn));
-    }
-
-    #[test]
-    fn card_preserves_an_existing_suggested_action() {
-        assert!(matches!(card_suggested_action(&Action::Mute), Action::Mute));
-    }
-}
-
 /// Variante manuelle : une carte de vote creee par un moderateur via la
 /// commande `/card` (et non par la detection automod). Difference cle : on
 /// affiche le contexte AVANT **et** APRES le message pour donner le contexte
@@ -421,4 +406,19 @@ pub(crate) async fn post_manual_vote_card(
     }
 
     info!(review_id, "Carte de vote manuelle postee");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn card_for_a_signal_below_threshold_starts_at_warn() {
+        assert!(matches!(card_suggested_action(&Action::None), Action::Warn));
+    }
+
+    #[test]
+    fn card_preserves_an_existing_suggested_action() {
+        assert!(matches!(card_suggested_action(&Action::Mute), Action::Mute));
+    }
 }

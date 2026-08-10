@@ -52,7 +52,7 @@ async fn test_cannot_place_prime_on_self() {
     let service = CoussinPrimeService::new(
         Arc::new(MockPrimeRepo::default()),
         Arc::new(EmptyBotConfigRepository),
-        Arc::new(MockCooldownRepo::default()),
+        Arc::new(MockCooldownRepo),
     );
     let res = service
         .place("g1", "u1", "Target", "u1", "Placer", 100)
@@ -65,7 +65,7 @@ async fn test_cannot_place_prime_below_min() {
     let service = CoussinPrimeService::new(
         Arc::new(MockPrimeRepo::default()),
         Arc::new(EmptyBotConfigRepository),
-        Arc::new(MockCooldownRepo::default()),
+        Arc::new(MockCooldownRepo),
     );
     // Min is 10 by default
     let res = service.place("g1", "u2", "Target", "u1", "Placer", 5).await;
@@ -78,7 +78,7 @@ async fn test_place_prime_success() {
     let service = CoussinPrimeService::new(
         repo.clone(),
         Arc::new(EmptyBotConfigRepository),
-        Arc::new(MockCooldownRepo::default()),
+        Arc::new(MockCooldownRepo),
     );
     let res = service
         .place("g1", "u2", "Target", "u1", "Placer", 100)

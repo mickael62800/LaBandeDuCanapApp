@@ -10,7 +10,9 @@ import { useGuildSelector } from "../../composables/useGuildSelector";
 import { siteConfig } from "@/siteConfig";
 import { useSidebar } from "../../composables/useSidebar";
 import { useUniverse } from "../../composables/useUniverse";
-import { NEXUS, SENTINEL, onLogoError } from "@/branding";
+import { useDashboardSections } from "../../composables/useDashboardSections";
+import { onLogoError } from "@/branding";
+import { UNIVERSES, type UniverseKey } from "@/universes";
 
 const route = useRoute();
 const router = useRouter();
@@ -23,18 +25,19 @@ const { guilds, selectedGuildId, fetchGuilds, selectGuild } = useGuildSelector()
 /// Installation mono-serveur : la guilde vient de la configuration.
 const guildeImposee = computed(() => !!siteConfig().guildId);
 
-const { universe, canAccessNexus, setUniverse } = useUniverse();
+const { universe, definition, setUniverse, homePath } = useUniverse();
+const { availableUniverses } = useDashboardSections();
 
-/// La marque de la barre suit l'univers courant : on est chez Sentinel ou
-/// chez Nexus, jamais dans un entre-deux ambigu.
-const brand = computed(() => (universe.value === "nexus" ? NEXUS : SENTINEL));
+/// La marque de la barre suit l'univers courant : on sait toujours chez quel
+/// produit on se trouve, jamais dans un entre-deux ambigu.
+const brand = computed(() => definition.value.brand);
 
-/// Bascule d'univers : on navigue vers la page d'accueil de la cible plutot
-/// que de rester sur une route qui n'existe pas dans l'autre univers.
-function switchUniverse(target: "sentinel" | "nexus") {
+/// Bascule d'univers : on navigue vers la page d'accueil DECLAREE par la
+/// cible, plutot que de rester sur une route qui n'existe pas ailleurs.
+function switchUniverse(target: UniverseKey) {
   if (target === universe.value) return;
   setUniverse(target);
-  router.push(target === "nexus" ? "/nexus/servers" : "/dashboard");
+  router.push(UNIVERSES[target].home);
 }
 
 function onGuildChange(event: Event) {
@@ -47,8 +50,10 @@ async function handleLogout() {
   router.push("/login");
 }
 
+/// Le logo ramene a l'accueil de L'UNIVERS COURANT. Il pointait auparavant en
+/// dur sur /dashboard, ce qui faisait sortir de Nexus au lieu d'y revenir.
 function goHome() {
-  if (route.path !== "/dashboard") router.push("/dashboard");
+  if (route.path !== homePath.value) router.push(homePath.value);
 }
 
 onMounted(() => {
@@ -92,24 +97,22 @@ onMounted(() => {
       🎡 Jeux
     </RouterLink>
 
-    <!-- Bascule Sentinel / Nexus : affichee seulement si l'utilisateur a
-         acces aux deux univers. Sinon il ne voit que le sien. -->
-    <div v-if="canAccessNexus" class="universe-switch">
+    <!-- Bascule d'univers, engendree par le registre : ajouter un univers ne
+         demande aucune modification ici. Seuls apparaissent ceux qui ont au
+         moins une entree de menu visible — proposer un univers qui n'amene
+         que sur une barre laterale vide serait une fausse promesse. -->
+    <div v-if="availableUniverses.length > 1" class="universe-switch">
       <button
+        v-for="u in availableUniverses"
+        :key="u.key"
         type="button"
         class="universe-btn"
-        :class="{ active: universe === 'sentinel' }"
-        @click="switchUniverse('sentinel')"
+        :class="{ active: universe === u.key }"
+        :style="{ '--u-accent': u.accent }"
+        :title="u.brand.tagline"
+        @click="switchUniverse(u.key)"
       >
-        Sentinel
-      </button>
-      <button
-        type="button"
-        class="universe-btn"
-        :class="{ active: universe === 'nexus' }"
-        @click="switchUniverse('nexus')"
-      >
-        Nexus
+        {{ u.brand.name }}
       </button>
     </div>
 
@@ -549,9 +552,25 @@ onMounted(() => {
   color: var(--text-primary);
 }
 
+/* Chaque univers porte SA couleur, y compris au repos (pastille) : la
+   bascule devient lisible d'un coup d'oeil au lieu d'un simple onglet actif. */
+.universe-btn::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--u-accent, var(--accent));
+  vertical-align: middle;
+}
+
 .universe-btn.active {
-  background: var(--accent);
+  background: var(--u-accent, var(--accent));
   color: #fff;
+}
+.universe-btn.active::before {
+  background: #fff;
 }
 
 @media (max-width: 700px) {

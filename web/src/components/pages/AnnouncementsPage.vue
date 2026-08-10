@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import AppButton from "../atoms/AppButton.vue";
+import AdminPageShell from "../layouts/AdminPageShell.vue";
 import { ref, onMounted, watch } from "vue";
 import { errMsg } from "@/utils/errMsg";
 import { useGuildSelector } from "@/composables/useGuildSelector";
@@ -152,18 +153,15 @@ function fmtDate(iso: string | null): string {
 </script>
 
 <template>
-  <div class="announcements-page page--constrained">
-    <header class="page-head">
-      <div>
-        <h1 class="page-title">📣 Annonces planifiées</h1>
-        <p class="muted small">
-          Messages Discord postés automatiquement (ponctuel, quotidien, hebdo, mensuel).
-        </p>
-      </div>
+  <AdminPageShell title="Annonces planifiées" icon="📣" class="announcements-page">
+    <template #lede>
+      Messages Discord postés automatiquement (ponctuel, quotidien, hebdo, mensuel).
+    </template>
+    <template #actions>
       <AppButton variant="primary" :disabled="!selectedGuildId" @click="openCreate">
         + Nouvelle annonce
       </AppButton>
-    </header>
+    </template>
 
     <div v-if="loading" class="muted">Chargement…</div>
     <div v-else-if="announcements.length === 0" class="empty-state">
@@ -217,13 +215,11 @@ function fmtDate(iso: string | null): string {
     <AnnouncementPreviewModal :preview="preview" @close="closePreview" />
 
     <AnnouncementRunsModal :target="runsTarget" :runs="runs" @close="closeRuns" />
-  </div>
+  </AdminPageShell>
 </template>
 
 <style scoped>
 .announcements-page { padding: 0; }
-.page-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
-.page-head h1 { margin: 0; font-size: 24px; }
 .muted { color: var(--text-secondary); }
 .small { font-size: 12px; }
 .mono { font-family: "JetBrains Mono", monospace; }

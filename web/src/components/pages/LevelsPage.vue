@@ -9,9 +9,8 @@ useRealtimeRefresh(["xp_gained", "xp_admin_set", "xp_admin_reset"], fetchAll);
 </script>
 
 <template>
-  <div class="levels page--constrained">
-    <h1 class="page-title">Niveaux &amp; XP</h1>
-
+  <!-- Contenu d'onglet : l'en-tete de page appartient a `LevelsHubPage`. -->
+  <div class="levels">
     <ErrorState v-if="error" :message="error" :retryable="true" @retry="fetchAll" />
     <div v-else-if="loading" class="loading">Chargement...</div>
 
@@ -22,8 +21,6 @@ useRealtimeRefresh(["xp_gained", "xp_admin_set", "xp_admin_reset"], fetchAll);
 </template>
 
 <style scoped>
-.levels h1 { margin-bottom: 20px; }
-
 .loading {
   color: var(--text-secondary);
   padding: 40px;

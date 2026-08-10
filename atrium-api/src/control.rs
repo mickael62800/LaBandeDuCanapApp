@@ -1,29 +1,47 @@
 //! Etat active/desactive d'Atrium, persistant par serveur.
+//!
+//! La VALEUR fait desormais autorite dans `bot_guild_config` (cle `enabled` du
+//! bot `atrium-bot`), comme tout autre reglage par serveur du depot.
+//! `atrium_guild_settings` reste ecrite a chaque bascule, mais uniquement pour
+//! sa trace `updated_by`/`updated_at` : elle repond a « qui a coupe Atrium, et
+//! quand ? », question a laquelle `bot_guild_config` ne repond pas.
 
 use sqlx::PgPool;
 
-use crate::AppConfig;
+use crate::{
+    guild_config::{self, ConfigDefaults},
+    AppConfig,
+};
 
 #[derive(Clone)]
 pub struct BotControlStore {
     pool: PgPool,
+    /// Replis d'environnement. Seul `enabled` est lu ici, mais `from_map` les
+    /// exige : les transporter evite d'avoir deux chemins de lecture de la
+    /// config, donc deux endroits ou la semantique peut diverger.
+    defaults: ConfigDefaults,
 }
 
 impl BotControlStore {
     pub fn new(config: &AppConfig) -> Result<Self, sqlx::Error> {
         Ok(Self {
             pool: PgPool::connect_lazy(&config.rag_database_url)?,
+            defaults: ConfigDefaults {
+                user_cooldown_secs: config.user_cooldown_secs.min(i64::MAX as u64) as i64,
+                user_daily_limit: config.user_daily_limit.min(i32::MAX as u32) as i32,
+                global_daily_limit: config.global_daily_limit.min(i32::MAX as u32) as i32,
+            },
         })
     }
 
+    /// Cle absente = DESACTIVE (fail-closed), comme partout dans le depot.
+    ///
+    /// Passe par `guild_config` plutot que de reimplementer le parsing : c'est
+    /// exactement ainsi qu'une semantique de `enabled` finit par diverger d'un
+    /// fichier a l'autre.
     pub async fn is_enabled(&self, guild_id: &str) -> Result<bool, sqlx::Error> {
-        sqlx::query_scalar::<_, bool>(
-            "SELECT enabled FROM atrium_guild_settings WHERE guild_id = $1",
-        )
-        .bind(guild_id)
-        .fetch_optional(&self.pool)
-        .await
-        .map(|value| value.unwrap_or(true))
+        let raw = guild_config::load(&self.pool, guild_id).await?;
+        Ok(guild_config::from_map(&raw, self.defaults).enabled)
     }
 
     pub async fn set_enabled(
@@ -32,6 +50,22 @@ impl BotControlStore {
         enabled: bool,
         actor_id: &str,
     ) -> Result<(), sqlx::Error> {
+        let mut tx = self.pool.begin().await?;
+
+        sqlx::query(
+            "INSERT INTO bot_guild_config (guild_id, bot_name, config_key, config_value) \
+             VALUES ($1, $2, 'enabled', $3) \
+             ON CONFLICT (guild_id, bot_name, config_key) \
+             DO UPDATE SET config_value = EXCLUDED.config_value, updated_at = now()",
+        )
+        .bind(guild_id)
+        .bind(guild_config::BOT_NAME)
+        .bind(if enabled { "true" } else { "false" })
+        .execute(&mut *tx)
+        .await?;
+
+        // Trace d'audit. Ecrite dans la meme transaction : un etat modifie sans
+        // auteur enregistre serait pire que pas de trace du tout.
         sqlx::query(
             "INSERT INTO atrium_guild_settings (guild_id, enabled, updated_by) VALUES ($1, $2, $3) \
              ON CONFLICT (guild_id) DO UPDATE SET enabled = EXCLUDED.enabled, \
@@ -40,8 +74,9 @@ impl BotControlStore {
         .bind(guild_id)
         .bind(enabled)
         .bind(actor_id)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
-        Ok(())
+
+        tx.commit().await
     }
 }

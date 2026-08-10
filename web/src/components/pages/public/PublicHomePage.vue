@@ -17,9 +17,9 @@
 
 import { onMounted, ref } from "vue";
 
-import ActionButton from "../atoms/ActionButton.vue";
-import FeatureSection from "../molecules/FeatureSection.vue";
-import SiteHero from "../molecules/SiteHero.vue";
+import ActionButton from "@/components/atoms/ActionButton.vue";
+import FeatureSection from "@/components/molecules/FeatureSection.vue";
+import SiteHero from "@/components/molecules/SiteHero.vue";
 import {
   guildIconUrl,
   publicSiteService,

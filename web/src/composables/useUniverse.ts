@@ -1,50 +1,84 @@
-// Univers applicatif courant : Sentinel (moderation/communaute) ou Nexus
-// (plateforme jeux). Deux produits distincts qui partagent le meme dashboard,
-// la meme identite Discord et le meme RBAC.
+// Univers applicatif courant (Sentinel / Nexus / Atrium).
 //
-// L'univers n'est PAS un droit : il ne fait que filtrer la navigation. Le
-// droit d'acceder a Nexus est porte par le gate RBAC `nexus.access`, verifie
-// cote serveur par la passerelle nginx avant chaque appel a nexus-api.
+// La ROUTE fait foi : `meta.universe` est la seule source. Un lien direct, un
+// favori ou un rechargement donnent donc toujours une barre laterale coherente
+// avec la page affichee, sans qu'aucun composant n'ait a analyser l'URL.
+//
+// Les pages publiques ne declarent pas d'univers : on conserve alors le
+// dernier univers d'administration visite plutot que de retomber sur Sentinel,
+// ce qui faisait auparavant « sortir » de Nexus en passant par /membre.
+//
+// L'univers n'est pas un droit — cf. `universes.ts`.
 
-import { ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import { useRoute } from "vue-router";
-import type { Universe } from "@/composables/useDashboardSections";
+import {
+  DEFAULT_UNIVERSE,
+  isUniverseKey,
+  UNIVERSES,
+  UNIVERSE_ORDER,
+  type UniverseKey,
+} from "@/universes";
 
 const STORAGE_KEY = "ds.universe";
 
-function readStored(): Universe {
-  return localStorage.getItem(STORAGE_KEY) === "nexus" ? "nexus" : "sentinel";
+function readStored(): UniverseKey {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  return isUniverseKey(raw) ? raw : DEFAULT_UNIVERSE;
 }
 
-// Etat partage par tous les composants (module scope, pas de store Pinia
-// necessaire : une seule valeur, pas de chargement asynchrone).
-const current = ref<Universe>(readStored());
+// Dernier univers d'ADMINISTRATION visite. Etat partage au niveau module :
+// une seule valeur, pas de chargement asynchrone, donc pas de store Pinia.
+const lastAdminUniverse = ref<UniverseKey>(readStored());
+
+watch(lastAdminUniverse, (u) => localStorage.setItem(STORAGE_KEY, u));
 
 export function useUniverse() {
   const route = useRoute();
 
-  // Le back-office n'a plus qu'un seul utilisateur possible (superadmin), qui
-  // voit tout : les deux univers sont toujours accessibles. `canAccessNexus`
-  // est conserve dans l'API pour ne pas toucher TopBar, mais vaut toujours vrai.
-  const canAccessNexus = true;
+  /// Univers declare par la route courante, s'il y en a un.
+  const declared = computed<UniverseKey | null>(() => {
+    const meta = route.meta.universe;
+    return isUniverseKey(meta) ? meta : null;
+  });
 
-  /// L'URL fait foi : arriver sur /nexus/... bascule l'univers, ce qui evite
-  /// une barre laterale incoherente avec la page affichee (lien direct,
-  /// favori, rechargement).
+  // Arriver sur une route d'administration memorise son univers : c'est lui
+  // que retrouvera la prochaine page publique, et la prochaine session.
   watch(
-    () => route.path,
-    (path) => {
-      const target: Universe = path.startsWith("/nexus") ? "nexus" : "sentinel";
-      if (target !== current.value) current.value = target;
+    declared,
+    (u) => {
+      if (u && u !== lastAdminUniverse.value) lastAdminUniverse.value = u;
     },
     { immediate: true },
   );
 
-  watch(current, (u) => localStorage.setItem(STORAGE_KEY, u));
+  const universe = computed<UniverseKey>(
+    () => declared.value ?? lastAdminUniverse.value,
+  );
 
-  function setUniverse(u: Universe) {
-    current.value = u;
+  const definition = computed(() => UNIVERSES[universe.value]);
+
+  /// Liste ordonnee pour la bascule d'univers.
+  const universes = UNIVERSE_ORDER.map((k) => UNIVERSES[k]);
+
+  // Le back-office n'a qu'un seul utilisateur possible (superadmin), qui voit
+  // tout : les trois univers sont toujours accessibles. Conserve sous forme de
+  // drapeau pour que le jour ou un RBAC plus fin arrive, un seul point change.
+  const canSwitchUniverse = true;
+
+  function setUniverse(u: UniverseKey) {
+    lastAdminUniverse.value = u;
   }
 
-  return { universe: current, canAccessNexus, setUniverse };
+  /// Page d'accueil de l'univers courant — ce que doit viser le logo.
+  const homePath = computed(() => definition.value.home);
+
+  return {
+    universe,
+    definition,
+    universes,
+    canSwitchUniverse,
+    setUniverse,
+    homePath,
+  };
 }

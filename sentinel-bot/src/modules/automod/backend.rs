@@ -134,7 +134,7 @@ pub(super) async fn apply_auto_protect(
                 ctx,
                 msg.channel_id,
                 msg.author.id,
-                &reason,
+                reason,
             )
             .await;
             return (

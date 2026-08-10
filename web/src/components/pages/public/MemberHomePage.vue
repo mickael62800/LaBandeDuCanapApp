@@ -22,16 +22,16 @@
 // latérale d'administration.
 
 import { computed, onMounted, onUnmounted, ref } from "vue";
-import { useAuth } from "../../composables/useAuth";
+import { useAuth } from "@/composables/useAuth";
 import {
   addWeeks,
   layoutWeek,
   startOfWeek,
   weekDays,
   weekLabel,
-} from "../../composables/useWeekPlanning";
-import ActionButton from "../atoms/ActionButton.vue";
-import SiteHero from "../molecules/SiteHero.vue";
+} from "@/composables/useWeekPlanning";
+import ActionButton from "@/components/atoms/ActionButton.vue";
+import SiteHero from "@/components/molecules/SiteHero.vue";
 import { discordInvite } from "@/branding";
 import { siteConfig } from "@/siteConfig";
 import {
@@ -65,7 +65,9 @@ const guildId =
   siteConfig().guildId ||
   ((import.meta.env.VITE_PUBLIC_GUILD_ID as string | undefined) ?? "");
 
-const { user, avatarUrl, logout } = useAuth();
+// Avatar et deconnexion sont desormais rendus par `SiteHeader` : la page ne
+// lit plus que l'identite, pour personnaliser son accueil.
+const { user } = useAuth();
 
 // Le lien vers l'administration n'apparait que pour un superadmin (flag pose a
 // l'OAuth / au refresh, source de verite = SUPERADMIN_USER_IDS cote API). Un
@@ -386,17 +388,6 @@ const anneesLabel = (n: number) => (n === 1 ? "1 an" : `${n} ans`);
 
 <template>
   <div class="mb theme-communaute">
-    <header class="mb-bar">
-      <div v-if="user" class="mb-user">
-        <img v-if="avatarUrl" :src="avatarUrl" alt="" class="mb-avatar" />
-        <span>{{ user.username }}</span>
-        <ActionButton variant="ghost" @click="logout">Déconnexion</ActionButton>
-      </div>
-      <ActionButton v-else to="/login?espace=membre" variant="ghost">
-        Se connecter
-      </ActionButton>
-    </header>
-
     <!-- ── Accueil ──
          Le wordmark est une illustration complète, avec son propre décor : il
          occupe seul le héros. Le poser sur une photo ferait deux images qui
@@ -892,45 +883,15 @@ const anneesLabel = (n: number) => (n === 1 ? "1 an" : `${n} ans`);
   margin: 0 auto;
 }
 
-/* Barre collante : la page est longue, et « Se connecter » ne doit pas
-   disparaitre des le premier defilement. Elle etait aussi rognee par le haut
-   quand la fenetre etait courte — le `sticky` avec `top: 0` regle les deux.
+/* La barre de session (avatar, deconnexion, « Se connecter ») vivait ici en
+   `position: sticky`. Elle est passee dans `SiteHeader`, partagee par les
+   trois pages publiques.
 
-   Pas de `backdrop-filter` : le flou avait fait ramer la machine sur ce
-   projet. Un degrade opaque qui se fond dans le fond suffit a rendre le
-   bouton lisible au-dessus du contenu qui defile. */
-.mb-bar {
-  position: sticky;
-  top: 0;
-  z-index: 5;
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  min-height: 3rem;
-  /* Deborde la zone de contenu pour couvrir toute la largeur : sinon le
-     contenu apparaitrait sur les cotes en passant dessous. */
-  margin: calc(-1 * clamp(1rem, 3vh, 2rem)) calc(-1 * clamp(1rem, 4vw, 3rem)) 0;
-  padding: 0.6rem clamp(1rem, 4vw, 3rem);
-}
-
-.mb-bar > * {
-  /* Le contenu de la barre reste aligne sur la colonne du reste de la page. */
-  margin-right: max(0px, calc((100% - 68rem) / 2));
-}
-
-.mb-user {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  font-size: 0.92rem;
-  color: var(--text-secondary);
-}
-
-.mb-avatar {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-}
+   Effet de bord bienvenu : `.mb-bar` designait DEUX choses dans ce fichier —
+   cette barre et les barres d'evenement du calendrier plus bas — avec deux
+   regles homonymes dans la meme feuille scoped, qui se contaminaient
+   mutuellement (grid-column applique a l'en-tete, sticky applique aux
+   evenements). Le nom ne designe plus qu'une seule chose. */
 
 
 

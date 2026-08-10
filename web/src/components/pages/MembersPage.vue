@@ -10,6 +10,7 @@ import AppBadge from "../atoms/AppBadge.vue";
 import MemberStatusBadge from "../atoms/MemberStatusBadge.vue";
 import PaginationBar from "../molecules/PaginationBar.vue";
 import MemberDetailDrawer from "../organisms/MemberDetailDrawer.vue";
+import AdminPageShell from "../layouts/AdminPageShell.vue";
 
 const { selectedGuildId } = useGuildSelector();
 
@@ -65,11 +66,10 @@ function rolesCount(roles: unknown): number {
 </script>
 
 <template>
-  <div class="members-page page--constrained">
-    <div class="page-header-row">
-      <h1>Membres</h1>
+  <AdminPageShell title="Membres" icon="👥" class="members-page">
+    <template #actions>
       <span v-if="!loading" class="member-count">{{ tabFilteredMembers.length }} membres</span>
-    </div>
+    </template>
 
     <div class="filters">
       <AppInput v-model="search" type="text" class="search-input" placeholder="Rechercher par nom ou ID..." />
@@ -139,19 +139,10 @@ function rolesCount(roles: unknown): number {
         <p>Selectionnez un membre pour voir son profil</p>
       </div>
     </div>
-  </div>
+  </AdminPageShell>
 </template>
 
 <style scoped>
-.members-page h1 { margin: 0; }
-
-.page-header-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-}
-
 .member-count { font-size: 13px; color: var(--text-secondary); font-weight: 600; }
 
 .filters {

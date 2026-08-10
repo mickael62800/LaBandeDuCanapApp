@@ -53,11 +53,14 @@ fn try_start_appeal(guild_id: &str, user_id: &str) -> bool {
     map.retain(|_, last| now.duration_since(*last) < APPEAL_COOLDOWN);
     
     let key = (guild_id.to_string(), user_id.to_string());
-    if map.contains_key(&key) {
-        false
-    } else {
-        map.insert(key, now);
-        true
+    // `entry` plutot que `contains_key` + `insert` : une seule recherche de
+    // hash, et l'insertion ne peut pas diverger du test qui la precede.
+    match map.entry(key) {
+        std::collections::hash_map::Entry::Occupied(_) => false,
+        std::collections::hash_map::Entry::Vacant(slot) => {
+            slot.insert(now);
+            true
+        }
     }
 }
 

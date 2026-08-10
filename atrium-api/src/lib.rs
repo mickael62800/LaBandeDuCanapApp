@@ -18,7 +18,7 @@ use atrium_core::{
 use axum::{
     extract::Extension,
     http::{header::AUTHORIZATION, HeaderMap, StatusCode},
-    routing::{get, post},
+    routing::{get, post, put},
     Json, Router,
 };
 use platform_common_api::{rate_limit_middleware, RateLimiter};
@@ -26,8 +26,10 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 
+pub mod admin;
 pub mod budget;
 pub mod control;
+pub mod guild_config;
 pub mod memory;
 pub mod rag;
 
@@ -41,6 +43,10 @@ pub struct AppState {
     pub budget: Option<Arc<budget::BudgetGuard>>,
     pub control: Option<Arc<control::BotControlStore>>,
     pub memory: Option<Arc<memory::ConversationMemory>>,
+    /// Connexion utilisee par l'administration pour ECRIRE la config par
+    /// serveur. La lecture, elle, se fait dans les stores qui en ont besoin
+    /// (`budget`, `control`), au plus pres de leur usage.
+    pub config_pool: Option<PgPool>,
 }
 
 #[derive(Clone)]
@@ -135,6 +141,7 @@ pub fn router(
         budget: Some(budget),
         control: Some(control),
         memory: Some(memory),
+        config_pool: PgPool::connect_lazy(&config.rag_database_url).ok(),
         config,
     });
     router_with_state(state)
@@ -164,6 +171,19 @@ pub fn router_with_state(state: Arc<AppState>) -> Router {
     let router = Router::new()
         .route("/health", get(health))
         .route("/v1/welcome/reply", post(welcome_reply))
+        // ── Administration (back-office) ──
+        // Servies au navigateur via la passerelle nginx /atrium-api/, qui
+        // valide la session Discord puis injecte le jeton cote serveur.
+        .route(
+            "/admin/guilds/{guild_id}/state",
+            get(admin::get_state).put(admin::set_state),
+        )
+        .route("/admin/guilds/{guild_id}/usage", get(admin::get_usage))
+        .route("/admin/guilds/{guild_id}/config", put(admin::set_config))
+        .route(
+            "/admin/guilds/{guild_id}/knowledge",
+            get(admin::get_knowledge),
+        )
         .layer(Extension(state))
         .layer(axum::middleware::from_fn(
             platform_common_api::metrics::metrics_middleware,
@@ -340,7 +360,7 @@ pub fn merge_context(admin_context: &str, retrieved: &str) -> String {
         .collect()
 }
 
-fn authorize(headers: &HeaderMap, config: &AppConfig) -> Result<(), ApiError> {
+pub(crate) fn authorize(headers: &HeaderMap, config: &AppConfig) -> Result<(), ApiError> {
     let expected = format!("Bearer {}", config.api_token);
     let supplied = headers.get(AUTHORIZATION).and_then(|v| v.to_str().ok());
     if supplied == Some(expected.as_str()) {
@@ -460,16 +480,27 @@ pub struct ApiError {
     message: &'static str,
 }
 impl ApiError {
-    fn bad_request(message: &'static str) -> Self {
+    pub(crate) fn bad_request(message: &'static str) -> Self {
         Self {
             status: StatusCode::BAD_REQUEST,
             message,
         }
     }
-    fn unauthorized() -> Self {
+    pub(crate) fn unauthorized() -> Self {
         Self {
             status: StatusCode::UNAUTHORIZED,
             message: "jeton API invalide",
+        }
+    }
+    /// Dependance absente ou injoignable (base, store non construit).
+    ///
+    /// Distinct de `bad_request` : la requete est valable, c'est le service
+    /// qui ne peut pas repondre. Renvoyer 400 ici enverrait l'administrateur
+    /// corriger une saisie alors que le probleme est cote serveur.
+    pub(crate) fn unavailable(message: &'static str) -> Self {
+        Self {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            message,
         }
     }
 }

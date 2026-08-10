@@ -1,16 +1,12 @@
 <script setup lang="ts">
-import AdminPageShell from "@/components/layouts/AdminPageShell.vue";
 import ActionButton from "../atoms/ActionButton.vue";
 import LevelRoleTiersCard from "../organisms/LevelRoleTiersCard.vue";
 import LevelsManualXpCard from "../organisms/LevelsManualXpCard.vue";
 </script>
 
 <template>
-  <AdminPageShell title="Niveaux — configuration" icon="⚙️">
-    <template #lede>
-      Paliers de rôles et ajustement manuel de l'XP.
-    </template>
-
+  <!-- Contenu d'onglet : l'en-tete de page appartient a `LevelsHubPage`. -->
+  <div class="levels-config-tab">
     <!--
       Le reste de la configuration vit sur la page du composant, pas ici.
       Cet encart le dit ET y mene : la mention seule laissait chercher la
@@ -34,7 +30,7 @@ import LevelsManualXpCard from "../organisms/LevelsManualXpCard.vue";
       <LevelRoleTiersCard />
       <LevelsManualXpCard />
     </div>
-  </AdminPageShell>
+  </div>
 </template>
 
 <style scoped>

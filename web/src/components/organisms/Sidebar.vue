@@ -6,31 +6,26 @@ import { useSidebar } from "../../composables/useSidebar";
 import { useUniverse } from "../../composables/useUniverse";
 
 const route = useRoute();
-// La barre laterale ne montre que l'univers courant (Sentinel ou Nexus).
-const { universe } = useUniverse();
+// La barre laterale ne montre que l'univers courant.
+const { universe, definition, homePath } = useUniverse();
 const { groups } = useDashboardSections(universe);
 const { open, close, isCollapsed, toggleGroup } = useSidebar();
 
-// Couleur d'accent par groupe (aligne sur les themes de SectionCard).
-const GROUP_COLORS: Record<string, string> = {
-  general: "#38bdf8",
-  moderation: "#f43f5e",
-  community: "#22c55e",
-  security: "#f59e0b",
-  config: "#64748b",
-  logs: "#a855f7",
-  nexus: "#7c5cfc",
-};
-function groupColor(prefix: string): string {
-  return GROUP_COLORS[prefix] ?? "var(--accent)";
-}
+// L'accent vient de l'UNIVERS, plus d'une couleur par groupe de menu, et il
+// est pose par `MainLayout` sur la coque (`--universe-accent`) : la barre
+// laterale n'a qu'a le consommer.
+//
+// Avant, chaque groupe (moderation, communaute, securite…) avait sa teinte :
+// la barre laterale etait donc aussi bariolee chez Sentinel que chez Nexus, et
+// la couleur ne disait rien du produit dans lequel on se trouvait. Elle sert
+// desormais a repondre a une seule question, la plus utile : ou suis-je ?
 
 // Un lien est actif si la route courante commence par son path (pour que les
 // hubs a onglets — /moderation — restent surlignes sur leurs sous-vues).
 function isActive(path: string): boolean {
-  // "/" est desormais l'accueil PUBLIC : le lien "maison" du back-office
-  // pointe sur /dashboard.
-  if (path === "/dashboard") return route.path === "/dashboard";
+  // L'accueil de l'univers doit correspondre exactement : sinon il resterait
+  // surligne sur toutes ses sous-routes.
+  if (path === homePath.value) return route.path === homePath.value;
   return route.path === path || route.path.startsWith(path + "/");
 }
 
@@ -49,24 +44,22 @@ function onNavigate() {
     @click="close"
   ></div>
 
-  <aside class="sidebar" :class="{ 'is-open': open }">
+  <aside
+    class="sidebar"
+    :class="{ 'is-open': open }"
+  >
     <nav class="sidebar-nav" aria-label="Navigation principale">
       <router-link
-        to="/dashboard"
+        :to="homePath"
         class="nav-item nav-home"
-        :class="{ active: isActive('/dashboard') }"
+        :class="{ active: isActive(homePath) }"
         @click="onNavigate"
       >
         <span class="nav-icon"><SectionIcon name="grid" /></span>
-        <span class="nav-label">Accueil</span>
+        <span class="nav-label">{{ definition.brand.name }}</span>
       </router-link>
 
-      <div
-        v-for="g in groups"
-        :key="g.prefix"
-        class="nav-group"
-        :style="{ '--group-color': groupColor(g.prefix) }"
-      >
+      <div v-for="g in groups" :key="g.prefix" class="nav-group">
         <button
           type="button"
           class="group-header"
@@ -145,7 +138,7 @@ function onNavigate() {
   font-weight: 700;
   letter-spacing: 0.6px;
   text-transform: uppercase;
-  color: color-mix(in srgb, var(--group-color) 75%, var(--text-secondary));
+  color: color-mix(in srgb, var(--universe-accent) 75%, var(--text-secondary));
 }
 .group-chevron {
   width: 13px;
@@ -179,19 +172,20 @@ function onNavigate() {
     border-color 0.15s ease;
 }
 .nav-item:hover {
-  background-color: color-mix(in srgb, var(--group-color, var(--accent)) 12%, transparent);
+  background-color: color-mix(in srgb, var(--universe-accent, var(--accent)) 12%, transparent);
   color: var(--text-primary);
 }
 .nav-item.active {
-  background-color: color-mix(in srgb, var(--group-color, var(--accent)) 16%, transparent);
+  background-color: color-mix(in srgb, var(--universe-accent, var(--accent)) 16%, transparent);
   color: var(--text-primary);
-  border-left-color: var(--group-color, var(--accent));
+  border-left-color: var(--universe-accent, var(--accent));
   font-weight: 600;
 }
 
+/* Pas de surcharge d'accent ici : le lien d'accueil porte la couleur de son
+   univers comme les autres, c'est justement lui qui l'annonce. */
 .nav-home {
   margin-bottom: 4px;
-  --group-color: var(--accent);
 }
 
 .nav-icon {
@@ -201,7 +195,7 @@ function onNavigate() {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--group-color, var(--accent));
+  color: var(--universe-accent, var(--accent));
 }
 .nav-icon :deep(svg) {
   width: 16px;

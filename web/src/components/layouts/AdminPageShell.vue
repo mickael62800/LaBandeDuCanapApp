@@ -42,8 +42,8 @@ withDefaults(
   background:
     linear-gradient(to right,
       transparent 0%,
-      color-mix(in srgb, var(--accent) 35%, transparent) 30%,
-      color-mix(in srgb, var(--accent) 35%, transparent) 70%,
+      color-mix(in srgb, var(--universe-accent, var(--accent)) 35%, transparent) 30%,
+      color-mix(in srgb, var(--universe-accent, var(--accent)) 35%, transparent) 70%,
       transparent 100%) bottom / 100% 1px no-repeat;
 }
 .admin-page-header.has-actions {
@@ -64,7 +64,7 @@ withDefaults(
   background: linear-gradient(
     90deg,
     var(--text-primary) 0%,
-    color-mix(in srgb, var(--accent) 60%, var(--text-primary)) 50%,
+    color-mix(in srgb, var(--universe-accent, var(--accent)) 60%, var(--text-primary)) 50%,
     var(--text-primary) 100%
   );
   background-size: 200% auto;
@@ -99,10 +99,10 @@ withDefaults(
   border-radius: 6px;
   font-size: 0.9em;
   font-family: "JetBrains Mono", monospace;
-  color: var(--accent);
+  color: var(--universe-accent, var(--accent));
 }
 .admin-page-lede :deep(a) {
-  color: var(--accent);
+  color: var(--universe-accent, var(--accent));
   text-decoration: none;
 }
 .admin-page-lede :deep(a:hover) { text-decoration: underline; }

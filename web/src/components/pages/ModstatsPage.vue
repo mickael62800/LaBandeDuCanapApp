@@ -20,9 +20,9 @@ async function handleRefresh() {
 </script>
 
 <template>
-  <div class="dashboard page--constrained">
-    <div class="dashboard-header">
-      <h1>Statistiques admin</h1>
+  <!-- Contenu d'onglet : l'en-tete de page appartient a `StatsHubPage`. -->
+  <div class="dashboard">
+    <div class="tab-toolbar">
       <div class="header-actions">
         <div class="period-selector">
           <button
@@ -64,43 +64,16 @@ async function handleRefresh() {
 </template>
 
 <style scoped>
-.dashboard-header {
+/* Barre d'outils de l'onglet. Le titre degrade et sa bordure sont partis
+   dans `AdminPageShell`, porte par le hub — ce bloc etait recopie a
+   l'identique depuis `StatsPage`. */
+.tab-toolbar {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
   gap: 16px;
   flex-wrap: wrap;
-  margin-bottom: 24px;
-  padding-bottom: 18px;
-  border-bottom: 1px solid transparent;
-  background:
-    linear-gradient(to right,
-      transparent 0%,
-      color-mix(in srgb, var(--accent) 35%, transparent) 30%,
-      color-mix(in srgb, var(--accent) 35%, transparent) 70%,
-      transparent 100%) bottom / 100% 1px no-repeat;
-}
-.dashboard-header h1 {
-  margin: 0;
-  font-size: 1.6rem;
-  font-weight: 700;
-  background: linear-gradient(
-    90deg,
-    var(--text-primary) 0%,
-    color-mix(in srgb, var(--accent) 60%, var(--text-primary)) 50%,
-    var(--text-primary) 100%
-  );
-  background-size: 200% auto;
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: transparent;
-  animation: stats-title-shimmer 10s linear infinite;
-  letter-spacing: 0.3px;
-}
-@keyframes stats-title-shimmer {
-  0%   { background-position: 200% center; }
-  100% { background-position: -200% center; }
+  margin-bottom: 20px;
 }
 
 .header-actions {
@@ -219,12 +192,7 @@ async function handleRefresh() {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .dashboard-header h1 {
-    animation: none;
-    background: none;
-    -webkit-text-fill-color: var(--text-primary);
-    color: var(--text-primary);
-  }
+  /* L'animation du titre est desormais geree par `AdminPageShell`. */
   .period-btn,
   .period-btn:hover,
   .period-btn:active,

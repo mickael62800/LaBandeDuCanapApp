@@ -26,6 +26,7 @@ atrium-proto = { workspace = true }
 tonic = { workspace = true }
 sqlx = { workspace = true }
 uuid = { workspace = true }
+chrono = { workspace = true }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

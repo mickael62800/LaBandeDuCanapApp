@@ -5,6 +5,12 @@ import Sidebar from "../organisms/Sidebar.vue";
 import ConnectionBanner from "../atoms/ConnectionBanner.vue";
 import { useRealtime } from "../../composables/useRealtime";
 import { useNotifications } from "../../composables/useNotifications";
+import { useUniverse } from "../../composables/useUniverse";
+
+// L'accent de l'univers est pose ICI, sur la coque : la barre laterale, la
+// barre du haut et les pages (via `AdminPageShell`) en heritent toutes. Le
+// poser plus bas obligerait chaque composant a le recalculer.
+const { definition } = useUniverse();
 
 const { init: initWs, disconnect, cleanup: cleanupWs } = useRealtime();
 const { startListening, stopListening, closePanel } = useNotifications();
@@ -22,7 +28,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="app-shell">
+  <div class="app-shell" :style="{ '--universe-accent': definition.accent }">
     <Sidebar />
     <div class="main-wrapper">
       <TopBar />

@@ -90,21 +90,28 @@ fn sample_rule_pondere(
 
 #[test]
 fn dashboard_stats_dto_preserves_all_fields() {
+    // Le DTO compose deux domaines : le metier Sentinel et la sante des
+    // services, qui vit desormais dans `ops-core`. Le test verifie justement
+    // qu'aucun champ ne se perd a la jonction.
     let s = DashboardStats {
         total_servers: 10,
         total_users: 200,
         messages_today: 3000,
         infractions_today: 5,
+        postgres_online: true,
+    };
+    let health = ops_core::domain::entities::services_health::ServicesHealth {
         bots_online: 2,
         bots_total: 3,
         workers_online: 1,
         workers_total: 1,
-        postgres_online: true,
         redis_online: false,
     };
-    let dto = DashboardStatsDto::from(s);
+    let dto = DashboardStatsDto::compose(s, health);
     assert_eq!(dto.total_servers, 10);
     assert_eq!(dto.messages_today, 3000);
+    assert_eq!(dto.bots_online, 2);
+    assert_eq!(dto.workers_total, 1);
     assert!(dto.postgres_online);
     assert!(!dto.redis_online);
 }

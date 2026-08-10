@@ -51,6 +51,11 @@ COPY web/docker-entrypoint-atrium.sh /docker-entrypoint.d/31-atrium-key.sh
 RUN sed -i 's/\r$//' /docker-entrypoint.d/31-atrium-key.sh \
     && chmod +x /docker-entrypoint.d/31-atrium-key.sh
 
+# Idem pour le jeton Exploitation (proxy /ops-api/).
+COPY web/docker-entrypoint-ops.sh /docker-entrypoint.d/32-ops-key.sh
+RUN sed -i 's/\r$//' /docker-entrypoint.d/32-ops-key.sh \
+    && chmod +x /docker-entrypoint.d/32-ops-key.sh
+
 # Assets statiques
 COPY --from=builder /app/dist /usr/share/nginx/html
 

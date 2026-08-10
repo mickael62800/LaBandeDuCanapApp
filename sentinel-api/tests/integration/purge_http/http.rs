@@ -17,14 +17,14 @@ use sentinel_api::adapters::inbound::http::router;
 use sentinel_api::adapters::inbound::http::state::AppState;
 use sentinel_core::domain::entities::audit::audit_log::AuditLog;
 use sentinel_core::domain::entities::moderation::infraction::Infraction;
-use sentinel_core::domain::entities::system::log_entry::LogEntry;
+use ops_core::domain::entities::log_entry::LogEntry;
 use sentinel_core::domain::errors::DomainError;
 use sentinel_core::ports::inbound::audit::manage_audit_logs::AuditLogFilters;
 use sentinel_core::ports::inbound::audit::manage_audit_logs::CreateAuditLogCommand;
 use sentinel_core::ports::inbound::audit::manage_audit_logs::ManageAuditLogsUseCase;
 use sentinel_core::ports::inbound::moderation::manage_infractions::InfractionFilters;
 use sentinel_core::ports::inbound::moderation::manage_infractions::ManageInfractionsUseCase;
-use sentinel_core::ports::outbound::system::log_repository::LogRepository;
+use ops_core::ports::outbound::log_repository::LogRepository;
 
 #[derive(Default)]
 struct MockInfUC {

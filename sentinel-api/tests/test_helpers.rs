@@ -53,7 +53,7 @@ use sentinel_core::domain::entities::system::analytics::*;
 use sentinel_core::domain::entities::system::bot_config::*;
 use sentinel_core::domain::entities::system::discord_role::*;
 use sentinel_core::domain::entities::system::guild::*;
-use sentinel_core::domain::entities::system::log_entry::*;
+use ops_core::domain::entities::log_entry::*;
 use sentinel_core::domain::entities::system::rule::*;
 use sentinel_core::domain::entities::system::ticket::*;
 use sentinel_core::domain::errors::DomainError;
@@ -90,7 +90,7 @@ use sentinel_core::ports::outbound::moderation::pending_action_repository::*;
 use sentinel_core::ports::outbound::moderation::review_repository::*;
 use sentinel_core::ports::outbound::system::bot_config_repository::*;
 use sentinel_core::ports::outbound::system::guild_repository::*;
-use sentinel_core::ports::outbound::system::log_repository::*;
+use ops_core::ports::outbound::log_repository::*;
 
 // ══════════════════════════════════════════════════════════
 // Stub Use Cases (inbound)
@@ -2422,7 +2422,7 @@ fn base_state() -> AppState {
         Arc::new(StubPendingRoleGrants);
     let discord_api: Arc<dyn sentinel_core::ports::outbound::discord_api::DiscordApi> =
         Arc::new(DiscordApiService::new(String::new()));
-    let log_repo: Arc<dyn sentinel_core::ports::outbound::system::log_repository::LogRepository> =
+    let log_repo: Arc<dyn ops_core::ports::outbound::log_repository::LogRepository> =
         Arc::new(StubLogRepo);
     // Partage entre l'etat plat (lu par les middlewares) et `SystemState` :
     // deux listes distinctes laisseraient un test regler l'une et verifier

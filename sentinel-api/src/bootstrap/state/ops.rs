@@ -20,7 +20,6 @@ use std::sync::Arc;
 
 use axum::extract::FromRef;
 use ops_core::ports::inbound::lookup_geoip::LookupGeoIpUseCase;
-use ops_core::ports::inbound::manage_alert_rules::ManageAlertRulesUseCase;
 use ops_core::ports::inbound::manage_ip_bans::ManageIpBansUseCase;
 use ops_core::ports::inbound::manage_security_audit::ManageSecurityAuditUseCase;
 use ops_core::ports::inbound::manage_server_events::ManageServerEventsUseCase;
@@ -57,7 +56,6 @@ pub struct OpsState {
     pub system_logs_uc: Arc<dyn ManageSystemLogsUseCase>,
     pub log_repo: Arc<dyn LogRepository>,
     pub server_events_uc: Arc<dyn ManageServerEventsUseCase>,
-    pub alert_rules_uc: Arc<dyn ManageAlertRulesUseCase>,
 
     // ── Securite de l'hote ──
     pub security_logs_uc: Arc<dyn ReadSecurityLogsUseCase>,

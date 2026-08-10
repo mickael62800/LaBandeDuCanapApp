@@ -1,4 +1,3 @@
-pub mod alert_rule_repository;
 pub mod bot_config_repository;
 pub mod bot_persistence_repository;
 pub mod export_job_repository;

@@ -11,13 +11,13 @@ use sentinel_api::adapters::outbound::postgres::moderation::rule_repository::PgR
 use sentinel_api::adapters::outbound::postgres::system::log_repository::PgLogRepository;
 use sentinel_core::domain::entities::audit::user_activity::UserActivity;
 use sentinel_core::domain::entities::system::discord_role::DiscordRole;
-use sentinel_core::domain::entities::system::log_entry::LogEntry;
+use ops_core::domain::entities::log_entry::LogEntry;
 use sentinel_core::domain::entities::system::rule::Rule;
 use sentinel_core::domain::enums::moderation::flag_type::FlagType;
 use sentinel_core::ports::outbound::audit::user_activity_repository::UserActivityRepository;
 use sentinel_core::ports::outbound::community::discord_role_repository::DiscordRoleRepository;
 use sentinel_core::ports::outbound::moderation::rule_repository::RuleRepository;
-use sentinel_core::ports::outbound::system::log_repository::LogRepository;
+use ops_core::ports::outbound::log_repository::LogRepository;
 async fn pool() -> PgPool {
     let url = std::env::var("DATABASE_URL").unwrap_or_else(|_| {
         "postgres://sentinel_test:sentinel_test@localhost:5433/sentinel_test".into()

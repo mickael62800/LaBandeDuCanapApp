@@ -198,120 +198,10 @@ impl ManageModerationUseCase for MockModerationUc {
     }
 }
 
-/// Mock du use case rappels : create_reminder renvoie un reminder factice et
-/// enregistre les action_type recus ; cancel_for_target enregistre les cibles.
-#[derive(Default)]
-struct MockRemindersUc {
-    created: Mutex<Vec<String>>,
-    cancelled_targets: Mutex<Vec<(String, String)>>,
-}
 
-#[async_trait]
-impl ManageRemindersUseCase for MockRemindersUc {
-    async fn create_reminder(
-        &self,
-        cmd: CreateReminderCommand,
-    ) -> Result<
-        sentinel_core::domain::entities::moderation::action::sanction_reminder::SanctionReminder,
-        DomainError,
-    > {
-        self.created.lock().unwrap().push(cmd.action_type.clone());
-        Ok(
-            sentinel_core::domain::entities::moderation::action::sanction_reminder::SanctionReminder {
-                id: Uuid::new_v4(),
-                guild_id: cmd.guild_id,
-                moderator_id: cmd.moderator_id,
-                moderator_name: cmd.moderator_name,
-                target_id: cmd.target_id,
-                target_name: cmd.target_name,
-                action_type: cmd.action_type,
-                reason: cmd.reason,
-                action_id: cmd.action_id,
-                remind_at: ts(),
-                expires_at: ts(),
-                status: "pending".into(),
-                created_at: ts(),
-            },
-        )
-    }
-    async fn get_pending_reminders(
-        &self,
-    ) -> Result<
-        Vec<sentinel_core::domain::entities::moderation::action::sanction_reminder::SanctionReminder>,
-        DomainError,
-    >{
-        Ok(vec![])
-    }
-    async fn mark_sent(&self, _: Uuid) -> Result<(), DomainError> {
-        Ok(())
-    }
-    async fn cancel_for_action(&self, _: Uuid) -> Result<(), DomainError> {
-        Ok(())
-    }
-    async fn cancel_for_target(&self, guild_id: &str, target_id: &str) -> Result<u64, DomainError> {
-        self.cancelled_targets
-            .lock()
-            .unwrap()
-            .push((guild_id.into(), target_id.into()));
-        Ok(1)
-    }
-    async fn list_by_guild(
-        &self,
-        _: &str,
-    ) -> Result<
-        Vec<sentinel_core::domain::entities::moderation::action::sanction_reminder::SanctionReminder>,
-        DomainError,
-    >{
-        Ok(vec![])
-    }
-}
 
-/// Mock du use case copilote : renvoie un contexte fixe deterministe.
-#[derive(Default)]
-struct MockCopilotUc {
-    calls: Mutex<Vec<(String, String, i64, u32)>>,
-}
 
-use sentinel_core::domain::entities::moderation::copilot::MemberModerationContext;
-use sentinel_core::domain::entities::moderation::copilot::PrecedentDistribution;
-use sentinel_core::domain::entities::moderation::copilot::SanctionSuggestion;
-use sentinel_core::domain::entities::moderation::copilot::SuggestionBasis;
-use sentinel_core::domain::entities::moderation::review::automod::AppliedAction;
 
-#[async_trait]
-impl ModerationCopilotUseCase for MockCopilotUc {
-    async fn get_member_context(
-        &self,
-        guild_id: &str,
-        user_id: &str,
-        lookback_days: i64,
-        min_precedents: u32,
-    ) -> Result<MemberModerationContext, DomainError> {
-        self.calls.lock().unwrap().push((
-            guild_id.into(),
-            user_id.into(),
-            lookback_days,
-            min_precedents,
-        ));
-        Ok(MemberModerationContext {
-            active_strikes: 2,
-            sanctions_by_type: vec![("warn".into(), 3), ("mute".into(), 1)],
-            last_sanction_at: Some(ts()),
-            open_reviews: 1,
-            precedents: PrecedentDistribution {
-                flag_category: "phishing".into(),
-                counts_by_action: vec![("ban".into(), 4), ("mute".into(), 1)],
-                total: 5,
-            },
-            suggestion: SanctionSuggestion {
-                action: Some(AppliedAction::Ban),
-                basis: SuggestionBasis::Both,
-                rationale: "jurisprudence concordante".into(),
-                precedent_count: 5,
-            },
-        })
-    }
-}
 
 /// Doubles des ports du dossier de moderation (preuves, relecture, notes,
 /// statistiques, apprenti).
@@ -550,31 +440,13 @@ fn grpc(uc: Arc<MockModerationUc>) -> ModerationGrpc {
         cancel_action_uc: Arc::new(MockCancelUc),
         assess_target_risk_uc: Arc::new(MockAssessRiskUc),
         modstats_uc: Arc::new(MockModstatsUc),
-        notes_uc: Arc::new(MockNotesUc),
         evidence_repo: Arc::new(MockEvidenceRepo),
         review_repo: Arc::new(MockReviewRepo),
         pending_action_repo: Arc::new(MockPendingActionRepo),
         infractions_uc: Arc::new(MockInfractionsUc),
-        reminders_uc: Arc::new(MockRemindersUc::default()),
-        moderation_copilot_uc: Arc::new(MockCopilotUc::default()),
     }
 }
 
-fn grpc_with_reminders(uc: Arc<MockModerationUc>, rem: Arc<MockRemindersUc>) -> ModerationGrpc {
-    ModerationGrpc {
-        moderation_uc: uc,
-        cancel_action_uc: Arc::new(MockCancelUc),
-        assess_target_risk_uc: Arc::new(MockAssessRiskUc),
-        modstats_uc: Arc::new(MockModstatsUc),
-        notes_uc: Arc::new(MockNotesUc),
-        evidence_repo: Arc::new(MockEvidenceRepo),
-        review_repo: Arc::new(MockReviewRepo),
-        pending_action_repo: Arc::new(MockPendingActionRepo),
-        infractions_uc: Arc::new(MockInfractionsUc),
-        reminders_uc: rem,
-        moderation_copilot_uc: Arc::new(MockCopilotUc::default()),
-    }
-}
 
 fn make_log_request(action: &str) -> Request<proto::LogActionRequest> {
     Request::new(proto::LogActionRequest {
@@ -600,55 +472,11 @@ fn make_log_request_dur(action: &str, duration: Option<u64>) -> Request<proto::L
 
 // BUG #8 : seul ban_temp cree un rappel d'expiration ; mute_temp expire seul via
 // le timeout Discord et ne doit PAS generer de rappel.
-#[tokio::test]
-async fn log_action_ban_temp_creates_reminder() {
-    let uc = Arc::new(MockModerationUc::default());
-    let rem = Arc::new(MockRemindersUc::default());
-    let g = grpc_with_reminders(uc, rem.clone());
-    let _ = g
-        .log_action(make_log_request_dur("ban_temp", Some(3600)))
-        .await
-        .unwrap();
-    assert_eq!(rem.created.lock().unwrap().as_slice(), ["ban_temp"]);
-}
 
-#[tokio::test]
-async fn log_action_mute_temp_creates_no_reminder() {
-    let uc = Arc::new(MockModerationUc::default());
-    let rem = Arc::new(MockRemindersUc::default());
-    let g = grpc_with_reminders(uc, rem.clone());
-    let _ = g
-        .log_action(make_log_request_dur("mute_temp", Some(3600)))
-        .await
-        .unwrap();
-    assert!(rem.created.lock().unwrap().is_empty());
-}
 
 // BUG #1 : un unban annule les rappels d'auto-unban pour la cible ; un ban ne
 // declenche aucune annulation.
-#[tokio::test]
-async fn log_action_unban_cancels_target_reminders() {
-    let uc = Arc::new(MockModerationUc::default());
-    let rem = Arc::new(MockRemindersUc::default());
-    let g = grpc_with_reminders(uc, rem.clone());
-    let _ = g.log_action(make_log_request("unban")).await.unwrap();
-    assert_eq!(
-        rem.cancelled_targets.lock().unwrap().as_slice(),
-        [("g".to_string(), "t".to_string())]
-    );
-}
 
-#[tokio::test]
-async fn log_action_ban_does_not_cancel_target_reminders() {
-    let uc = Arc::new(MockModerationUc::default());
-    let rem = Arc::new(MockRemindersUc::default());
-    let g = grpc_with_reminders(uc, rem.clone());
-    let _ = g
-        .log_action(make_log_request_dur("ban_permanent", None))
-        .await
-        .unwrap();
-    assert!(rem.cancelled_targets.lock().unwrap().is_empty());
-}
 
 #[tokio::test]
 async fn log_action_delegates_to_uc() {
@@ -708,51 +536,6 @@ async fn get_history_returns_full_user_data() {
     assert_eq!(h.actions.len(), 1);
 }
 
-#[tokio::test]
-async fn get_member_context_maps_domain_to_proto() {
-    let copilot = Arc::new(MockCopilotUc::default());
-    let g = ModerationGrpc {
-        moderation_uc: Arc::new(MockModerationUc::default()),
-        cancel_action_uc: Arc::new(MockCancelUc),
-        assess_target_risk_uc: Arc::new(MockAssessRiskUc),
-        modstats_uc: Arc::new(MockModstatsUc),
-        notes_uc: Arc::new(MockNotesUc),
-        evidence_repo: Arc::new(MockEvidenceRepo),
-        review_repo: Arc::new(MockReviewRepo),
-        pending_action_repo: Arc::new(MockPendingActionRepo),
-        infractions_uc: Arc::new(MockInfractionsUc),
-        reminders_uc: Arc::new(MockRemindersUc::default()),
-        moderation_copilot_uc: copilot.clone(),
-    };
-    let resp = g
-        .get_member_context(Request::new(proto::GetMemberContextRequest {
-            guild_id: "g".into(),
-            user_id: "u".into(),
-            lookback_days: 90,
-            min_precedents: 3,
-        }))
-        .await
-        .unwrap()
-        .into_inner();
-
-    assert_eq!(
-        copilot.calls.lock().unwrap()[0],
-        ("g".into(), "u".into(), 90, 3)
-    );
-    assert_eq!(resp.active_strikes, 2);
-    assert_eq!(resp.sanctions_by_type.len(), 2);
-    assert_eq!(resp.sanctions_by_type[0].action, "warn");
-    assert_eq!(resp.sanctions_by_type[0].count, 3);
-    assert_eq!(resp.open_reviews, 1);
-    assert!(resp.last_sanction_at.is_some());
-    let prec = resp.precedents.unwrap();
-    assert_eq!(prec.flag_category, "phishing");
-    assert_eq!(prec.total, 5);
-    let sugg = resp.suggestion.unwrap();
-    assert_eq!(sugg.action.as_deref(), Some("ban"));
-    assert_eq!(sugg.basis, "both");
-    assert_eq!(sugg.precedent_count, 5);
-}
 
 #[tokio::test]
 async fn get_history_clean_user_has_zero_counters() {

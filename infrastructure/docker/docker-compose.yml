@@ -384,6 +384,46 @@ services:
       timeout: 3s
       retries: 3
 
+  # ── API Exploitation ────────────────────────────────────────────────────
+  #
+  # Ecrans de la MACHINE hote (sondes, Docker, logs techniques, securite de
+  # l'hote, regles d'alerte), transverses aux trois plateformes Discord.
+  #
+  # Se connecte a la base de Sentinel : Postgres ne sait pas requeter entre
+  # bases logiques, or l'exploitation doit LIRE `logs` et `audit_logs`. La
+  # separation passe par un role restreint, pas par une base dediee.
+  ops-api:
+    <<: *rust-base
+    build:
+      <<: *build-alpine
+      args:
+        BIN_NAME: ops-api
+    environment:
+      RUST_LOG: ${RUST_LOG:-info}
+      OPS_API_BIND_ADDR: 0.0.0.0:3200
+      OPS_DATABASE_URL: postgres://sentinel:${POSTGRES_PASSWORD:-sentinel_secret}@pgbouncer:5432/discord_sentinel
+      # Requis : l'API refuse de demarrer sans jeton d'au moins 16 caracteres.
+      OPS_API_TOKEN: ${OPS_API_TOKEN:?OPS_API_TOKEN est requis}
+      OPS_METRICS_TOKEN: ${OPS_METRICS_TOKEN:-}
+      DOCKER_AGENT_URL: http://docker-agent:8095
+      DOCKER_AGENT_TOKEN: ${DOCKER_AGENT_TOKEN:?DOCKER_AGENT_TOKEN est requis}
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+      pgbouncer:
+        condition: service_started
+      docker-agent:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:3200/health || exit 1"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
   gateway:
     <<: *rust-base
     build:

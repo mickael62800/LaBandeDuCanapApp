@@ -15,10 +15,10 @@ use sentinel_api::adapters::outbound::batching::audit_log_batcher::BatchedPgAudi
 use sentinel_api::adapters::outbound::batching::batch_writer::BatchWriterConfig;
 use sentinel_api::adapters::outbound::batching::log_batcher::BatchedPgLogRepository;
 use sentinel_core::domain::entities::audit::audit_log::AuditLog;
-use sentinel_core::domain::entities::system::log_entry::LogEntry;
+use ops_core::domain::entities::log_entry::LogEntry;
 use sentinel_core::ports::inbound::audit::manage_audit_logs::AuditLogFilters;
 use sentinel_core::ports::outbound::audit::audit_log_repository::AuditLogRepository;
-use sentinel_core::ports::outbound::system::log_repository::LogRepository;
+use ops_core::ports::outbound::log_repository::LogRepository;
 async fn pool() -> PgPool {
     let url = std::env::var("DATABASE_URL").unwrap_or_else(|_| {
         "postgres://sentinel_test:sentinel_test@localhost:5433/sentinel_test".into()

@@ -566,15 +566,6 @@ pub async fn build_app_state(
         ),
     );
 
-    // Règles d'alerte de supervision : repo Postgres (SQL alert_rules) + use
-    // case (invariants sévérité/cooldown). Le handler ne fait que RBAC/mapper.
-    let alert_rules_repo: Arc<dyn ops_core::ports::outbound::alert_rule_repository::AlertRuleRepository> =
-        Arc::new(crate::adapters::outbound::postgres::system::alert_rule_repository::PgAlertRuleRepository::new(pg_pool.clone()));
-    let alert_rules_uc: Arc<dyn ops_core::ports::inbound::manage_alert_rules::ManageAlertRulesUseCase> =
-        Arc::new(ops_core::application::manage_alert_rules_service::ManageAlertRulesService::new(
-            alert_rules_repo,
-        ));
-
     // Persistance fire-and-forget des bots (streaks, etc.) : repo Postgres
     // (SQL user_levels) + use case pass-through. Le handler ne fait que
     // parser/valider/mapper.
@@ -739,7 +730,6 @@ pub async fn build_app_state(
         system_logs_uc: system_logs_uc.clone(),
         log_repo: log_repo.clone(),
         server_events_uc: server_events_uc.clone(),
-        alert_rules_uc: alert_rules_uc.clone(),
         security_logs_uc: security_logs_uc.clone(),
         security_audit_uc: security_audit_uc.clone(),
         host_probe_uc: host_probe_uc.clone(),

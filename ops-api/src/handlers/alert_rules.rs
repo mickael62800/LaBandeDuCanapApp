@@ -1,18 +1,17 @@
-//! CRUD des regles d'alerte de supervision (table `alert_rules`).
+//! Regles d'alerte de supervision (table `alert_rules`).
 //!
-//! Endpoint host-level : reserve aux superadmins (comme docker/security).
-//! Les regles pilotent `outbound/system/alerts_dispatcher.rs`. Le handler ne
-//! fait que user + mapping DTO ; invariants et SQL vivent derrière le use case
-//! (`manage_alert_rules` + `PgAlertRuleRepository`).
+//! Portees depuis `sentinel-api` : elles pilotent le dispatcher d'alertes de la
+//! machine, pas la moderation Discord. Le handler ne fait que
+//! authentification + mapping DTO ; les invariants et le SQL vivent derriere le
+//! use case (`ManageAlertRules` + `PgAlertRuleRepository`).
 
 use axum::extract::{Path, State};
-use axum::{Extension, Json};
+use axum::http::HeaderMap;
+use axum::Json;
+use ops_core::domain::entities::alert_rule::{AlertRule, AlertRuleUpdate};
 use serde::{Deserialize, Serialize};
 
-use crate::adapters::inbound::http::errors::ApiError;
-use crate::adapters::inbound::http::middleware::superadmin::WebUser;
-use crate::bootstrap::state::OpsState;
-use ops_core::domain::entities::alert_rule::{AlertRule, AlertRuleUpdate};
+use crate::{authorize, ApiError, AppState};
 
 #[derive(Serialize)]
 pub struct AlertRuleDto {
@@ -41,11 +40,12 @@ impl From<AlertRule> for AlertRuleDto {
     }
 }
 
-/// GET /api/alert-rules — liste toutes les regles (actives ou non).
-pub async fn list_alert_rules(
-    State(state): State<OpsState>,
-    _user: Option<Extension<WebUser>>,
+/// GET /alert-rules — toutes les regles, actives ou non.
+pub async fn list(
+    State(state): State<AppState>,
+    headers: HeaderMap,
 ) -> Result<Json<Vec<AlertRuleDto>>, ApiError> {
+    authorize(&headers, &state.config)?;
     let rules = state.alert_rules_uc.list().await?;
     Ok(Json(rules.into_iter().map(Into::into).collect()))
 }
@@ -58,14 +58,18 @@ pub struct UpdateAlertRuleDto {
     pub cooldown_secs: Option<i32>,
 }
 
-/// PATCH /api/alert-rules/{id} — met a jour les champs editables d'une regle.
-/// `metric`/`comparator`/`label` sont fixes (ils definissent la semantique).
-pub async fn update_alert_rule(
-    State(state): State<OpsState>,
-    _user: Option<Extension<WebUser>>,
+/// PATCH /alert-rules/{id} — champs editables uniquement.
+///
+/// `metric`, `comparator` et `label` sont fixes : ils definissent la semantique
+/// de la regle, et les rendre modifiables permettrait de renommer une alerte
+/// sans changer ce qu'elle mesure.
+pub async fn update(
+    State(state): State<AppState>,
+    headers: HeaderMap,
     Path(id): Path<String>,
     Json(dto): Json<UpdateAlertRuleDto>,
 ) -> Result<Json<AlertRuleDto>, ApiError> {
+    authorize(&headers, &state.config)?;
     let update = AlertRuleUpdate {
         enabled: dto.enabled,
         threshold: dto.threshold,

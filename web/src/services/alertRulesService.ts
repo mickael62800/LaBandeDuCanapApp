@@ -1,4 +1,7 @@
-import { httpGet, httpPatch } from "@/api/http";
+// Les règles d'alerte pilotent la supervision de la MACHINE : elles sont
+// servies par `ops-api`, pas par sentinel-api. L'URL de la page
+// (/alert-rules) ne change pas — seul le backend appelé change.
+import { opsGet, opsPatch } from "@/api/opsHttp";
 
 export interface AlertRule {
   id: string;
@@ -19,12 +22,12 @@ export interface UpdateAlertRule {
 }
 
 export const alertRulesService = {
-  /** GET /api/alert-rules — liste des règles de supervision (superadmin). */
+  /** GET /ops-api/alert-rules — règles de supervision de la machine. */
   list(): Promise<AlertRule[]> {
-    return httpGet("/api/alert-rules");
+    return opsGet("/alert-rules");
   },
-  /** PATCH /api/alert-rules/{id} — met à jour une règle. */
+  /** PATCH /ops-api/alert-rules/{id} — met à jour une règle. */
   update(id: string, patch: UpdateAlertRule): Promise<AlertRule> {
-    return httpPatch(`/api/alert-rules/${id}`, patch);
+    return opsPatch(`/alert-rules/${id}`, patch);
   },
 };

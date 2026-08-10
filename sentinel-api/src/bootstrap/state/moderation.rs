@@ -9,6 +9,7 @@ use sentinel_core::ports::inbound::moderation::manage_automod_reviews::ManageAut
 use sentinel_core::ports::inbound::moderation::manage_infractions::ManageInfractionsUseCase;
 use sentinel_core::ports::inbound::moderation::manage_moderation::ManageModerationUseCase;
 use sentinel_core::ports::inbound::moderation::manage_rules::ManageRulesUseCase;
+use sentinel_core::ports::inbound::moderation::manage_strikes::ManageStrikesUseCase;
 use sentinel_core::ports::inbound::moderation::manage_sursis::ManageSursisUseCase;
 use sentinel_core::ports::inbound::moderation::read_modstats::ReadModstatsUseCase;
 use sentinel_core::ports::outbound::audit::modstats_repository::ModstatsRepository;
@@ -45,6 +46,9 @@ pub struct ModerationState {
     pub automod_reviews_uc: Arc<dyn ManageAutomodReviewsUseCase>,
     pub automod_adaptive_slowmode_repo: Arc<dyn AdaptiveSlowmodeRepository>,
     pub sursis_uc: Arc<dyn ManageSursisUseCase>,
+    /// Strikes (avertissements a paliers) : config des seuils + strikes actifs
+    /// par membre. Surface HTTP `/api/strikes/*`.
+    pub strikes_uc: Arc<dyn ManageStrikesUseCase>,
     /// Annulation d'une action (unwarn) : orchestre l'effet Discord inverse
     /// puis la suppression. Partage par le handler HTTP et le service gRPC.
     pub cancel_action_uc: Arc<dyn CancelModerationActionUseCase>,

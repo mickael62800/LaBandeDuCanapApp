@@ -104,6 +104,7 @@ fn protected_domain_routes() -> Router<AppState> {
         // Members + guild direct API
 .merge(routes::guild_backup::routes())
 .merge(routes::guilds::routes())
+        .merge(routes::members::routes())
         .merge(routes::progression::routes())
         .merge(routes::guild_structure::routes())
         .merge(routes::community::routes())

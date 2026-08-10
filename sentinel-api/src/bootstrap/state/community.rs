@@ -16,6 +16,7 @@ use sentinel_core::ports::inbound::community::manage_events::ManageEventsUseCase
 use sentinel_core::ports::inbound::community::manage_ideas::ManageIdeasUseCase;
 use sentinel_core::ports::inbound::community::manage_levels::ManageLevelsUseCase;
 use sentinel_core::ports::inbound::community::manage_lfg::ManageLfgUseCase;
+use sentinel_core::ports::inbound::community::manage_members::ManageMembersUseCase;
 use sentinel_core::ports::inbound::community::manage_monthly_ranking::ManageMonthlyRankingUseCase;
 use sentinel_core::ports::inbound::community::manage_news::ManageNewsUseCase;
 use sentinel_core::ports::inbound::community::manage_polls::ManagePollsUseCase;
@@ -40,6 +41,9 @@ pub struct CommunityState {
     // ── Vie du serveur ──
     pub events_uc: Arc<dyn ManageEventsUseCase>,
     pub lfg_uc: Arc<dyn ManageLfgUseCase>,
+    /// Membres (DB-backed) : liste, profil, sync, lifecycle join/leave, reset.
+    /// Surface HTTP `/api/members/*` + `/api/guilds/{id}/members` (via Discord).
+    pub members_uc: Arc<dyn ManageMembersUseCase>,
     pub polls_uc: Arc<dyn ManagePollsUseCase>,
     pub spotlight_uc: Arc<dyn ManageSpotlightUseCase>,
     pub news_uc: Arc<dyn ManageNewsUseCase>,

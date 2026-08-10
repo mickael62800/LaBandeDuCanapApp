@@ -86,10 +86,27 @@ fn moderation_inner() -> Router<AppState> {
         )
 }
 
+/// Strikes (avertissements a paliers), montes sous `/api/strikes`.
+fn strikes_inner() -> Router<AppState> {
+    Router::new()
+        .route(
+            "/config/{guild_id}",
+            get(handlers::moderation::strikes::get_config)
+                .put(handlers::moderation::strikes::save_config),
+        )
+        .route(
+            "/{guild_id}/{user_id}",
+            get(handlers::moderation::strikes::get_active_strikes)
+                .delete(handlers::moderation::strikes::reset_strikes),
+        )
+        .route("/", post(handlers::moderation::strikes::add_strike))
+}
+
 pub fn routes() -> Router<AppState> {
     Router::new()
         .nest("/api/moderation", moderation_inner())
-                        }
+        .nest("/api/strikes", strikes_inner())
+}
 
 #[cfg(test)]
 mod tests {

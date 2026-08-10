@@ -591,6 +591,14 @@ let level_repo = Arc::new(PgLevelRepository::new(pg_pool.clone()));
         ),
     );
 
+    let strikes_uc: Arc<
+        dyn sentinel_core::ports::inbound::moderation::manage_strikes::ManageStrikesUseCase,
+    > = Arc::new(
+        sentinel_core::application::moderation::manage_strikes_service::ManageStrikesService::new(
+            strike_repo.clone(),
+        ),
+    );
+
     // ── Sous-etats par domaine ──
     //
     // Construits AVANT le `AppState` plat pour que ce dernier puisse cloner
@@ -615,6 +623,7 @@ let level_repo = Arc::new(PgLevelRepository::new(pg_pool.clone()));
         automod_reviews_uc: automod_reviews_uc.clone(),
         automod_adaptive_slowmode_repo: automod_adaptive_slowmode_repo.clone(),
         sursis_uc: sursis_uc.clone(),
+        strikes_uc: strikes_uc.clone(),
         cancel_action_uc: Arc::new(
             sentinel_core::application::moderation::cancel_action_service::CancelModerationActionService::new(
                 moderation_uc.clone(),
@@ -682,9 +691,26 @@ let level_repo = Arc::new(PgLevelRepository::new(pg_pool.clone()));
         api_key: config.api_key.clone(),
     };
 
+    let member_repo = Arc::new(
+        crate::adapters::outbound::postgres::community::member_repository::PgMemberRepository::new(
+            pg_pool.clone(),
+        ),
+    );
+    let members_uc: Arc<
+        dyn sentinel_core::ports::inbound::community::manage_members::ManageMembersUseCase,
+    > = Arc::new(
+        sentinel_core::application::community::manage_members_service::ManageMembersService::new(
+            member_repo,
+            infractions_uc.clone(),
+            moderation_uc.clone(),
+            stats_uc.clone(),
+        ),
+    );
+
     let community = crate::bootstrap::state::CommunityState {
         events_uc: events_uc.clone(),
         lfg_uc: lfg_uc.clone(),
+        members_uc: members_uc.clone(),
         polls_uc: polls_uc.clone(),
         spotlight_uc: spotlight_uc.clone(),
         news_uc: news_uc.clone(),

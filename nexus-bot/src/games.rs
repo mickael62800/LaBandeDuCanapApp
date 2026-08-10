@@ -5,13 +5,13 @@
 //! `/game-admin create` genere un role Discord mentionnable (`<@&role_id>`).
 //! S'abonner = recevoir le role, se desabonner = perdre le role.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use serenity::all::{
-    ButtonStyle, Colour, CommandDataOptionValue, CommandInteraction, CommandOptionType,
-    ComponentInteraction, ComponentInteractionDataKind, Context, CreateActionRow, CreateButton,
+    Colour, CommandDataOptionValue, CommandInteraction, CommandOptionType,
+    ComponentInteraction, ComponentInteractionDataKind, Context,
     CreateCommand, CreateCommandOption, CreateInteractionResponse,
-    CreateInteractionResponseMessage, CreateMessage, EditMessage, EditRole, GuildId,
+    CreateInteractionResponseMessage, CreateMessage, EditMessage, EditRole,
     ReactionType, RoleId,
 };
 use serenity::builder::CreateEmbed;
@@ -506,7 +506,7 @@ async fn handle_panel(ctx: &Context, cmd: &CommandInteraction, api: &ApiClient, 
     let embed = build_panel_embed(category.as_deref(), &games_slice);
 
     // 1) Envoie un message initial avec l'embed seulement (pas encore de components).
-    let mut msg = match cmd
+    let msg = match cmd
         .channel_id
         .send_message(&ctx.http, CreateMessage::new().embed(embed))
         .await
@@ -686,28 +686,7 @@ pub(crate) fn build_panel_embed(category: Option<&str>, games: &[&Game]) -> Crea
 
 
 
-/// Compte, depuis le cache, le nombre de membres possedant chacun des roles.
-/// Un seul passage sur les membres du serveur (O(membres x roles/membre)).
-fn role_member_counts(
-    ctx: &Context,
-    guild_id: GuildId,
-    role_ids: &[RoleId],
-) -> HashMap<RoleId, usize> {
-    let mut counts: HashMap<RoleId, usize> = role_ids.iter().map(|r| (*r, 0usize)).collect();
-    if counts.is_empty() {
-        return counts;
-    }
-    if let Some(guild) = ctx.cache.guild(guild_id) {
-        for member in guild.members.values() {
-            for r in &member.roles {
-                if let Some(c) = counts.get_mut(r) {
-                    *c += 1;
-                }
-            }
-        }
-    }
-    counts
-}
+
 
 // ── Component interactions (boutons + select menus legacy des panels) ──
 
@@ -1094,12 +1073,6 @@ pub(crate) fn parse_reaction_type(raw: &str) -> Option<ReactionType> {
 
 // ── Helpers ──
 
-fn truncate_chars(s: &mut String, max: usize) {
-    if s.chars().count() > max {
-        let truncated: String = s.chars().take(max).collect();
-        *s = truncated;
-    }
-}
 
 fn get_string_option(cmd: &CommandInteraction, name: &str) -> Option<String> {
     let sub = cmd.data.options.first()?;
@@ -1222,7 +1195,7 @@ async fn deploy_panel_from_event(ctx: &Context, api: &ApiClient, guild_id: &str,
         Err(_) => return,
     };
 
-    let mut msg = match chan_id.send_message(&ctx.http, CreateMessage::new().embed(embed)).await {
+    let msg = match chan_id.send_message(&ctx.http, CreateMessage::new().embed(embed)).await {
         Ok(m) => m,
         Err(e) => {
             warn!(error = %e, "Erreur envoi message panel");
@@ -1238,7 +1211,7 @@ async fn deploy_panel_from_event(ctx: &Context, api: &ApiClient, guild_id: &str,
         }
     };
 
-    let guild_id_obj = match guild_id.parse::<u64>() {
+    let _guild_id_obj = match guild_id.parse::<u64>() {
         Ok(id) => serenity::all::GuildId::new(id),
         Err(_) => return,
     };

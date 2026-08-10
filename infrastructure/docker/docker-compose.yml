@@ -412,6 +412,7 @@ services:
       - no-new-privileges:true
     volumes:
       - /var/lib/sentinel:/var/lib/sentinel:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
     networks:
       - internal
       - default

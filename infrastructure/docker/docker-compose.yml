@@ -407,12 +407,14 @@ services:
       OPS_METRICS_TOKEN: ${OPS_METRICS_TOKEN:-}
       DOCKER_AGENT_URL: http://docker-agent:8095
       DOCKER_AGENT_TOKEN: ${DOCKER_AGENT_TOKEN:?DOCKER_AGENT_TOKEN est requis}
+      WEB_DOMAIN: ${WEB_DOMAIN:-localhost}
     security_opt:
       - no-new-privileges:true
     volumes:
       - /var/lib/sentinel:/var/lib/sentinel:ro
     networks:
       - internal
+      - default
     depends_on:
       postgres:
         condition: service_healthy

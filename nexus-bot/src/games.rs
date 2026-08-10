@@ -540,15 +540,15 @@ async fn handle_panel(ctx: &Context, cmd: &CommandInteraction, api: &ApiClient, 
         }
     };
 
-    // 3) Ajoute les boutons sur le message du panel.
-    let components = build_panel_button_components(
-        ctx,
-        cmd.guild_id.unwrap(),
-        &_panel.id.to_string(),
-        &games_slice,
-    );
-    if let Err(e) = msg.edit(&ctx.http, EditMessage::new().components(components)).await {
-        tracing::warn!(error = %e, "Erreur edition message pour ajouter les boutons");
+    // 3) Ajoute les reactions (emojis) sur le message du panel.
+    for game in &games_slice {
+        if let Some(emoji_str) = &game.emoji {
+            if let Some(rt) = parse_reaction_type(emoji_str) {
+                if let Err(e) = msg.react(&ctx.http, rt).await {
+                    tracing::warn!(error = %e, "Erreur ajout reaction pour {}", game.game_name);
+                }
+            }
+        }
     }
 
     reply(
@@ -630,22 +630,25 @@ async fn handle_refresh(ctx: &Context, cmd: &CommandInteraction, api: &ApiClient
         }
     };
 
-    // Met a jour l'embed et les boutons
-    let components = build_panel_button_components(
-        ctx,
-        cmd.guild_id.unwrap(),
-        &panel.id.to_string(),
-        &games_slice,
-    );
+    // Met a jour l'embed
     if let Err(e) = msg
         .edit(
             &ctx.http,
-            EditMessage::new().embed(embed).components(components),
+            EditMessage::new().embed(embed).components(Vec::new()),
         )
         .await
     {
         reply(ctx, cmd, &format!("Erreur edition : {e}")).await;
         return;
+    }
+
+    // Ajoute les reactions
+    for game in &games_slice {
+        if let Some(emoji_str) = &game.emoji {
+            if let Some(rt) = parse_reaction_type(emoji_str) {
+                let _ = msg.react(&ctx.http, rt).await;
+            }
+        }
     }
 
     reply(
@@ -681,62 +684,7 @@ pub(crate) fn build_panel_embed(category: Option<&str>, games: &[&Game]) -> Crea
     info_embed(&title).description(desc)
 }
 
-/// Construit les rangees de BOUTONS-ICONES d'un panel. Un bouton par jeu :
-/// emoji du jeu + compteur d'abonnes (membres ayant le role). Max 25 jeux
-/// (5x5). Cliquer toggle le role.
-pub(crate) fn build_panel_button_components(
-    ctx: &Context,
-    guild_id: GuildId,
-    panel_id: &str,
-    games: &[&Game],
-) -> Vec<CreateActionRow> {
-    if games.is_empty() {
-        return Vec::new();
-    }
 
-    // Compte les abonnes de chaque role en UN seul passage du cache membres.
-    let role_ids: Vec<RoleId> = games
-        .iter()
-        .filter_map(|g| {
-            g.role_id
-                .as_deref()
-                .and_then(|s| s.parse::<u64>().ok())
-                .map(RoleId::new)
-        })
-        .collect();
-    let counts = role_member_counts(ctx, guild_id, &role_ids);
-
-    let shown: Vec<&&Game> = games.iter().take(MAX_BUTTONS_PER_PANEL).collect();
-    shown
-        .chunks(5)
-        .map(|chunk| {
-            let buttons: Vec<CreateButton> = chunk
-                .iter()
-                .map(|g| {
-                    let role_id = g
-                        .role_id
-                        .as_deref()
-                        .and_then(|s| s.parse::<u64>().ok())
-                        .map(RoleId::new);
-                    let count = role_id.and_then(|r| counts.get(&r)).copied().unwrap_or(0);
-                    let cid = format!("{}{}|{}", PANEL_BUTTON_PREFIX, panel_id, g.id);
-                    let mut btn = CreateButton::new(cid).style(ButtonStyle::Secondary);
-                    match g.emoji.as_deref().and_then(parse_reaction_type) {
-                        Some(rt) => btn = btn.emoji(rt).label(count.to_string()),
-                        None => {
-                            // Pas d'emoji : on retombe sur nom tronque + compteur.
-                            let mut name = g.game_name.clone();
-                            truncate_chars(&mut name, 70);
-                            btn = btn.label(format!("{} {}", name, count));
-                        }
-                    }
-                    btn
-                })
-                .collect();
-            CreateActionRow::Buttons(buttons)
-        })
-        .collect()
-}
 
 /// Compte, depuis le cache, le nombre de membres possedant chacun des roles.
 /// Un seul passage sur les membres du serveur (O(membres x roles/membre)).
@@ -880,12 +828,11 @@ async fn handle_panel_button(api: &ApiClient, ctx: &Context, component: &Compone
     // Re-render du panneau (compteurs a jour). Edition directe du message.
     let games_slice: Vec<&Game> = games.iter().take(MAX_BUTTONS_PER_PANEL).collect();
     let embed = build_panel_embed(panel.category.as_deref(), &games_slice);
-    let components = build_panel_button_components(ctx, guild_id, &panel.id, &games_slice);
     let mut msg = component.message.clone();
     if let Err(e) = msg
         .edit(
             &ctx.http,
-            EditMessage::new().embed(embed).components(components),
+            EditMessage::new().embed(embed).components(Vec::new()),
         )
         .await
     {
@@ -1295,14 +1242,15 @@ async fn deploy_panel_from_event(ctx: &Context, api: &ApiClient, guild_id: &str,
         Ok(id) => serenity::all::GuildId::new(id),
         Err(_) => return,
     };
-    let components = build_panel_button_components(
-        ctx,
-        guild_id_obj,
-        &_panel.id.to_string(),
-        &games_slice,
-    );
-    if let Err(e) = msg.edit(&ctx.http, EditMessage::new().components(components)).await {
-        tracing::warn!(error = %e, "Erreur edition message panel web pour composants");
+    // Ajoute les reactions
+    for game in &games_slice {
+        if let Some(emoji_str) = &game.emoji {
+            if let Some(rt) = parse_reaction_type(emoji_str) {
+                if let Err(e) = msg.react(&ctx.http, rt).await {
+                    tracing::warn!(error = %e, "Erreur ajout reaction pour {}", game.game_name);
+                }
+            }
+        }
     }
 }
 

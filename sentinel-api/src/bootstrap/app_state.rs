@@ -37,6 +37,8 @@ use sentinel_core::application::audit::manage_audit_logs_service::ManageAuditLog
 use sentinel_core::application::audit::manage_security_service::ManageSecurityService;
 use sentinel_core::application::audit::manage_stats_service::ManageStatsService;
 use sentinel_core::application::audit::manage_watched_users_service::ManageWatchedUsersService;
+use sentinel_core::application::community::manage_levels_service::ManageLevelsService;
+use crate::adapters::outbound::postgres::community::level_repository::PgLevelRepository;
 use sentinel_core::application::moderation::manage_infractions_service::ManageInfractionsService;
 use sentinel_core::application::moderation::manage_moderation_service::ManageModerationService;
 use sentinel_core::application::moderation::manage_rules_service::ManageRulesService;
@@ -330,6 +332,8 @@ pub async fn build_app_state(
         cache.clone(),
     ));
         let analytics_repo = Arc::new(PgAnalyticsRepository::new(pg_pool.clone()));
+let level_repo = Arc::new(PgLevelRepository::new(pg_pool.clone()));
+    let manage_levels_usecase = Arc::new(ManageLevelsService::new(level_repo.clone(), bot_config_repo.clone()));
     let daily_activity_repo = Arc::new(PgDailyActivityRepository::new(pg_pool.clone()));
         let announcement_repo = Arc::new(crate::adapters::outbound::postgres::community::announcement_repository::PgAnnouncementRepository::new(pg_pool.clone()));
     let announcements_uc: Arc<dyn sentinel_core::ports::inbound::community::manage_announcements::ManageAnnouncementsUseCase> = Arc::new(sentinel_core::application::community::manage_announcements_service::ManageAnnouncementsService::new(announcement_repo, bot_config_repo.clone()));
@@ -692,6 +696,7 @@ pub async fn build_app_state(
         announcements_uc: announcements_uc.clone(),
         embeds_uc: embeds_uc.clone(),
         presence_uc: presence_uc.clone(),
+        levels_uc: manage_levels_usecase.clone(),
         monthly_ranking_uc: monthly_ranking_uc.clone(),
         welcome_config_uc: welcome_config_uc.clone(),
         eligibility_uc: eligibility_uc.clone(),
@@ -767,6 +772,7 @@ pub async fn build_app_state(
         superadmin_user_ids: Arc::new(config.superadmin_user_ids.clone()),
     }
 }
+
 
 
 

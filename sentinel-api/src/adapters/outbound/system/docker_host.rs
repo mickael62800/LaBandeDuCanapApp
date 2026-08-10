@@ -1,175 +1,155 @@
-//! Adapter sortant : daemon Docker via bollard (socket /var/run/docker.sock).
+//! Adapter sortant : daemon Docker via le `docker-agent`.
 //!
-//! Implémente le port `DockerHost` du core. Tout le mapping bollard → types
-//! de domaine vit ici ; les handlers HTTP ne voient plus bollard.
-
-use std::collections::HashMap;
-use std::sync::OnceLock;
+//! # Pourquoi un appel reseau plutot que le socket
+//!
+//! `/var/run/docker.sock` equivaut a un acces root sur l'hote. Il etait monte
+//! par ce processus, qui sert aussi l'OAuth, la moderation Discord et toutes
+//! les routes communautaires : la moindre faille dans cette surface donnait
+//! l'hote. Le socket n'est plus monte que par `docker-agent`, un service sans
+//! base et sans utilisateurs, joignable uniquement sur le reseau interne.
+//!
+//! Le port `DockerHost` n'a pas change : les handlers ignorent que Docker est
+//! passe de l'autre cote d'un appel HTTP. C'est precisement l'interet d'avoir
+//! eu un port plutot qu'un client bollard appele directement.
+//!
+//! L'implementation bollard n'a pas ete dupliquee : elle a ete DEPLACEE dans
+//! `docker-agent/src/bollard_host.rs`. Il n'existe toujours qu'un seul mapping
+//! bollard -> domaine dans le depot.
 
 use async_trait::async_trait;
-use bollard::container::ListContainersOptions;
-use bollard::container::LogsOptions;
-use bollard::container::RemoveContainerOptions;
-use bollard::container::RestartContainerOptions;
-use bollard::container::StopContainerOptions;
-use bollard::image::ListImagesOptions;
-use bollard::image::RemoveImageOptions;
-use bollard::network::ListNetworksOptions;
-use bollard::volume::ListVolumesOptions;
-use bollard::Docker;
-use futures_util::StreamExt;
-
+use reqwest::Client;
 use sentinel_core::domain::entities::ops::docker_host::{
-    BuildCacheEntry, ContainerDiskUsage, ContainerPort, ContainerSummary, DiskUsage,
-    DockerVersionInfo, ImageDiskUsage, ImageSummary, NetworkSummary, PruneOutcome, VolumeDiskUsage,
+    ContainerSummary, DiskUsage, DockerVersionInfo, ImageSummary, NetworkSummary, PruneOutcome,
     VolumeSummary,
 };
 use sentinel_core::domain::errors::DomainError;
 use sentinel_core::ports::outbound::ops::docker_host::DockerHost;
+use serde::de::DeserializeOwned;
 
-/// Singleton du client Docker. Bollard ouvre une connexion lazy au socket.
-static DOCKER: OnceLock<Docker> = OnceLock::new();
+pub struct HttpDockerHost {
+    client: Client,
+    base_url: String,
+    token: String,
+}
 
-fn docker() -> Result<&'static Docker, DomainError> {
-    if let Some(d) = DOCKER.get() {
-        return Ok(d);
+impl HttpDockerHost {
+    /// `base_url` : `http://docker-agent:8095` en compose.
+    pub fn new(base_url: String, token: String) -> Self {
+        Self {
+            // Delai genereux : un `prune` d'images peut durer, la mesure du
+            // `system df` aussi sur un hote charge. Trop court, l'ecran
+            // afficherait une panne la ou l'operation se termine tres bien.
+            client: Client::builder()
+                .timeout(std::time::Duration::from_secs(120))
+                .build()
+                .unwrap_or_default(),
+            base_url,
+            token,
+        }
     }
-    let d = Docker::connect_with_local_defaults()
-        .map_err(|e| DomainError::Internal(format!("docker socket: {}", e)))?;
-    let _ = DOCKER.set(d);
-    Ok(DOCKER.get().expect("docker just initialized"))
-}
 
-fn map_err(e: bollard::errors::Error) -> DomainError {
-    DomainError::Internal(format!("docker: {}", e))
-}
+    fn url(&self, path: &str) -> String {
+        format!("{}{}", self.base_url.trim_end_matches('/'), path)
+    }
 
-/// Implémentation bollard du port `DockerHost`.
-pub struct BollardDockerHost;
+    /// Traduit toute panne de transport en `DomainError`. L'agent tourne
+    /// derriere un profil Docker optionnel : son absence est un cas normal
+    /// d'installation, pas un bug, et le message doit le dire.
+    async fn send<T: DeserializeOwned>(
+        &self,
+        request: reqwest::RequestBuilder,
+    ) -> Result<T, DomainError> {
+        let response = request
+            .bearer_auth(&self.token)
+            .send()
+            .await
+            .map_err(|error| {
+                tracing::warn!(%error, "docker-agent injoignable");
+                DomainError::Internal("docker-agent injoignable".into())
+            })?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let detail = response.text().await.unwrap_or_default();
+            tracing::warn!(%status, body = %detail, "docker-agent a refuse l'operation");
+            return Err(DomainError::Internal(format!(
+                "docker-agent: reponse {status}"
+            )));
+        }
+
+        response.json::<T>().await.map_err(|error| {
+            tracing::warn!(%error, "reponse docker-agent illisible");
+            DomainError::Internal("reponse docker-agent illisible".into())
+        })
+    }
+
+    /// Variante pour les operations sans corps de reponse (204).
+    async fn send_unit(&self, request: reqwest::RequestBuilder) -> Result<(), DomainError> {
+        let response = request
+            .bearer_auth(&self.token)
+            .send()
+            .await
+            .map_err(|error| {
+                tracing::warn!(%error, "docker-agent injoignable");
+                DomainError::Internal("docker-agent injoignable".into())
+            })?;
+
+        let status = response.status();
+        if status.is_success() {
+            Ok(())
+        } else {
+            let detail = response.text().await.unwrap_or_default();
+            tracing::warn!(%status, body = %detail, "docker-agent a refuse l'operation");
+            Err(DomainError::Internal(format!(
+                "docker-agent: reponse {status}"
+            )))
+        }
+    }
+}
 
 #[async_trait]
-impl DockerHost for BollardDockerHost {
+impl DockerHost for HttpDockerHost {
     async fn version_info(&self) -> Result<DockerVersionInfo, DomainError> {
-        let d = docker()?;
-        let v = d.version().await.map_err(map_err)?;
-        let info = d.info().await.map_err(map_err)?;
-        Ok(DockerVersionInfo {
-            version: v.version.unwrap_or_default(),
-            api_version: v.api_version.unwrap_or_default(),
-            os: v.os.unwrap_or_default(),
-            arch: v.arch.unwrap_or_default(),
-            kernel: v.kernel_version.unwrap_or_default(),
-            containers_running: info.containers_running.unwrap_or(0),
-            containers_paused: info.containers_paused.unwrap_or(0),
-            containers_stopped: info.containers_stopped.unwrap_or(0),
-            images_count: info.images.unwrap_or(0),
-        })
+        self.send(self.client.get(self.url("/version"))).await
     }
 
     async fn disk_usage(&self) -> Result<DiskUsage, DomainError> {
-        let d = docker()?;
-        let df = d.df().await.map_err(map_err)?;
-        Ok(DiskUsage {
-            layers_size: df.layers_size.unwrap_or(0),
-            images: df
-                .images
-                .unwrap_or_default()
-                .into_iter()
-                .map(|i| ImageDiskUsage {
-                    size: i.size,
-                    containers: i.containers,
-                })
-                .collect(),
-            containers: df
-                .containers
-                .unwrap_or_default()
-                .into_iter()
-                .map(|c| ContainerDiskUsage {
-                    size_rw: c.size_rw.unwrap_or(0),
-                    state: c.state,
-                })
-                .collect(),
-            volumes: df
-                .volumes
-                .unwrap_or_default()
-                .into_iter()
-                .map(|v| match v.usage_data {
-                    Some(u) => VolumeDiskUsage {
-                        size: Some(u.size),
-                        ref_count: Some(u.ref_count),
-                    },
-                    None => VolumeDiskUsage {
-                        size: None,
-                        ref_count: None,
-                    },
-                })
-                .collect(),
-            build_cache: df
-                .build_cache
-                .unwrap_or_default()
-                .into_iter()
-                .map(|c| BuildCacheEntry {
-                    size: c.size.unwrap_or(0),
-                    in_use: c.in_use.unwrap_or(false),
-                })
-                .collect(),
-        })
+        self.send(self.client.get(self.url("/disk-usage"))).await
     }
 
     async fn list_containers(&self, all: bool) -> Result<Vec<ContainerSummary>, DomainError> {
-        let d = docker()?;
-        let opts = ListContainersOptions::<String> {
-            all,
-            size: true,
-            ..Default::default()
-        };
-        let list = d.list_containers(Some(opts)).await.map_err(map_err)?;
-        Ok(list
-            .into_iter()
-            .map(|c| ContainerSummary {
-                id: c.id.unwrap_or_default(),
-                names: c.names.unwrap_or_default(),
-                image: c.image.unwrap_or_default(),
-                state: c.state.unwrap_or_default(),
-                status: c.status.unwrap_or_default(),
-                created: c.created.unwrap_or(0),
-                size_rw: c.size_rw,
-                size_root_fs: c.size_root_fs,
-                ports: c
-                    .ports
-                    .unwrap_or_default()
-                    .into_iter()
-                    .map(|p| ContainerPort {
-                        private_port: p.private_port as i64,
-                        public_port: p.public_port.filter(|&pp| pp > 0).map(|pp| pp as i64),
-                        protocol: p
-                            .typ
-                            .map(|t| format!("{:?}", t).to_lowercase())
-                            .unwrap_or_else(|| "tcp".to_string()),
-                    })
-                    .collect(),
-                labels: c.labels.unwrap_or_default(),
-            })
-            .collect())
+        self.send(
+            self.client
+                .get(self.url("/containers"))
+                .query(&[("all", all)]),
+        )
+        .await
     }
 
     async fn start_container(&self, id: &str) -> Result<(), DomainError> {
-        let d = docker()?;
-        d.start_container::<String>(id, None).await.map_err(map_err)
+        self.send_unit(
+            self.client
+                .post(self.url(&format!("/containers/{id}/start"))),
+        )
+        .await
     }
 
     async fn stop_container(&self, id: &str, timeout_secs: i64) -> Result<(), DomainError> {
-        let d = docker()?;
-        let opts = StopContainerOptions { t: timeout_secs };
-        d.stop_container(id, Some(opts)).await.map_err(map_err)
+        self.send_unit(
+            self.client
+                .post(self.url(&format!("/containers/{id}/stop")))
+                .query(&[("timeout_secs", timeout_secs)]),
+        )
+        .await
     }
 
     async fn restart_container(&self, id: &str, timeout_secs: i64) -> Result<(), DomainError> {
-        let d = docker()?;
-        let opts = RestartContainerOptions {
-            t: timeout_secs as isize,
-        };
-        d.restart_container(id, Some(opts)).await.map_err(map_err)
+        self.send_unit(
+            self.client
+                .post(self.url(&format!("/containers/{id}/restart")))
+                .query(&[("timeout_secs", timeout_secs)]),
+        )
+        .await
     }
 
     async fn remove_container(
@@ -178,13 +158,12 @@ impl DockerHost for BollardDockerHost {
         force: bool,
         remove_volumes: bool,
     ) -> Result<(), DomainError> {
-        let d = docker()?;
-        let opts = RemoveContainerOptions {
-            force,
-            v: remove_volumes,
-            ..Default::default()
-        };
-        d.remove_container(id, Some(opts)).await.map_err(map_err)
+        self.send_unit(
+            self.client
+                .post(self.url(&format!("/containers/{id}/remove")))
+                .query(&[("force", force), ("remove_volumes", remove_volumes)]),
+        )
+        .await
     }
 
     async fn container_logs(
@@ -193,236 +172,93 @@ impl DockerHost for BollardDockerHost {
         tail: u32,
         timestamps: bool,
     ) -> Result<String, DomainError> {
-        let d = docker()?;
-        let opts = LogsOptions::<String> {
-            stdout: true,
-            stderr: true,
-            tail: tail.to_string(),
-            timestamps,
-            follow: false,
-            ..Default::default()
-        };
-        let mut stream = d.logs(id, Some(opts));
-        let mut out = String::new();
-        while let Some(chunk) = stream.next().await {
-            match chunk {
-                Ok(c) => out.push_str(&c.to_string()),
-                Err(e) => return Err(map_err(e)),
-            }
-            if out.len() > 2_000_000 {
-                out.push_str("\n[...troncature 2MB...]");
-                break;
-            }
+        let response = self
+            .client
+            .get(self.url(&format!("/containers/{id}/logs")))
+            .query(&[("tail", tail.to_string()), ("timestamps", timestamps.to_string())])
+            .bearer_auth(&self.token)
+            .send()
+            .await
+            .map_err(|error| {
+                tracing::warn!(%error, "docker-agent injoignable");
+                DomainError::Internal("docker-agent injoignable".into())
+            })?;
+
+        if !response.status().is_success() {
+            return Err(DomainError::Internal(format!(
+                "docker-agent: reponse {}",
+                response.status()
+            )));
         }
-        Ok(out)
+
+        // Les logs sont du texte brut, pas du JSON : les passer par `json()`
+        // les re-encoderait inutilement.
+        response.text().await.map_err(|error| {
+            tracing::warn!(%error, "lecture des logs impossible");
+            DomainError::Internal("lecture des logs impossible".into())
+        })
     }
 
     async fn list_images(&self) -> Result<Vec<ImageSummary>, DomainError> {
-        let d = docker()?;
-        let opts = ListImagesOptions::<String> {
-            all: false,
-            ..Default::default()
-        };
-        let list = d.list_images(Some(opts)).await.map_err(map_err)?;
-        Ok(list
-            .into_iter()
-            .map(|i| ImageSummary {
-                id: i.id,
-                repo_tags: i.repo_tags,
-                repo_digests: i.repo_digests,
-                created: i.created,
-                size: i.size,
-                shared_size: i.shared_size,
-                virtual_size: i.virtual_size.unwrap_or(0),
-                containers: i.containers,
-            })
-            .collect())
+        self.send(self.client.get(self.url("/images"))).await
     }
 
     async fn remove_image(&self, id: &str, force: bool, no_prune: bool) -> Result<(), DomainError> {
-        let d = docker()?;
-        let opts = RemoveImageOptions {
-            force,
-            noprune: no_prune,
-        };
-        d.remove_image(id, Some(opts), None)
-            .await
-            .map_err(map_err)?;
-        Ok(())
+        self.send_unit(
+            self.client
+                .post(self.url(&format!("/images/{id}/remove")))
+                .query(&[("force", force), ("no_prune", no_prune)]),
+        )
+        .await
     }
 
     async fn list_volumes(&self) -> Result<Vec<VolumeSummary>, DomainError> {
-        let d = docker()?;
-        let resp = d
-            .list_volumes(None::<ListVolumesOptions<String>>)
-            .await
-            .map_err(map_err)?;
-        Ok(resp
-            .volumes
-            .unwrap_or_default()
-            .into_iter()
-            .map(|v| {
-                let (size, ref_count) = match &v.usage_data {
-                    Some(u) => (Some(u.size), Some(u.ref_count)),
-                    None => (None, None),
-                };
-                VolumeSummary {
-                    name: v.name,
-                    driver: v.driver,
-                    mountpoint: v.mountpoint,
-                    created_at: v.created_at,
-                    size,
-                    ref_count,
-                }
-            })
-            .collect())
+        self.send(self.client.get(self.url("/volumes"))).await
     }
 
     async fn remove_volume(&self, name: &str, force: bool) -> Result<(), DomainError> {
-        let d = docker()?;
-        let opts = bollard::volume::RemoveVolumeOptions { force };
-        d.remove_volume(name, Some(opts)).await.map_err(map_err)
+        self.send_unit(
+            self.client
+                .post(self.url(&format!("/volumes/{name}/remove")))
+                .query(&[("force", force)]),
+        )
+        .await
     }
 
     async fn list_networks(&self) -> Result<Vec<NetworkSummary>, DomainError> {
-        let d = docker()?;
-        let list = d
-            .list_networks(None::<ListNetworksOptions<String>>)
-            .await
-            .map_err(map_err)?;
-        Ok(list
-            .into_iter()
-            .map(|n| NetworkSummary {
-                id: n.id.unwrap_or_default(),
-                name: n.name.unwrap_or_default(),
-                driver: n.driver.unwrap_or_default(),
-                scope: n.scope.unwrap_or_default(),
-                internal: n.internal.unwrap_or(false),
-                containers_count: n.containers.map(|c| c.len()).unwrap_or(0),
-            })
-            .collect())
+        self.send(self.client.get(self.url("/networks"))).await
     }
 
     async fn prune_containers(&self) -> Result<PruneOutcome, DomainError> {
-        let d = docker()?;
-        let r = d
-            .prune_containers(None::<bollard::container::PruneContainersOptions<String>>)
+        self.send(self.client.post(self.url("/prune/containers")))
             .await
-            .map_err(map_err)?;
-        Ok(PruneOutcome {
-            deleted: r.containers_deleted.unwrap_or_default(),
-            space_reclaimed_bytes: r.space_reclaimed.unwrap_or(0) as u64,
-        })
     }
 
     async fn prune_images(&self, all: bool) -> Result<PruneOutcome, DomainError> {
-        let d = docker()?;
-        let mut filters: HashMap<String, Vec<String>> = HashMap::new();
-        let dangling = if all { "false" } else { "true" };
-        filters.insert("dangling".to_string(), vec![dangling.to_string()]);
-        let opts = bollard::image::PruneImagesOptions { filters };
-        let r = d.prune_images(Some(opts)).await.map_err(map_err)?;
-        Ok(PruneOutcome {
-            deleted: r
-                .images_deleted
-                .unwrap_or_default()
-                .into_iter()
-                .filter_map(|i| i.deleted.or(i.untagged))
-                .collect(),
-            space_reclaimed_bytes: r.space_reclaimed.unwrap_or(0) as u64,
-        })
+        self.send(
+            self.client
+                .post(self.url("/prune/images"))
+                .query(&[("all", all)]),
+        )
+        .await
     }
 
     async fn prune_volumes(&self) -> Result<PruneOutcome, DomainError> {
-        let d = docker()?;
-        let r = d
-            .prune_volumes(None::<bollard::volume::PruneVolumesOptions<String>>)
+        self.send(self.client.post(self.url("/prune/volumes")))
             .await
-            .map_err(map_err)?;
-        Ok(PruneOutcome {
-            deleted: r.volumes_deleted.unwrap_or_default(),
-            space_reclaimed_bytes: r.space_reclaimed.unwrap_or(0) as u64,
-        })
     }
 
     async fn prune_networks(&self) -> Result<PruneOutcome, DomainError> {
-        let d = docker()?;
-        let r = d
-            .prune_networks(None::<bollard::network::PruneNetworksOptions<String>>)
+        self.send(self.client.post(self.url("/prune/networks")))
             .await
-            .map_err(map_err)?;
-        Ok(PruneOutcome {
-            deleted: r.networks_deleted.unwrap_or_default(),
-            space_reclaimed_bytes: 0,
-        })
     }
 
     async fn prune_build_cache(&self, all: bool) -> Result<PruneOutcome, DomainError> {
-        let resp = prune_build_cache_call(all).await?;
-        Ok(PruneOutcome {
-            deleted: resp.caches_deleted.unwrap_or_default(),
-            space_reclaimed_bytes: resp.space_reclaimed.unwrap_or(0) as u64,
-        })
+        self.send(
+            self.client
+                .post(self.url("/prune/build-cache"))
+                .query(&[("all", all)]),
+        )
+        .await
     }
-}
-
-/// Appel bas niveau de `POST /build/prune` sur le socket Docker (absent de bollard
-/// 0.18). Ouvre une connexion HTTP/1 sur `/var/run/docker.sock` via hyper.
-#[cfg(unix)]
-async fn prune_build_cache_call(
-    all: bool,
-) -> Result<bollard::models::BuildPruneResponse, DomainError> {
-    use http_body_util::BodyExt;
-    use http_body_util::Empty;
-    use hyper::body::Bytes;
-
-    let err = DomainError::Internal;
-
-    let stream = tokio::net::UnixStream::connect("/var/run/docker.sock")
-        .await
-        .map_err(|e| err(format!("docker socket: {e}")))?;
-    let io = hyper_util::rt::TokioIo::new(stream);
-    let (mut sender, conn) = hyper::client::conn::http1::handshake(io)
-        .await
-        .map_err(|e| err(format!("docker http handshake: {e}")))?;
-    tokio::spawn(async move {
-        let _ = conn.await;
-    });
-
-    let req = hyper::Request::builder()
-        .method("POST")
-        .uri(format!("/build/prune?all={all}"))
-        .header(hyper::header::HOST, "localhost")
-        .body(Empty::<Bytes>::new())
-        .map_err(|e| err(format!("docker request: {e}")))?;
-
-    let res = sender
-        .send_request(req)
-        .await
-        .map_err(|e| err(format!("docker /build/prune: {e}")))?;
-    let status = res.status();
-    let body = res
-        .into_body()
-        .collect()
-        .await
-        .map_err(|e| err(format!("docker /build/prune body: {e}")))?
-        .to_bytes();
-
-    if !status.is_success() {
-        return Err(err(format!(
-            "docker /build/prune HTTP {}: {}",
-            status.as_u16(),
-            String::from_utf8_lossy(&body)
-        )));
-    }
-    serde_json::from_slice(&body).map_err(|e| err(format!("docker /build/prune decode: {e}")))
-}
-
-#[cfg(not(unix))]
-async fn prune_build_cache_call(
-    _all: bool,
-) -> Result<bollard::models::BuildPruneResponse, DomainError> {
-    Err(DomainError::Internal(
-        "purge du build cache indisponible : socket Docker unix requis".into(),
-    ))
 }

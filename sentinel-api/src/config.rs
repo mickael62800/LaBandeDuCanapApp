@@ -52,6 +52,16 @@ pub struct AppConfig {
     /// Cle d'API de nexus-api. Ne transite JAMAIS jusqu'au navigateur :
     /// c'est precisement pour cela que le site passe par sentinel-api.
     pub nexus_api_key: String,
+
+    /// URL interne du `docker-agent`. Ce processus ne monte plus
+    /// `/var/run/docker.sock` : le socket equivaut a un acces root sur l'hote,
+    /// et il n'a rien a faire dans l'API qui sert aussi l'OAuth, la moderation
+    /// et les routes communautaires. L'agent est le seul a le porter.
+    pub docker_agent_url: String,
+    /// Jeton partage avec le `docker-agent`. Absent, les ecrans Docker
+    /// repondent en erreur — ce qui est le bon comportement : mieux vaut un
+    /// ecran vide qu'un socket ouvert sans authentification.
+    pub docker_agent_token: String,
 }
 
 impl AppConfig {
@@ -109,6 +119,9 @@ impl AppConfig {
             nexus_api_url: std::env::var("NEXUS_API_URL")
                 .unwrap_or_else(|_| "http://nexus-api:3100".into()),
             nexus_api_key: std::env::var("NEXUS_API_KEY").unwrap_or_default(),
+            docker_agent_url: std::env::var("DOCKER_AGENT_URL")
+                .unwrap_or_else(|_| "http://docker-agent:8095".into()),
+            docker_agent_token: std::env::var("DOCKER_AGENT_TOKEN").unwrap_or_default(),
             guild_id: std::env::var("PUBLIC_GUILD_ID")
                 .or_else(|_| std::env::var("GUILD_ID"))
                 .unwrap_or_default()

@@ -592,12 +592,17 @@ pub async fn build_app_state(
         Arc::new(crate::adapters::outbound::postgres::system::server_event_repository::PgServerEventRepository::new(pg_pool.clone()));
     let server_events_uc: Arc<dyn sentinel_core::ports::inbound::ops::manage_server_events::ManageServerEventsUseCase> =
         Arc::new(sentinel_core::application::ops::manage_server_events_service::ManageServerEventsService::new(
-            server_event_repo,
+            server_event_repo.clone(),
         ));
 
-    // Daemon Docker de l'hote : client bollard derriere le port DockerHost.
+    // Daemon Docker de l'hote, via `docker-agent`. Ce processus ne monte plus
+    // `/var/run/docker.sock` : le socket equivaut a un acces root, et il n'a
+    // rien a faire dans l'API qui sert aussi l'OAuth et la moderation.
     let docker_host: Arc<dyn sentinel_core::ports::outbound::ops::docker_host::DockerHost> =
-        Arc::new(crate::adapters::outbound::system::docker_host::BollardDockerHost);
+        Arc::new(crate::adapters::outbound::system::docker_host::HttpDockerHost::new(
+            config.docker_agent_url.clone(),
+            config.docker_agent_token.clone(),
+        ));
 
     // Cert TLS + GeoIP (infra externe : fichier/openssl + http ip-api).
     let tls_cert_reader: Arc<
@@ -727,7 +732,10 @@ pub async fn build_app_state(
             crate::adapters::outbound::system::pg_probe::PgSystemProbe::new(pg_pool.clone()),
         ),
         docker_host: docker_host.clone(),
-        container_monitor: Some(crate::bootstrap::container_monitor::spawn(pg_pool.clone())),
+        container_monitor: Some(crate::bootstrap::container_monitor::spawn(
+            docker_host.clone(),
+            server_event_repo.clone(),
+        )),
         system_logs_uc: system_logs_uc.clone(),
         log_repo: log_repo.clone(),
         server_events_uc: server_events_uc.clone(),

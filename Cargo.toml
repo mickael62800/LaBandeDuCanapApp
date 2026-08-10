@@ -20,6 +20,8 @@ members = [
     "atrium-proto",
     "atrium-bot",
     "atrium-worker", "platform-common-bot", "platform-common-worker",
+    # Agent Docker : seul crate a parler au socket de l'hote.
+    "docker-agent",
 ]
 
 [workspace.package]

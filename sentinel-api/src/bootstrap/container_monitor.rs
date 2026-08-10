@@ -1,13 +1,25 @@
-//! Poll Docker en arriere-plan, detecte added/removed/restarted/image_changed
-//! et logue dans server_events. Garde un snapshot + 24h d'historique.
+//! Poll Docker en arriere-plan, detecte added/removed/state_changed/
+//! image_changed et logue dans `server_events`. Garde un snapshot + les 200
+//! derniers changements.
+//!
+//! # Deux dettes corrigees ici
+//!
+//! Ce job ouvrait sa PROPRE connexion bollard (`Docker::connect_with_local_defaults`)
+//! et ecrivait en SQL brut, court-circuitant deux fois l'hexagone. Il passe
+//! desormais par les ports `DockerHost` et `ServerEventRepository` : il ne sait
+//! plus ni que Docker est derriere un socket ou un agent HTTP, ni qu'il ecrit
+//! dans Postgres. C'est ce qui a permis de retirer le socket de ce processus.
+//!
+//! Il reste heberge dans le bootstrap de l'API faute d'`exploitation-worker` :
+//! c'est sa place naturelle, un job periodique n'ayant rien a faire dans un
+//! processus HTTP.
 
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use bollard::container::ListContainersOptions;
-use bollard::Docker;
-use sqlx::PgPool;
+use sentinel_core::ports::outbound::ops::docker_host::DockerHost;
+use sentinel_core::ports::outbound::ops::server_event_repository::ServerEventRepository;
 use tokio::sync::RwLock;
 
 use crate::adapters::inbound::http::handlers::system::security::{
@@ -21,28 +33,26 @@ pub struct ContainerMonitorState {
     pub recent_changes: Vec<ContainerChangeEntry>,
 }
 
-pub fn spawn(pg_pool: PgPool) -> Arc<RwLock<ContainerMonitorState>> {
+pub fn spawn(
+    docker: Arc<dyn DockerHost>,
+    server_events: Arc<dyn ServerEventRepository>,
+) -> Arc<RwLock<ContainerMonitorState>> {
     let state = Arc::new(RwLock::new(ContainerMonitorState::default()));
     let st = state.clone();
     tokio::spawn(async move {
-        let docker = match Docker::connect_with_local_defaults() {
-            Ok(d) => d,
-            Err(e) => {
-                tracing::warn!("container_monitor : Docker indisponible : {e}");
-                return;
-            }
-        };
         let mut prev: HashMap<String, ContainerSnapshot> = HashMap::new();
         let mut first_run = true;
         loop {
             tokio::time::sleep(Duration::from_secs(60)).await;
-            let opts = ListContainersOptions::<String> {
-                all: true,
-                ..Default::default()
-            };
-            let conts = match docker.list_containers(Some(opts)).await {
+            // `all = true` : un conteneur arrete reste un conteneur a surveiller,
+            // c'est meme le cas qui interesse le plus (crash, arret imprevu).
+            let conts = match docker.list_containers(true).await {
                 Ok(c) => c,
                 Err(e) => {
+                    // L'agent Docker peut etre absent (profil optionnel) ou en
+                    // cours de redemarrage : on retente au tour suivant plutot
+                    // que de tuer la boucle, sinon un redemarrage de l'agent
+                    // arreterait la surveillance jusqu'au prochain deploiement.
                     tracing::warn!("container_monitor list : {e}");
                     continue;
                 }
@@ -51,24 +61,23 @@ pub fn spawn(pg_pool: PgPool) -> Arc<RwLock<ContainerMonitorState>> {
             let mut current_map: HashMap<String, ContainerSnapshot> = HashMap::new();
             let mut current_vec: Vec<ContainerSnapshot> = Vec::new();
             for c in conts {
-                let id = c.id.clone().unwrap_or_default();
-                if id.is_empty() {
+                if c.id.is_empty() {
                     continue;
                 }
-                let name = c
-                    .names
-                    .as_ref()
-                    .and_then(|v| v.first())
-                    .map(|s| s.trim_start_matches('/').to_string())
-                    .unwrap_or_default();
                 let snap = ContainerSnapshot {
-                    id: id.clone(),
-                    name,
-                    image: c.image.clone().unwrap_or_default(),
-                    state: c.state.map(|s| format!("{:?}", s)).unwrap_or_default(),
-                    started_at: c.created.map(|t| t.to_string()),
+                    id: c.id.clone(),
+                    // Docker renvoie une liste de noms prefixes d'un `/` ; le
+                    // premier est le nom usuel du conteneur.
+                    name: c
+                        .names
+                        .first()
+                        .map(|s| s.trim_start_matches('/').to_string())
+                        .unwrap_or_default(),
+                    image: c.image.clone(),
+                    state: c.state.clone(),
+                    started_at: Some(c.created.to_string()),
                 };
-                current_map.insert(id.clone(), snap.clone());
+                current_map.insert(c.id.clone(), snap.clone());
                 current_vec.push(snap);
             }
 
@@ -126,17 +135,16 @@ pub fn spawn(pg_pool: PgPool) -> Arc<RwLock<ContainerMonitorState>> {
                 } else {
                     "info"
                 };
-                let _ = sqlx::query(
-                    "INSERT INTO server_events (timestamp, actor, actor_name, action, target, severity, details)
-                     VALUES (NOW(), $1, NULL, $2, $3, $4, $5)"
-                )
-                .bind("system:container_monitor")
-                .bind(&action)
-                .bind(&target)
-                .bind(severity)
-                .bind(&details)
-                .execute(&pg_pool)
-                .await;
+                let _ = server_events
+                    .record(
+                        "system:container_monitor",
+                        None,
+                        &action,
+                        Some(&target),
+                        severity,
+                        details,
+                    )
+                    .await;
             }
 
             // Update state public + garde 24h max

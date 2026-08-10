@@ -868,6 +868,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "docker-agent"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "bollard",
+ "dotenvy",
+ "futures-util",
+ "sentinel-core",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "dotenvy"
 version = "0.15.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3433,7 +3450,6 @@ dependencies = [
  "async-trait",
  "axum",
  "base64 0.22.1",
- "bollard",
  "chrono",
  "dashmap 6.1.0",
  "dotenvy",

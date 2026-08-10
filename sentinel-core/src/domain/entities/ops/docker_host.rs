@@ -4,10 +4,13 @@
 //! `DockerHost` et par les handlers HTTP. La règle métier « espace
 //! récupérable » (`compute_overview`) est une fonction pure testée ici.
 
+use serde::Deserialize;
+use serde::Serialize;
+
 use std::collections::HashMap;
 
 /// Version + compteurs globaux du daemon Docker (merge `version` + `info`).
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct DockerVersionInfo {
     pub version: String,
     pub api_version: String,
@@ -21,7 +24,7 @@ pub struct DockerVersionInfo {
 }
 
 /// Usage disque d'une image (extrait de `docker system df`).
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ImageDiskUsage {
     pub size: i64,
     /// Nombre de containers utilisant cette image (0 = récupérable).
@@ -29,7 +32,7 @@ pub struct ImageDiskUsage {
 }
 
 /// Usage disque d'un container (extrait de `docker system df`).
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ContainerDiskUsage {
     pub size_rw: i64,
     /// État brut du daemon (`"running"`, `"exited"`, ...). `None` si absent.
@@ -38,21 +41,21 @@ pub struct ContainerDiskUsage {
 
 /// Usage disque d'un volume. `size`/`ref_count` sont `None` quand le daemon
 /// n'a pas fourni de `usage_data` pour ce volume.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct VolumeDiskUsage {
     pub size: Option<i64>,
     pub ref_count: Option<i64>,
 }
 
 /// Entrée du build cache (buildkit).
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct BuildCacheEntry {
     pub size: i64,
     pub in_use: bool,
 }
 
 /// Snapshot `docker system df` complet, en types de domaine.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct DiskUsage {
     /// `layers_size` brut du daemon (peut être 0 selon la version de l'API).
     pub layers_size: i64,
@@ -64,7 +67,7 @@ pub struct DiskUsage {
 
 /// Agrégat calculé par [`compute_overview`] : tailles totales et espace
 /// récupérable par catégorie.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DockerOverview {
     pub volumes_count: i64,
     pub layers_size_bytes: i64,
@@ -129,7 +132,7 @@ pub fn compute_overview(usage: &DiskUsage) -> DockerOverview {
 }
 
 /// Port exposé par un container (mapping brut, formaté côté DTO).
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ContainerPort {
     pub private_port: i64,
     pub public_port: Option<i64>,
@@ -138,7 +141,7 @@ pub struct ContainerPort {
 }
 
 /// Résumé d'un container (listing).
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ContainerSummary {
     pub id: String,
     pub names: Vec<String>,
@@ -153,7 +156,7 @@ pub struct ContainerSummary {
 }
 
 /// Résumé d'une image (listing).
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ImageSummary {
     pub id: String,
     pub repo_tags: Vec<String>,
@@ -166,7 +169,7 @@ pub struct ImageSummary {
 }
 
 /// Résumé d'un volume (listing).
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct VolumeSummary {
     pub name: String,
     pub driver: String,
@@ -177,7 +180,7 @@ pub struct VolumeSummary {
 }
 
 /// Résumé d'un réseau (listing).
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct NetworkSummary {
     pub id: String,
     pub name: String,
@@ -188,7 +191,7 @@ pub struct NetworkSummary {
 }
 
 /// Résultat d'une opération de prune.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PruneOutcome {
     pub deleted: Vec<String>,
     pub space_reclaimed_bytes: u64,

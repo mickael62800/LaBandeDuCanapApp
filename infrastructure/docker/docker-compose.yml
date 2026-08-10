@@ -227,11 +227,6 @@ services:
     pid: host
     security_opt:
       - no-new-privileges:true
-    # GID du groupe `docker` de l'host (proprietaire du socket /var/run/docker.sock).
-    # Sans ca, le user non-root du conteneur n'a pas acces au socket. Override
-    # via DOCKER_GID=$(stat -c '%g' /var/run/docker.sock) dans .env si different.
-    group_add:
-      - "${DOCKER_GID:-988}"
     # SECURITE — l'API est reachable depuis l'exterieur UNIQUEMENT via le
     # proxy nginx du service `web` (location /api/). On bind donc 127.0.0.1
     # pour conserver un acces local debug (curl/SSH tunnel) sans exposer
@@ -264,6 +259,9 @@ services:
       # savoir QUI est connecte. La cle ne quitte donc pas le reseau interne.
       NEXUS_API_URL: http://nexus-api:3100
       NEXUS_API_KEY: ${NEXUS_API_KEY:-}
+      # Acces au daemon Docker : plus de socket ici, on passe par l'agent.
+      DOCKER_AGENT_URL: http://docker-agent:8095
+      DOCKER_AGENT_TOKEN: ${DOCKER_AGENT_TOKEN:?DOCKER_AGENT_TOKEN est requis}
       # Serveur Discord unique servi par cette installation.
       # Les API refusent tout autre guild_id ; les bots quittent toute
       # autre guilde. Vide = verrou desactive.
@@ -305,11 +303,10 @@ services:
     volumes:
       - ../../sentinel-ml/vision/exports:/models/vision:ro
       - ../../sentinel-ml/text/exports:/models/text:ro
-      # Socket Docker monte en RW pour /api/docker/* (admin a distance :
-      # liste/start/stop/restart/logs/prune containers, images, volumes, networks).
-      # Toutes les actions destructives sont gardees par require_superadmin
-      # cote API (SUPERADMIN_USER_IDS).
-      - /var/run/docker.sock:/var/run/docker.sock
+      # PLUS de socket Docker ici : il equivaut a un acces root sur l'hote et
+      # n'a rien a faire dans le processus qui sert l'OAuth, la moderation et
+      # les routes communautaires. Les endpoints /api/docker/* passent par le
+      # service `docker-agent`, seul a le monter.
       # Certs mTLS gRPC (genere par grpc-certs-init au boot, partage en RO).
       - grpc_certs:/grpc-certs:ro
       # Cert Let's Encrypt en RO pour endpoint /api/security/tls-cert
@@ -333,12 +330,59 @@ services:
         condition: service_started
       grpc-certs-init:
         condition: service_completed_successfully
+      docker-agent:
+        condition: service_started
     # SECURITE — API a besoin d'internet (Discord OAuth, get_user_guilds).
     # internal : Redis + pgbouncer + autres services internes.
     # default : sortie internet (Discord).
     networks:
       - internal
       - default
+
+  # ── Agent Docker ────────────────────────────────────────────────────────
+  #
+  # SEUL service du depot a monter /var/run/docker.sock, qui equivaut a un
+  # acces root sur l'hote. Il etait auparavant monte par `api`, c'est-a-dire
+  # par le processus qui sert aussi l'OAuth, la moderation Discord et toutes
+  # les routes communautaires : une faille dans cette surface donnait l'hote.
+  #
+  # L'agent n'a ni base, ni session, ni utilisateurs, ni route nginx. Il n'est
+  # joignable que sur le reseau `internal`, par les services qui portent
+  # DOCKER_AGENT_TOKEN, et n'expose que les operations du port `DockerHost`
+  # (liste blanche) — jamais un passe-plat generique vers l'API Docker.
+  docker-agent:
+    <<: *rust-base
+    build:
+      <<: *build-alpine
+      args:
+        BIN_NAME: docker-agent
+    environment:
+      RUST_LOG: ${RUST_LOG:-info}
+      DOCKER_AGENT_BIND_ADDR: 0.0.0.0:8095
+      # Requis : l'agent REFUSE de demarrer sans jeton d'au moins 16
+      # caracteres. Mieux vaut un service arrete qu'un socket ouvert a tout
+      # le reseau interne.
+      DOCKER_AGENT_TOKEN: ${DOCKER_AGENT_TOKEN:?DOCKER_AGENT_TOKEN est requis}
+    # GID du groupe `docker` de l'host, proprietaire du socket. Sans lui, le
+    # user non-root du conteneur ne peut pas l'ouvrir.
+    # Override : DOCKER_GID=$(stat -c '%g' /var/run/docker.sock) dans .env.
+    group_add:
+      - "${DOCKER_GID:-988}"
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    # PAS de `ports:` — l'agent ne doit jamais etre joignable depuis l'hote
+    # ni depuis l'exterieur, uniquement par les autres conteneurs.
+    #
+    # `internal` uniquement : il n'a aucune raison de sortir sur internet.
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:8095/health || exit 1"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
 
   gateway:
     <<: *rust-base

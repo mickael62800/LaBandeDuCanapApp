@@ -1,0 +1,28 @@
+[package]
+name = "docker-agent"
+version.workspace = true
+edition.workspace = true
+description = "Agent minimal exposant le daemon Docker de l'hote sur le reseau interne"
+
+[[bin]]
+name = "docker-agent"
+path = "src/main.rs"
+
+[dependencies]
+axum = "0.8"
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+dotenvy = { workspace = true }
+async-trait = { workspace = true }
+# Le seul crate du depot a parler au socket Docker.
+bollard = "0.18"
+futures-util = { workspace = true }
+# Uniquement pour les types de domaine (`DockerHost`, `ContainerSummary`, ...) :
+# l'agent et son appelant partagent le meme vocabulaire, sans DTO miroir.
+sentinel-core = { workspace = true }
+
+[lints]
+workspace = true

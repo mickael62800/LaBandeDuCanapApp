@@ -68,7 +68,6 @@ rand = { workspace = true }
 sysinfo = { version = "0.33", default-features = false, features = ["system", "disk"] }
 # Client Docker async natif (socket Unix /var/run/docker.sock).
 # Utilise pour /api/docker/* (overview, containers, images, volumes, prune, logs).
-bollard = "0.18"
 # Generation d'archives tar en memoire pour upload_to_container (bollard
 # attend un body application/x-tar pour poser des fichiers dans un container).
 tar = "0.4"

@@ -1,7 +1,7 @@
 ###############################################################################
 # Phase 0 — Observabilité : configuration Prometheus minimale
 #
-# Scrape l'API DiscordSentinel + les 6 workers Rust + cAdvisor (si présent).
+# Scrape les API Rust (Sentinel, Nexus, Atrium) + le worker unifie Sentinel.
 # Chaque cible expose `/metrics` au format texte Prometheus :
 #   - API           : http://api:3000/metrics  (route Axum publique)
 #   - Workers       : http://{worker-name}:9100/metrics (serveur dédié,
@@ -50,6 +50,24 @@ scrape_configs:
       - targets: ['nexus-api:3100']
         labels:
           service: 'nexus-api'
+          component: 'backend'
+
+  # ── API Atrium (accueil IA) ──
+  # Meme jeu de metriques que les deux autres API (`http_requests_total`,
+  # `http_request_duration_seconds`, `tokio_*`), filtrables sur `service`.
+  # Le service tourne derriere le profil Docker `atrium` : quand il est arrete,
+  # la cible remonte `down`, ce qui est l'information juste.
+  # Durcissement optionnel : definir ATRIUM_METRICS_TOKEN cote API et
+  # decommenter le bloc `authorization` avec le meme jeton.
+  - job_name: 'atrium-api'
+    metrics_path: '/metrics'
+    # authorization:
+    #   type: Bearer
+    #   credentials: '<ATRIUM_METRICS_TOKEN>'
+    static_configs:
+      - targets: ['atrium-api:8090']
+        labels:
+          service: 'atrium-api'
           component: 'backend'
 
   # ── Worker unifie ──

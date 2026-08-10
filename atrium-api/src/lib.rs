@@ -21,6 +21,7 @@ use axum::{
     routing::{get, post, put},
     Json, Router,
 };
+use axum::response::IntoResponse;
 use platform_common_api::{rate_limit_middleware, RateLimiter};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -170,6 +171,10 @@ pub fn router_with_state(state: Arc<AppState>) -> Router {
     );
     let router = Router::new()
         .route("/health", get(health))
+        // Le recorder Prometheus etait installe et le middleware enregistrait
+        // bien les metriques… qui n'etaient exposees nulle part. Elles etaient
+        // donc collectees pour rien, et Atrium restait invisible dans Grafana.
+        .route("/metrics", get(metrics))
         .route("/v1/welcome/reply", post(welcome_reply))
         // ── Administration (back-office) ──
         // Servies au navigateur via la passerelle nginx /atrium-api/, qui
@@ -215,6 +220,23 @@ pub mod grpc;
 
 async fn health() -> Json<HealthResponse> {
     Json(HealthResponse { status: "ok" })
+}
+
+/// Metriques Prometheus.
+///
+/// Protection optionnelle, alignee sur sentinel-api et nexus-api : si
+/// `ATRIUM_METRICS_TOKEN` est defini, on exige `Authorization: Bearer <token>`.
+/// Vide = ouvert, ce qui reste acceptable sur le reseau interne ou Prometheus
+/// scrape, et evite d'imposer un secret de plus a une installation simple.
+async fn metrics(headers: HeaderMap) -> axum::response::Response {
+    let configured = std::env::var("ATRIUM_METRICS_TOKEN").unwrap_or_default();
+    let supplied = headers
+        .get(AUTHORIZATION)
+        .and_then(|value| value.to_str().ok());
+    if !platform_common_api::metrics::metrics_auth_ok(Some(configured.as_str()), supplied) {
+        return (StatusCode::UNAUTHORIZED, "jeton metrics invalide").into_response();
+    }
+    platform_common_api::metrics::render_metrics()
 }
 
 #[derive(Serialize)]

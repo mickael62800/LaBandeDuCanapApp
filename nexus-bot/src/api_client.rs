@@ -317,6 +317,24 @@ impl ApiClient {
         self.send(self.http.post(&url).json(&body)).await
     }
 
+    /// PUT /api/games/{guild_id}/{game_id}/role — associe un role Discord a un jeu
+    /// existant (backfill des jeux legacy sans role).
+    pub async fn set_game_role(
+        &self,
+        guild_id: &str,
+        game_id: &str,
+        role_id: &str,
+    ) -> Result<Game, String> {
+        let url = format!(
+            "{}/api/games/{}/{}/role",
+            self.base_url,
+            encode_segment(guild_id),
+            encode_segment(game_id)
+        );
+        let body = serde_json::json!({ "role_id": role_id });
+        self.send(self.http.put(&url).json(&body)).await
+    }
+
     /// DELETE /api/games/{guild_id}/{game_id}.
     pub async fn delete_game(&self, guild_id: &str, game_id: &str) -> Result<(), String> {
         let url = format!(

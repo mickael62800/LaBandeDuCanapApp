@@ -473,7 +473,7 @@ async fn handle_panel(ctx: &Context, cmd: &CommandInteraction, api: &ApiClient, 
     }
 
     let category = get_string_option(cmd, "category");
-    let games = match api
+    let mut games = match api
         .list_games_by_category(guild_id, category.as_deref())
         .await
     {
@@ -492,6 +492,12 @@ async fn handle_panel(ctx: &Context, cmd: &CommandInteraction, api: &ApiClient, 
         )
         .await;
         return;
+    }
+
+    // Backfill : cree un role Discord pour les jeux qui n'en ont pas encore,
+    // sinon leurs boutons ne pourraient donner aucun role.
+    if let Some(gid) = cmd.guild_id {
+        ensure_game_roles(ctx, gid, api, guild_id, &mut games).await;
     }
 
     let games_slice: Vec<&Game> = games.iter().take(MAX_BUTTONS_PER_PANEL).collect();
@@ -599,7 +605,7 @@ async fn handle_refresh(ctx: &Context, cmd: &CommandInteraction, api: &ApiClient
         }
     };
 
-    let games = match api
+    let mut games = match api
         .list_games_by_category(guild_id, category.as_deref())
         .await
     {
@@ -609,6 +615,10 @@ async fn handle_refresh(ctx: &Context, cmd: &CommandInteraction, api: &ApiClient
             return;
         }
     };
+    // Backfill des roles manquants (idem deploiement).
+    if let Some(gid) = cmd.guild_id {
+        ensure_game_roles(ctx, gid, api, guild_id, &mut games).await;
+    }
     let games_slice: Vec<&Game> = games.iter().take(MAX_BUTTONS_PER_PANEL).collect();
 
     let embed = build_panel_embed(category.as_deref(), &games_slice);
@@ -817,6 +827,62 @@ async fn count_subscribers(
         after = batch.last().map(|m| m.user.id);
     }
     counts
+}
+
+/// Crée un rôle Discord pour chaque jeu qui n'en a pas encore et persiste
+/// l'association côté API. Rend le panneau auto-réparateur : les jeux legacy
+/// (créés avant le support des rôles) reçoivent leur rôle au déploiement —
+/// sans quoi leurs boutons ne pourraient donner aucun rôle à mentionner.
+///
+/// Best-effort : un jeu dont le rôle n'a pas pu être créé/persisté est laissé
+/// tel quel (son bouton dira « pas de rôle »), on réessaiera au prochain
+/// déploiement. Nécessite la permission Discord **Gérer les rôles** pour le bot.
+async fn ensure_game_roles(
+    ctx: &Context,
+    guild: GuildId,
+    api: &ApiClient,
+    guild_id: &str,
+    games: &mut [Game],
+) {
+    for game in games.iter_mut() {
+        let has_role = game
+            .role_id
+            .as_deref()
+            .is_some_and(|s| !s.trim().is_empty());
+        if has_role {
+            continue;
+        }
+        let role = match guild
+            .create_role(
+                &ctx.http,
+                EditRole::new()
+                    .name(&game.game_name)
+                    .colour(Colour::new(ROLE_COLOR))
+                    .mentionable(true)
+                    .hoist(false),
+            )
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                warn!(error = %e, game = %game.game_name, "Creation du role de jeu impossible (permission Gerer les roles ?)");
+                continue;
+            }
+        };
+        let role_id_str = role.id.get().to_string();
+        match api.set_game_role(guild_id, &game.id, &role_id_str).await {
+            Ok(updated) => {
+                game.role_id = updated.role_id.or(Some(role_id_str));
+                info!(game = %game.game_name, role = ?game.role_id, "Role de jeu cree et associe");
+            }
+            Err(e) => {
+                // Rollback : role cree mais non persiste -> on le supprime pour
+                // ne pas laisser un role orphelin. Reessai au prochain deploiement.
+                warn!(error = %e, game = %game.game_name, "Persistance du role de jeu impossible, rollback");
+                let _ = guild.delete_role(&ctx.http, role.id).await;
+            }
+        }
+    }
 }
 
 /// Extrait les `RoleId` des jeux (ceux qui en ont un), pour le comptage.

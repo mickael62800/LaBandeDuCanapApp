@@ -249,6 +249,30 @@ pub async fn save_panel(
     Ok(Json(panel.into()))
 }
 
+#[derive(Debug, Deserialize)]
+pub struct SetGameRoleDto {
+    /// `null`/absent = dissocier le rôle du jeu.
+    pub role_id: Option<String>,
+}
+
+/// PUT /api/games/{guild_id}/{game_id}/role — (dé)associe un rôle Discord à un jeu.
+///
+/// Sert au backfill : le bot crée un rôle pour les jeux legacy sans `role_id`
+/// (créés avant le support des rôles) et persiste l'association via cet endpoint.
+pub async fn set_game_role(
+    State(state): State<AppState>,
+    Path((guild_id, game_id)): Path<(String, String)>,
+    Json(dto): Json<SetGameRoleDto>,
+) -> Result<Json<GameDto>, ApiError> {
+    let role = normalize_optional_tag(dto.role_id.as_deref());
+    let game = state
+        .game_repo
+        .set_role_id(&guild_id, &game_id, role.as_deref())
+        .await?
+        .ok_or_else(|| ApiError(DomainError::ValidationError("jeu introuvable".into())))?;
+    Ok(Json(game.into()))
+}
+
 pub async fn find_panel_by_message(
     State(state): State<AppState>,
     Path((guild_id, message_id)): Path<(String, String)>,

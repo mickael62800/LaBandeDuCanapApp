@@ -26,7 +26,8 @@ fn dashboard_inner() -> Router<AppState> {
         )
         .route(
             "/logs",
-            post(handlers::audit::dashboard::create_log),
+            get(handlers::audit::dashboard::get_logs)
+                .post(handlers::audit::dashboard::create_log),
         )
         .route(
             "/infractions",

@@ -23,6 +23,28 @@ use crate::adapters::inbound::http::state::AppState;
 use crate::adapters::outbound::system::redis_log_stream;
 use ops_core::domain::entities::log_entry::LogEntry;
 
+#[derive(serde::Deserialize)]
+pub struct GetLogsQuery {
+    pub category: String,
+    pub limit: Option<usize>,
+    pub level: Option<String>,
+}
+
+pub async fn get_logs(
+    State(state): State<AppState>,
+    axum::extract::Query(q): axum::extract::Query<GetLogsQuery>,
+) -> Result<Json<Vec<LogEntry>>, ApiError> {
+    let limit = q.limit.unwrap_or(200);
+    let logs = redis_log_stream::xrevrange_logs(
+        &state.redis_client,
+        &q.category,
+        q.level.as_deref(),
+        limit,
+    )
+    .await;
+    Ok(Json(logs))
+}
+
 /// GET /api/stats — stats globales pour le dashboard desktop
 pub async fn get_dashboard_stats(
     State(state): State<AppState>,

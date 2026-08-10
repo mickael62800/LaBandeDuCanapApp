@@ -8,6 +8,8 @@ pub mod host_security;
 pub mod geoip;
 pub mod http_docker_host;
 pub mod server_event_repository;
+pub mod redis_log_stream;
+pub mod log_repository;
 
 use ops_core::domain::errors::DomainError;
 

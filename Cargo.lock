@@ -2405,6 +2405,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "uuid",
  "x509-parser",
 ]
 

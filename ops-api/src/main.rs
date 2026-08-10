@@ -63,17 +63,20 @@ async fn main() {
     let container_monitor =
         ops_api::container_monitor::spawn(docker_host.clone(), server_events.clone());
 
-    match redis::Client::open(config.redis_url.as_str()) {
-        Ok(redis_client) => ops_api::alerts_dispatcher::spawn(
-            pool.clone(),
-            redis_client,
-            Some(container_monitor.clone()),
-        ),
-        // Sans Redis, la deduplication des alertes est impossible : mieux vaut
-        // ne pas alerter du tout que reveiller quelqu'un toutes les 5 minutes
-        // pour le meme incident.
-        Err(error) => tracing::warn!(%error, "Redis injoignable, alertes desactivees"),
-    }
+    let redis_client = redis::Client::open(config.redis_url.as_str())
+        .expect("Redis est requis pour l'API ops (deduplication d'alertes et logs)");
+    
+    ops_api::alerts_dispatcher::spawn(
+        pool.clone(),
+        redis_client.clone(),
+        Some(container_monitor.clone()),
+    );
+
+    let log_repo = Arc::new(ops_api::adapters::log_repository::PgLogRepository::new(pool.clone()));
+    let system_logs_uc: Arc<dyn ops_core::ports::inbound::manage_system_logs::ManageSystemLogsUseCase> =
+        Arc::new(ops_core::application::manage_system_logs_service::ManageSystemLogsService::new(
+            log_repo,
+        ));
 
     // ── Securite de l'hote ──
     let ip_ban_repo = Arc::new(
@@ -141,6 +144,8 @@ async fn main() {
         ip_bans_uc,
         geoip_uc,
         server_events_uc,
+        system_logs_uc,
+        redis_client,
     };
 
     let listener = tokio::net::TcpListener::bind(bind)

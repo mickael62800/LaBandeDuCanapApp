@@ -59,6 +59,10 @@ pub struct AppState {
     /// qui la sert.
     pub container_monitor: container_monitor::SharedMonitorState,
 
+    // -- Logs systeme --
+    pub system_logs_uc: Arc<dyn ops_core::ports::inbound::manage_system_logs::ManageSystemLogsUseCase>,
+    pub redis_client: redis::Client,
+
     // ── Securite de l'hote ──
     pub security_logs_uc: Arc<dyn ops_core::ports::inbound::read_security_logs::ReadSecurityLogsUseCase>,
     pub security_audit_uc: Arc<dyn ops_core::ports::inbound::manage_security_audit::ManageSecurityAuditUseCase>,

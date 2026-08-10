@@ -546,10 +546,8 @@ async fn handle_panel(ctx: &Context, cmd: &CommandInteraction, api: &ApiClient, 
         Some(gid) => count_subscribers(ctx, gid, &game_role_ids(&games_slice)).await,
         None => HashMap::new(),
     };
-    let buttons = build_panel_buttons(&panel.id, &games_slice, &counts);
-    if let Err(e) = msg
-        .edit(&ctx.http, EditMessage::new().components(buttons))
-        .await
+    if let Err(e) =
+        edit_panel_with_buttons(ctx, &mut msg, &panel.id, &games_slice, &counts, None).await
     {
         reply(
             ctx,
@@ -644,10 +642,8 @@ async fn handle_refresh(ctx: &Context, cmd: &CommandInteraction, api: &ApiClient
         Some(gid) => count_subscribers(ctx, gid, &game_role_ids(&games_slice)).await,
         None => HashMap::new(),
     };
-    let buttons = build_panel_buttons(&panel.id, &games_slice, &counts);
-    if let Err(e) = msg
-        .edit(&ctx.http, EditMessage::new().embed(embed).components(buttons))
-        .await
+    if let Err(e) =
+        edit_panel_with_buttons(ctx, &mut msg, &panel.id, &games_slice, &counts, Some(embed)).await
     {
         reply(ctx, cmd, &format!("Erreur edition : {e}")).await;
         return;
@@ -702,10 +698,17 @@ pub(crate) fn build_panel_embed(category: Option<&str>, games: &[&Game]) -> Crea
 /// `counts` associe chaque `RoleId` à son nombre de porteurs (cf.
 /// [`count_subscribers`]) ; un jeu absent de la map (ou sans rôle) n'affiche
 /// pas de compteur.
+///
+/// `with_emoji` : quand `true`, chaque bouton porte l'icône du jeu. Un seul
+/// emoji rejeté par Discord (custom inaccessible, chaîne mal stockée) fait
+/// échouer TOUT le lot de composants — contrairement aux réactions qui
+/// échouaient jeu par jeu. Les appelants réessaient donc à `false` (nom seul)
+/// si l'envoi avec emojis échoue, pour que le panneau ait toujours ses boutons.
 pub(crate) fn build_panel_buttons(
     panel_id: &str,
     games: &[&Game],
     counts: &HashMap<RoleId, usize>,
+    with_emoji: bool,
 ) -> Vec<CreateActionRow> {
     let mut rows = Vec::new();
     for chunk in games.chunks(5) {
@@ -729,14 +732,46 @@ pub(crate) fn build_panel_buttons(
             let mut btn = CreateButton::new(format!("{PANEL_BUTTON_PREFIX}{panel_id}|{}", g.id))
                 .label(label)
                 .style(ButtonStyle::Secondary);
-            if let Some(rt) = g.emoji.as_deref().and_then(parse_reaction_type) {
-                btn = btn.emoji(rt);
+            if with_emoji {
+                if let Some(rt) = g.emoji.as_deref().and_then(parse_reaction_type) {
+                    btn = btn.emoji(rt);
+                }
             }
             buttons.push(btn);
         }
         rows.push(CreateActionRow::Buttons(buttons));
     }
     rows
+}
+
+/// Édite le message d'un panneau avec ses boutons, en réessayant SANS emoji si
+/// Discord rejette le lot (cf. `build_panel_buttons`). `extra` permet de joindre
+/// un embed à jour (refresh) ou rien (déploiement, l'embed est déjà en place).
+///
+/// Renvoie l'erreur seulement si même la variante sans emoji échoue — là c'est
+/// un vrai problème (permissions, message supprimé), pas un emoji capricieux.
+async fn edit_panel_with_buttons(
+    ctx: &Context,
+    msg: &mut serenity::model::channel::Message,
+    panel_id: &str,
+    games: &[&Game],
+    counts: &HashMap<RoleId, usize>,
+    embed: Option<CreateEmbed>,
+) -> serenity::Result<()> {
+    let build = |edit: EditMessage, with_emoji: bool| {
+        edit.components(build_panel_buttons(panel_id, games, counts, with_emoji))
+    };
+    let base = || match &embed {
+        Some(e) => EditMessage::new().embed(e.clone()),
+        None => EditMessage::new(),
+    };
+    match msg.edit(&ctx.http, build(base(), true)).await {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            warn!(error = %e, "Boutons avec emoji refuses par Discord, repli sans emoji");
+            msg.edit(&ctx.http, build(base(), false)).await
+        }
+    }
 }
 
 /// Compte les porteurs de chaque rôle de jeu en énumérant les membres de la

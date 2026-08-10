@@ -438,6 +438,13 @@ docker compose -f infrastructure/docker/docker-compose.yml up -d
 
 # Avec Prometheus + Grafana
 docker compose -f infrastructure/docker/docker-compose.yml --profile monitoring up -d
+
+# Profils plus cibles
+docker compose -f infrastructure/docker/docker-compose.yml --profile tools up -d
+docker compose -f infrastructure/docker/docker-compose.yml --profile observability up -d
+
+# Tous les modules optionnels applicatifs (Nexus, Atrium et monitoring ; hors TLS)
+docker compose -f infrastructure/docker/docker-compose.yml --profile full up -d
 ```
 
 **Services** : `postgres` (tuning RAM : `shared_buffers=4GB`, `work_mem=64MB`, WAL tuning), `pgbouncer`, `redis` (`maxmemory=2gb allkeys-lru`), `api`, `gateway`, `sentinel-worker`, `sentinel-bot`, `web`, `nexus-api`, `nexus-bot`, `nexus-worker`, `grpc-certs-init`, `nexus-db-init`, `certbot`, et en profils : `pgadmin`, `redis-commander`, `prometheus`, `grafana`.

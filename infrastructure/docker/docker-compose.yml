@@ -626,6 +626,7 @@ services:
       - default
     profiles:
       - atrium
+      - full
 
   # Embeddings RAG locaux : pas de cle API ni de cout par requete.
   # Le modele est telecharge une fois dans le volume persistant puis reste
@@ -657,6 +658,7 @@ services:
       - default
     profiles:
       - atrium
+      - full
 
   # Le pull est separe du serveur Ollama : le healthcheck du serveur peut
   # devenir vert avant le telechargement, mais Atrium ne demarre qu'apres.
@@ -685,6 +687,7 @@ services:
     restart: "no"
     profiles:
       - atrium
+      - full
 
   atrium-bot:
     <<: *rust-base
@@ -715,6 +718,7 @@ services:
       - default
     profiles:
       - atrium
+      - full
 
   # ──────────────────────────────────────────────────────────────────────────
   # Web (SPA Vue 3 servie par nginx, HTTPS)
@@ -836,7 +840,11 @@ services:
       - tls
 
   # ──────────────────────────────────────────────────────────────────────────
-  # Monitoring (profile `monitoring`)
+  # Supervision et outils d'administration.
+  # - monitoring : ensemble historique complet
+  # - tools : pgAdmin + Redis Commander uniquement
+  # - observability : Prometheus + Grafana uniquement
+  # - full : tous les modules optionnels applicatifs (hors TLS)
   # ──────────────────────────────────────────────────────────────────────────
 
   pgadmin:
@@ -859,6 +867,8 @@ services:
       - data
     profiles:
       - monitoring
+      - tools
+      - full
 
   redis-commander:
     image: rediscommander/redis-commander:latest
@@ -879,6 +889,8 @@ services:
       - internal
     profiles:
       - monitoring
+      - tools
+      - full
 
   prometheus:
     image: prom/prometheus:latest
@@ -900,6 +912,8 @@ services:
       - internal
     profiles:
       - monitoring
+      - observability
+      - full
 
   grafana:
     image: grafana/grafana:latest
@@ -923,6 +937,8 @@ services:
       - internal
     profiles:
       - monitoring
+      - observability
+      - full
 
   # ──────────────────────────────────────────────────────────────────────────
   # Nexus (plateforme jeux) — profile `nexus`, n'affecte pas la stack Sentinel.
@@ -953,6 +969,7 @@ services:
       - data
     profiles:
       - atrium
+      - full
 
   # Pool dedie : atrium-api reste sur le reseau interne et ne joint jamais
   # PostgreSQL directement.
@@ -976,6 +993,7 @@ services:
       - internal
     profiles:
       - atrium
+      - full
 
   # One-shot : cree la base `nexus` si absente (idempotent).
   nexus-db-init:
@@ -996,6 +1014,7 @@ services:
       - data
     profiles:
       - nexus
+      - full
 
   nexus-api:
     <<: *rust-base
@@ -1079,6 +1098,7 @@ services:
       - internal
     profiles:
       - nexus
+      - full
 
   nexus-bot:
     <<: *rust-base
@@ -1111,6 +1131,7 @@ services:
       - default
     profiles:
       - nexus
+      - full
 
   # Jobs periodiques game-portal : health-check des containers, extinction des
   # serveurs inactifs, reconciliation etat DB/Docker, nettoyage des images,
@@ -1140,6 +1161,7 @@ services:
       - internal
     profiles:
       - nexus
+      - full
 
 volumes:
   postgres_data:

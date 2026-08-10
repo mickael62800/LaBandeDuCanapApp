@@ -7,7 +7,7 @@ pub fn spawn_security_workers(state: &AppState) {
     crate::adapters::outbound::system::alerts_dispatcher::spawn(
         state.pg_pool.clone(),
         state.redis_client.clone(),
-        state.system.container_monitor.clone(),
+        state.ops.container_monitor.clone(),
     );
     // Planificateur de sauvegardes automatiques (config guild-backup-bot).
     crate::bootstrap::backup_scheduler::spawn(state.clone());

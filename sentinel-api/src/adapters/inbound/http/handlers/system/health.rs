@@ -1,4 +1,4 @@
-use crate::bootstrap::state::SystemState;
+use crate::bootstrap::state::OpsState;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::Json;
@@ -8,7 +8,7 @@ use serde_json::Value;
 
 /// Health check complet : vérifie API + PostgreSQL + Redis.
 /// Retourne 200 si tout est OK, 503 si un composant est down.
-pub async fn health(State(state): State<SystemState>) -> (StatusCode, Json<Value>) {
+pub async fn health(State(state): State<OpsState>) -> (StatusCode, Json<Value>) {
     let mut status = "ok";
     let mut http_status = StatusCode::OK;
 

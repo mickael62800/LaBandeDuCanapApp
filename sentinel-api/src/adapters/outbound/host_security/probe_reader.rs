@@ -4,9 +4,9 @@
 
 use async_trait::async_trait;
 
-use sentinel_core::domain::entities::system::host_probe::HostProbe;
+use sentinel_core::domain::entities::ops::host_probe::HostProbe;
 use sentinel_core::domain::errors::DomainError;
-use sentinel_core::ports::outbound::system::host_probe_reader::HostProbeReader;
+use sentinel_core::ports::outbound::ops::host_probe_reader::HostProbeReader;
 
 #[derive(Default)]
 pub struct FileHostProbeReader;

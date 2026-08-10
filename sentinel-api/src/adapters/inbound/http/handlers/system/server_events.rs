@@ -16,8 +16,8 @@ use serde::Serialize;
 
 use crate::adapters::inbound::http::errors::ApiError;
 use crate::adapters::inbound::http::middleware::superadmin::WebUser;
-use crate::bootstrap::state::SystemState;
-use sentinel_core::ports::inbound::system::manage_server_events::ManageServerEventsUseCase;
+use crate::bootstrap::state::OpsState;
+use sentinel_core::ports::inbound::ops::manage_server_events::ManageServerEventsUseCase;
 
 /// Insere un event serveur via le use case. Best-effort : si echec, on log
 /// l'erreur mais on ne bloque pas l'action principale qui appelle ce helper.
@@ -65,7 +65,7 @@ pub struct ServerEventDto {
 }
 
 pub async fn list_server_events(
-    State(state): State<SystemState>,
+    State(state): State<OpsState>,
     _user: Option<Extension<WebUser>>,
     Query(q): Query<ServerEventsQuery>,
 ) -> Result<Json<Vec<ServerEventDto>>, ApiError> {

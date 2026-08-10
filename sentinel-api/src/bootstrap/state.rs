@@ -42,6 +42,7 @@ pub mod audit;
 pub mod community;
 pub mod guild_backup;
 pub mod moderation;
+pub mod ops;
 pub mod system;
 
 pub use ai::AiState;
@@ -49,6 +50,7 @@ pub use audit::AuditState;
 pub use community::CommunityState;
 pub use guild_backup::GuildBackupState;
 pub use moderation::ModerationState;
+pub use ops::OpsState;
 pub use system::SystemState;
 
 use std::sync::Arc;
@@ -58,7 +60,7 @@ use crate::adapters::outbound::job_client::JobClient;
 use crate::adapters::outbound::redis_cache::RedisCache;
 use crate::adapters::outbound::ws::broadcaster::EventBroadcaster;
 use sentinel_core::ports::outbound::system::bot_config_repository::BotConfigRepository;
-use sentinel_core::ports::outbound::system::log_repository::LogRepository;
+use sentinel_core::ports::outbound::ops::log_repository::LogRepository;
 #[derive(Clone)]
 pub struct AppState {
     // ─────────────────────────────────────────────────────────────────────
@@ -69,6 +71,7 @@ pub struct AppState {
     pub moderation: ModerationState,
     pub audit: AuditState,
     pub community: CommunityState,
+    pub ops: OpsState,
     pub system: SystemState,
     pub guild_backup: GuildBackupState,
 

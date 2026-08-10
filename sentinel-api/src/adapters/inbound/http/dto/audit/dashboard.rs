@@ -3,7 +3,7 @@ use sentinel_core::domain::entities::moderation::infraction::Infraction;
 use sentinel_core::domain::entities::system::discord_ids::GuildId;
 use sentinel_core::domain::entities::system::discord_ids::UserId;
 use sentinel_core::domain::entities::system::guild::Guild;
-use sentinel_core::domain::entities::system::log_entry::LogEntry;
+use sentinel_core::domain::entities::ops::log_entry::LogEntry;
 use sentinel_core::domain::entities::system::rule::Rule;
 use serde::Deserialize;
 use serde::Serialize;

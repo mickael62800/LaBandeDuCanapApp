@@ -63,7 +63,9 @@ cd web && npm run lint && npm run build   # build = vue-tsc --noEmit + vite buil
 | Un réglage éditable par serveur | migration `config_schema` + lecture via `bot_guild_config` |
 | Toucher aux serveurs de jeux | `nexus-core/src/application/game/` + `nexus-api/src/adapters/outbound/game_runtime/` |
 
-Domaines de `sentinel-core/src/application/` : `ai`, `audit`, `community`, `guild_backup`, `moderation`, `system`.
+Domaines de `sentinel-core/src/application/` : `ai`, `audit`, `community`, `guild_backup`, `moderation`, `ops`, `system`.
+
+**`ops` vs `system`** — la frontière est « est-ce que ça parle de Discord ? ». `ops` couvre la **machine hôte** : sondes système, conteneurs Docker, logs techniques des services, sécurité de l'hôte (TLS, IP bannies, journal d'administration), règles d'alerte. Cette machine héberge aussi Nexus et Atrium : ces écrans ne sont pas « du Sentinel », ils sont transverses. `system` garde le métier de la plateforme : tickets, OAuth, reset de guilde, lockdown, slowmode, quarantaine, exports. Le découpage est le même à tous les étages — `application/ops/`, `ports/{inbound,outbound}/ops/`, `domain/entities/ops/` — et il correspond à l'univers « Exploitation » du back-office.
 Domaines de `sentinel-worker/src/domains/` (16) : `ai`, `analytics`, `announcements`, `appeal_sla`, `audit_cache`, `automod`, `cache`, `cleanup`, `discord_audit_sync`, `export`, `guild_backup`, `moderation`, `monitoring`, `security`, `temp_roles`, `tickets`.
 
 ## État de l'API : sous-états par domaine
@@ -82,7 +84,7 @@ async fn restore(State(st): State<AppState>, ...) { st.guild_snapshots_uc... }
 
 Chaque sous-état implémente `FromRef<AppState>`, donc les deux formes coexistent dans un même `Router<AppState>` : la migration se fait fichier par fichier, avec un code qui compile à chaque étape.
 
-**Migration terminée.** Six sous-états : `ai`, `moderation`, `audit`, `community`, `system`, `guild_backup`. `AppState` est passé de **100 à 14 champs**, tous légitimes : infrastructure partagée (`broadcaster`, `redis_client`, `cache`, `discord_api`, `job_client`, `log_repo`, `bot_config_repo`, `pg_pool`), config lue par les middlewares (`api_key`, `guild_id`, `superadmin_user_ids`, `metrics_token`, `discord_bot_token`) et `nexus_games`.
+**Migration terminée.** Sept sous-états : `ai`, `moderation`, `audit`, `community`, `system`, `ops`, `guild_backup`. `AppState` est passé de **100 à 14 champs**, tous légitimes : infrastructure partagée (`broadcaster`, `redis_client`, `cache`, `discord_api`, `job_client`, `log_repo`, `bot_config_repo`, `pg_pool`), config lue par les middlewares (`api_key`, `guild_id`, `superadmin_user_ids`, `metrics_token`, `discord_bot_token`) et `nexus_games`.
 
 Deux fichiers restent volontairement sur `AppState`, faute d'appartenir à un domaine unique : `handlers/moderation/purge.rs` (audit-logs + logs système) et `handlers/community/voice_channels.rs` (réclame `tickets_uc`, `audit_logs_uc` et `superadmin_user_ids`). Les forcer dans un sous-état aurait reconstitué un god-object en miniature.
 

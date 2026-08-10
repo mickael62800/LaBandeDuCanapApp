@@ -4,9 +4,9 @@ use async_trait::async_trait;
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use sentinel_core::domain::entities::system::log_entry::LogEntry;
+use sentinel_core::domain::entities::ops::log_entry::LogEntry;
 use sentinel_core::domain::errors::DomainError;
-use sentinel_core::ports::outbound::system::log_repository::LogRepository;
+use sentinel_core::ports::outbound::ops::log_repository::LogRepository;
 
 pub struct PgLogRepository {
     pool: PgPool,

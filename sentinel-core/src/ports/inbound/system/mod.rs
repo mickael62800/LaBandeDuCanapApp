@@ -1,17 +1,8 @@
-pub mod lookup_geoip;
-pub mod manage_alert_rules;
 pub mod manage_bot_persistence;
 pub mod manage_export_jobs;
-pub mod manage_ip_bans;
 pub mod manage_lockdown;
 pub mod manage_oauth;
 pub mod manage_quarantine;
-pub mod manage_security_audit;
-pub mod manage_server_events;
 pub mod manage_slowmode;
-pub mod manage_system_logs;
 pub mod manage_tickets;
-pub mod read_host_probe;
-pub mod read_security_logs;
-pub mod read_tls_cert;
 pub mod reset_guild;

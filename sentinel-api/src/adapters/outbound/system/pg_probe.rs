@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use sqlx::PgPool;
 
 use sentinel_core::domain::errors::DomainError;
-use sentinel_core::ports::outbound::system::system_probe::SystemProbe;
+use sentinel_core::ports::outbound::ops::system_probe::SystemProbe;
 
 pub struct PgSystemProbe {
     pool: PgPool,

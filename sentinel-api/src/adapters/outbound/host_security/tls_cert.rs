@@ -3,9 +3,9 @@
 
 use async_trait::async_trait;
 
-use sentinel_core::domain::entities::system::tls_cert::TlsCertInfo;
+use sentinel_core::domain::entities::ops::tls_cert::TlsCertInfo;
 use sentinel_core::domain::errors::DomainError;
-use sentinel_core::ports::outbound::system::tls_cert_reader::TlsCertReader;
+use sentinel_core::ports::outbound::ops::tls_cert_reader::TlsCertReader;
 
 #[derive(Default)]
 pub struct FileTlsCertReader;

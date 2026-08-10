@@ -20,7 +20,7 @@ use sentinel_core::domain::entities::moderation::purge::{
 };
 use sentinel_core::ports::inbound::audit::manage_audit_logs::ManageAuditLogsUseCase;
 use sentinel_core::ports::inbound::moderation::manage_infractions::ManageInfractionsUseCase;
-use sentinel_core::ports::outbound::system::log_repository::LogRepository;
+use sentinel_core::ports::outbound::ops::log_repository::LogRepository;
 
 pub struct PurgeGrpc {
     pub infractions_uc: Arc<dyn ManageInfractionsUseCase>,

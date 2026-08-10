@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use tracing::warn;
 
 use sentinel_core::domain::entities::system::config_parsers::is_worker_service;
-use sentinel_core::ports::outbound::system::service_registry::{ServiceCounts, ServiceRegistry};
+use sentinel_core::ports::outbound::ops::service_registry::{ServiceCounts, ServiceRegistry};
 
 pub struct RedisServiceRegistry {
     client: redis::Client,

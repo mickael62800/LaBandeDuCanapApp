@@ -22,7 +22,7 @@ use crate::adapters::inbound::http::middleware::superadmin::WebUser;
 use crate::adapters::outbound::system::host_metrics::{
     collect_disks, parse_redis_info, DiskInfo, RedisMetrics,
 };
-use crate::bootstrap::state::SystemState;
+use crate::bootstrap::state::OpsState;
 use axum::extract::{Extension, State};
 use axum::Json;
 use redis::AsyncCommands;
@@ -132,7 +132,7 @@ impl From<DiskInfo> for DiskDto {
 }
 
 pub async fn get_system_info(
-    State(state): State<SystemState>,
+    State(state): State<OpsState>,
     _user: Option<Extension<WebUser>>,
 ) -> Result<Json<SystemInfoDto>, ApiError> {
     // SECURITE : cet endpoint divulgue des infos host (CPU/RAM, points de

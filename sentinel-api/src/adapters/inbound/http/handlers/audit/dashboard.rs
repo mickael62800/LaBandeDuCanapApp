@@ -21,7 +21,7 @@ use tracing::warn;
 use crate::adapters::inbound::http::errors::ApiError;
 use crate::adapters::inbound::http::state::AppState;
 use crate::adapters::outbound::system::redis_log_stream;
-use sentinel_core::domain::entities::system::log_entry::LogEntry;
+use sentinel_core::domain::entities::ops::log_entry::LogEntry;
 
 /// GET /api/stats — stats globales pour le dashboard desktop
 pub async fn get_dashboard_stats(
@@ -65,14 +65,14 @@ pub async fn get_logs(
         .collect()
     } else {
         // Postgres : le use case pousse le filtre guild dans la requete.
-        let filters = sentinel_core::ports::inbound::system::manage_system_logs::SystemLogFilters {
+        let filters = sentinel_core::ports::inbound::ops::manage_system_logs::SystemLogFilters {
             category: None,
             level: params.level.clone(),
             guild_id: params.guild_id.clone(),
             limit,
         };
         state
-            .system
+            .ops
             .system_logs_uc
             .list_logs(filters)
             .await?
@@ -94,7 +94,7 @@ pub async fn delete_logs_by_category(
     // purge Postgres d'abord (erreur avant tout effet pour `discord`), puis on
     // vide la stream Redis (cache).
     let count = state
-        .system
+        .ops
         .system_logs_uc
         .purge_category(&category)
         .await?;

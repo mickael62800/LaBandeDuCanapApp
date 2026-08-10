@@ -1,0 +1,77 @@
+//! Etat du domaine ops : la MACHINE HOTE, pas Discord.
+//!
+//! Conteneurs Docker, disques et sondes systeme, logs techniques des services,
+//! securite de l'hote (certificat TLS, IP bannies, journal d'administration),
+//! regles d'alerte.
+//!
+//! POURQUOI IL EST DISTINCT DE `SystemState`
+//!
+//! `system` melangeait deux choses de nature differente : le metier Discord de
+//! la plateforme (tickets, OAuth, reset de guilde, lockdown, exports) et
+//! l'exploitation de la machine qui l'heberge. Or cette machine heberge aussi
+//! Nexus et Atrium : ces ecrans ne sont pas « du Sentinel », ils sont
+//! transverses. La barre laterale du back-office les a deja separes en un
+//! univers « Exploitation » ; ce sous-etat en est la contrepartie cote API.
+//!
+//! Un handler qui declare `State<OpsState>` se voit interdire par le
+//! compilateur de toucher aux tickets ou a l'OAuth — et reciproquement.
+
+use std::sync::Arc;
+
+use axum::extract::FromRef;
+use sentinel_core::ports::inbound::ops::lookup_geoip::LookupGeoIpUseCase;
+use sentinel_core::ports::inbound::ops::manage_alert_rules::ManageAlertRulesUseCase;
+use sentinel_core::ports::inbound::ops::manage_ip_bans::ManageIpBansUseCase;
+use sentinel_core::ports::inbound::ops::manage_security_audit::ManageSecurityAuditUseCase;
+use sentinel_core::ports::inbound::ops::manage_server_events::ManageServerEventsUseCase;
+use sentinel_core::ports::inbound::ops::manage_system_logs::ManageSystemLogsUseCase;
+use sentinel_core::ports::inbound::ops::read_host_probe::ReadHostProbeUseCase;
+use sentinel_core::ports::inbound::ops::read_security_logs::ReadSecurityLogsUseCase;
+use sentinel_core::ports::inbound::ops::read_tls_cert::ReadTlsCertUseCase;
+use sentinel_core::ports::outbound::ops::docker_host::DockerHost;
+use sentinel_core::ports::outbound::ops::log_repository::LogRepository;
+use sentinel_core::ports::outbound::ops::system_probe::SystemProbe;
+
+use crate::adapters::outbound::ws::broadcaster::EventBroadcaster;
+use crate::bootstrap::state::AppState;
+
+/// Ports de l'exploitation de la machine hote.
+#[derive(Clone)]
+pub struct OpsState {
+    // ── Etat de la machine et des services ──
+    /// Sondes sante (taille/disponibilite BDD). Les handlers health/info
+    /// passent par ici, jamais par `pg_pool`.
+    pub system_probe: Arc<dyn SystemProbe>,
+    /// Daemon Docker de l'hote (listing, actions, prune, df).
+    pub docker_host: Arc<dyn DockerHost>,
+    /// Poll Docker chaque minute, detecte les changements d'etat.
+    pub container_monitor: Option<
+        Arc<tokio::sync::RwLock<crate::bootstrap::container_monitor::ContainerMonitorState>>,
+    >,
+
+    // ── Journaux techniques ──
+    pub system_logs_uc: Arc<dyn ManageSystemLogsUseCase>,
+    pub log_repo: Arc<dyn LogRepository>,
+    pub server_events_uc: Arc<dyn ManageServerEventsUseCase>,
+    pub alert_rules_uc: Arc<dyn ManageAlertRulesUseCase>,
+
+    // ── Securite de l'hote ──
+    pub security_logs_uc: Arc<dyn ReadSecurityLogsUseCase>,
+    pub security_audit_uc: Arc<dyn ManageSecurityAuditUseCase>,
+    pub host_probe_uc: Arc<dyn ReadHostProbeUseCase>,
+    pub tls_cert_uc: Arc<dyn ReadTlsCertUseCase>,
+    pub ip_bans_uc: Arc<dyn ManageIpBansUseCase>,
+    pub geoip_uc: Arc<dyn LookupGeoIpUseCase>,
+    /// Suivi req/IP en memoire pour le ban automatique.
+    pub rate_limiter: Option<Arc<crate::adapters::outbound::system::rate_limiter::RateLimiter>>,
+
+    // ── Dependances transverses ──
+    pub broadcaster: Arc<EventBroadcaster>,
+    pub redis_client: redis::Client,
+}
+
+impl FromRef<AppState> for OpsState {
+    fn from_ref(state: &AppState) -> Self {
+        state.ops.clone()
+    }
+}

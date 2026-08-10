@@ -32,11 +32,11 @@ use axum::extract::{Extension, Path, Query};
 use axum::http::{header::AUTHORIZATION, HeaderMap, StatusCode};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use sentinel_core::domain::entities::ops::docker_host::{
+use ops_core::domain::entities::docker_host::{
     ContainerSummary, DiskUsage, DockerVersionInfo, ImageSummary, NetworkSummary, PruneOutcome,
     VolumeSummary,
 };
-use sentinel_core::ports::outbound::ops::docker_host::DockerHost;
+use ops_core::ports::outbound::docker_host::DockerHost;
 use serde::Deserialize;
 
 mod bollard_host;
@@ -127,8 +127,8 @@ impl axum::response::IntoResponse for AgentError {
     }
 }
 
-impl From<sentinel_core::domain::errors::DomainError> for AgentError {
-    fn from(error: sentinel_core::domain::errors::DomainError) -> Self {
+impl From<ops_core::domain::errors::DomainError> for AgentError {
+    fn from(error: ops_core::domain::errors::DomainError) -> Self {
         tracing::warn!(%error, "Operation Docker en echec");
         AgentError(StatusCode::BAD_GATEWAY, error.to_string())
     }

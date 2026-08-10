@@ -3,9 +3,9 @@
 
 use async_trait::async_trait;
 
-use sentinel_core::domain::entities::ops::geoip::GeoIpEntry;
+use ops_core::domain::entities::geoip::GeoIpEntry;
 use sentinel_core::domain::errors::DomainError;
-use sentinel_core::ports::outbound::ops::geoip_lookup::GeoIpLookup;
+use ops_core::ports::outbound::geoip_lookup::GeoIpLookup;
 
 /// Forme renvoyee par ip-api.com (champs renommes -> snake_case domaine).
 #[derive(serde::Deserialize)]

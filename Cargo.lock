@@ -876,7 +876,7 @@ dependencies = [
  "bollard",
  "dotenvy",
  "futures-util",
- "sentinel-core",
+ "ops-core",
  "serde",
  "serde_json",
  "tokio",
@@ -2387,6 +2387,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ops-core"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "platform-common",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
 name = "ort"
 version = "2.0.0-rc.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3461,6 +3473,7 @@ dependencies = [
  "metrics",
  "metrics-exporter-prometheus",
  "ndarray",
+ "ops-core",
  "ort",
  "platform-common-api",
  "prost",
@@ -3537,6 +3550,7 @@ dependencies = [
  "dashmap 6.1.0",
  "image",
  "ndarray",
+ "ops-core",
  "platform-common",
  "rand 0.8.6",
  "regex",
@@ -3586,6 +3600,7 @@ dependencies = [
  "dotenvy",
  "metrics",
  "metrics-exporter-prometheus",
+ "ops-core",
  "platform-common-worker",
  "rand 0.8.6",
  "redis",

@@ -12,6 +12,10 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
+# Le tableau de bord d'audit compte les bots et workers en ligne via le port
+# `ServiceRegistry` : le metier rend compte de la sante des services, pas
+# l'inverse. C'est la seule dependance de Sentinel vers l'exploitation.
+ops-core = { workspace = true }
 platform-common = { path = "../platform-common" }
 rand = { workspace = true }
 async-trait = { workspace = true }

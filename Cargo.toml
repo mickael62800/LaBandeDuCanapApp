@@ -20,6 +20,7 @@ members = [
     "atrium-proto",
     "atrium-bot",
     "atrium-worker", "platform-common-bot", "platform-common-worker",
+    "ops-core",
     # Agent Docker : seul crate a parler au socket de l'hote.
     "docker-agent",
 ]
@@ -84,6 +85,7 @@ sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio",
 
 # Internes (paths)
 sentinel-proto = { path = "sentinel-proto" }
+ops-core = { path = "ops-core" }
 sentinel-core = { path = "sentinel-core" }
 # Socle partage par les deux plateformes. `platform-common` n'a aucune
 # dependance framework (Redis pur) ; `platform-common-api` tire axum/tower-http

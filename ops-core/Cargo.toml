@@ -1,0 +1,16 @@
+[package]
+name = "ops-core"
+version.workspace = true
+edition.workspace = true
+description = "Regles metier de l'exploitation de la machine hote (sondes, Docker, logs techniques, securite hote)"
+
+[dependencies]
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+platform-common = { workspace = true }
+
+[lints]
+workspace = true

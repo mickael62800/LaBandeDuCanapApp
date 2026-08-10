@@ -5,9 +5,9 @@ use async_trait::async_trait;
 use sqlx::PgPool;
 
 use crate::adapters::outbound::postgres::pg_err;
-use sentinel_core::domain::entities::ops::server_event::{ServerEvent, ServerEventFilter};
+use ops_core::domain::entities::server_event::{ServerEvent, ServerEventFilter};
 use sentinel_core::domain::errors::DomainError;
-use sentinel_core::ports::outbound::ops::server_event_repository::ServerEventRepository;
+use ops_core::ports::outbound::server_event_repository::ServerEventRepository;
 
 pub struct PgServerEventRepository {
     pool: PgPool,

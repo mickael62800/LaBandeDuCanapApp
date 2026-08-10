@@ -6,11 +6,11 @@ use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 
 use super::super::pg_err_ctx;
-use sentinel_core::domain::entities::ops::security_audit::{
+use ops_core::domain::entities::security_audit::{
     AuditLogEntry, AuditLogFilter, CleanupOptions, CleanupReport, SuccessfulLogin,
 };
 use sentinel_core::domain::errors::DomainError;
-use sentinel_core::ports::outbound::ops::security_audit_repository::SecurityAuditRepository;
+use ops_core::ports::outbound::security_audit_repository::SecurityAuditRepository;
 
 const TBL: &str = "audit_logs";
 fn pg_err(e: sqlx::Error) -> DomainError {

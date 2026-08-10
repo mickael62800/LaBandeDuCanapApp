@@ -71,8 +71,8 @@ pub async fn build_app_state(
         BatchWriterConfig::default(),
     ));
     // Use case lecture/purge des logs systeme — reutilise le meme repo batche.
-    let system_logs_uc: Arc<dyn sentinel_core::ports::inbound::ops::manage_system_logs::ManageSystemLogsUseCase> =
-        Arc::new(sentinel_core::application::ops::manage_system_logs_service::ManageSystemLogsService::new(
+    let system_logs_uc: Arc<dyn ops_core::ports::inbound::manage_system_logs::ManageSystemLogsUseCase> =
+        Arc::new(ops_core::application::manage_system_logs_service::ManageSystemLogsService::new(
             log_repo.clone(),
         ));
     let strike_repo = Arc::new(PgStrikeRepository::new(pg_pool.clone()));
@@ -318,7 +318,7 @@ pub async fn build_app_state(
     // Note : la creation de moderation_uc est differee plus bas pour pouvoir
     // injecter strikes_uc via with_strikes_uc (log_action_with_strike).
     let service_registry: Arc<
-        dyn sentinel_core::ports::outbound::ops::service_registry::ServiceRegistry,
+        dyn ops_core::ports::outbound::service_registry::ServiceRegistry,
     > = Arc::new(
         crate::adapters::outbound::redis_service_registry::RedisServiceRegistry::new(
             redis_client.clone(),
@@ -460,22 +460,22 @@ pub async fn build_app_state(
 
     // Bans IP (panel securite) : repo DB + file-shim host + reader fail2ban.
     let ip_ban_repo: Arc<
-        dyn sentinel_core::ports::outbound::ops::ip_ban_repository::IpBanRepository,
+        dyn ops_core::ports::outbound::ip_ban_repository::IpBanRepository,
     > = Arc::new(
         crate::adapters::outbound::postgres::system::ip_ban_repository::PgIpBanRepository::new(
             pg_pool.clone(),
         ),
     );
     let host_ban_queue: Arc<
-        dyn sentinel_core::ports::outbound::ops::host_ban_queue::HostBanQueue,
+        dyn ops_core::ports::outbound::host_ban_queue::HostBanQueue,
     > = Arc::new(crate::adapters::outbound::host_security::ban_queue::FileBanQueue::new());
     let fail2ban_reader: Arc<
-        dyn sentinel_core::ports::outbound::ops::host_ban_queue::Fail2banStatusReader,
+        dyn ops_core::ports::outbound::host_ban_queue::Fail2banStatusReader,
     > = Arc::new(crate::adapters::outbound::host_security::fail2ban::Fail2banFileReader::new());
     let ip_bans_uc: Arc<
-        dyn sentinel_core::ports::inbound::ops::manage_ip_bans::ManageIpBansUseCase,
+        dyn ops_core::ports::inbound::manage_ip_bans::ManageIpBansUseCase,
     > = Arc::new(
-        sentinel_core::application::ops::manage_ip_bans_service::ManageIpBansService::new(
+        ops_core::application::manage_ip_bans_service::ManageIpBansService::new(
             ip_ban_repo,
             host_ban_queue,
             fail2ban_reader,
@@ -484,29 +484,29 @@ pub async fn build_app_state(
 
     // Sondes de securite host (JSON cron) : reader fichier + use case pass-through.
     let host_probe_reader: Arc<
-        dyn sentinel_core::ports::outbound::ops::host_probe_reader::HostProbeReader,
+        dyn ops_core::ports::outbound::host_probe_reader::HostProbeReader,
     > = Arc::new(
         crate::adapters::outbound::host_security::probe_reader::FileHostProbeReader::new(),
     );
     let host_probe_uc: Arc<
-        dyn sentinel_core::ports::inbound::ops::read_host_probe::ReadHostProbeUseCase,
+        dyn ops_core::ports::inbound::read_host_probe::ReadHostProbeUseCase,
     > = Arc::new(
-        sentinel_core::application::ops::read_host_probe_service::ReadHostProbeService::new(
+        ops_core::application::read_host_probe_service::ReadHostProbeService::new(
             host_probe_reader,
         ),
     );
 
     // Analyse des logs securite (top IPs, echecs d'auth, trafic).
-    let security_log_repo: Arc<dyn sentinel_core::ports::outbound::ops::security_log_repository::SecurityLogRepository> =
+    let security_log_repo: Arc<dyn ops_core::ports::outbound::security_log_repository::SecurityLogRepository> =
         Arc::new(crate::adapters::outbound::postgres::system::security_log_repository::PgSecurityLogRepository::new(pg_pool.clone()));
-    let security_logs_uc: Arc<dyn sentinel_core::ports::inbound::ops::read_security_logs::ReadSecurityLogsUseCase> =
-        Arc::new(sentinel_core::application::ops::read_security_logs_service::ReadSecurityLogsService::new(security_log_repo));
+    let security_logs_uc: Arc<dyn ops_core::ports::inbound::read_security_logs::ReadSecurityLogsUseCase> =
+        Arc::new(ops_core::application::read_security_logs_service::ReadSecurityLogsService::new(security_log_repo));
 
     // Audit & maintenance securite (journal d'audit, logins, purge des logs).
-    let security_audit_repo: Arc<dyn sentinel_core::ports::outbound::ops::security_audit_repository::SecurityAuditRepository> =
+    let security_audit_repo: Arc<dyn ops_core::ports::outbound::security_audit_repository::SecurityAuditRepository> =
         Arc::new(crate::adapters::outbound::postgres::system::security_audit_repository::PgSecurityAuditRepository::new(pg_pool.clone()));
-    let security_audit_uc: Arc<dyn sentinel_core::ports::inbound::ops::manage_security_audit::ManageSecurityAuditUseCase> =
-        Arc::new(sentinel_core::application::ops::manage_security_audit_service::ManageSecurityAuditService::new(security_audit_repo));
+    let security_audit_uc: Arc<dyn ops_core::ports::inbound::manage_security_audit::ManageSecurityAuditUseCase> =
+        Arc::new(ops_core::application::manage_security_audit_service::ManageSecurityAuditService::new(security_audit_repo));
 
     // OAuth Discord web : repo Postgres (sessions + logins) + use case. Le SQL
     // vit dans l'adapter ; l'echange HTTP avec Discord + CSRF/cookies restent
@@ -569,10 +569,10 @@ pub async fn build_app_state(
 
     // Règles d'alerte de supervision : repo Postgres (SQL alert_rules) + use
     // case (invariants sévérité/cooldown). Le handler ne fait que RBAC/mapper.
-    let alert_rules_repo: Arc<dyn sentinel_core::ports::outbound::ops::alert_rule_repository::AlertRuleRepository> =
+    let alert_rules_repo: Arc<dyn ops_core::ports::outbound::alert_rule_repository::AlertRuleRepository> =
         Arc::new(crate::adapters::outbound::postgres::system::alert_rule_repository::PgAlertRuleRepository::new(pg_pool.clone()));
-    let alert_rules_uc: Arc<dyn sentinel_core::ports::inbound::ops::manage_alert_rules::ManageAlertRulesUseCase> =
-        Arc::new(sentinel_core::application::ops::manage_alert_rules_service::ManageAlertRulesService::new(
+    let alert_rules_uc: Arc<dyn ops_core::ports::inbound::manage_alert_rules::ManageAlertRulesUseCase> =
+        Arc::new(ops_core::application::manage_alert_rules_service::ManageAlertRulesService::new(
             alert_rules_repo,
         ));
 
@@ -588,17 +588,17 @@ pub async fn build_app_state(
 
     // Audit serveur (server_events) : repo Postgres + use case (bornage des
     // filtres de lecture). Le handler ne fait que parse/RBAC/map.
-    let server_event_repo: Arc<dyn sentinel_core::ports::outbound::ops::server_event_repository::ServerEventRepository> =
+    let server_event_repo: Arc<dyn ops_core::ports::outbound::server_event_repository::ServerEventRepository> =
         Arc::new(crate::adapters::outbound::postgres::system::server_event_repository::PgServerEventRepository::new(pg_pool.clone()));
-    let server_events_uc: Arc<dyn sentinel_core::ports::inbound::ops::manage_server_events::ManageServerEventsUseCase> =
-        Arc::new(sentinel_core::application::ops::manage_server_events_service::ManageServerEventsService::new(
+    let server_events_uc: Arc<dyn ops_core::ports::inbound::manage_server_events::ManageServerEventsUseCase> =
+        Arc::new(ops_core::application::manage_server_events_service::ManageServerEventsService::new(
             server_event_repo.clone(),
         ));
 
     // Daemon Docker de l'hote, via `docker-agent`. Ce processus ne monte plus
     // `/var/run/docker.sock` : le socket equivaut a un acces root, et il n'a
     // rien a faire dans l'API qui sert aussi l'OAuth et la moderation.
-    let docker_host: Arc<dyn sentinel_core::ports::outbound::ops::docker_host::DockerHost> =
+    let docker_host: Arc<dyn ops_core::ports::outbound::docker_host::DockerHost> =
         Arc::new(crate::adapters::outbound::system::docker_host::HttpDockerHost::new(
             config.docker_agent_url.clone(),
             config.docker_agent_token.clone(),
@@ -606,20 +606,20 @@ pub async fn build_app_state(
 
     // Cert TLS + GeoIP (infra externe : fichier/openssl + http ip-api).
     let tls_cert_reader: Arc<
-        dyn sentinel_core::ports::outbound::ops::tls_cert_reader::TlsCertReader,
+        dyn ops_core::ports::outbound::tls_cert_reader::TlsCertReader,
     > = Arc::new(crate::adapters::outbound::host_security::tls_cert::FileTlsCertReader::new());
     let tls_cert_uc: Arc<
-        dyn sentinel_core::ports::inbound::ops::read_tls_cert::ReadTlsCertUseCase,
+        dyn ops_core::ports::inbound::read_tls_cert::ReadTlsCertUseCase,
     > = Arc::new(
-        sentinel_core::application::ops::read_tls_cert_service::ReadTlsCertService::new(
+        ops_core::application::read_tls_cert_service::ReadTlsCertService::new(
             tls_cert_reader,
         ),
     );
-    let geoip_lookup: Arc<dyn sentinel_core::ports::outbound::ops::geoip_lookup::GeoIpLookup> =
+    let geoip_lookup: Arc<dyn ops_core::ports::outbound::geoip_lookup::GeoIpLookup> =
         Arc::new(crate::adapters::outbound::geoip::IpApiGeoIpLookup::new());
-    let geoip_uc: Arc<dyn sentinel_core::ports::inbound::ops::lookup_geoip::LookupGeoIpUseCase> =
+    let geoip_uc: Arc<dyn ops_core::ports::inbound::lookup_geoip::LookupGeoIpUseCase> =
         Arc::new(
-            sentinel_core::application::ops::lookup_geoip_service::LookupGeoIpService::new(
+            ops_core::application::lookup_geoip_service::LookupGeoIpService::new(
                 geoip_lookup,
             ),
         );

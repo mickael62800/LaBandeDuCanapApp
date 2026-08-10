@@ -10,8 +10,8 @@ use tracing::warn;
 
 use crate::adapters::inbound::http::state::AppState;
 use crate::adapters::outbound::system::rate_limiter::RateLimiter;
-use sentinel_core::domain::entities::ops::log_entry::LogEntry;
-use sentinel_core::ports::outbound::ops::log_repository::LogRepository;
+use ops_core::domain::entities::log_entry::LogEntry;
+use ops_core::ports::outbound::log_repository::LogRepository;
 
 #[derive(Clone)]
 pub struct ApiLoggerState {

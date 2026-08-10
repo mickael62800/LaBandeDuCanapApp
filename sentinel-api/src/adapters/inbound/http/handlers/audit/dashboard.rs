@@ -21,7 +21,7 @@ use tracing::warn;
 use crate::adapters::inbound::http::errors::ApiError;
 use crate::adapters::inbound::http::state::AppState;
 use crate::adapters::outbound::system::redis_log_stream;
-use sentinel_core::domain::entities::ops::log_entry::LogEntry;
+use ops_core::domain::entities::log_entry::LogEntry;
 
 /// GET /api/stats — stats globales pour le dashboard desktop
 pub async fn get_dashboard_stats(
@@ -65,7 +65,7 @@ pub async fn get_logs(
         .collect()
     } else {
         // Postgres : le use case pousse le filtre guild dans la requete.
-        let filters = sentinel_core::ports::inbound::ops::manage_system_logs::SystemLogFilters {
+        let filters = ops_core::ports::inbound::manage_system_logs::SystemLogFilters {
             category: None,
             level: params.level.clone(),
             guild_id: params.guild_id.clone(),

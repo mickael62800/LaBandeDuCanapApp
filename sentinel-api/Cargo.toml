@@ -53,6 +53,7 @@ tonic = { workspace = true }
 tonic-health = "0.13"
 prost = { workspace = true }
 sentinel-proto = { workspace = true }
+ops-core = { workspace = true }
 sentinel-core = { workspace = true }
 platform-common-api = { workspace = true }
 

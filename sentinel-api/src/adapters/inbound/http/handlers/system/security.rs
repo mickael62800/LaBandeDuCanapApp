@@ -18,9 +18,9 @@ use serde::Serialize;
 use crate::adapters::inbound::http::errors::ApiError;
 use crate::adapters::inbound::http::middleware::superadmin::WebUser;
 use crate::bootstrap::state::OpsState;
-use sentinel_core::domain::entities::ops::host_probe::HostProbe;
-use sentinel_core::domain::entities::ops::security_audit::{AuditLogFilter, CleanupOptions};
-use sentinel_core::domain::entities::ops::security_log::LogWindow;
+use ops_core::domain::entities::host_probe::HostProbe;
+use ops_core::domain::entities::security_audit::{AuditLogFilter, CleanupOptions};
+use ops_core::domain::entities::security_log::LogWindow;
 use sentinel_core::domain::errors::DomainError;
 
 fn forbid(s: StatusCode, msg: &str) -> ApiError {

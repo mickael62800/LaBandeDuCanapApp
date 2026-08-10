@@ -17,7 +17,7 @@ use crate::ports::outbound::audit::stats_repository::StatsRepository;
 use crate::ports::outbound::moderation::infraction_repository::InfractionRepository;
 use crate::ports::outbound::system::cache::CachePort;
 use crate::ports::outbound::system::cache_helpers::cached_json;
-use crate::ports::outbound::ops::service_registry::ServiceRegistry;
+use ops_core::ports::outbound::service_registry::ServiceRegistry;
 
 const OVERVIEW_TTL: u64 = 60; // 1 minute
 

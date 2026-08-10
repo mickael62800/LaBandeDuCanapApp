@@ -20,7 +20,7 @@
 use redis::Client;
 use tracing::warn;
 
-use sentinel_core::domain::entities::ops::log_entry::LogEntry;
+use ops_core::domain::entities::log_entry::LogEntry;
 
 /// Borne de taille approximative par stream (par categorie).
 /// 5000 lignes × ~5 categories = ~25k entrees max en RAM Redis.

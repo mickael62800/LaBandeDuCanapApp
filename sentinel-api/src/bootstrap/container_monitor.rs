@@ -18,8 +18,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use sentinel_core::ports::outbound::ops::docker_host::DockerHost;
-use sentinel_core::ports::outbound::ops::server_event_repository::ServerEventRepository;
+use ops_core::ports::outbound::docker_host::DockerHost;
+use ops_core::ports::outbound::server_event_repository::ServerEventRepository;
 use tokio::sync::RwLock;
 
 use crate::adapters::inbound::http::handlers::system::security::{

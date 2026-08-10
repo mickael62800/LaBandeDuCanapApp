@@ -18,12 +18,12 @@
 
 use async_trait::async_trait;
 use reqwest::Client;
-use sentinel_core::domain::entities::ops::docker_host::{
+use ops_core::domain::entities::docker_host::{
     ContainerSummary, DiskUsage, DockerVersionInfo, ImageSummary, NetworkSummary, PruneOutcome,
     VolumeSummary,
 };
 use sentinel_core::domain::errors::DomainError;
-use sentinel_core::ports::outbound::ops::docker_host::DockerHost;
+use ops_core::ports::outbound::docker_host::DockerHost;
 use serde::de::DeserializeOwned;
 
 pub struct HttpDockerHost {

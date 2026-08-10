@@ -3,9 +3,9 @@
 
 use async_trait::async_trait;
 
-use sentinel_core::domain::entities::ops::ip_ban::{Fail2banJail, Fail2banStatus};
+use ops_core::domain::entities::ip_ban::{Fail2banJail, Fail2banStatus};
 use sentinel_core::domain::errors::DomainError;
-use sentinel_core::ports::outbound::ops::host_ban_queue::Fail2banStatusReader;
+use ops_core::ports::outbound::host_ban_queue::Fail2banStatusReader;
 
 const F2B_STATUS_PATH: &str = "/var/lib/sentinel/fail2ban-status.json";
 

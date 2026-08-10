@@ -130,7 +130,7 @@ async fn serve_http(state: AppState, config: &AppConfig, pg_pool: PgPool) {
 
     // Log demarrage en BDD
     {
-        let entry = sentinel_core::domain::entities::ops::log_entry::LogEntry {
+        let entry = ops_core::domain::entities::log_entry::LogEntry {
             id: uuid::Uuid::new_v4(),
             timestamp: chrono::Utc::now(),
             level: "info".into(),
@@ -167,7 +167,7 @@ async fn serve_http(state: AppState, config: &AppConfig, pg_pool: PgPool) {
 
     // Log arret en BDD
     {
-        let entry = sentinel_core::domain::entities::ops::log_entry::LogEntry {
+        let entry = ops_core::domain::entities::log_entry::LogEntry {
             id: uuid::Uuid::new_v4(),
             timestamp: chrono::Utc::now(),
             level: "warn".into(),

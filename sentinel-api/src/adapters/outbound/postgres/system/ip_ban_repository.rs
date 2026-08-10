@@ -6,9 +6,9 @@ use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 
 use super::super::pg_err_ctx;
-use sentinel_core::domain::entities::ops::ip_ban::ManualIpBan;
+use ops_core::domain::entities::ip_ban::ManualIpBan;
 use sentinel_core::domain::errors::DomainError;
-use sentinel_core::ports::outbound::ops::ip_ban_repository::IpBanRepository;
+use ops_core::ports::outbound::ip_ban_repository::IpBanRepository;
 
 const TBL: &str = "manual_ip_bans";
 fn pg_err(e: sqlx::Error) -> DomainError {

@@ -23,7 +23,7 @@ use crate::adapters::inbound::http::errors::ApiError;
 use crate::adapters::inbound::http::helpers::ok_response;
 use crate::adapters::inbound::http::middleware::superadmin::WebUser;
 use crate::bootstrap::state::OpsState;
-use sentinel_core::domain::entities::ops::docker_host::compute_overview;
+use ops_core::domain::entities::docker_host::compute_overview;
 
 /// Helper d'audit log pour les actions Docker destructives.
 /// Tracking via tracing::info! structure -> apparait dans les logs API
@@ -426,7 +426,7 @@ pub async fn list_networks(
 // ── Prune ─────────────────────────────────────────────────────────────────
 
 fn prune_dto(
-    o: sentinel_core::domain::entities::ops::docker_host::PruneOutcome,
+    o: ops_core::domain::entities::docker_host::PruneOutcome,
 ) -> PruneResultDto {
     PruneResultDto {
         deleted: o.deleted,
@@ -535,7 +535,7 @@ pub async fn prune_system(
     let volumes = if q.volumes.unwrap_or(false) {
         state.docker_host.prune_volumes().await?
     } else {
-        sentinel_core::domain::entities::ops::docker_host::PruneOutcome::default()
+        ops_core::domain::entities::docker_host::PruneOutcome::default()
     };
 
     let total = containers.space_reclaimed_bytes

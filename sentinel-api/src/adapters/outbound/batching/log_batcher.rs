@@ -5,9 +5,9 @@
 
 use crate::adapters::outbound::postgres::system::log_repository::PgLogRepository;
 use async_trait::async_trait;
-use sentinel_core::domain::entities::ops::log_entry::LogEntry;
+use ops_core::domain::entities::log_entry::LogEntry;
 use sentinel_core::domain::errors::DomainError;
-use sentinel_core::ports::outbound::ops::log_repository::LogRepository;
+use ops_core::ports::outbound::log_repository::LogRepository;
 use sqlx::PgPool;
 use sqlx::QueryBuilder;
 

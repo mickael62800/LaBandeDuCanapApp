@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::adapters::inbound::http::errors::ApiError;
 use crate::adapters::inbound::http::middleware::superadmin::WebUser;
 use crate::bootstrap::state::OpsState;
-use sentinel_core::domain::entities::ops::alert_rule::{AlertRule, AlertRuleUpdate};
+use ops_core::domain::entities::alert_rule::{AlertRule, AlertRuleUpdate};
 
 #[derive(Serialize)]
 pub struct AlertRuleDto {

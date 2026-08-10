@@ -6,7 +6,7 @@ use sentinel_core::domain::entities::moderation::action::applied::ModerationActi
 use sentinel_core::domain::entities::moderation::detection_flags::DetectionFlags;
 use sentinel_core::domain::entities::moderation::infraction::Infraction;
 use sentinel_core::domain::entities::system::guild::Guild;
-use sentinel_core::domain::entities::ops::log_entry::LogEntry;
+use ops_core::domain::entities::log_entry::LogEntry;
 use sentinel_core::domain::entities::system::rule::Rule;
 use sentinel_core::domain::enums::moderation::action::Action;
 use sentinel_core::domain::enums::moderation::flag_type::FlagType;

@@ -226,11 +226,11 @@ impl CachePort for MockCache {
 
 struct MockServiceRegistry;
 #[async_trait::async_trait]
-impl crate::ports::outbound::ops::service_registry::ServiceRegistry for MockServiceRegistry {
+impl ops_core::ports::outbound::service_registry::ServiceRegistry for MockServiceRegistry {
     async fn count_services(
         &self,
-    ) -> crate::ports::outbound::ops::service_registry::ServiceCounts {
-        crate::ports::outbound::ops::service_registry::ServiceCounts {
+    ) -> ops_core::ports::outbound::service_registry::ServiceCounts {
+        ops_core::ports::outbound::service_registry::ServiceCounts {
             bots_online: 0,
             bots_total: 0,
             workers_online: 0,

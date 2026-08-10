@@ -22,7 +22,7 @@ bollard = "0.18"
 futures-util = { workspace = true }
 # Uniquement pour les types de domaine (`DockerHost`, `ContainerSummary`, ...) :
 # l'agent et son appelant partagent le meme vocabulaire, sans DTO miroir.
-sentinel-core = { workspace = true }
+ops-core = { workspace = true }
 
 [lints]
 workspace = true

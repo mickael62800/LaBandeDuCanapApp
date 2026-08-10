@@ -5,9 +5,9 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 
-use super::super::pg_err_ctx;
+use super::pg_err_ctx;
 use ops_core::domain::entities::ip_ban::ManualIpBan;
-use sentinel_core::domain::errors::DomainError;
+use ops_core::domain::errors::DomainError;
 use ops_core::ports::outbound::ip_ban_repository::IpBanRepository;
 
 const TBL: &str = "manual_ip_bans";

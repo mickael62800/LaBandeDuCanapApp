@@ -1,7 +1,6 @@
 pub mod bot_config;
 pub mod bot_persistence;
 pub mod cache_stats;
-pub mod docker;
 pub mod exports;
 pub mod guild_reset;
 pub mod health;
@@ -12,8 +11,6 @@ pub mod nexus_access;
 pub mod oauth;
 pub mod public_site;
 pub mod quarantine;
-pub mod security;
-pub mod server_events;
 pub mod slowmode;
 pub mod tickets;
 

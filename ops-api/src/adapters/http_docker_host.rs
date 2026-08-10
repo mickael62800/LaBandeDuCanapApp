@@ -22,7 +22,7 @@ use ops_core::domain::entities::docker_host::{
     ContainerSummary, DiskUsage, DockerVersionInfo, ImageSummary, NetworkSummary, PruneOutcome,
     VolumeSummary,
 };
-use sentinel_core::domain::errors::DomainError;
+use ops_core::domain::errors::DomainError;
 use ops_core::ports::outbound::docker_host::DockerHost;
 use serde::de::DeserializeOwned;
 

@@ -8,7 +8,7 @@ use std::path::Path;
 
 use async_trait::async_trait;
 
-use sentinel_core::domain::errors::DomainError;
+use ops_core::domain::errors::DomainError;
 use ops_core::ports::outbound::host_ban_queue::HostBanQueue;
 
 const BANS_PENDING_PATH: &str = "/var/lib/sentinel/bans-pending.txt";

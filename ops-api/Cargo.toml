@@ -21,6 +21,14 @@ async-trait = { workspace = true }
 chrono = { workspace = true }
 platform-common-api = { workspace = true }
 ops-core = { workspace = true }
+# Client du docker-agent + webhook Discord des alertes.
+reqwest = { workspace = true }
+# Deduplication des alertes (cle a TTL = cooldown de la regle).
+redis = { workspace = true }
+# Sondes CPU/RAM/disque de l'hote pour l'evaluation des regles.
+# Lecture de l'expiration du certificat TLS de l'hote.
+x509-parser = "0.16"
+sysinfo = { version = "0.33", default-features = false, features = ["system", "disk"] }
 
 [lints]
 workspace = true

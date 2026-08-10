@@ -25,7 +25,6 @@ mod app_state;
 // qui ne doit jamais dépendre de l'inbound).
 pub mod backup_scheduler;
 mod connections;
-pub mod container_monitor;
 mod inference;
 pub mod state;
 mod workers;

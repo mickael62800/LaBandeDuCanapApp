@@ -5,7 +5,7 @@
 use async_trait::async_trait;
 
 use ops_core::domain::entities::host_probe::HostProbe;
-use sentinel_core::domain::errors::DomainError;
+use ops_core::domain::errors::DomainError;
 use ops_core::ports::outbound::host_probe_reader::HostProbeReader;
 
 #[derive(Default)]

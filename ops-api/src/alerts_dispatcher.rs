@@ -18,7 +18,7 @@ use redis::AsyncCommands;
 use sqlx::PgPool;
 use tokio::sync::RwLock;
 
-use crate::bootstrap::container_monitor::ContainerMonitorState;
+use ops_core::domain::entities::container_monitor::{ContainerChangeKind, ContainerMonitorState};
 
 /// Une regle d'alerte chargee depuis la DB.
 #[derive(Debug, Clone, sqlx::FromRow)]
@@ -222,10 +222,10 @@ async fn collect_metrics(
     if let Some(cs) = container_state {
         let s = cs.read().await;
         for c in &s.recent_changes {
-            if c.kind == "removed" || c.kind == "image_changed" {
+            if matches!(c.kind, ContainerChangeKind::Removed | ContainerChangeKind::ImageChanged) {
                 container_changes.push((
                     c.container.name.clone(),
-                    c.kind.clone(),
+                    c.kind.as_action().to_owned(),
                     c.timestamp.clone(),
                 ));
             }

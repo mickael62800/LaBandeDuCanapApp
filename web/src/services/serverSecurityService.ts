@@ -1,4 +1,4 @@
-import { httpDelete, httpGet, httpPost } from "@/api/http";
+import { opsDelete, opsGet, opsPost } from "@/api/opsHttp";
 
 export interface ServerEventDto {
   id: string;
@@ -12,7 +12,7 @@ export interface ServerEventDto {
 }
 
 /**
- * Wrapper pour les endpoints /api/security/* (page Securite serveur).
+ * Wrapper pour les endpoints /security/* (page Securite serveur).
  * Distinct de securityService.ts qui gere les events Discord (raid/altdetect).
  */
 
@@ -270,78 +270,78 @@ export interface CleanupResponse {
 
 export const serverSecurityService = {
   topIps(window: SecurityWindow = "1h", limit = 20): Promise<TopIpEntry[]> {
-    return httpGet(`/api/security/top-ips?window=${window}&limit=${limit}`);
+    return opsGet(`/security/top-ips?window=${window}&limit=${limit}`);
   },
   authFailures(window: SecurityWindow = "24h", limit = 100): Promise<AuthFailureEntry[]> {
-    return httpGet(`/api/security/auth-failures?window=${window}&limit=${limit}`);
+    return opsGet(`/security/auth-failures?window=${window}&limit=${limit}`);
   },
   bannedIps(): Promise<BannedIpsResponse> {
-    return httpGet("/api/security/banned-ips");
+    return opsGet("/security/banned-ips");
   },
   auditLogs(params: { guild_id?: string; event_type_prefix?: string; limit?: number } = {}): Promise<AuditEntry[]> {
     const u = new URLSearchParams();
     if (params.guild_id) u.set("guild_id", params.guild_id);
     if (params.event_type_prefix) u.set("event_type_prefix", params.event_type_prefix);
     u.set("limit", String(params.limit ?? 100));
-    return httpGet(`/api/security/audit-logs?${u.toString()}`);
+    return opsGet(`/security/audit-logs?${u.toString()}`);
   },
   tlsCert(): Promise<TlsCertInfo> {
-    return httpGet("/api/security/tls-cert");
+    return opsGet("/security/tls-cert");
   },
   trafficTrend(window: SecurityWindow | "6h" = "24h", bucket_minutes = 5): Promise<TrafficTrendResponse> {
-    return httpGet(`/api/security/traffic-trend?window=${window}&bucket_minutes=${bucket_minutes}`);
+    return opsGet(`/security/traffic-trend?window=${window}&bucket_minutes=${bucket_minutes}`);
   },
   lastLogins(limit = 20): Promise<SuccessfulLoginEntry[]> {
-    return httpGet(`/api/security/last-logins?limit=${limit}`);
+    return opsGet(`/security/last-logins?limit=${limit}`);
   },
   sshFailures(): Promise<SshFailuresResponse> {
-    return httpGet("/api/security/ssh-failures");
+    return opsGet("/security/ssh-failures");
   },
   diskTrend(): Promise<DiskTrendResponse> {
-    return httpGet("/api/security/disk-trend");
+    return opsGet("/security/disk-trend");
   },
   connections(): Promise<ConnectionsResponse> {
-    return httpGet("/api/security/connections");
+    return opsGet("/security/connections");
   },
   openPorts(): Promise<OpenPortsResponse> {
-    return httpGet("/api/security/open-ports");
+    return opsGet("/security/open-ports");
   },
   trivy(): Promise<TrivyResponse> {
-    return httpGet("/api/security/trivy");
+    return opsGet("/security/trivy");
   },
   fileIntegrity(): Promise<FileIntegrityResponse> {
-    return httpGet("/api/security/file-integrity");
+    return opsGet("/security/file-integrity");
   },
   outbound(): Promise<OutboundResponse> {
-    return httpGet("/api/security/outbound");
+    return opsGet("/security/outbound");
   },
   nginxSuspicious(): Promise<SuspiciousResponse> {
-    return httpGet("/api/security/nginx-suspicious");
+    return opsGet("/security/nginx-suspicious");
   },
   tlsErrors(): Promise<TlsErrorsResponse> {
-    return httpGet("/api/security/tls-errors");
+    return opsGet("/security/tls-errors");
   },
   geoip(ips: string[]): Promise<GeoIpEntry[]> {
-    return httpGet(`/api/security/geoip?ips=${encodeURIComponent(ips.join(","))}`);
+    return opsGet(`/security/geoip?ips=${encodeURIComponent(ips.join(","))}`);
   },
   containerChanges(): Promise<ContainerChangesResponse> {
-    return httpGet("/api/security/container-changes");
+    return opsGet("/security/container-changes");
   },
   banIp(ip: string, reason?: string): Promise<{ ok: boolean; message: string }> {
-    return httpPost("/api/security/ban-ip", { ip, reason });
+    return opsPost("/security/ban-ip", { ip, reason });
   },
   unbanIp(ip: string, reason?: string): Promise<{ ok: boolean; message: string }> {
-    return httpPost("/api/security/unban-ip", { ip, reason });
+    return opsPost("/security/unban-ip", { ip, reason });
   },
   manualBans(): Promise<ManualBanEntry[]> {
-    return httpGet("/api/security/manual-bans");
+    return opsGet("/security/manual-bans");
   },
   serverEvents(params: { action_prefix?: string; severity?: string; limit?: number } = {}): Promise<ServerEventDto[]> {
     const u = new URLSearchParams();
     if (params.action_prefix) u.set("action_prefix", params.action_prefix);
     if (params.severity) u.set("severity", params.severity);
     u.set("limit", String(params.limit ?? 100));
-    return httpGet(`/api/security/server-events?${u.toString()}`);
+    return opsGet(`/security/server-events?${u.toString()}`);
   },
   cleanup(opts: {
     older_than_days?: number;
@@ -359,6 +359,6 @@ export const serverSecurityService = {
     if (opts.include_successful_logins !== undefined) u.set("include_successful_logins", String(opts.include_successful_logins));
     if (opts.include_manual_bans !== undefined) u.set("include_manual_bans", String(opts.include_manual_bans));
     const qs = u.toString();
-    return httpDelete(`/api/security/cleanup${qs ? `?${qs}` : ""}`);
+    return opsDelete(`/security/cleanup${qs ? `?${qs}` : ""}`);
   },
 };

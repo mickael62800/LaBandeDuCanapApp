@@ -2,8 +2,6 @@ pub mod audit;
 pub mod batching;
 pub mod deepseek_moderation_service;
 pub mod discord_api;
-pub mod geoip;
-pub mod host_security;
 pub mod inference_service;
 pub mod job_client;
 pub mod nexus_games;

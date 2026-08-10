@@ -457,56 +457,6 @@ pub async fn build_app_state(
             ),
         );
 
-    // Bans IP (panel securite) : repo DB + file-shim host + reader fail2ban.
-    let ip_ban_repo: Arc<
-        dyn ops_core::ports::outbound::ip_ban_repository::IpBanRepository,
-    > = Arc::new(
-        crate::adapters::outbound::postgres::system::ip_ban_repository::PgIpBanRepository::new(
-            pg_pool.clone(),
-        ),
-    );
-    let host_ban_queue: Arc<
-        dyn ops_core::ports::outbound::host_ban_queue::HostBanQueue,
-    > = Arc::new(crate::adapters::outbound::host_security::ban_queue::FileBanQueue::new());
-    let fail2ban_reader: Arc<
-        dyn ops_core::ports::outbound::host_ban_queue::Fail2banStatusReader,
-    > = Arc::new(crate::adapters::outbound::host_security::fail2ban::Fail2banFileReader::new());
-    let ip_bans_uc: Arc<
-        dyn ops_core::ports::inbound::manage_ip_bans::ManageIpBansUseCase,
-    > = Arc::new(
-        ops_core::application::manage_ip_bans_service::ManageIpBansService::new(
-            ip_ban_repo,
-            host_ban_queue,
-            fail2ban_reader,
-        ),
-    );
-
-    // Sondes de securite host (JSON cron) : reader fichier + use case pass-through.
-    let host_probe_reader: Arc<
-        dyn ops_core::ports::outbound::host_probe_reader::HostProbeReader,
-    > = Arc::new(
-        crate::adapters::outbound::host_security::probe_reader::FileHostProbeReader::new(),
-    );
-    let host_probe_uc: Arc<
-        dyn ops_core::ports::inbound::read_host_probe::ReadHostProbeUseCase,
-    > = Arc::new(
-        ops_core::application::read_host_probe_service::ReadHostProbeService::new(
-            host_probe_reader,
-        ),
-    );
-
-    // Analyse des logs securite (top IPs, echecs d'auth, trafic).
-    let security_log_repo: Arc<dyn ops_core::ports::outbound::security_log_repository::SecurityLogRepository> =
-        Arc::new(crate::adapters::outbound::postgres::system::security_log_repository::PgSecurityLogRepository::new(pg_pool.clone()));
-    let security_logs_uc: Arc<dyn ops_core::ports::inbound::read_security_logs::ReadSecurityLogsUseCase> =
-        Arc::new(ops_core::application::read_security_logs_service::ReadSecurityLogsService::new(security_log_repo));
-
-    // Audit & maintenance securite (journal d'audit, logins, purge des logs).
-    let security_audit_repo: Arc<dyn ops_core::ports::outbound::security_audit_repository::SecurityAuditRepository> =
-        Arc::new(crate::adapters::outbound::postgres::system::security_audit_repository::PgSecurityAuditRepository::new(pg_pool.clone()));
-    let security_audit_uc: Arc<dyn ops_core::ports::inbound::manage_security_audit::ManageSecurityAuditUseCase> =
-        Arc::new(ops_core::application::manage_security_audit_service::ManageSecurityAuditService::new(security_audit_repo));
-
     // OAuth Discord web : repo Postgres (sessions + logins) + use case. Le SQL
     // vit dans l'adapter ; l'echange HTTP avec Discord + CSRF/cookies restent
     // au handler (concern HTTP).
@@ -575,44 +525,9 @@ pub async fn build_app_state(
         Arc::new(sentinel_core::application::system::manage_bot_persistence_service::ManageBotPersistenceService::new(
             bot_persistence_repo,
         ));
-
-    // Audit serveur (server_events) : repo Postgres + use case (bornage des
-    // filtres de lecture). Le handler ne fait que parse/RBAC/map.
-    let server_event_repo: Arc<dyn ops_core::ports::outbound::server_event_repository::ServerEventRepository> =
-        Arc::new(crate::adapters::outbound::postgres::system::server_event_repository::PgServerEventRepository::new(pg_pool.clone()));
-    let server_events_uc: Arc<dyn ops_core::ports::inbound::manage_server_events::ManageServerEventsUseCase> =
-        Arc::new(ops_core::application::manage_server_events_service::ManageServerEventsService::new(
-            server_event_repo.clone(),
-        ));
-
     // Daemon Docker de l'hote, via `docker-agent`. Ce processus ne monte plus
     // `/var/run/docker.sock` : le socket equivaut a un acces root, et il n'a
     // rien a faire dans l'API qui sert aussi l'OAuth et la moderation.
-    let docker_host: Arc<dyn ops_core::ports::outbound::docker_host::DockerHost> =
-        Arc::new(crate::adapters::outbound::system::docker_host::HttpDockerHost::new(
-            config.docker_agent_url.clone(),
-            config.docker_agent_token.clone(),
-        ));
-
-    // Cert TLS + GeoIP (infra externe : fichier/openssl + http ip-api).
-    let tls_cert_reader: Arc<
-        dyn ops_core::ports::outbound::tls_cert_reader::TlsCertReader,
-    > = Arc::new(crate::adapters::outbound::host_security::tls_cert::FileTlsCertReader::new());
-    let tls_cert_uc: Arc<
-        dyn ops_core::ports::inbound::read_tls_cert::ReadTlsCertUseCase,
-    > = Arc::new(
-        ops_core::application::read_tls_cert_service::ReadTlsCertService::new(
-            tls_cert_reader,
-        ),
-    );
-    let geoip_lookup: Arc<dyn ops_core::ports::outbound::geoip_lookup::GeoIpLookup> =
-        Arc::new(crate::adapters::outbound::geoip::IpApiGeoIpLookup::new());
-    let geoip_uc: Arc<dyn ops_core::ports::inbound::lookup_geoip::LookupGeoIpUseCase> =
-        Arc::new(
-            ops_core::application::lookup_geoip_service::LookupGeoIpService::new(
-                geoip_lookup,
-            ),
-        );
 
     // Sync Discord <-> Web (Phase 1 — cf. SYNC_DISCORD_WEB_DESIGN.md).
     // Repo outbound + use case inbound : on injecte uniquement le use
@@ -721,21 +636,9 @@ pub async fn build_app_state(
         system_probe: Arc::new(
             crate::adapters::outbound::system::pg_probe::PgSystemProbe::new(pg_pool.clone()),
         ),
-        docker_host: docker_host.clone(),
-        container_monitor: Some(crate::bootstrap::container_monitor::spawn(
-            docker_host.clone(),
-            server_event_repo.clone(),
-        )),
         service_registry: service_registry.clone(),
         system_logs_uc: system_logs_uc.clone(),
         log_repo: log_repo.clone(),
-        server_events_uc: server_events_uc.clone(),
-        security_logs_uc: security_logs_uc.clone(),
-        security_audit_uc: security_audit_uc.clone(),
-        host_probe_uc: host_probe_uc.clone(),
-        tls_cert_uc: tls_cert_uc.clone(),
-        ip_bans_uc: ip_bans_uc.clone(),
-        geoip_uc: geoip_uc.clone(),
         rate_limiter: Some(Arc::new(
             crate::adapters::outbound::system::rate_limiter::RateLimiter::from_env(),
         )),

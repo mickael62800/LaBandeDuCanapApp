@@ -4,7 +4,7 @@
 use async_trait::async_trait;
 
 use ops_core::domain::entities::tls_cert::TlsCertInfo;
-use sentinel_core::domain::errors::DomainError;
+use ops_core::domain::errors::DomainError;
 use ops_core::ports::outbound::tls_cert_reader::TlsCertReader;
 
 #[derive(Default)]

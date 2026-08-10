@@ -4,7 +4,7 @@
 use async_trait::async_trait;
 
 use ops_core::domain::entities::geoip::GeoIpEntry;
-use sentinel_core::domain::errors::DomainError;
+use ops_core::domain::errors::DomainError;
 use ops_core::ports::outbound::geoip_lookup::GeoIpLookup;
 
 /// Forme renvoyee par ip-api.com (champs renommes -> snake_case domaine).

@@ -7,29 +7,21 @@
 //!   - cert TLS : lecture du fichier /etc/letsencrypt/live/{domain}/cert.pem
 //!   - fail2ban : non implemente (necessite installation host)
 
+use axum::http::HeaderMap;
+use crate::authorize;
 use axum::extract::Query;
 use axum::extract::State;
-use axum::http::StatusCode;
-use axum::Extension;
 use axum::Json;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::adapters::inbound::http::errors::ApiError;
-use crate::adapters::inbound::http::middleware::superadmin::WebUser;
-use crate::bootstrap::state::OpsState;
+use crate::ApiError;
+
+use crate::AppState;
 use ops_core::domain::entities::host_probe::HostProbe;
 use ops_core::domain::entities::security_audit::{AuditLogFilter, CleanupOptions};
 use ops_core::domain::entities::security_log::LogWindow;
-use sentinel_core::domain::errors::DomainError;
 
-fn forbid(s: StatusCode, msg: &str) -> ApiError {
-    ApiError(if s == StatusCode::FORBIDDEN {
-        DomainError::Forbidden(msg.into())
-    } else {
-        DomainError::Internal(msg.into())
-    })
-}
 
 // ── 1. Top IPs par requetes ─────────────────────────────────────────────
 
@@ -49,18 +41,18 @@ pub struct TopIpEntry {
 }
 
 pub async fn top_ips(
-    State(state): State<OpsState>,
-    _user: Option<Extension<WebUser>>,
+    State(state): State<AppState>,
+    headers: HeaderMap,
     Query(q): Query<WindowQuery>,
 ) -> Result<Json<Vec<TopIpEntry>>, ApiError> {
+    authorize(&headers, &state.config)?;
     let window = LogWindow::parse(q.window.as_deref().unwrap_or("1h"));
-    let limit = crate::adapters::inbound::http::helpers::normalize_in(q.limit, 20, 1, 100);
+    let limit = crate::handlers::normalize_in(q.limit, 20, 1, 100);
 
     let rows = state
         .security_logs_uc
         .top_ips(window, limit)
-        .await
-        .map_err(ApiError)?;
+        .await?;
     Ok(Json(
         rows.into_iter()
             .map(|r| TopIpEntry {
@@ -86,18 +78,18 @@ pub struct AuthFailureEntry {
 }
 
 pub async fn auth_failures(
-    State(state): State<OpsState>,
-    _user: Option<Extension<WebUser>>,
+    State(state): State<AppState>,
+    headers: HeaderMap,
     Query(q): Query<WindowQuery>,
 ) -> Result<Json<Vec<AuthFailureEntry>>, ApiError> {
+    authorize(&headers, &state.config)?;
     let window = LogWindow::parse(q.window.as_deref().unwrap_or("24h"));
-    let limit = crate::adapters::inbound::http::helpers::normalize_in(q.limit, 100, 1, 500);
+    let limit = crate::handlers::normalize_in(q.limit, 100, 1, 500);
 
     let rows = state
         .security_logs_uc
         .auth_failures(window, limit)
-        .await
-        .map_err(ApiError)?;
+        .await?;
     Ok(Json(
         rows.into_iter()
             .map(|r| AuthFailureEntry {
@@ -130,10 +122,11 @@ pub struct BannedIpsResponse {
 }
 
 pub async fn banned_ips(
-    State(state): State<OpsState>,
-    _user: Option<Extension<WebUser>>,
+    State(state): State<AppState>,
+    headers: HeaderMap,
 ) -> Result<Json<BannedIpsResponse>, ApiError> {
-    let Some(status) = state.ip_bans_uc.fail2ban_status().await.map_err(ApiError)? else {
+    authorize(&headers, &state.config)?;
+    let Some(status) = state.ip_bans_uc.fail2ban_status().await? else {
         return Ok(Json(BannedIpsResponse {
             installed: false,
             updated_at: None,
@@ -187,20 +180,20 @@ pub struct AuditEntry {
 }
 
 pub async fn audit_logs(
-    State(state): State<OpsState>,
-    _user: Option<Extension<WebUser>>,
+    State(state): State<AppState>,
+    headers: HeaderMap,
     Query(q): Query<AuditQuery>,
 ) -> Result<Json<Vec<AuditEntry>>, ApiError> {
+    authorize(&headers, &state.config)?;
     let filter = AuditLogFilter {
         guild_id: q.guild_id,
         event_type_prefix: q.event_type_prefix,
-        limit: crate::adapters::inbound::http::helpers::normalize_in(q.limit, 100, 1, 500),
+        limit: crate::handlers::normalize_in(q.limit, 100, 1, 500),
     };
     let rows = state
         .security_audit_uc
         .audit_logs(filter)
-        .await
-        .map_err(ApiError)?;
+        .await?;
     Ok(Json(
         rows.into_iter()
             .map(|e| AuditEntry {
@@ -239,24 +232,21 @@ pub struct BanIpResponse {
 /// persistance + purge logs). Le handler ne fait que le gate, l'audit et le
 /// mapping de la reponse.
 pub async fn ban_ip(
-    State(state): State<OpsState>,
-    user: Option<Extension<WebUser>>,
+    State(state): State<AppState>,
+    headers: HeaderMap,
     Json(dto): Json<BanIpDto>,
 ) -> Result<Json<BanIpResponse>, ApiError> {
-    let actor = user
-        .as_ref()
-        .map(|r| r.0.discord_user_id.clone())
-        .unwrap_or_else(|| "unknown".to_string());
+    authorize(&headers, &state.config)?;
+    let actor = actor_from(&headers);
 
     let outcome = state
         .ip_bans_uc
         .ban(&dto.ip, dto.reason.clone(), &actor)
-        .await
-        .map_err(ApiError)?;
+        .await?;
 
     let ip = dto.ip.trim();
-    crate::adapters::inbound::http::handlers::system::server_events::record_server_event(
-        &state.server_events_uc,
+    record_event(
+        &state.server_events,
         &actor,
         None,
         "security.ban_ip",
@@ -278,24 +268,21 @@ pub async fn ban_ip(
 // ── Unban IP : retire une IP de la blocklist ────────────────────────────
 
 pub async fn unban_ip(
-    State(state): State<OpsState>,
-    user: Option<Extension<WebUser>>,
+    State(state): State<AppState>,
+    headers: HeaderMap,
     Json(dto): Json<BanIpDto>,
 ) -> Result<Json<BanIpResponse>, ApiError> {
-    let actor = user
-        .as_ref()
-        .map(|r| r.0.discord_user_id.clone())
-        .unwrap_or_else(|| "unknown".to_string());
+    authorize(&headers, &state.config)?;
+    let actor = actor_from(&headers);
 
     state
         .ip_bans_uc
         .unban(&dto.ip, dto.reason.clone(), &actor)
-        .await
-        .map_err(ApiError)?;
+        .await?;
 
     let ip = dto.ip.trim();
-    crate::adapters::inbound::http::handlers::system::server_events::record_server_event(
-        &state.server_events_uc,
+    record_event(
+        &state.server_events,
         &actor,
         None,
         "security.unban_ip",
@@ -319,15 +306,15 @@ pub async fn unban_ip(
 /// Helper : lit une sonde host via le use case et la deserialise dans le DTO
 /// de reponse. Toute l'infra (fichier, chemin) est dans l'adapter outbound.
 async fn read_probe<T: for<'de> serde::Deserialize<'de>>(
-    state: &OpsState,
+    state: &AppState,
     probe: HostProbe,
 ) -> Result<T, ApiError> {
-    let value = state.host_probe_uc.read(probe).await.map_err(ApiError)?;
+    let value = state.host_probe_uc.read(probe).await?;
     serde_json::from_value(value).map_err(|e| {
-        ApiError(DomainError::Internal(format!(
+        ApiError(axum::http::StatusCode::INTERNAL_SERVER_ERROR, format!(
             "parse {}: {e}",
             probe.feature()
-        )))
+        ))
     })
 }
 
@@ -347,9 +334,10 @@ pub struct SshFailuresResponse {
 }
 
 pub async fn ssh_failures(
-    State(state): State<OpsState>,
-    _user: Option<Extension<WebUser>>,
+    State(state): State<AppState>,
+    headers: HeaderMap,
 ) -> Result<Json<SshFailuresResponse>, ApiError> {
+    authorize(&headers, &state.config)?;
     Ok(Json(read_probe(&state, HostProbe::SshFailures).await?))
 }
 
@@ -369,9 +357,10 @@ pub struct DiskTrendResponse {
 }
 
 pub async fn disk_trend(
-    State(state): State<OpsState>,
-    _user: Option<Extension<WebUser>>,
+    State(state): State<AppState>,
+    headers: HeaderMap,
 ) -> Result<Json<DiskTrendResponse>, ApiError> {
+    authorize(&headers, &state.config)?;
     Ok(Json(read_probe(&state, HostProbe::DiskTrend).await?))
 }
 
@@ -391,9 +380,10 @@ pub struct ConnectionsResponse {
 }
 
 pub async fn active_connections(
-    State(state): State<OpsState>,
-    _user: Option<Extension<WebUser>>,
+    State(state): State<AppState>,
+    headers: HeaderMap,
 ) -> Result<Json<ConnectionsResponse>, ApiError> {
+    authorize(&headers, &state.config)?;
     Ok(Json(read_probe(&state, HostProbe::Connections).await?))
 }
 
@@ -413,9 +403,10 @@ pub struct OpenPortsResponse {
 }
 
 pub async fn open_ports(
-    State(state): State<OpsState>,
-    _user: Option<Extension<WebUser>>,
+    State(state): State<AppState>,
+    headers: HeaderMap,
 ) -> Result<Json<OpenPortsResponse>, ApiError> {
+    authorize(&headers, &state.config)?;
     Ok(Json(read_probe(&state, HostProbe::OpenPorts).await?))
 }
 
@@ -439,9 +430,10 @@ pub struct TrivyResponse {
 }
 
 pub async fn trivy_vulns(
-    State(state): State<OpsState>,
-    _user: Option<Extension<WebUser>>,
+    State(state): State<AppState>,
+    headers: HeaderMap,
 ) -> Result<Json<TrivyResponse>, ApiError> {
+    authorize(&headers, &state.config)?;
     Ok(Json(read_probe(&state, HostProbe::Trivy).await?))
 }
 
@@ -470,10 +462,11 @@ pub struct GeoIpEntry {
 }
 
 pub async fn geoip_lookup(
-    State(state): State<OpsState>,
-    _user: Option<Extension<WebUser>>,
+    State(state): State<AppState>,
+    headers: HeaderMap,
     Query(q): Query<GeoIpQuery>,
 ) -> Result<Json<Vec<GeoIpEntry>>, ApiError> {
+    authorize(&headers, &state.config)?;
     let ips: Vec<String> = q
         .ips
         .split(',')
@@ -483,7 +476,7 @@ pub async fn geoip_lookup(
         .map(|s| s.to_string())
         .collect();
 
-    let rows = state.geoip_uc.lookup(ips).await.map_err(ApiError)?;
+    let rows = state.geoip_uc.lookup(ips).await?;
     Ok(Json(
         rows.into_iter()
             .map(|e| GeoIpEntry {
@@ -523,21 +516,6 @@ pub struct ContainerChangesResponse {
     pub changes_24h: Vec<ContainerChangeEntry>,
 }
 
-pub async fn container_changes(
-    State(state): State<OpsState>,
-    _user: Option<Extension<WebUser>>,
-) -> Result<Json<ContainerChangesResponse>, ApiError> {
-    let monitor = state
-        .container_monitor
-        .clone()
-        .ok_or_else(|| ApiError(DomainError::Internal("container monitor desactive".into())))?;
-    let snap = monitor.read().await;
-    Ok(Json(ContainerChangesResponse {
-        last_check: snap.last_check.clone(),
-        current: snap.current.clone(),
-        changes_24h: snap.recent_changes.clone(),
-    }))
-}
 
 // Nginx suspicious patterns
 #[derive(Debug, Serialize, Deserialize)]
@@ -559,9 +537,10 @@ pub struct SuspiciousResponse {
 }
 
 pub async fn nginx_suspicious(
-    State(state): State<OpsState>,
-    _user: Option<Extension<WebUser>>,
+    State(state): State<AppState>,
+    headers: HeaderMap,
 ) -> Result<Json<SuspiciousResponse>, ApiError> {
+    authorize(&headers, &state.config)?;
     let mut data: SuspiciousResponse = read_probe(&state, HostProbe::NginxSuspicious).await?;
 
     // Filtre les entries dont l'IP est actuellement bannie manuellement.
@@ -601,14 +580,14 @@ pub struct ManualBanEntry {
 }
 
 pub async fn manual_bans(
-    State(state): State<OpsState>,
-    _user: Option<Extension<WebUser>>,
+    State(state): State<AppState>,
+    headers: HeaderMap,
 ) -> Result<Json<Vec<ManualBanEntry>>, ApiError> {
+    authorize(&headers, &state.config)?;
     let bans = state
         .ip_bans_uc
         .list_manual_bans()
-        .await
-        .map_err(ApiError)?;
+        .await?;
     Ok(Json(
         bans.into_iter()
             .map(|b| ManualBanEntry {
@@ -636,9 +615,10 @@ pub struct TlsErrorsResponse {
 }
 
 pub async fn tls_errors(
-    State(state): State<OpsState>,
-    _user: Option<Extension<WebUser>>,
+    State(state): State<AppState>,
+    headers: HeaderMap,
 ) -> Result<Json<TlsErrorsResponse>, ApiError> {
+    authorize(&headers, &state.config)?;
     Ok(Json(read_probe(&state, HostProbe::TlsErrors).await?))
 }
 
@@ -659,9 +639,10 @@ pub struct FileIntegrityResponse {
 }
 
 pub async fn file_integrity(
-    State(state): State<OpsState>,
-    _user: Option<Extension<WebUser>>,
+    State(state): State<AppState>,
+    headers: HeaderMap,
 ) -> Result<Json<FileIntegrityResponse>, ApiError> {
+    authorize(&headers, &state.config)?;
     Ok(Json(read_probe(&state, HostProbe::FileIntegrity).await?))
 }
 
@@ -681,9 +662,10 @@ pub struct OutboundResponse {
 }
 
 pub async fn outbound_connections(
-    State(state): State<OpsState>,
-    _user: Option<Extension<WebUser>>,
+    State(state): State<AppState>,
+    headers: HeaderMap,
 ) -> Result<Json<OutboundResponse>, ApiError> {
+    authorize(&headers, &state.config)?;
     Ok(Json(read_probe(&state, HostProbe::Outbound).await?))
 }
 
@@ -704,16 +686,16 @@ pub struct LimitQuery {
 }
 
 pub async fn last_successful_logins(
-    State(state): State<OpsState>,
-    _user: Option<Extension<WebUser>>,
+    State(state): State<AppState>,
+    headers: HeaderMap,
     Query(q): Query<LimitQuery>,
 ) -> Result<Json<Vec<SuccessfulLoginEntry>>, ApiError> {
-    let limit = crate::adapters::inbound::http::helpers::normalize_in(q.limit, 20, 1, 200);
+    authorize(&headers, &state.config)?;
+    let limit = crate::handlers::normalize_in(q.limit, 20, 1, 200);
     let rows = state
         .security_audit_uc
         .recent_logins(limit)
-        .await
-        .map_err(ApiError)?;
+        .await?;
     Ok(Json(
         rows.into_iter()
             .map(|l| SuccessfulLoginEntry {
@@ -755,19 +737,19 @@ pub struct TrafficTrendResponse {
 }
 
 pub async fn traffic_trend(
-    State(state): State<OpsState>,
-    _user: Option<Extension<WebUser>>,
+    State(state): State<AppState>,
+    headers: HeaderMap,
     Query(q): Query<TrafficTrendQuery>,
 ) -> Result<Json<TrafficTrendResponse>, ApiError> {
+    authorize(&headers, &state.config)?;
     let window = LogWindow::parse(q.window.as_deref().unwrap_or("24h"));
     let bucket_min =
-        (crate::adapters::inbound::http::helpers::normalize_in(q.bucket_minutes, 5, 1, 60)) as i64;
+        crate::handlers::normalize_in(q.bucket_minutes.map(i64::from), 5, 1, 60);
 
     let trend = state
         .security_logs_uc
         .traffic_trend(window, bucket_min)
-        .await
-        .map_err(ApiError)?;
+        .await?;
 
     Ok(Json(TrafficTrendResponse {
         datapoints: trend
@@ -827,15 +809,15 @@ pub struct CleanupResponse {
 /// Supprime les entrees de logs (table `logs` cat='api') et optionnellement
 /// `audit_logs`. Gate superadmin uniquement (operation destructive).
 pub async fn cleanup_security_logs(
-    State(state): State<OpsState>,
-    user: Option<Extension<WebUser>>,
+    State(state): State<AppState>,
+    headers: HeaderMap,
     Query(q): Query<CleanupQuery>,
 ) -> Result<Json<CleanupResponse>, ApiError> {
+    authorize(&headers, &state.config)?;
     // Endpoint cross-guild ultra-destructif (peut DELETE FROM audit_logs
-    // global). Reserve aux superadmins uniquement, pas aux admins de guild.
-    let Some(Extension(_ctx)) = &user else {
-        return Err(forbid(StatusCode::FORBIDDEN, "auth requise"));
-    };
+    // global). L'acces est deja garde par la passerelle nginx, qui n'admet
+    // que les superadmins : ops-api n'a pas de notion d'utilisateur a
+    // reverifier.
 
     let options = CleanupOptions {
         older_than_days: q.older_than_days.unwrap_or(0).max(0),
@@ -849,13 +831,9 @@ pub async fn cleanup_security_logs(
     let report = state
         .security_audit_uc
         .cleanup(options.clone())
-        .await
-        .map_err(ApiError)?;
+        .await?;
 
-    let actor = user
-        .as_ref()
-        .map(|r| r.0.discord_user_id.as_str())
-        .unwrap_or("unknown");
+    let actor = actor_from(&headers);
     tracing::info!(
         target: "audit::security",
         actor = actor,
@@ -867,9 +845,9 @@ pub async fn cleanup_security_logs(
         days_kept = options.older_than_days,
         "security cleanup executed"
     );
-    crate::adapters::inbound::http::handlers::system::server_events::record_server_event(
-        &state.server_events_uc,
-        actor,
+    record_event(
+        &state.server_events,
+        &actor,
         None,
         "security.cleanup",
         Some(&format!("days={}", options.older_than_days)),
@@ -921,10 +899,11 @@ pub struct TlsCertInfo {
 }
 
 pub async fn tls_cert(
-    State(state): State<OpsState>,
-    _user: Option<Extension<WebUser>>,
+    State(state): State<AppState>,
+    headers: HeaderMap,
 ) -> Result<Json<TlsCertInfo>, ApiError> {
-    let info = state.tls_cert_uc.read().await.map_err(ApiError)?;
+    authorize(&headers, &state.config)?;
+    let info = state.tls_cert_uc.read().await?;
     Ok(Json(TlsCertInfo {
         domain: info.domain,
         issuer: info.issuer,
@@ -935,4 +914,38 @@ pub async fn tls_cert(
         is_expired: info.is_expired,
         is_warning: info.is_warning,
     }))
+}
+
+/// Journalise une action d'exploitation, sans jamais la faire echouer.
+///
+/// Une action de securite qui a REUSSI ne doit pas remonter une erreur parce
+/// que sa trace n'a pas pu s'ecrire : on prefere perdre la ligne de journal
+/// que faire croire a l'operateur que le bannissement n'a pas eu lieu.
+async fn record_event(
+    repo: &std::sync::Arc<dyn ops_core::ports::outbound::server_event_repository::ServerEventRepository>,
+    actor: &str,
+    actor_name: Option<&str>,
+    action: &str,
+    target: Option<&str>,
+    severity: &str,
+    details: serde_json::Value,
+) {
+    if let Err(error) = repo
+        .record(actor, actor_name, action, target, severity, details)
+        .await
+    {
+        tracing::warn!(%error, action, "journalisation d'un evenement impossible");
+    }
+}
+/// Identifiant Discord de l'operateur, remonte par nginx (X-Actor-Id).
+///
+/// Sans cette remontee, l'audit des bannissements et des purges perdrait son
+/// auteur : on saurait qu'une IP a ete bannie, jamais par qui.
+fn actor_from(headers: &HeaderMap) -> String {
+    headers
+        .get("x-actor-id")
+        .and_then(|v| v.to_str().ok())
+        .filter(|v| !v.is_empty())
+        .unwrap_or("inconnu")
+        .to_owned()
 }

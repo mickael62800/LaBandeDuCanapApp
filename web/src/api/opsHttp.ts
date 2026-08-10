@@ -71,3 +71,9 @@ export const opsGet = <T>(path: string) => request<T>("GET", path);
 
 export const opsPatch = <T>(path: string, body?: unknown) =>
   request<T>("PATCH", path, body);
+
+export const opsPost = <T>(path: string, body?: unknown) =>
+  request<T>("POST", path, body);
+
+export const opsDelete = <T>(path: string, body?: unknown) =>
+  request<T>("DELETE", path, body);

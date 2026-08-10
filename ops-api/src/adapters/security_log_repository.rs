@@ -8,11 +8,11 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 
-use super::super::pg_err_ctx;
+use super::pg_err_ctx;
 use ops_core::domain::entities::security_log::{
     AuthFailure, LogWindow, TopIp, TrafficPoint,
 };
-use sentinel_core::domain::errors::DomainError;
+use ops_core::domain::errors::DomainError;
 use ops_core::ports::outbound::security_log_repository::SecurityLogRepository;
 
 const TBL: &str = "logs";

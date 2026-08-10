@@ -5,18 +5,18 @@
 //! Helper `record_server_event` : ecriture best-effort (log l'erreur sans bloquer
 //! l'action principale de l'appelant).
 
+use axum::http::HeaderMap;
+use crate::authorize;
 use std::sync::Arc;
 
 use axum::extract::Query;
 use axum::extract::State;
-use axum::Extension;
 use axum::Json;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::adapters::inbound::http::errors::ApiError;
-use crate::adapters::inbound::http::middleware::superadmin::WebUser;
-use crate::bootstrap::state::OpsState;
+use crate::ApiError;
+use crate::AppState;
 use ops_core::ports::inbound::manage_server_events::ManageServerEventsUseCase;
 
 /// Insere un event serveur via le use case. Best-effort : si echec, on log
@@ -65,10 +65,12 @@ pub struct ServerEventDto {
 }
 
 pub async fn list_server_events(
-    State(state): State<OpsState>,
-    _user: Option<Extension<WebUser>>,
+    State(state): State<AppState>,
+    headers: HeaderMap,
+
     Query(q): Query<ServerEventsQuery>,
 ) -> Result<Json<Vec<ServerEventDto>>, ApiError> {
+    authorize(&headers, &state.config)?;
     let events = state
         .server_events_uc
         .list(q.action_prefix, q.severity, q.limit)

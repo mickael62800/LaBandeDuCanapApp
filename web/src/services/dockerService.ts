@@ -1,4 +1,4 @@
-import { httpDelete, httpGet, httpPost } from "@/api/http";
+import { opsDelete, opsGet, opsPost } from "@/api/opsHttp";
 
 export interface DockerOverview {
   version: string;
@@ -86,59 +86,59 @@ export interface PruneSystemResult {
 
 export const dockerService = {
   getOverview(): Promise<DockerOverview> {
-    return httpGet("/api/docker/overview");
+    return opsGet("/docker/overview");
   },
   listContainers(all = true): Promise<DockerContainer[]> {
-    return httpGet(`/api/docker/containers?all=${all}`);
+    return opsGet(`/docker/containers?all=${all}`);
   },
   startContainer(id: string) {
-    return httpPost(`/api/docker/containers/${id}/start`);
+    return opsPost(`/docker/containers/${id}/start`);
   },
   stopContainer(id: string, timeout = 10) {
-    return httpPost(`/api/docker/containers/${id}/stop?timeout=${timeout}`);
+    return opsPost(`/docker/containers/${id}/stop?timeout=${timeout}`);
   },
   restartContainer(id: string, timeout = 10) {
-    return httpPost(`/api/docker/containers/${id}/restart?timeout=${timeout}`);
+    return opsPost(`/docker/containers/${id}/restart?timeout=${timeout}`);
   },
   removeContainer(id: string, force = false, volumes = false) {
-    return httpDelete(`/api/docker/containers/${id}?force=${force}&volumes=${volumes}`);
+    return opsDelete(`/docker/containers/${id}?force=${force}&volumes=${volumes}`);
   },
   containerLogs(id: string, tail = 200, timestamps = false): Promise<DockerLogs> {
-    return httpGet(`/api/docker/containers/${id}/logs?tail=${tail}&timestamps=${timestamps}`);
+    return opsGet(`/docker/containers/${id}/logs?tail=${tail}&timestamps=${timestamps}`);
   },
   listImages(): Promise<DockerImage[]> {
-    return httpGet("/api/docker/images");
+    return opsGet("/docker/images");
   },
   removeImage(id: string, force = false) {
-    return httpDelete(`/api/docker/images/${id}?force=${force}`);
+    return opsDelete(`/docker/images/${id}?force=${force}`);
   },
   listVolumes(): Promise<DockerVolume[]> {
-    return httpGet("/api/docker/volumes");
+    return opsGet("/docker/volumes");
   },
   removeVolume(name: string, force = false) {
-    return httpDelete(`/api/docker/volumes/${name}?force=${force}`);
+    return opsDelete(`/docker/volumes/${name}?force=${force}`);
   },
   listNetworks(): Promise<DockerNetwork[]> {
-    return httpGet("/api/docker/networks");
+    return opsGet("/docker/networks");
   },
   pruneContainers(): Promise<PruneResult> {
-    return httpPost("/api/docker/prune/containers");
+    return opsPost("/docker/prune/containers");
   },
   pruneImages(all = false): Promise<PruneResult> {
-    return httpPost(`/api/docker/prune/images?all=${all}`);
+    return opsPost(`/docker/prune/images?all=${all}`);
   },
   pruneVolumes(): Promise<PruneResult> {
-    return httpPost("/api/docker/prune/volumes");
+    return opsPost("/docker/prune/volumes");
   },
   pruneNetworks(): Promise<PruneResult> {
-    return httpPost("/api/docker/prune/networks");
+    return opsPost("/docker/prune/networks");
   },
   pruneBuildCache(all = true): Promise<PruneResult> {
-    return httpPost(`/api/docker/prune/build-cache?all=${all}`);
+    return opsPost(`/docker/prune/build-cache?all=${all}`);
   },
   pruneSystem(opts?: { volumes?: boolean; allImages?: boolean }): Promise<PruneSystemResult> {
     const v = opts?.volumes ?? false;
     const a = opts?.allImages ?? false;
-    return httpPost(`/api/docker/prune/system?volumes=${v}&all_images=${a}`);
+    return opsPost(`/docker/prune/system?volumes=${v}&all_images=${a}`);
   },
 };

@@ -11,6 +11,11 @@ pub struct AppConfig {
     /// Protection optionnelle de `/metrics`. Vide = ouvert sur le reseau
     /// interne, ou Prometheus scrape — comme les trois autres API.
     pub metrics_token: String,
+    /// Redis, pour la deduplication des alertes (cle a TTL = cooldown).
+    pub redis_url: String,
+    /// `docker-agent`, seul service a monter le socket de l'hote.
+    pub docker_agent_url: String,
+    pub docker_agent_token: String,
     pub rate_limit_per_sec: u64,
 }
 
@@ -34,6 +39,11 @@ impl AppConfig {
                 .map_err(|_| "OPS_DATABASE_URL manquante".to_owned())?,
             api_token,
             metrics_token: std::env::var("OPS_METRICS_TOKEN").unwrap_or_default(),
+            redis_url: std::env::var("REDIS_URL")
+                .unwrap_or_else(|_| "redis://redis:6379".into()),
+            docker_agent_url: std::env::var("DOCKER_AGENT_URL")
+                .unwrap_or_else(|_| "http://docker-agent:8095".into()),
+            docker_agent_token: std::env::var("DOCKER_AGENT_TOKEN").unwrap_or_default(),
             rate_limit_per_sec: std::env::var("OPS_API_RATE_LIMIT_PER_SEC")
                 .ok()
                 .and_then(|v| v.parse().ok())
@@ -48,6 +58,9 @@ impl AppConfig {
             database_url: "postgres://localhost/test".into(),
             api_token: "test-token-suffisamment-long".into(),
             metrics_token: String::new(),
+            redis_url: "redis://localhost".into(),
+            docker_agent_url: "http://localhost:8095".into(),
+            docker_agent_token: "t".into(),
             rate_limit_per_sec: 20,
         }
     }

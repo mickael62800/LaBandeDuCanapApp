@@ -2,7 +2,7 @@
 //!
 //! Probleme : Discord emet un `GUILD_MEMBER_UPDATE` par changement de role ->
 //! une carte par role ajoute/retire = spam. Solution : une SEULE carte par
-//! membre qui reste active pendant une fenetre glissante (defaut 5 min) et se
+//! membre qui reste active pendant une fenetre glissante (defaut 2 min) et se
 //! met a jour (edition) avec l'HISTORIQUE COMPLET des mouvements.
 //!
 //! L'ÉTAT (map fenêtrée, bornes, troncature) vit dans le core
@@ -12,7 +12,9 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-use sentinel_core::domain::services::audit::role_card::{clamp_role_log_window, RoleMovement};
+use sentinel_core::domain::services::audit::role_card::{
+    clamp_role_log_window, visible_movements, RoleMovement,
+};
 use serenity::all::{
     ChannelId, Context, CreateEmbed, CreateMessage, EditMessage, Member, MessageId, RoleId,
 };
@@ -29,7 +31,7 @@ impl TypeMapKey for RoleCardTrackerKey {
 }
 
 /// Nombre max de lignes affichees dans la carte (limite champ embed).
-const MAX_LINES: usize = 25;
+const MAX_MOVEMENTS: usize = 20;
 
 /// Traite un changement de roles : cree ou met a jour la carte vivante.
 pub async fn handle_role_change(
@@ -127,10 +129,11 @@ fn resolve_channel(cfg: &HashMap<String, String>) -> Option<ChannelId> {
 }
 
 fn build_embed(member: &Member, movements: &[RoleMovement], window: u64) -> CreateEmbed {
+    let (hidden, visible) = visible_movements(movements, MAX_MOVEMENTS);
     let mut added_roles: Vec<&str> = Vec::new();
     let mut removed_roles: Vec<&str> = Vec::new();
 
-    for (added, role) in movements {
+    for (added, role) in visible {
         if *added {
             added_roles.push(role);
         } else {
@@ -138,37 +141,77 @@ fn build_embed(member: &Member, movements: &[RoleMovement], window: u64) -> Crea
         }
     }
 
-    let added_body = if added_roles.is_empty() {
-        "Aucun".to_string()
+    let hidden_label = if hidden > 0 {
+        format!(
+            " · {hidden} plus ancienne{} masquée{}",
+            if hidden > 1 { "s" } else { "" },
+            if hidden > 1 { "s" } else { "" }
+        )
     } else {
-        added_roles
-            .iter()
-            .take(MAX_LINES / 2)
-            .map(|r| format!("➕ <@&{r}>"))
-            .collect::<Vec<_>>()
-            .join("\n")
+        String::new()
     };
+    let summary = format!(
+        "<@{}>\n`ID : {}` · **{} modification{}**{}",
+        member.user.id,
+        member.user.id,
+        movements.len(),
+        if movements.len() > 1 { "s" } else { "" },
+        hidden_label,
+    );
 
-    let removed_body = if removed_roles.is_empty() {
-        "Aucun".to_string()
-    } else {
-        removed_roles
-            .iter()
-            .take(MAX_LINES / 2)
-            .map(|r| format!("➖ <@&{r}>"))
-            .collect::<Vec<_>>()
-            .join("\n")
-    };
-
-    let minutes = window / 60;
-    crate::shared::embeds::info_embed("🎭 Rôles modifiés")
-        .field("Membre", format!("<@{}>", member.user.id), true)
-        .field("ID", member.user.id.to_string(), true)
-        .field("➕ Rôles ajoutés", added_body, true)
-        .field("➖ Rôles retirés", removed_body, true)
+    let mut embed = crate::shared::embeds::info_embed("🎭 Mise à jour des rôles")
+        .description(summary)
         .thumbnail(member.user.face())
-        .timestamp(serenity::model::Timestamp::now())
         .footer(serenity::builder::CreateEmbedFooter::new(format!(
-            "Audit | Sentinel — carte active {minutes} min",
-        )))
+            "Sentinel Audit · regroupement actif {}",
+            format_duration(window),
+        )));
+
+    if !added_roles.is_empty() {
+        embed = embed.field(
+            format!("🟢 Ajoutés · {}", added_roles.len()),
+            format_roles(&added_roles),
+            false,
+        );
+    }
+    if !removed_roles.is_empty() {
+        embed = embed.field(
+            format!("🔴 Retirés · {}", removed_roles.len()),
+            format_roles(&removed_roles),
+            false,
+        );
+    }
+    embed
+}
+
+fn format_roles(roles: &[&str]) -> String {
+    roles
+        .iter()
+        .map(|role| format!("• <@&{role}>"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn format_duration(seconds: u64) -> String {
+    if seconds % 60 == 0 {
+        format!("{} min", seconds / 60)
+    } else {
+        format!("{seconds} s")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn role_list_is_vertical_without_repeating_status_icons() {
+        assert_eq!(format_roles(&["12", "34"]), "• <@&12>\n• <@&34>");
+    }
+
+    #[test]
+    fn duration_is_compact_and_readable() {
+        assert_eq!(format_duration(120), "2 min");
+        assert_eq!(format_duration(45), "45 s");
+    }
 }

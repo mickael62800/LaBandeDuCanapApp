@@ -75,9 +75,9 @@ impl<K: Eq + Hash + Clone> RoleCardTracker<K> {
 }
 
 /// Fenêtre d'activité de la carte : configurée en secondes, bornée 10s..1h,
-/// défaut 5 min.
+/// défaut 2 min.
 pub fn clamp_role_log_window(configured: Option<u64>) -> u64 {
-    configured.unwrap_or(300).clamp(10, 3600)
+    configured.unwrap_or(120).clamp(10, 3600)
 }
 
 /// Troncature d'affichage : retourne `(nb_masqués, tranche visible)` — les
@@ -126,7 +126,7 @@ mod tests {
 
     #[test]
     fn window_bounds() {
-        assert_eq!(clamp_role_log_window(None), 300);
+        assert_eq!(clamp_role_log_window(None), 120);
         assert_eq!(clamp_role_log_window(Some(1)), 10);
         assert_eq!(clamp_role_log_window(Some(999_999)), 3600);
     }

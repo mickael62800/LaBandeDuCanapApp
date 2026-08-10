@@ -17,6 +17,8 @@ use sentinel_core::ports::inbound::community::manage_ideas::ManageIdeasUseCase;
 use sentinel_core::ports::inbound::community::manage_levels::ManageLevelsUseCase;
 use sentinel_core::ports::inbound::community::manage_lfg::ManageLfgUseCase;
 use sentinel_core::ports::inbound::community::manage_members::ManageMembersUseCase;
+use sentinel_core::ports::inbound::community::manage_role_panels::ManageRolePanelsUseCase;
+use sentinel_core::ports::inbound::community::manage_voice_channels::ManageVoiceChannelsUseCase;
 use sentinel_core::ports::inbound::community::manage_monthly_ranking::ManageMonthlyRankingUseCase;
 use sentinel_core::ports::inbound::community::manage_news::ManageNewsUseCase;
 use sentinel_core::ports::inbound::community::manage_polls::ManagePollsUseCase;
@@ -44,6 +46,13 @@ pub struct CommunityState {
     /// Membres (DB-backed) : liste, profil, sync, lifecycle join/leave, reset.
     /// Surface HTTP `/api/members/*` + `/api/guilds/{id}/members` (via Discord).
     pub members_uc: Arc<dyn ManageMembersUseCase>,
+    /// Panneaux de roles + roles automatiques. Surface `/api/role-panels/*` et
+    /// `/api/auto-roles/*`.
+    pub role_panels_uc: Arc<dyn ManageRolePanelsUseCase>,
+    /// Salons vocaux temporaires (themes, invites, co-admins, bans). Surface
+    /// `/api/voice-channels/*`. Le handler l'orchestre avec `tickets_uc` et
+    /// `audit_logs_uc` via `AppState` (cf. handlers/community/voice_channels.rs).
+    pub voice_channels_uc: Arc<dyn ManageVoiceChannelsUseCase>,
     pub polls_uc: Arc<dyn ManagePollsUseCase>,
     pub spotlight_uc: Arc<dyn ManageSpotlightUseCase>,
     pub news_uc: Arc<dyn ManageNewsUseCase>,

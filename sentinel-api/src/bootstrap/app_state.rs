@@ -710,10 +710,30 @@ let level_repo = Arc::new(PgLevelRepository::new(pg_pool.clone()));
         ),
     );
 
+    let role_panels_uc: Arc<
+        dyn sentinel_core::ports::inbound::community::manage_role_panels::ManageRolePanelsUseCase,
+    > = Arc::new(
+        sentinel_core::application::community::manage_role_panels_service::ManageRolePanelsService::new(
+            Arc::new(crate::adapters::outbound::postgres::community::role_panel_repository::PgRolePanelRepository::new(pg_pool.clone())),
+        ),
+    );
+
+    let voice_channels_uc: Arc<
+        dyn sentinel_core::ports::inbound::community::manage_voice_channels::ManageVoiceChannelsUseCase,
+    > = Arc::new(
+        sentinel_core::application::community::voice_channels::ManageVoiceChannelsService::new(
+            Arc::new(crate::adapters::outbound::postgres::community::voice_channel_repository::PgVoiceChannelRepository::new(pg_pool.clone())),
+            cache.clone(),
+            bot_config_repo.clone(),
+        ),
+    );
+
     let community = crate::bootstrap::state::CommunityState {
         events_uc: events_uc.clone(),
         lfg_uc: lfg_uc.clone(),
         members_uc: members_uc.clone(),
+        role_panels_uc: role_panels_uc.clone(),
+        voice_channels_uc: voice_channels_uc.clone(),
         polls_uc: polls_uc.clone(),
         spotlight_uc: spotlight_uc.clone(),
         news_uc: news_uc.clone(),

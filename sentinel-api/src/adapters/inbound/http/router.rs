@@ -105,6 +105,8 @@ fn protected_domain_routes() -> Router<AppState> {
 .merge(routes::guild_backup::routes())
 .merge(routes::guilds::routes())
         .merge(routes::members::routes())
+        .merge(routes::role_panels::routes())
+        .merge(routes::voice_channels::routes())
         .merge(routes::progression::routes())
         .merge(routes::guild_structure::routes())
         .merge(routes::community::routes())

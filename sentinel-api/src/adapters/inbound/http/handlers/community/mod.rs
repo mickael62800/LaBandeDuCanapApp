@@ -9,6 +9,8 @@ pub mod games;
 pub mod guild_channels;
 pub mod guild_emojis;
 pub mod guild_members;
+pub mod role_panels;
+pub mod voice_channels;
 pub mod ideas;
 pub mod lfg;
 pub mod messages;

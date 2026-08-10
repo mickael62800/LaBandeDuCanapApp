@@ -325,7 +325,7 @@ export const serverSecurityService = {
     return opsGet(`/security/geoip?ips=${encodeURIComponent(ips.join(","))}`);
   },
   containerChanges(): Promise<ContainerChangesResponse> {
-    return opsGet("/security/container-changes");
+    return opsGet("/containers/changes");
   },
   banIp(ip: string, reason?: string): Promise<{ ok: boolean; message: string }> {
     return opsPost("/security/ban-ip", { ip, reason });

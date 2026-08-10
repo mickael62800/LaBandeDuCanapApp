@@ -14,5 +14,5 @@ BEGIN
 END
 $do$;
 
-GRANT SELECT, INSERT, UPDATE, DELETE ON alert_rules, ip_bans, server_events TO sentinel_ops;
+GRANT SELECT, INSERT, UPDATE, DELETE ON alert_rules, manual_ip_bans, server_events TO sentinel_ops;
 GRANT SELECT, DELETE ON ops_logs_v, ops_audit_logs_v TO sentinel_ops;

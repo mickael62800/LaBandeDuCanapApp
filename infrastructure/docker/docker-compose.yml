@@ -409,6 +409,8 @@ services:
       DOCKER_AGENT_TOKEN: ${DOCKER_AGENT_TOKEN:?DOCKER_AGENT_TOKEN est requis}
     security_opt:
       - no-new-privileges:true
+    volumes:
+      - /var/lib/sentinel:/var/lib/sentinel:ro
     networks:
       - internal
     depends_on:

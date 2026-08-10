@@ -1008,7 +1008,12 @@ async fn main() {
         .filter(|k| !k.is_empty());
     let api = Arc::new(ApiClient::new(api_url, api_key));
 
-    let mut client = Client::builder(&token, GatewayIntents::non_privileged())
+    // GUILD_MEMBERS (privilégié) : nécessaire pour énumérer les porteurs d'un
+    // rôle et afficher le nombre d'abonnés sur les boutons des panneaux de jeux.
+    // À activer aussi dans le portail Discord Developer (« Server Members Intent »),
+    // sinon la passerelle refuse la connexion.
+    let intents = GatewayIntents::non_privileged() | GatewayIntents::GUILD_MEMBERS;
+    let mut client = Client::builder(&token, intents)
         .event_handler(Handler {
             api,
             game_portal_started: AtomicBool::new(false),

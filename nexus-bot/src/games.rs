@@ -5,14 +5,14 @@
 //! `/game-admin create` genere un role Discord mentionnable (`<@&role_id>`).
 //! S'abonner = recevoir le role, se desabonner = perdre le role.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use serenity::all::{
-    Colour, CommandDataOptionValue, CommandInteraction, CommandOptionType,
-    ComponentInteraction, ComponentInteractionDataKind, Context,
+    ButtonStyle, Colour, CommandDataOptionValue, CommandInteraction, CommandOptionType,
+    ComponentInteraction, ComponentInteractionDataKind, Context, CreateActionRow, CreateButton,
     CreateCommand, CreateCommandOption, CreateInteractionResponse,
-    CreateInteractionResponseMessage, CreateMessage, EditMessage, EditRole,
-    ReactionType, RoleId,
+    CreateInteractionResponseMessage, CreateMessage, EditMessage, EditRole, GuildId,
+    ReactionType, RoleId, UserId,
 };
 use serenity::builder::CreateEmbed;
 use tracing::{info, warn};
@@ -506,7 +506,7 @@ async fn handle_panel(ctx: &Context, cmd: &CommandInteraction, api: &ApiClient, 
     let embed = build_panel_embed(category.as_deref(), &games_slice);
 
     // 1) Envoie un message initial avec l'embed seulement (pas encore de components).
-    let msg = match cmd
+    let mut msg = match cmd
         .channel_id
         .send_message(&ctx.http, CreateMessage::new().embed(embed))
         .await
@@ -518,8 +518,9 @@ async fn handle_panel(ctx: &Context, cmd: &CommandInteraction, api: &ApiClient, 
         }
     };
 
-    // 2) Sauve le panel en DB.
-    let _panel = match api
+    // 2) Sauve le panel en DB. On a besoin de son id pour les custom_id des
+    //    boutons, d'ou l'ordre : message d'abord, sauvegarde, puis boutons.
+    let panel = match api
         .save_panel(
             guild_id,
             &msg.channel_id.to_string(),
@@ -540,15 +541,23 @@ async fn handle_panel(ctx: &Context, cmd: &CommandInteraction, api: &ApiClient, 
         }
     };
 
-    // 3) Ajoute les reactions (emojis) sur le message du panel.
-    for game in &games_slice {
-        if let Some(emoji_str) = &game.emoji {
-            if let Some(rt) = parse_reaction_type(emoji_str) {
-                if let Err(e) = msg.react(&ctx.http, rt).await {
-                    tracing::warn!(error = %e, "Erreur ajout reaction pour {}", game.game_name);
-                }
-            }
-        }
+    // 3) Attache les boutons (un par jeu). Cliquer bascule le role d'abonnement.
+    let counts = match cmd.guild_id {
+        Some(gid) => count_subscribers(ctx, gid, &game_role_ids(&games_slice)).await,
+        None => HashMap::new(),
+    };
+    let buttons = build_panel_buttons(&panel.id, &games_slice, &counts);
+    if let Err(e) = msg
+        .edit(&ctx.http, EditMessage::new().components(buttons))
+        .await
+    {
+        reply(
+            ctx,
+            cmd,
+            &format!("Panel envoye mais erreur d'ajout des boutons : {e}"),
+        )
+        .await;
+        return;
     }
 
     reply(
@@ -630,25 +639,18 @@ async fn handle_refresh(ctx: &Context, cmd: &CommandInteraction, api: &ApiClient
         }
     };
 
-    // Met a jour l'embed
+    // Met a jour l'embed ET les boutons (le catalogue et les compteurs ont pu changer).
+    let counts = match cmd.guild_id {
+        Some(gid) => count_subscribers(ctx, gid, &game_role_ids(&games_slice)).await,
+        None => HashMap::new(),
+    };
+    let buttons = build_panel_buttons(&panel.id, &games_slice, &counts);
     if let Err(e) = msg
-        .edit(
-            &ctx.http,
-            EditMessage::new().embed(embed).components(Vec::new()),
-        )
+        .edit(&ctx.http, EditMessage::new().embed(embed).components(buttons))
         .await
     {
         reply(ctx, cmd, &format!("Erreur edition : {e}")).await;
         return;
-    }
-
-    // Ajoute les reactions
-    for game in &games_slice {
-        if let Some(emoji_str) = &game.emoji {
-            if let Some(rt) = parse_reaction_type(emoji_str) {
-                let _ = msg.react(&ctx.http, rt).await;
-            }
-        }
     }
 
     reply(
@@ -668,20 +670,128 @@ pub(crate) fn build_panel_embed(category: Option<&str>, games: &[&Game]) -> Crea
         "*Aucun jeu.*".to_string()
     } else {
         let mut lines = Vec::with_capacity(games.len());
-        for (idx, g) in games.iter().enumerate() {
+        for g in games.iter() {
             let emoji = g.emoji.clone().unwrap_or_default();
             let prefix = if emoji.is_empty() {
                 String::new()
             } else {
                 format!("{} ", emoji)
             };
-            lines.push(format!("{}. {}**{}**", idx + 1, prefix, g.game_name));
+            // Mention du role quand il existe : le jeu s'affiche alors comme une
+            // pastille coloree cliquable, et non plus un simple nom. Les jeux
+            // legacy sans role_id retombent sur leur nom en gras.
+            let label = match g.role_id.as_deref().and_then(|s| s.parse::<u64>().ok()) {
+                Some(rid) => format!("<@&{}>", rid),
+                None => format!("**{}**", g.game_name),
+            };
+            lines.push(format!("{}{}", prefix, label));
         }
         let mut s = lines.join("\n");
-        s.push_str("\n\n*Clique sur l'icone d'un jeu ci-dessous (en réaction) pour t'abonner / te desabonner a ses notifications.*");
+        s.push_str(
+            "\n\n*Clique sur un bouton ci-dessous pour rejoindre ou quitter un jeu et recevoir (ou non) ses notifications.*",
+        );
         s
     };
     info_embed(&title).description(desc)
+}
+
+/// Rangées de boutons du panneau : un bouton par jeu (emoji + nom + nombre
+/// d'abonnés), cliquer bascule le rôle d'abonnement. Discord limite à 5 boutons
+/// par rangée et 5 rangées, soit `MAX_BUTTONS_PER_PANEL` jeux.
+///
+/// `counts` associe chaque `RoleId` à son nombre de porteurs (cf.
+/// [`count_subscribers`]) ; un jeu absent de la map (ou sans rôle) n'affiche
+/// pas de compteur.
+pub(crate) fn build_panel_buttons(
+    panel_id: &str,
+    games: &[&Game],
+    counts: &HashMap<RoleId, usize>,
+) -> Vec<CreateActionRow> {
+    let mut rows = Vec::new();
+    for chunk in games.chunks(5) {
+        let mut buttons = Vec::with_capacity(chunk.len());
+        for g in chunk {
+            let count = g
+                .role_id
+                .as_deref()
+                .and_then(|s| s.parse::<u64>().ok())
+                .and_then(|rid| counts.get(&RoleId::new(rid)))
+                .copied();
+            // Le nom sert de libellé (les icônes seules déroutaient), suivi du
+            // nombre d'abonnés quand il est connu. Discord borne à 80 caractères.
+            let label: String = match count {
+                Some(n) => format!("{} · {}", g.game_name, n),
+                None => g.game_name.clone(),
+            }
+            .chars()
+            .take(80)
+            .collect();
+            let mut btn = CreateButton::new(format!("{PANEL_BUTTON_PREFIX}{panel_id}|{}", g.id))
+                .label(label)
+                .style(ButtonStyle::Secondary);
+            if let Some(rt) = g.emoji.as_deref().and_then(parse_reaction_type) {
+                btn = btn.emoji(rt);
+            }
+            buttons.push(btn);
+        }
+        rows.push(CreateActionRow::Buttons(buttons));
+    }
+    rows
+}
+
+/// Compte les porteurs de chaque rôle de jeu en énumérant les membres de la
+/// guilde (pagination REST, 1000 par page). Nécessite l'intent GUILD_MEMBERS.
+///
+/// Appelé au déploiement et au rafraîchissement d'un panneau — pas à chaque
+/// clic — donc le coût de l'énumération reste marginal. En cas d'erreur (intent
+/// non activé, réseau), renvoie une map vide : les boutons s'affichent alors
+/// sans compteur plutôt que de bloquer le panneau.
+async fn count_subscribers(
+    ctx: &Context,
+    guild_id: GuildId,
+    roles: &HashSet<RoleId>,
+) -> HashMap<RoleId, usize> {
+    let mut counts: HashMap<RoleId, usize> = HashMap::new();
+    if roles.is_empty() {
+        return counts;
+    }
+    let mut after: Option<UserId> = None;
+    loop {
+        let batch = match guild_id.members(&ctx.http, Some(1000), after).await {
+            Ok(b) => b,
+            Err(e) => {
+                warn!(error = %e, "Comptage des abonnes impossible (intent GUILD_MEMBERS ?)");
+                break;
+            }
+        };
+        if batch.is_empty() {
+            break;
+        }
+        for member in &batch {
+            for role in &member.roles {
+                if roles.contains(role) {
+                    *counts.entry(*role).or_default() += 1;
+                }
+            }
+        }
+        // Page pleine = il reste probablement des membres : on pagine via le
+        // dernier id. Page partielle = fin de la liste.
+        if batch.len() < 1000 {
+            break;
+        }
+        after = batch.last().map(|m| m.user.id);
+    }
+    counts
+}
+
+/// Extrait les `RoleId` des jeux (ceux qui en ont un), pour le comptage.
+fn game_role_ids(games: &[&Game]) -> HashSet<RoleId> {
+    games
+        .iter()
+        .filter_map(|g| g.role_id.as_deref())
+        .filter_map(|s| s.parse::<u64>().ok())
+        .map(RoleId::new)
+        .collect()
 }
 
 
@@ -802,21 +912,12 @@ async fn handle_panel_button(api: &ApiClient, ctx: &Context, component: &Compone
         }
     };
 
+    // Confirmation ephemere seulement : on ne re-edite PAS le message du panel.
+    // L'ancienne version le re-rendait avec `.components(Vec::new())`, ce qui
+    // EFFACAIT les boutons apres le premier clic — le panneau devenait inerte.
+    // Sans compteur par bouton (impossible sans l'intent GUILD_MEMBERS), il n'y
+    // a de toute facon rien a rafraichir : on laisse le panneau intact.
     reply_component(ctx, component, &confirm).await;
-
-    // Re-render du panneau (compteurs a jour). Edition directe du message.
-    let games_slice: Vec<&Game> = games.iter().take(MAX_BUTTONS_PER_PANEL).collect();
-    let embed = build_panel_embed(panel.category.as_deref(), &games_slice);
-    let mut msg = component.message.clone();
-    if let Err(e) = msg
-        .edit(
-            &ctx.http,
-            EditMessage::new().embed(embed).components(Vec::new()),
-        )
-        .await
-    {
-        warn!(error = %e, "Erreur re-render panneau jeux apres toggle");
-    }
 }
 
 async fn handle_panel_select(api: &ApiClient, ctx: &Context, component: &ComponentInteraction) {

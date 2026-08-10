@@ -116,7 +116,7 @@ pub async fn serve_grpc(state: AppState, bind: SocketAddr) {
     let purge = PurgeGrpc {
         infractions_uc: state.moderation.infractions_uc.clone(),
         audit_logs_uc: state.audit.audit_logs_uc.clone(),
-        log_repo: state.ops.log_repo.clone(),
+        log_repo: state.log_repo.clone(),
         broadcaster: state.broadcaster.clone(),
     };
     let export = ExportGrpc {

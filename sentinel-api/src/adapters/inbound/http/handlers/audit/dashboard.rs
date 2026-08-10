@@ -14,7 +14,7 @@ use crate::adapters::inbound::http::dto::audit::dashboard::DashboardRuleDto;
 use crate::adapters::inbound::http::dto::audit::dashboard::DashboardStatsDto;
 use crate::adapters::inbound::http::dto::audit::dashboard::GuildDto;
 use crate::adapters::inbound::http::dto::audit::dashboard::GuildFilterParams;
-use crate::adapters::inbound::http::dto::audit::dashboard::LogEntryDto;
+
 use crate::adapters::inbound::http::dto::audit::dashboard::RegisterGuildDto;
 use tracing::warn;
 

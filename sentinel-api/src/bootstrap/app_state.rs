@@ -72,11 +72,7 @@ pub async fn build_app_state(
         pg_pool.clone(),
         BatchWriterConfig::default(),
     ));
-    // Use case lecture/purge des logs systeme — reutilise le meme repo batche.
-    let system_logs_uc: Arc<dyn ops_core::ports::inbound::manage_system_logs::ManageSystemLogsUseCase> =
-        Arc::new(ops_core::application::manage_system_logs_service::ManageSystemLogsService::new(
-            log_repo.clone(),
-        ));
+
     let strike_repo = Arc::new(PgStrikeRepository::new(pg_pool.clone()));
     let cache = Arc::new(
         RedisCache::new(redis_client.clone())
@@ -641,8 +637,6 @@ let level_repo = Arc::new(PgLevelRepository::new(pg_pool.clone()));
             crate::adapters::outbound::system::pg_probe::PgSystemProbe::new(pg_pool.clone()),
         ),
         service_registry: service_registry.clone(),
-        system_logs_uc: system_logs_uc.clone(),
-        log_repo: log_repo.clone(),
         rate_limiter: Some(Arc::new(
             crate::adapters::outbound::system::rate_limiter::RateLimiter::from_env(),
         )),

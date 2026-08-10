@@ -25,8 +25,6 @@
 use std::sync::Arc;
 
 use axum::extract::FromRef;
-use ops_core::ports::inbound::manage_system_logs::ManageSystemLogsUseCase;
-use ops_core::ports::outbound::log_repository::LogRepository;
 use ops_core::ports::outbound::service_registry::ServiceRegistry;
 use ops_core::ports::outbound::system_probe::SystemProbe;
 
@@ -44,8 +42,6 @@ pub struct OpsState {
     /// Decouverte des bots et workers en ligne. Consomme par le tableau de
     /// bord, qui compose metier et sante des services au niveau du handler.
     pub service_registry: Arc<dyn ServiceRegistry>,
-    pub system_logs_uc: Arc<dyn ManageSystemLogsUseCase>,
-    pub log_repo: Arc<dyn LogRepository>,
 
     // ── Securite de l'hote ──
     /// Suivi req/IP en memoire pour le ban automatique.

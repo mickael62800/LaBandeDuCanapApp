@@ -10,7 +10,6 @@ platform-common-worker = { path = "../platform-common-worker" }
 # sentinel-api (pas de dépendance croisée) : il assume du SQL ensembliste
 # (scans, claims atomiques `UPDATE ... WHERE`, XADD) et importe du core les
 # DÉCISIONS métier (fonctions pures et constantes, ex. tickets::sla).
-ops-core = { workspace = true }
 sentinel-core = { workspace = true }
 tokio = { workspace = true }
 sqlx = { workspace = true }

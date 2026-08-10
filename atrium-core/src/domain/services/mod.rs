@@ -1,1 +1,0 @@
-//! Services de domaine Atrium.

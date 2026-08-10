@@ -43,6 +43,7 @@ pub struct ModerationGrpc {
     pub review_repo: Arc<dyn ReviewRepository>,
     pub pending_action_repo: Arc<dyn PendingActionRepository>,
     pub infractions_uc: Arc<dyn ManageInfractionsUseCase>,
+    pub manage_reminders_uc: Arc<dyn sentinel_core::ports::inbound::moderation::manage_reminders::ManageRemindersUseCase>,
 }
 
 #[tonic::async_trait]
@@ -54,28 +55,29 @@ impl ModerationService for ModerationGrpc {
         let req = request.into_inner();
         let skip_strike = req.skip_strike;
         let cmd = LogModerationCommand {
-            guild_id: req.guild_id.into(),
-            channel_id: req.channel_id.into(),
-            moderator_id: req.moderator_id,
-            moderator_name: req.moderator_name,
-            target_id: req.target_id,
-            target_name: req.target_name,
-            action_type: req.action_type,
-            reason: req.reason,
-            gravity: req.gravity,
+            guild_id: req.guild_id.clone().into(),
+            channel_id: req.channel_id.clone().into(),
+            moderator_id: req.moderator_id.clone(),
+            moderator_name: req.moderator_name.clone(),
+            target_id: req.target_id.clone(),
+            target_name: req.target_name.clone(),
+            action_type: req.action_type.clone(),
+            reason: req.reason.clone(),
+            gravity: req.gravity.clone(),
             duration: req.duration,
         };
 
         // skip_strike : sanction d'escalade auto deja adossee a un strike compte.
         // On journalise l'action SANS rejouer le strike (anti double-strike) en
         // passant par `log_action` plutot que `log_action_with_strike`.
-        let proto_action = if skip_strike {
+        let (proto_action, action_id) = if skip_strike {
             let action = self
                 .moderation_uc
                 .log_action(cmd)
                 .await
                 .map_err(domain_to_status)?;
-            moderation_action_to_proto(action)
+            let action_id = action.id;
+            (moderation_action_to_proto(action), action_id)
         } else {
             // Phase 7B : orchestration atomique action+strike via le service.
             let logged = self
@@ -83,18 +85,36 @@ impl ModerationService for ModerationGrpc {
                 .log_action_with_strike(cmd)
                 .await
                 .map_err(domain_to_status)?;
+            let action_id = logged.action.id;
             let mut pa = moderation_action_to_proto(logged.action);
             if let Some(sr) = logged.strike {
                 pa.strikes_count = Some(sr.active_count);
                 pa.escalation_action = sr.escalation_action;
                 pa.escalation_duration = sr.escalation_duration;
             }
-            pa
+            (pa, action_id)
         };
 
-
-
-
+        if let Some(duration_secs) = req.duration {
+            let _ = self
+                .manage_reminders_uc
+                .create_reminder(
+                    sentinel_core::ports::inbound::moderation::manage_reminders::CreateReminderCommand {
+                        guild_id: req.guild_id.into(),
+                        moderator_id: req.moderator_id,
+                        moderator_name: req.moderator_name,
+                        target_id: req.target_id,
+                        target_name: req.target_name,
+                        action_type: req.action_type,
+                        reason: req.reason,
+                        action_id,
+                        duration_secs,
+                        remind_before_secs: 0,
+                    },
+                )
+                .await
+                .map_err(domain_to_status)?;
+        }
 
         Ok(Response::new(proto_action))
     }

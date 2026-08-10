@@ -118,11 +118,233 @@ workspace = true
 
 # audit
 [[test]]
+name = "integration_audit_db"
+
+# automod
+[[test]]
+name = "integration_automod_db"
+
+[[test]]
+name = "integration_community_db"
+
+# config (bot configs + worker configs)
+[[test]]
+name = "integration_config_bots"
+[[test]]
+name = "integration_config_worker"
+
+# moderation
+[[test]]
+name = "integration_moderation_db"
+[[test]]
+name = "integration_moderation_http"
+
+# notes
+# progression
+[[test]]
+name = "integration_progression_db"
+
+# reminders
+# rules
+[[test]]
+name = "integration_rules_http"
+
+# infractions
+[[test]]
+name = "integration_infractions_http"
+
+# audit_logs
+[[test]]
+name = "integration_audit_logs_http"
+
+# watched_users
+[[test]]
+name = "integration_watched_users_http"
+
+# user_activity
+[[test]]
+name = "integration_user_activity_http"
+
+# analyze
+[[test]]
+name = "integration_analyze_http"
+
+# security
+[[test]]
+name = "integration_security_http"
+
+# levels
+# stats
+[[test]]
+name = "integration_stats_http"
+
+# dashboard
+[[test]]
+name = "integration_dashboard_http"
+
+# dashboard_charts
+[[test]]
+name = "integration_dashboard_charts_http"
+
+# analytics
+[[test]]
+name = "integration_analytics_http"
+
+# welcome
+[[test]]
+name = "integration_welcome_http"
+
+# system_misc (models status / cache stats)
+[[test]]
+name = "integration_system_misc_http"
+
+# bot_config
+[[test]]
+name = "integration_bot_config_http"
+
+# role_panels
+# purge HTTP
+[[test]]
+name = "integration_purge_http"
+
+# discord_roles HTTP
+[[test]]
+name = "integration_discord_roles_http"
+
+# members HTTP
+# bot_persistence HTTP
+[[test]]
+name = "integration_bot_persistence_http"
+
+[[test]]
+name = "integration_guild_channels_http"
+
+# analyze_image HTTP
+[[test]]
+name = "integration_analyze_image_http"
+
+# ai_jobs HTTP
+[[test]]
+name = "integration_ai_jobs_http"
+
+# exports HTTP
+[[test]]
+name = "integration_exports_http"
+
+# system_endpoints HTTP (cache_stats, health, models_status)
+[[test]]
+name = "integration_system_endpoints_http"
+
+[[test]]
+name = "integration_oauth_http"
+
+# postgres members repo
+# postgres moderation repo
+[[test]]
+name = "integration_postgres_moderation"
+
+# postgres levels repo
+# postgres stats repo
+[[test]]
+name = "integration_postgres_stats"
+
+# postgres wallet repo
+[[test]]
+name = "integration_postgres_tickets"
+
+# postgres misc repos (audit_log, security, notes, reminders, bot_config)
+[[test]]
+name = "integration_postgres_misc"
+
+# postgres infraction repo (CRUD + filtres + pagination)
+[[test]]
+name = "integration_postgres_infraction"
+
+# postgres cashbox repo
+# postgres misc_2 repos (discord_role + log + user_activity + rule)
+[[test]]
+name = "integration_postgres_misc_2"
+
+# postgres misc_3 repos (role_panel + welcome_config)
+[[test]]
+name = "integration_postgres_misc_3"
+
+# postgres misc_4 repos (guild + blackjack_table)
+[[test]]
+name = "integration_postgres_misc_4"
+
+# postgres misc_5 repos (ia_config + sponsorship + temp_role + daily_activity)
+[[test]]
+name = "integration_postgres_misc_5"
+
+# postgres misc_6 repos (evidence + pending_action + review + modstats)
+[[test]]
+name = "integration_postgres_misc_6"
+
+# postgres analytics repo
+[[test]]
+name = "integration_postgres_analytics"
+
+# redis cache (http)
+[[test]]
+name = "integration_redis_cache"
+
+# job_client (enqueue jobs vers Redis queue pour le worker)
+[[test]]
+name = "integration_job_client"
+
+# batched log repositories (BatchedPgLogRepository + BatchedPgAuditLogRepository)
+[[test]]
+name = "integration_batched_repos"
+
+# middleware + router (auth, health, oauth, 404) — exercise la stack complète
+[[test]]
+name = "integration_middleware_router_http"
+
+# export service (application layer, DB queries + serialization)
+[[test]]
+name = "integration_export_service"
+
+# voice_channels application service (crud avec vrai PG repo)
+[[test]]
+name = "integration_stats_service"
+
+# security application service (raid + alt detection avec bans reels)
+[[test]]
+name = "integration_security_service"
+
+# dashboard_aggregate (stats, infractions merge, rules)
+[[test]]
+name = "integration_dashboard_aggregate_http"
+
+# moderation_extra (evidence, review, modstats)
+[[test]]
+name = "integration_moderation_extra_http"
+
+# strikes
+# tickets
+[[test]]
+name = "integration_tickets_db"
+[[test]]
+name = "integration_tickets_http"
+
+# voice (channels)
+[[test]]
+name = "integration_welcome_db"
+
+# misc (tests cross-cutting : plusieurs tables/entites en meme temps)
+[[test]]
+name = "integration_misc_advanced"
+[[test]]
+name = "integration_misc_remaining"
+[[test]]
+name = "integration_misc_repositories"
+
+# ── E2E (serveur gRPC in-process, clients reels) ──
+[[test]]
 name = "e2e_grpc_live"
 path = "tests/e2e/grpc/live.rs"
 [[test]]
 name = "e2e_grpc_services"
 path = "tests/e2e/grpc/services.rs"
-
-
 

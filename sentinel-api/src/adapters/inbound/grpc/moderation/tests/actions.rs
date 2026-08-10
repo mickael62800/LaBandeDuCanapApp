@@ -444,6 +444,41 @@ fn grpc(uc: Arc<MockModerationUc>) -> ModerationGrpc {
         review_repo: Arc::new(MockReviewRepo),
         pending_action_repo: Arc::new(MockPendingActionRepo),
         infractions_uc: Arc::new(MockInfractionsUc),
+        manage_reminders_uc: Arc::new(MockManageRemindersUc),
+    }
+}
+
+struct MockManageRemindersUc;
+#[tonic::async_trait]
+impl sentinel_core::ports::inbound::moderation::manage_reminders::ManageRemindersUseCase for MockManageRemindersUc {
+    async fn create_reminder(&self, cmd: sentinel_core::ports::inbound::moderation::manage_reminders::CreateReminderCommand) -> Result<sentinel_core::domain::entities::moderation::action::sanction_reminder::SanctionReminder, sentinel_core::domain::errors::DomainError> {
+        Ok(sentinel_core::domain::entities::moderation::action::sanction_reminder::SanctionReminder {
+            id: uuid::Uuid::new_v4(),
+            guild_id: cmd.guild_id,
+            moderator_id: cmd.moderator_id,
+            moderator_name: cmd.moderator_name,
+            target_id: cmd.target_id,
+            target_name: cmd.target_name,
+            action_type: cmd.action_type,
+            reason: cmd.reason,
+            action_id: cmd.action_id,
+            expires_at: chrono::Utc::now(),
+            remind_at: chrono::Utc::now(),
+            status: "pending".into(),
+            created_at: chrono::Utc::now(),
+        })
+    }
+    async fn get_pending_reminders(&self) -> Result<Vec<sentinel_core::domain::entities::moderation::action::sanction_reminder::SanctionReminder>, sentinel_core::domain::errors::DomainError> {
+        unimplemented!()
+    }
+    async fn mark_sent(&self, _reminder_id: uuid::Uuid) -> Result<(), sentinel_core::domain::errors::DomainError> {
+        unimplemented!()
+    }
+    async fn cancel_for_action(&self, _action_id: uuid::Uuid) -> Result<(), sentinel_core::domain::errors::DomainError> {
+        unimplemented!()
+    }
+    async fn list_by_guild(&self, _guild_id: &str) -> Result<Vec<sentinel_core::domain::entities::moderation::action::sanction_reminder::SanctionReminder>, sentinel_core::domain::errors::DomainError> {
+        unimplemented!()
     }
 }
 

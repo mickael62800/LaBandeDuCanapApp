@@ -625,6 +625,9 @@ let level_repo = Arc::new(PgLevelRepository::new(pg_pool.clone()));
         review_repo: Arc::new(PgReviewRepository::new(pg_pool.clone())),
         pending_action_repo: Arc::new(PgPendingActionRepository::new(pg_pool.clone())),
         modstats_repo: modstats_repo.clone(),
+        manage_reminders_uc: Arc::new(sentinel_core::application::moderation::manage_reminders_service::ManageRemindersService::new(
+            Arc::new(crate::adapters::outbound::postgres::moderation::reminder_repository::PgReminderRepository::new(pg_pool.clone()))
+        )),
         broadcaster: broadcaster.clone(),
         discord_api: discord_api.clone(),
         bot_config_repo: bot_config_repo.clone(),

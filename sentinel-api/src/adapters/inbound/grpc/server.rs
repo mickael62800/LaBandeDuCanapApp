@@ -95,6 +95,7 @@ pub async fn serve_grpc(state: AppState, bind: SocketAddr) {
         review_repo: state.moderation.review_repo.clone(),
         pending_action_repo: state.moderation.pending_action_repo.clone(),
         infractions_uc: state.moderation.infractions_uc.clone(),
+        manage_reminders_uc: state.moderation.manage_reminders_uc.clone(),
     };
         let welcome = WelcomeGrpc {
         uc: state.community.welcome_config_uc.clone(),

@@ -52,6 +52,7 @@ pub struct ModerationState {
     pub review_repo: Arc<dyn ReviewRepository>,
     pub pending_action_repo: Arc<dyn PendingActionRepository>,
     pub modstats_repo: Arc<dyn ModstatsRepository>,
+    pub manage_reminders_uc: Arc<dyn sentinel_core::ports::inbound::moderation::manage_reminders::ManageRemindersUseCase>,
 
     // ── Dependances transverses du domaine ──
     pub broadcaster: Arc<EventBroadcaster>,

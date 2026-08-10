@@ -21,6 +21,35 @@ pub struct AlertRule {
     pub cooldown_secs: i32,
 }
 
+impl AlertRule {
+    /// `true` si la valeur observée franchit le seuil de la règle.
+    ///
+    /// Cette décision vivait dans le dispatcher d'alertes, sur une copie
+    /// `sqlx::FromRow` de cette entité : deux définitions d'`AlertRule`
+    /// coexistaient, et seule celle du dispatcher savait décider. C'est la
+    /// règle métier centrale du module, elle appartient au domaine.
+    ///
+    /// Un comparateur inconnu ou un seuil absent ne déclenchent jamais : une
+    /// règle qu'on ne sait pas évaluer doit rester silencieuse, pas alerter à
+    /// tort. Les métriques booléennes gardent d'ailleurs `threshold` à NULL.
+    pub fn triggers(&self, value: f64) -> bool {
+        match (self.comparator.as_str(), self.threshold) {
+            ("gt", Some(seuil)) => value > seuil,
+            ("lt", Some(seuil)) => value < seuil,
+            _ => false,
+        }
+    }
+
+    /// Couleur d'embed Discord associée à la sévérité.
+    pub fn color(&self) -> u32 {
+        match self.severity.as_str() {
+            "critical" => 0xED4245,
+            "warning" => 0xFEE75C,
+            _ => 0x5865F2,
+        }
+    }
+}
+
 /// Champs éditables d'une règle. `metric`/`comparator`/`label` sont fixes
 /// (ils définissent la sémantique de la règle).
 #[derive(Debug, Clone, Default)]
@@ -79,6 +108,51 @@ mod tests {
             ..Default::default()
         };
         assert!(u.validate().is_err());
+    }
+
+    fn regle(comparator: &str, threshold: Option<f64>) -> AlertRule {
+        AlertRule {
+            id: "r".into(),
+            label: "Regle".into(),
+            metric: "cpu".into(),
+            comparator: comparator.into(),
+            threshold,
+            enabled: true,
+            severity: "warning".into(),
+            cooldown_secs: 300,
+        }
+    }
+
+    #[test]
+    fn seuil_franchi_vers_le_haut() {
+        let r = regle("gt", Some(80.0));
+        assert!(r.triggers(80.1));
+        assert!(!r.triggers(80.0), "l'egalite ne franchit pas le seuil");
+        assert!(!r.triggers(79.9));
+    }
+
+    #[test]
+    fn seuil_franchi_vers_le_bas() {
+        let r = regle("lt", Some(10.0));
+        assert!(r.triggers(9.9));
+        assert!(!r.triggers(10.0));
+    }
+
+    #[test]
+    fn regle_inevaluable_reste_silencieuse() {
+        // Seuil absent (metrique booleenne) ou comparateur inconnu : ne jamais
+        // alerter a tort vaut mieux que reveiller quelqu'un pour rien.
+        assert!(!regle("gt", None).triggers(999.0));
+        assert!(!regle("entre", Some(1.0)).triggers(999.0));
+    }
+
+    #[test]
+    fn couleur_suit_la_severite() {
+        let mut r = regle("gt", Some(1.0));
+        r.severity = "critical".into();
+        assert_eq!(r.color(), 0xED4245);
+        r.severity = "info".into();
+        assert_eq!(r.color(), 0x5865F2);
     }
 
     #[test]

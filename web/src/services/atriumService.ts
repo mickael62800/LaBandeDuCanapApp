@@ -24,6 +24,14 @@ export interface AtriumUsage {
   user_cooldown_secs: number;
 }
 
+/// Consignes de ton par serveur, injectees dans les prompts du modele.
+/// Ce sont des reglages de STYLE, pas des faits : la base de connaissances
+/// reste la seule source des regles, salons et roles.
+export interface AtriumContext {
+  welcome_context: string;
+  conflict_context: string;
+}
+
 export interface AtriumDocument {
   id: string;
   title: string;
@@ -45,6 +53,10 @@ export const atriumService = {
 
   usage: (guildId: string) =>
     atriumGet<AtriumUsage>(`/admin/guilds/${guildId}/usage`),
+
+  /// Consignes de ton actuellement enregistrees (prefill du formulaire).
+  context: (guildId: string) =>
+    atriumGet<AtriumContext>(`/admin/guilds/${guildId}/config`),
 
   /// Ecrit les cles de config passees. Une cle absente n'est pas touchee :
   /// l'ecran envoie donc uniquement ce qui a change.

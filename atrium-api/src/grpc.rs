@@ -3,19 +3,21 @@
 use std::sync::Arc;
 
 use atrium_core::{
-    domain::{ConversationScope, WelcomeRequest},
-    ports::inbound::GenerateWelcomeReplyUseCase,
+    domain::{CalmingRequest, ConflictKind, ConversationScope, WelcomeRequest},
+    ports::inbound::{GenerateCalmingReplyUseCase, GenerateWelcomeReplyUseCase},
 };
 use atrium_proto::welcome::v1::{
     self as proto,
     bot_control_service_server::{BotControlService, BotControlServiceServer},
+    calming_service_server::{CalmingService, CalmingServiceServer},
     welcome_service_server::{WelcomeService, WelcomeServiceServer},
 };
+use sqlx::PgPool;
 use tonic::{Request, Response, Status};
 
 use crate::{
-    budget::BudgetGuard, control::BotControlStore, memory::ConversationMemory, merge_context,
-    rag::RagService, welcome_use_case, AppConfig,
+    budget::BudgetGuard, calming_use_case, control::BotControlStore, memory::ConversationMemory,
+    merge_context, read_config_value, rag::RagService, welcome_use_case, AppConfig,
 };
 
 use std::pin::Pin;
@@ -29,12 +31,21 @@ pub async fn serve(
     memory: Arc<ConversationMemory>,
 ) {
     let addr = config.grpc_addr;
+    // Même pool paresseux que la surface HTTP : sert à lire les consignes de ton
+    // par serveur (`welcome_context` / `conflict_context`) au fil des appels.
+    let config_pool = PgPool::connect_lazy(&config.rag_database_url).ok();
     let welcome_service = WelcomeGrpc {
         welcome: welcome_use_case(&config),
         rag: Some(rag.clone()),
         budget: Some(budget),
         control: Some(control.clone()),
         memory: Some(memory),
+        config_pool: config_pool.clone(),
+    };
+    let calming_service = CalmingGrpc {
+        calming: calming_use_case(&config),
+        control: Some(control.clone()),
+        config_pool: config_pool.clone(),
     };
     let rag_service = RagGrpc { rag: Some(rag) };
     let control_service = BotControlGrpc { control };
@@ -69,6 +80,10 @@ pub async fn serve(
         )
         .add_service(BotControlServiceServer::with_interceptor(
             control_service,
+            auth.clone(),
+        ))
+        .add_service(CalmingServiceServer::with_interceptor(
+            calming_service,
             auth,
         ))
         .serve(addr)
@@ -82,6 +97,8 @@ pub struct WelcomeGrpc {
     pub budget: Option<Arc<BudgetGuard>>,
     pub control: Option<Arc<BotControlStore>>,
     pub memory: Option<Arc<ConversationMemory>>,
+    /// Lecture de `welcome_context` (ton d'accueil configuré par serveur).
+    pub config_pool: Option<PgPool>,
 }
 
 impl WelcomeGrpc {
@@ -92,6 +109,7 @@ impl WelcomeGrpc {
             budget: None,
             control: None,
             memory: None,
+            config_pool: None,
         }
     }
 
@@ -149,6 +167,11 @@ impl WelcomeGrpc {
             }
         }
     }
+
+    /// Consigne de ton d'accueil (`welcome_context`) configurée pour ce serveur.
+    async fn admin_context(&self, guild_id: &str) -> String {
+        read_config_value(&self.config_pool, guild_id, "welcome_context").await
+    }
 }
 
 pub struct RagGrpc {
@@ -199,6 +222,7 @@ impl WelcomeService for WelcomeGrpc {
                 final_context.push_str(&summary);
             }
         }
+        let admin_context = self.admin_context(&guild_id).await;
         let reply = self
             .welcome
             .reply(WelcomeRequest {
@@ -210,6 +234,7 @@ impl WelcomeService for WelcomeGrpc {
                 member_message: input.member_message,
                 conversation_history: history,
                 server_context: merge_context(&final_context, &retrieved),
+                admin_context,
             })
             .await
             .map_err(|error| Status::invalid_argument(error.to_string()))?;
@@ -263,6 +288,7 @@ impl WelcomeService for WelcomeGrpc {
                 final_context.push_str(&summary);
             }
         }
+        let admin_context = self.admin_context(&guild_id).await;
         let reply = self
             .welcome
             .reply(WelcomeRequest {
@@ -274,6 +300,7 @@ impl WelcomeService for WelcomeGrpc {
                 member_message: input.member_message,
                 conversation_history: history,
                 server_context: merge_context(&final_context, &retrieved),
+                admin_context,
             })
             .await
             .map_err(|error| Status::invalid_argument(error.to_string()))?;
@@ -296,6 +323,64 @@ impl WelcomeService for WelcomeGrpc {
         };
 
         Ok(Response::new(Box::pin(output_stream)))
+    }
+}
+
+/// Apaisement (« conflit ») : génère le rappel à publier dans un salon en tension.
+pub struct CalmingGrpc {
+    pub calming: Arc<dyn GenerateCalmingReplyUseCase>,
+    pub control: Option<Arc<BotControlStore>>,
+    pub config_pool: Option<PgPool>,
+}
+
+#[tonic::async_trait]
+impl CalmingService for CalmingGrpc {
+    async fn generate_calming(
+        &self,
+        request: Request<proto::GenerateCalmingRequest>,
+    ) -> Result<Response<proto::GenerateCalmingResponse>, Status> {
+        let input = request.into_inner();
+        if input.guild_id.is_empty() || input.channel_id.is_empty() {
+            return Err(Status::invalid_argument("guild_id ou channel_id manquant"));
+        }
+        let kind = ConflictKind::parse(&input.kind);
+
+        // Atrium désactivé sur ce serveur : on ne consomme pas le modèle, mais
+        // on publie quand même le rappel STATIQUE — l'apaisement est une consigne
+        // de modération, pas une réponse à un membre. C'est le comportement
+        // historique (messages figés), simplement conservé quand l'IA est coupée.
+        if let Some(control) = &self.control {
+            match control.is_enabled(&input.guild_id).await {
+                Ok(true) => {}
+                Ok(false) => {
+                    return Ok(Response::new(proto::GenerateCalmingResponse {
+                        reply: kind.fallback_message().to_string(),
+                        generated_by_ai: false,
+                    }));
+                }
+                Err(error) => {
+                    tracing::error!(%error, "Verification de l'etat Atrium impossible");
+                    return Err(Status::unavailable("verification de l'etat indisponible"));
+                }
+            }
+        }
+
+        let admin_context =
+            read_config_value(&self.config_pool, &input.guild_id, "conflict_context").await;
+        let reply = self
+            .calming
+            .reply(CalmingRequest {
+                guild_id: input.guild_id,
+                channel_id: input.channel_id,
+                kind,
+                admin_context,
+            })
+            .await
+            .map_err(|error| Status::invalid_argument(error.to_string()))?;
+        Ok(Response::new(proto::GenerateCalmingResponse {
+            reply: reply.content,
+            generated_by_ai: reply.generated_by_ai,
+        }))
     }
 }
 

@@ -5,8 +5,9 @@ use std::sync::{
 
 use atrium_proto::welcome::v1::{
     bot_control_service_client::BotControlServiceClient,
+    calming_service_client::CalmingServiceClient,
     welcome_service_client::WelcomeServiceClient, BotStateRequest, ConversationScope,
-    GenerateReplyRequest, SetBotStateRequest,
+    GenerateCalmingRequest, GenerateReplyRequest, SetBotStateRequest,
 };
 use platform_common::EventBus;
 use serde::Deserialize;
@@ -94,6 +95,7 @@ impl Handler {
     async fn handle_calming_event(
         ctx: Context,
         config: Arc<Config>,
+        channel: Channel,
         primary_guild: Arc<tokio::sync::RwLock<Option<GuildId>>>,
         payload: String,
     ) {
@@ -140,12 +142,36 @@ impl Handler {
             return;
         }
 
-        let message = match event.data.kind.as_str() {
-            "flood" => "🕊️ Merci de ralentir un peu : évitez les envois successifs et laissez chacun participer.",
-            "toxicity" => "🕊️ Restons respectueux. Les attaques personnelles et les propos blessants n'ont pas leur place ici.",
-            "phishing" | "unsafe_link" => "⚠️ N'ouvrez pas les liens suspects. Signalez-les à la modération et respectez les règles de sécurité.",
-            _ => "🕊️ Le ton monte un peu. Merci de prendre une pause, de rester respectueux et de suivre le règlement.",
+        // Le message n'est plus figé ici : atrium-api le rédige par IA à partir
+        // du contexte d'apaisement configuré pour ce serveur, et retombe sur un
+        // rappel statique si l'IA (ou Atrium) est indisponible. Le bot reste une
+        // interface légère — il ne décide pas du texte.
+        let mut client = CalmingServiceClient::new(channel);
+        let mut request = Request::new(GenerateCalmingRequest {
+            guild_id: event.data.guild_id.clone(),
+            channel_id: event.data.channel_id.clone(),
+            kind: event.data.kind.clone(),
+        });
+        let bearer = match format!("Bearer {}", config.grpc_token).parse() {
+            Ok(value) => value,
+            Err(_) => {
+                tracing::warn!("ATRIUM_GRPC_TOKEN invalide pour l'apaisement");
+                return;
+            }
         };
+        request.metadata_mut().insert("authorization", bearer);
+        let message = match client.generate_calming(request).await {
+            Ok(response) => response.into_inner().reply,
+            Err(error) => {
+                // Le cooldown est déjà consommé : on ne réessaie pas, un rappel
+                // manqué sur panne réseau est un incident bénin.
+                tracing::warn!(%error, "apaisement Atrium: appel gRPC impossible");
+                return;
+            }
+        };
+        if message.trim().is_empty() {
+            return;
+        }
         // Le rappel est publie directement dans le salon ou Sentinel a
         // constate la tension. Le general reste le repli pour les evenements
         // emis par une ancienne version de Sentinel sans channel_id.
@@ -349,14 +375,25 @@ impl EventHandler for Handler {
             let consumer = platform_common::default_consumer_name();
             let config = Arc::clone(&self.config);
             let primary_guild = Arc::clone(&self.primary_guild);
+            // Canal gRPC vers atrium-api, cloné une fois : `Channel` est un
+            // handle partagé (multiplexé), pas une nouvelle connexion par event.
+            let channel = self.channel.clone();
             tokio::spawn(async move {
                 SENTINEL_EVENTS
                     .listen_stream_group("atrium-bot".to_string(), consumer, move |payload| {
                         let ctx = ctx.clone();
                         let config = Arc::clone(&config);
+                        let channel = channel.clone();
                         let primary_guild = Arc::clone(&primary_guild);
                         async move {
-                            Handler::handle_calming_event(ctx, config, primary_guild, payload).await
+                            Handler::handle_calming_event(
+                                ctx,
+                                config,
+                                channel,
+                                primary_guild,
+                                payload,
+                            )
+                            .await
                         }
                     })
                     .await;

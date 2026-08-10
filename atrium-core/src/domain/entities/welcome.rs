@@ -27,6 +27,10 @@ pub struct WelcomeRequest {
     pub conversation_history: String,
     /// Texte approuve par les administrateurs : FAQ, regles et orientation.
     pub server_context: String,
+    /// Instruction de comportement configuree par serveur (`welcome_context`).
+    /// Contrairement a `server_context` (des FAITS approuves), ceci ajuste le
+    /// TON/la personnalite et s'injecte dans le prompt systeme. Vide = defaut.
+    pub admin_context: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

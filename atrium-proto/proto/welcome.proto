@@ -17,6 +17,24 @@ service BotControlService {
   rpc SetState(SetBotStateRequest) returns (BotStateResponse);
 }
 
+// Rappel apaisant publié dans un salon en tension (« conflit »). Déclenché par
+// l'événement Sentinel `atrium_calming_requested`, consommé par atrium-bot.
+service CalmingService {
+  rpc GenerateCalming(GenerateCalmingRequest) returns (GenerateCalmingResponse);
+}
+
+message GenerateCalmingRequest {
+  string guild_id = 1;
+  string channel_id = 2;
+  // Nature de la tension : flood, toxicity, phishing/unsafe_link, ou vide.
+  string kind = 3;
+}
+
+message GenerateCalmingResponse {
+  string reply = 1;
+  bool generated_by_ai = 2;
+}
+
 enum ConversationScope { GENERAL = 0; DIRECT = 1; }
 
 message GenerateReplyRequest {

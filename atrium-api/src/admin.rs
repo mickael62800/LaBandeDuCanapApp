@@ -119,6 +119,36 @@ pub async fn get_usage(
     Ok(Json(stats))
 }
 
+#[derive(Serialize)]
+pub struct ContextConfigResponse {
+    pub welcome_context: String,
+    pub conflict_context: String,
+}
+
+/// Consignes de ton par serveur, en lecture (préremplissage du formulaire).
+///
+/// Séparé des quotas : ce sont des textes libres, pas des compteurs, et l'écran
+/// les édite dans un bloc distinct.
+pub async fn get_config(
+    Extension(state): Extension<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(guild_id): Path<String>,
+) -> Result<Json<ContextConfigResponse>, ApiError> {
+    authorize(&headers, &state.config)?;
+    let pool = state
+        .config_pool
+        .as_ref()
+        .ok_or_else(|| ApiError::unavailable("configuration indisponible"))?;
+    let raw = guild_config::load(pool, &guild_id).await.map_err(|error| {
+        tracing::error!(%error, "Lecture de la config Atrium impossible");
+        ApiError::unavailable("lecture de la configuration impossible")
+    })?;
+    Ok(Json(ContextConfigResponse {
+        welcome_context: raw.get("welcome_context").cloned().unwrap_or_default(),
+        conflict_context: raw.get("conflict_context").cloned().unwrap_or_default(),
+    }))
+}
+
 #[derive(Deserialize)]
 pub struct SetConfigRequest {
     /// Cles a ecrire. Une cle absente n'est pas touchee ; une valeur vide
@@ -144,12 +174,21 @@ pub async fn set_config(
         .as_ref()
         .ok_or_else(|| ApiError::unavailable("configuration indisponible"))?;
 
-    const ALLOWED: [&str; 4] = [
+    const ALLOWED: [&str; 6] = [
         "enabled",
         "user_daily_limit",
         "user_cooldown_secs",
         "global_daily_limit",
+        "welcome_context",
+        "conflict_context",
     ];
+    // Clés numériques : bornées, positives. Les autres sont du texte libre
+    // (`enabled` est un booléen, `*_context` des consignes de ton) : les passer
+    // au parseur entier les rejetterait à tort.
+    const NUMERIC: [&str; 3] = ["user_daily_limit", "user_cooldown_secs", "global_daily_limit"];
+    // Bornes des textes libres, alignées sur la validation du domaine
+    // (`WelcomeError`/`CalmingError` : 2 000 caractères).
+    const TEXT_MAX_CHARS: usize = 2_000;
 
     for (key, value) in &request.values {
         if !ALLOWED.contains(&key.as_str()) {
@@ -157,12 +196,26 @@ pub async fn set_config(
         }
         // Les bornes du schema sont declaratives cote formulaire ; l'API refait
         // le controle, car un appel direct ne passe pas par le formulaire.
-        if key != "enabled" && value.trim().parse::<i64>().map(|n| n < 0).unwrap_or(true) {
+        if NUMERIC.contains(&key.as_str())
+            && value.trim().parse::<i64>().map(|n| n < 0).unwrap_or(true)
+        {
             return Err(ApiError::bad_request(
                 "valeur numerique attendue, positive ou nulle",
             ));
         }
-        guild_config::set(pool, &guild_id, key, value.trim())
+        if key.ends_with("_context") && value.chars().count() > TEXT_MAX_CHARS {
+            return Err(ApiError::bad_request(
+                "consigne trop longue (2000 caracteres maximum)",
+            ));
+        }
+        // Les consignes de ton gardent leur mise en forme ; seules les valeurs
+        // numeriques et le booleen sont normalises par `trim`.
+        let stored = if key.ends_with("_context") {
+            value.as_str()
+        } else {
+            value.trim()
+        };
+        guild_config::set(pool, &guild_id, key, stored)
             .await
             .map_err(|error| {
                 tracing::error!(%error, "Ecriture de la config Atrium impossible");

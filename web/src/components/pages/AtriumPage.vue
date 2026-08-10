@@ -16,6 +16,7 @@ import AdminPageShell from "../layouts/AdminPageShell.vue";
 import AppToggle from "../atoms/AppToggle.vue";
 import AppButton from "../atoms/AppButton.vue";
 import AppInput from "../atoms/AppInput.vue";
+import AppTextarea from "../atoms/AppTextarea.vue";
 import ErrorState from "../atoms/ErrorState.vue";
 import EmptyState from "../atoms/EmptyState.vue";
 import LoadingState from "../atoms/LoadingState.vue";
@@ -28,6 +29,9 @@ import {
   type AtriumDocument,
   type AtriumUsage,
 } from "@/services/atriumService";
+
+// Longueur alignée sur la validation du domaine côté API (2 000 caractères).
+const CONTEXT_MAX = 2000;
 
 const { selectedGuildId } = useGuildSelector();
 const { user } = useAuth();
@@ -57,6 +61,43 @@ const dirty = computed(() =>
     (k) => form.value[k] !== saved.value[k],
   ),
 );
+
+// Consignes de ton (welcome_context / conflict_context). Séparées des quotas :
+// ce sont des textes libres, enregistrés dans le même `bot_guild_config` mais
+// via un bloc distinct pour n'envoyer que ce que l'admin a réellement modifié.
+const contextForm = ref({ welcome_context: "", conflict_context: "" });
+const savedContext = ref({ ...contextForm.value });
+const savingContext = ref(false);
+const dirtyContext = computed(() =>
+  (Object.keys(contextForm.value) as (keyof typeof contextForm.value)[]).some(
+    (k) => contextForm.value[k] !== savedContext.value[k],
+  ),
+);
+
+async function saveContext() {
+  const guildId = selectedGuildId.value;
+  if (!guildId) return;
+  const values: Record<string, string> = {};
+  for (const k of Object.keys(contextForm.value) as (keyof typeof contextForm.value)[]) {
+    if (contextForm.value[k] !== savedContext.value[k]) values[k] = contextForm.value[k];
+  }
+  if (Object.keys(values).length === 0) return;
+
+  savingContext.value = true;
+  try {
+    await atriumService.setConfig(guildId, values);
+    savedContext.value = { ...contextForm.value };
+    success("Contexte enregistré.");
+  } catch (e: unknown) {
+    toastError(errMsg(e));
+  } finally {
+    savingContext.value = false;
+  }
+}
+
+function resetContext() {
+  contextForm.value = { ...savedContext.value };
+}
 
 function fillForm(u: AtriumUsage) {
   form.value = {
@@ -115,15 +156,21 @@ async function load() {
   try {
     // En parallele : les trois lectures sont independantes, et l'ecran n'a
     // d'interet qu'une fois les trois disponibles.
-    const [state, stats, docs] = await Promise.all([
+    const [state, stats, docs, context] = await Promise.all([
       atriumService.state(guildId),
       atriumService.usage(guildId),
       atriumService.knowledge(guildId),
+      atriumService.context(guildId),
     ]);
     enabled.value = state.enabled;
     usage.value = stats;
     documents.value = docs;
     fillForm(stats);
+    contextForm.value = {
+      welcome_context: context.welcome_context,
+      conflict_context: context.conflict_context,
+    };
+    savedContext.value = { ...contextForm.value };
   } catch (e: unknown) {
     loadError.value = errMsg(e);
   } finally {
@@ -265,6 +312,54 @@ onMounted(load);
       </section>
 
       <section class="card">
+        <h2>Comportement de l'IA</h2>
+        <p class="at-note">
+          Ces consignes ajustent le <strong>ton et la personnalité</strong>
+          d'Atrium. Elles ne remplacent pas la base de connaissances : les
+          règles, salons et rôles restent tirés des documents indexés. Laissées
+          vides, Atrium garde son comportement par défaut.
+        </p>
+
+        <div class="at-context">
+          <label class="at-field">
+            <span>Contexte d'accueil (réponses aux membres)</span>
+            <AppTextarea
+              v-model="contextForm.welcome_context"
+              :rows="4"
+              :maxlength="CONTEXT_MAX"
+              placeholder="Ex. Reste très chaleureux, tutoie les membres, glisse une touche d'humour."
+            />
+          </label>
+          <label class="at-field">
+            <span>Contexte d'apaisement (messages de conflit)</span>
+            <AppTextarea
+              v-model="contextForm.conflict_context"
+              :rows="4"
+              :maxlength="CONTEXT_MAX"
+              placeholder="Ex. Ton ferme mais bienveillant, rappelle la règle sans accuser personne."
+            />
+          </label>
+        </div>
+
+        <div class="at-form-actions">
+          <AppButton
+            variant="primary"
+            :disabled="!dirtyContext || savingContext"
+            @click="saveContext"
+          >
+            Enregistrer
+          </AppButton>
+          <AppButton
+            variant="secondary"
+            :disabled="!dirtyContext"
+            @click="resetContext"
+          >
+            Annuler
+          </AppButton>
+        </div>
+      </section>
+
+      <section class="card">
         <h2>Base de connaissances</h2>
         <EmptyState
           v-if="documents.length === 0"
@@ -384,6 +479,16 @@ onMounted(load);
   display: flex;
   gap: 8px;
   margin-top: 16px;
+}
+
+.at-context {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+.at-context textarea {
+  resize: vertical;
+  min-height: 96px;
 }
 
 .at-table {

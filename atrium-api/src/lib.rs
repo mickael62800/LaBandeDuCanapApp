@@ -8,17 +8,17 @@ use std::{net::SocketAddr, sync::Arc};
 
 use async_trait::async_trait;
 use atrium_core::{
-    application::WelcomeService,
+    application::{CalmingService, WelcomeService},
     domain::{ConversationScope, WelcomeError, WelcomePrompt, WelcomeRequest},
     ports::{
-        inbound::GenerateWelcomeReplyUseCase,
+        inbound::{GenerateCalmingReplyUseCase, GenerateWelcomeReplyUseCase},
         outbound::{AiProviderError, WelcomeAiGateway},
     },
 };
 use axum::{
     extract::Extension,
     http::{header::AUTHORIZATION, HeaderMap, StatusCode},
-    routing::{get, post, put},
+    routing::{get, post},
     Json, Router,
 };
 use axum::response::IntoResponse;
@@ -40,6 +40,7 @@ const DEEPSEEK_URL: &str = "https://api.deepseek.com/chat/completions";
 pub struct AppState {
     pub config: AppConfig,
     pub welcome: Arc<dyn GenerateWelcomeReplyUseCase>,
+    pub calming: Arc<dyn GenerateCalmingReplyUseCase>,
     pub rag: Option<Arc<rag::RagService>>,
     pub budget: Option<Arc<budget::BudgetGuard>>,
     pub control: Option<Arc<control::BotControlStore>>,
@@ -138,6 +139,7 @@ pub fn router(
 ) -> Router {
     let state = Arc::new(AppState {
         welcome: welcome_use_case(&config),
+        calming: calming_use_case(&config),
         rag: Some(rag),
         budget: Some(budget),
         control: Some(control),
@@ -184,7 +186,10 @@ pub fn router_with_state(state: Arc<AppState>) -> Router {
             get(admin::get_state).put(admin::set_state),
         )
         .route("/admin/guilds/{guild_id}/usage", get(admin::get_usage))
-        .route("/admin/guilds/{guild_id}/config", put(admin::set_config))
+        .route(
+            "/admin/guilds/{guild_id}/config",
+            get(admin::get_config).put(admin::set_config),
+        )
         .route(
             "/admin/guilds/{guild_id}/knowledge",
             get(admin::get_knowledge),
@@ -201,19 +206,28 @@ pub fn router_with_state(state: Arc<AppState>) -> Router {
     platform_common_api::http::security_headers(router).with_state(rate_limiter)
 }
 
-pub fn welcome_use_case(config: &AppConfig) -> Arc<dyn GenerateWelcomeReplyUseCase> {
+/// Passerelle DeepSeek partagée par l'accueil et l'apaisement : un seul
+/// adaptateur, deux cas d'usage (cf. `WelcomeAiGateway`).
+fn deepseek_gateway(config: &AppConfig) -> Arc<dyn WelcomeAiGateway> {
     let client = Client::builder()
         .pool_max_idle_per_host(10)
         .tcp_keepalive(std::time::Duration::from_secs(60))
         .timeout(std::time::Duration::from_secs(10))
         .build()
         .unwrap_or_default();
-    let ai: Arc<dyn WelcomeAiGateway> = Arc::new(DeepSeekGateway {
+    Arc::new(DeepSeekGateway {
         client,
         api_key: config.deepseek_api_key.clone(),
         model: config.model.clone(),
-    });
-    Arc::new(WelcomeService::new(ai))
+    })
+}
+
+pub fn welcome_use_case(config: &AppConfig) -> Arc<dyn GenerateWelcomeReplyUseCase> {
+    Arc::new(WelcomeService::new(deepseek_gateway(config)))
+}
+
+pub fn calming_use_case(config: &AppConfig) -> Arc<dyn GenerateCalmingReplyUseCase> {
+    Arc::new(CalmingService::new(deepseek_gateway(config)))
 }
 
 pub mod grpc;
@@ -346,6 +360,7 @@ async fn welcome_reply(
     let guild_id = request.guild_id.clone();
     let member_id = request.member.id.clone();
     let member_message = request.message.clone();
+    let admin_context = read_config_value(&state.config_pool, &guild_id, "welcome_context").await;
     let reply = state
         .welcome
         .reply(WelcomeRequest {
@@ -357,6 +372,7 @@ async fn welcome_reply(
             member_message: member_message.clone(),
             conversation_history: history,
             server_context: merge_context(&final_context, &retrieved),
+            admin_context,
         })
         .await
         .map_err(ApiError::from)?;
@@ -373,6 +389,22 @@ async fn welcome_reply(
         model: state.config.model.clone(),
         generated_by_ai: reply.generated_by_ai,
     }))
+}
+
+/// Lit une clé de config par serveur (`bot_guild_config`), vide si absente ou
+/// si la base est indisponible — un ton personnalisé ne doit jamais bloquer une
+/// réponse. Partagé par les chemins HTTP et gRPC.
+pub async fn read_config_value(pool: &Option<PgPool>, guild_id: &str, key: &str) -> String {
+    let Some(pool) = pool else {
+        return String::new();
+    };
+    match guild_config::load(pool, guild_id).await {
+        Ok(map) => map.get(key).cloned().unwrap_or_default(),
+        Err(error) => {
+            tracing::warn!(%error, key, "Lecture de la config Atrium impossible");
+            String::new()
+        }
+    }
 }
 
 pub fn merge_context(admin_context: &str, retrieved: &str) -> String {

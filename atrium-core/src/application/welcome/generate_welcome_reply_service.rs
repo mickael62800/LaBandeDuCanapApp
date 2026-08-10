@@ -70,11 +70,17 @@ fn validate(request: &WelcomeRequest) -> Result<(), WelcomeError> {
             limit: 4_000,
         });
     }
+    if request.admin_context.chars().count() > 2_000 {
+        return Err(WelcomeError::TooLong {
+            field: "admin_context",
+            limit: 2_000,
+        });
+    }
     Ok(())
 }
 
 fn build_prompt(request: &WelcomeRequest) -> WelcomePrompt {
-    let system = format!(
+    let mut system = format!(
         "Tu es Atrium, un habitue sympa du serveur Discord La Bande du Canape. Tu aides les membres sans parler comme un assistant virtuel ni comme un service client. La conversation a lieu dans {}.\n\
 STYLE OBLIGATOIRE:\n\
 - Reponds en francais naturel et familier, en tutoyant.\n\
@@ -93,6 +99,16 @@ FIABILITE ET SECURITE:\n\
 - Pour une salutation ou une discussion legere, reponds normalement sans forcer une reference au reglement. Utilise l'historique pour comprendre les references et assurer la continuite, sans le reciter.",
         request.scope,
     );
+    // Consigne d'ambiance propre au serveur. Placee dans le prompt SYSTEME (donc
+    // au-dessus du message du membre) mais encadree comme une preference de ton :
+    // elle infléchit le style, jamais les regles de fiabilite/securite ci-dessus.
+    let admin_context = request.admin_context.trim();
+    if !admin_context.is_empty() {
+        system.push_str(
+            "\nCONSIGNE DU SERVEUR (ton et personnalite a adopter, sans jamais contredire les regles de securite ci-dessus):\n",
+        );
+        system.push_str(admin_context);
+    }
     let user = format!(
         "Membre: {}\n<contexte_approuve>\n{}\n</contexte_approuve>\n<historique>\n{}\n</historique>\n<message_actuel>\n{}\n</message_actuel>",
         request.member_display_name,
@@ -159,6 +175,7 @@ mod tests {
             member_message: "Bonjour".into(),
             conversation_history: String::new(),
             server_context: "#regles est obligatoire".into(),
+            admin_context: String::new(),
         }
     }
     #[tokio::test]

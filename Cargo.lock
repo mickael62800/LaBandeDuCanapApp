@@ -3550,7 +3550,6 @@ dependencies = [
  "dashmap 6.1.0",
  "image",
  "ndarray",
- "ops-core",
  "platform-common",
  "rand 0.8.6",
  "regex",

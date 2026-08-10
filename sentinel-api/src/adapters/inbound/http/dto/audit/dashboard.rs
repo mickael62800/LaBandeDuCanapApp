@@ -4,6 +4,7 @@ use sentinel_core::domain::entities::system::discord_ids::GuildId;
 use sentinel_core::domain::entities::system::discord_ids::UserId;
 use sentinel_core::domain::entities::system::guild::Guild;
 use ops_core::domain::entities::log_entry::LogEntry;
+use ops_core::domain::entities::services_health::ServicesHealth;
 use sentinel_core::domain::entities::system::rule::Rule;
 use serde::Deserialize;
 use serde::Serialize;
@@ -23,19 +24,25 @@ pub struct DashboardStatsDto {
     pub redis_online: bool,
 }
 
-impl From<DashboardStats> for DashboardStatsDto {
-    fn from(s: DashboardStats) -> Self {
+impl DashboardStatsDto {
+    /// Compose le metier Sentinel et la sante des services.
+    ///
+    /// Ces deux moities viennent de deux domaines — et depuis peu de deux
+    /// crates. Les reunir est le travail de l'adaptateur : c'est ce qui permet
+    /// a `sentinel-core` de ne rien savoir de l'exploitation. Le contrat HTTP,
+    /// lui, ne bouge pas : le front recoit exactement les memes champs.
+    pub fn compose(stats: DashboardStats, health: ServicesHealth) -> Self {
         Self {
-            total_servers: s.total_servers,
-            total_users: s.total_users,
-            messages_today: s.messages_today,
-            infractions_today: s.infractions_today,
-            bots_online: s.bots_online,
-            bots_total: s.bots_total,
-            workers_online: s.workers_online,
-            workers_total: s.workers_total,
-            postgres_online: s.postgres_online,
-            redis_online: s.redis_online,
+            total_servers: stats.total_servers,
+            total_users: stats.total_users,
+            messages_today: stats.messages_today,
+            infractions_today: stats.infractions_today,
+            bots_online: health.bots_online,
+            bots_total: health.bots_total,
+            workers_online: health.workers_online,
+            workers_total: health.workers_total,
+            postgres_online: stats.postgres_online,
+            redis_online: health.redis_online,
         }
     }
 }

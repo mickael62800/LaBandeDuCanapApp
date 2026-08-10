@@ -224,30 +224,16 @@ impl CachePort for MockCache {
     }
 }
 
-struct MockServiceRegistry;
-#[async_trait::async_trait]
-impl ops_core::ports::outbound::service_registry::ServiceRegistry for MockServiceRegistry {
-    async fn count_services(
-        &self,
-    ) -> ops_core::ports::outbound::service_registry::ServiceCounts {
-        ops_core::ports::outbound::service_registry::ServiceCounts {
-            bots_online: 0,
-            bots_total: 0,
-            workers_online: 0,
-            workers_total: 0,
-        }
-    }
-    async fn ping(&self) -> bool {
-        true
-    }
-}
+// Le mock du registre de services a disparu avec la dependance : la sante des
+// bots et workers appartient a l'exploitation, et c'est l'adaptateur HTTP qui
+// la compose avec ces statistiques metier.
 
 fn make_service(
     stats: Arc<MockStatsRepo>,
     inf: Arc<MockInfractionRepo>,
     cache: Arc<MockCache>,
 ) -> ManageStatsService {
-    ManageStatsService::new(stats, inf, cache, Arc::new(MockServiceRegistry))
+    ManageStatsService::new(stats, inf, cache)
 }
 
 // ══════════════════════════════════════════════════════════

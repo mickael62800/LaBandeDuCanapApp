@@ -27,8 +27,19 @@ use ops_core::domain::entities::log_entry::LogEntry;
 pub async fn get_dashboard_stats(
     State(state): State<AppState>,
 ) -> Result<Json<DashboardStatsDto>, ApiError> {
+    // Deux domaines, deux crates : le metier Sentinel et la sante des services
+    // de la machine. Les reunir ici plutot que dans un service applicatif est
+    // ce qui evite a `sentinel-core` de dependre d'`ops-core`.
     let stats = state.audit.stats_uc.get_dashboard_stats().await?;
-    Ok(Json(DashboardStatsDto::from(stats)))
+    let counts = state.ops.service_registry.count_services().await;
+    let health = ops_core::domain::entities::services_health::ServicesHealth {
+        bots_online: counts.bots_online,
+        bots_total: counts.bots_total,
+        workers_online: counts.workers_online,
+        workers_total: counts.workers_total,
+        redis_online: state.ops.service_registry.ping().await,
+    };
+    Ok(Json(DashboardStatsDto::compose(stats, health)))
 }
 
 /// GET /api/logs — logs récents (filtrable par guild_id, category, level).

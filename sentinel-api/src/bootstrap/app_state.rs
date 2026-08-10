@@ -328,7 +328,6 @@ pub async fn build_app_state(
         stats_repo.clone(),
         infraction_repo.clone(),
         cache.clone(),
-        service_registry,
     ));
         let analytics_repo = Arc::new(PgAnalyticsRepository::new(pg_pool.clone()));
     let daily_activity_repo = Arc::new(PgDailyActivityRepository::new(pg_pool.clone()));
@@ -736,6 +735,7 @@ pub async fn build_app_state(
             docker_host.clone(),
             server_event_repo.clone(),
         )),
+        service_registry: service_registry.clone(),
         system_logs_uc: system_logs_uc.clone(),
         log_repo: log_repo.clone(),
         server_events_uc: server_events_uc.clone(),

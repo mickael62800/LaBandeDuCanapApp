@@ -7,4 +7,5 @@ pub mod log_entry;
 pub mod security_audit;
 pub mod security_log;
 pub mod server_event;
+pub mod services_health;
 pub mod tls_cert;

@@ -17,7 +17,6 @@ use crate::ports::outbound::audit::stats_repository::StatsRepository;
 use crate::ports::outbound::moderation::infraction_repository::InfractionRepository;
 use crate::ports::outbound::system::cache::CachePort;
 use crate::ports::outbound::system::cache_helpers::cached_json;
-use ops_core::ports::outbound::service_registry::ServiceRegistry;
 
 const OVERVIEW_TTL: u64 = 60; // 1 minute
 
@@ -25,7 +24,6 @@ pub struct ManageStatsService {
     stats_repo: Arc<dyn StatsRepository>,
     infraction_repo: Arc<dyn InfractionRepository>,
     cache: Arc<dyn CachePort>,
-    service_registry: Arc<dyn ServiceRegistry>,
 }
 
 impl ManageStatsService {
@@ -33,26 +31,13 @@ impl ManageStatsService {
         stats_repo: Arc<dyn StatsRepository>,
         infraction_repo: Arc<dyn InfractionRepository>,
         cache: Arc<dyn CachePort>,
-        service_registry: Arc<dyn ServiceRegistry>,
     ) -> Self {
         Self {
             stats_repo,
             infraction_repo,
             cache,
-            service_registry,
         }
-    }
-
-    async fn count_services(&self) -> (u32, u32, u32, u32) {
-        let c = self.service_registry.count_services().await;
-        (
-            c.bots_online,
-            c.bots_total,
-            c.workers_online,
-            c.workers_total,
-        )
-    }
-}
+    }}
 
 #[async_trait]
 impl ManageStatsUseCase for ManageStatsService {
@@ -184,25 +169,18 @@ impl ManageStatsUseCase for ManageStatsService {
         let total_users = self.stats_repo.count_distinct_users().await.unwrap_or(0) as u32;
         let infractions_today = self.infraction_repo.count_today().await.unwrap_or(0) as u32;
 
-        let (bots_online, bots_total, workers_online, workers_total) = self.count_services().await;
-
-        // Check PostgreSQL
+        // Disponibilite de la base de Sentinel, constatee en lisant ses propres
+        // tables. La sante des services (bots, workers, Redis) n'est plus ici :
+        // elle appartient a l'exploitation, et c'est l'adaptateur HTTP qui
+        // compose les deux pour le tableau de bord.
         let postgres_online = self.stats_repo.count_distinct_guilds().await.is_ok();
-
-        // Check Redis (via ServiceRegistry)
-        let redis_online = self.service_registry.ping().await;
 
         Ok(DashboardStats {
             total_servers,
             total_users,
             messages_today: 0,
             infractions_today,
-            bots_online,
-            bots_total,
-            workers_online,
-            workers_total,
             postgres_online,
-            redis_online,
         })
     }
 

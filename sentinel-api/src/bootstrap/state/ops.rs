@@ -30,6 +30,7 @@ use ops_core::ports::inbound::read_security_logs::ReadSecurityLogsUseCase;
 use ops_core::ports::inbound::read_tls_cert::ReadTlsCertUseCase;
 use ops_core::ports::outbound::docker_host::DockerHost;
 use ops_core::ports::outbound::log_repository::LogRepository;
+use ops_core::ports::outbound::service_registry::ServiceRegistry;
 use ops_core::ports::outbound::system_probe::SystemProbe;
 
 use crate::adapters::outbound::ws::broadcaster::EventBroadcaster;
@@ -50,6 +51,9 @@ pub struct OpsState {
     >,
 
     // ── Journaux techniques ──
+    /// Decouverte des bots et workers en ligne. Consomme par le tableau de
+    /// bord, qui compose metier et sante des services au niveau du handler.
+    pub service_registry: Arc<dyn ServiceRegistry>,
     pub system_logs_uc: Arc<dyn ManageSystemLogsUseCase>,
     pub log_repo: Arc<dyn LogRepository>,
     pub server_events_uc: Arc<dyn ManageServerEventsUseCase>,

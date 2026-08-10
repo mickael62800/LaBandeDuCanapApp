@@ -70,7 +70,7 @@ impl LogRepository for PgLogRepository {
 
     async fn find_all(&self, limit: i64) -> Result<Vec<LogEntry>, DomainError> {
         let rows = sqlx::query_as::<_, LogRow>(
-            "SELECT id, timestamp, level, bot, server, message, category, details FROM logs ORDER BY timestamp DESC LIMIT $1",
+            "SELECT id, timestamp, level, bot, server, message, category, details FROM ops_logs_v ORDER BY timestamp DESC LIMIT $1",
         )
         .bind(limit)
         .fetch_all(&self.pool)
@@ -94,11 +94,12 @@ impl LogRepository for PgLogRepository {
         // (bot, worker, api, websocket) au lieu de partager un seul pool de 200.
         let rows = sqlx::query_as::<_, LogRow>(
             "SELECT id, timestamp, level, bot, server, message, category, details \
-             FROM logs \
+             FROM ops_logs_v \
              WHERE ($1::text IS NULL OR category = $1) \
                AND ($2::text IS NULL OR level = $2) \
                AND ($3::text IS NULL OR server = $3) \
-             ORDER BY timestamp DESC LIMIT $4",
+             ORDER BY timestamp DESC \
+             LIMIT $4",
         )
         .bind(category)
         .bind(level)
@@ -112,7 +113,7 @@ impl LogRepository for PgLogRepository {
     }
 
     async fn delete_by_category(&self, category: &str) -> Result<u64, DomainError> {
-        let result = sqlx::query("DELETE FROM logs WHERE category = $1")
+        let result = sqlx::query("DELETE FROM ops_logs_v WHERE category = $1")
             .bind(category)
             .execute(&self.pool)
             .await
@@ -122,7 +123,7 @@ impl LogRepository for PgLogRepository {
 
     async fn delete_older_than_days(&self, days: i32) -> Result<u64, DomainError> {
         let result =
-            sqlx::query("DELETE FROM logs WHERE timestamp < NOW() - make_interval(days => $1)")
+            sqlx::query("DELETE FROM ops_logs_v WHERE timestamp < NOW() - INTERVAL '1 day' * $1")
                 .bind(days)
                 .execute(&self.pool)
                 .await

@@ -56,7 +56,7 @@ impl SecurityAuditRepository for PgSecurityAuditRepository {
         let mut sql = String::from(
             "SELECT id::text, guild_id, event_type, actor_id, actor_name, \
                     target_id, target_name, details, created_at \
-             FROM audit_logs WHERE 1=1",
+             FROM ops_audit_logs_v WHERE 1=1",
         );
         let mut idx = 1;
         if filter.guild_id.is_some() {
@@ -161,10 +161,10 @@ impl SecurityAuditRepository for PgSecurityAuditRepository {
 
         if options.include_api_logs {
             let sql = if days == 0 {
-                "DELETE FROM logs WHERE category = 'api'".to_string()
+                "DELETE FROM ops_logs_v WHERE category = 'api'".to_string()
             } else {
                 format!(
-                    "DELETE FROM logs WHERE category = 'api' AND timestamp < NOW() - INTERVAL '{days} days'"
+                    "DELETE FROM ops_logs_v WHERE category = 'api' AND timestamp < NOW() - INTERVAL '{days} days'"
                 )
             };
             report.deleted_api_logs = sqlx::query(&sql)
@@ -175,7 +175,7 @@ impl SecurityAuditRepository for PgSecurityAuditRepository {
         }
         if options.include_audit_logs {
             report.deleted_audit_logs =
-                purge_table(&self.pool, "audit_logs", "created_at", days).await;
+                purge_table(&self.pool, "ops_audit_logs_v", "created_at", days).await;
         }
         if options.include_server_events {
             report.deleted_server_events =

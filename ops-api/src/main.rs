@@ -152,7 +152,7 @@ async fn main() {
         .await
         .expect("bind impossible");
     tracing::info!(%bind, "ops-api demarre");
-    axum::serve(listener, router(state))
+    axum::serve(listener, router(state).into_make_service_with_connect_info::<std::net::SocketAddr>())
         .await
         .expect("serveur arrete");
 }

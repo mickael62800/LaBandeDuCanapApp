@@ -58,3 +58,14 @@ impl fmt::Display for ConversationScope {
         f.write_str(self.label())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::ConversationScope;
+
+    #[test]
+    fn scope_labels_are_human_readable() {
+        assert_eq!(ConversationScope::General.label(), "salon general public");
+        assert_eq!(ConversationScope::Direct.to_string(), "message prive");
+    }
+}

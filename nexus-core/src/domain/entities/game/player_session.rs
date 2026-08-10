@@ -19,3 +19,25 @@ impl PlayerSession {
         self.left_at.is_none()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn session(left_at: Option<DateTime<Utc>>) -> PlayerSession {
+        PlayerSession {
+            id: Uuid::nil(),
+            server_id: Uuid::nil(),
+            player_name: "Lina".into(),
+            joined_at: Utc::now(),
+            left_at,
+            duration_seconds: None,
+        }
+    }
+
+    #[test]
+    fn session_is_active_until_a_departure_is_recorded() {
+        assert!(session(None).is_active());
+        assert!(!session(Some(Utc::now())).is_active());
+    }
+}

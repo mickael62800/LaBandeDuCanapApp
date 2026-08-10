@@ -19,6 +19,7 @@ mod embeds;
 mod event_bus;
 mod game_portal;
 mod games;
+mod grand_salon;
 mod wheel_panel;
 
 use std::sync::Arc;
@@ -922,6 +923,7 @@ impl EventHandler for Handler {
         let commands: Vec<CreateCommand> = commands
             .into_iter()
             .chain(games::register_commands())
+            .chain(std::iter::once(grand_salon::register()))
             .chain(std::iter::once(wheel_panel::register()))
             .collect();
         for command in commands {
@@ -953,6 +955,7 @@ impl EventHandler for Handler {
                 "pari" => self.handle_bet(&ctx, &cmd).await,
                 "roue-panel" => wheel_panel::handle_command(&ctx, &cmd).await,
                 "game" | "game-admin" => games::handle_command(&self.api, &ctx, &cmd).await,
+                "salon" => grand_salon::handle_command(&self.api, &ctx, &cmd).await,
                 _ => {}
             },
             Interaction::Component(component) => {

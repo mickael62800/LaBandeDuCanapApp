@@ -10,6 +10,7 @@ pub mod coussin_repository;
 pub mod coussin_steal_repository;
 pub mod events;
 pub mod game;
+pub mod grand_salon_repository;
 pub mod system;
 pub mod wallet_repository;
 pub mod wheel_repository;

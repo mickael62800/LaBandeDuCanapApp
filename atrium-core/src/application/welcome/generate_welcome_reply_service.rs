@@ -196,6 +196,52 @@ mod tests {
         ));
     }
 
+    #[tokio::test]
+    async fn rejects_every_required_identifier() {
+        let service = WelcomeService::new(Arc::new(FakeAi(Ok("ok".into()))));
+        for field in ["guild_id", "member_id", "member_display_name", "channel_id"] {
+            let mut bad = request();
+            match field {
+                "guild_id" => bad.guild_id = " ".into(),
+                "member_id" => bad.member_id = " ".into(),
+                "member_display_name" => bad.member_display_name = " ".into(),
+                "channel_id" => bad.channel_id = " ".into(),
+                _ => unreachable!(),
+            }
+            assert_eq!(service.reply(bad).await, Err(WelcomeError::Missing(field)));
+        }
+    }
+
+    #[tokio::test]
+    async fn rejects_oversized_contexts() {
+        let service = WelcomeService::new(Arc::new(FakeAi(Ok("ok".into()))));
+        for (field, value) in [
+            ("server_context", "x".repeat(12_001)),
+            ("conversation_history", "x".repeat(4_001)),
+            ("admin_context", "x".repeat(2_001)),
+        ] {
+            let mut bad = request();
+            match field {
+                "server_context" => bad.server_context = value,
+                "conversation_history" => bad.conversation_history = value,
+                "admin_context" => bad.admin_context = value,
+                _ => unreachable!(),
+            }
+            assert!(matches!(
+                service.reply(bad).await,
+                Err(WelcomeError::TooLong { field: actual, .. }) if actual == field
+            ));
+        }
+    }
+
+    #[tokio::test]
+    async fn blank_ai_output_uses_question_fallback() {
+        let service = WelcomeService::new(Arc::new(FakeAi(Ok(" \n ".into()))));
+        let reply = service.reply(request()).await.unwrap();
+        assert!(!reply.generated_by_ai);
+        assert!(reply.content.contains("temporairement indisponible"));
+    }
+
     #[test]
     fn prompt_keeps_public_and_private_boundaries() {
         let mut public = request();
@@ -227,5 +273,12 @@ mod tests {
         let result = truncate(&text, 650);
         assert!(result.ends_with('…'));
         assert!(!result.contains("mo…"));
+    }
+
+    #[test]
+    fn truncation_counts_unicode_characters() {
+        let result = truncate(&"🙂".repeat(651), 650);
+        assert_eq!(result.chars().count(), 651);
+        assert!(result.ends_with('…'));
     }
 }

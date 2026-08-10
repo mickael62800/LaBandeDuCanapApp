@@ -77,3 +77,35 @@ pub enum CalmingError {
     #[error("{field} depasse la limite de {limit} caracteres")]
     TooLong { field: &'static str, limit: usize },
 }
+
+#[cfg(test)]
+mod tests {
+    use super::ConflictKind;
+
+    #[test]
+    fn parses_known_kinds_and_legacy_alias() {
+        assert_eq!(ConflictKind::parse("flood"), ConflictKind::Flood);
+        assert_eq!(ConflictKind::parse("toxicity"), ConflictKind::Toxicity);
+        assert_eq!(ConflictKind::parse("phishing"), ConflictKind::Phishing);
+        assert_eq!(ConflictKind::parse("unsafe_link"), ConflictKind::Phishing);
+    }
+
+    #[test]
+    fn parses_unknown_kind_as_safe_default() {
+        assert_eq!(ConflictKind::parse("unknown"), ConflictKind::Other);
+        assert_eq!(ConflictKind::parse(""), ConflictKind::Other);
+    }
+
+    #[test]
+    fn every_kind_has_a_description_and_fallback() {
+        for kind in [
+            ConflictKind::Flood,
+            ConflictKind::Toxicity,
+            ConflictKind::Phishing,
+            ConflictKind::Other,
+        ] {
+            assert!(!kind.describe().is_empty());
+            assert!(!kind.fallback_message().is_empty());
+        }
+    }
+}

@@ -5,6 +5,7 @@
 //! porte toute la logique metier. Config simple par variables d'environnement.
 
 mod game_portal;
+mod grand_salon;
 
 /// Lit une variable d'env u64, sinon retourne le defaut (valeur invalide
 /// signalee en warn puis defaut applique).
@@ -43,6 +44,7 @@ async fn main() {
 
     tracing::info!(api_url = %api_url, "nexus-worker demarre — jobs game-portal actifs");
     game_portal::start(api_url, intervals);
+    grand_salon::start();
 
     if let Err(e) = tokio::signal::ctrl_c().await {
         tracing::error!("attente du signal impossible: {e}");
@@ -50,4 +52,3 @@ async fn main() {
     }
     tracing::info!("signal recu — arret de nexus-worker");
 }
-

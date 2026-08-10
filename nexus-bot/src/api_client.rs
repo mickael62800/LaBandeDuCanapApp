@@ -45,6 +45,20 @@ pub struct TransferRequest {
     pub amount: i64,
     pub reason: Option<String>,
 }
+
+#[derive(Debug, Serialize)]
+pub struct GrandSalonJoinRequest {
+    pub display_name: String,
+}
+#[derive(Debug, Clone, Deserialize)]
+pub struct GrandSalonProfileResponse {
+    pub display_name: String,
+    pub rayonnement: i64,
+    pub jetons: i64,
+    pub reputation: i64,
+    pub bons_plans: i64,
+    pub reseau: i64,
+}
 #[derive(Debug, Serialize)]
 pub struct CoussinChallengeRequest {
     pub channel_id: String,
@@ -214,6 +228,36 @@ pub struct ServerRegistration {
 }
 
 impl ApiClient {
+    pub async fn grand_salon_join(
+        &self,
+        guild_id: &str,
+        user_id: &str,
+        display_name: &str,
+    ) -> Result<GrandSalonProfileResponse, String> {
+        let url = format!(
+            "{}/api/grand-salon/{}/habitues/{}",
+            self.base_url,
+            encode_segment(guild_id),
+            encode_segment(user_id)
+        );
+        self.send(self.http.post(url).json(&GrandSalonJoinRequest {
+            display_name: display_name.into(),
+        }))
+        .await
+    }
+    pub async fn grand_salon_profile(
+        &self,
+        guild_id: &str,
+        user_id: &str,
+    ) -> Result<GrandSalonProfileResponse, String> {
+        let url = format!(
+            "{}/api/grand-salon/{}/habitues/{}",
+            self.base_url,
+            encode_segment(guild_id),
+            encode_segment(user_id)
+        );
+        self.send(self.http.get(url)).await
+    }
     /// `base_url` ex. http://nexus-api:3100 (NEXUS_API_URL).
     pub fn new(base_url: String, api_key: Option<String>) -> Self {
         Self {

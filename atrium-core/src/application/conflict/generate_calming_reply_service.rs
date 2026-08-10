@@ -130,7 +130,10 @@ mod tests {
     #[async_trait]
     impl WelcomeAiGateway for FakeAi {
         async fn generate(&self, _: WelcomePrompt) -> Result<String, AiProviderError> {
-            self.0.as_ref().map(Clone::clone).map_err(|_| AiProviderError)
+            self.0
+                .as_ref()
+                .map(Clone::clone)
+                .map_err(|_| AiProviderError)
         }
     }
 
@@ -175,6 +178,37 @@ mod tests {
             service.reply(bad).await,
             Err(CalmingError::Missing("channel_id"))
         ));
+    }
+
+    #[tokio::test]
+    async fn missing_guild_and_oversized_admin_context_are_rejected() {
+        let service = CalmingService::new(Arc::new(FakeAi(Ok("ok".into()))));
+        let mut missing_guild = request();
+        missing_guild.guild_id = " ".into();
+        assert_eq!(
+            service.reply(missing_guild).await,
+            Err(CalmingError::Missing("guild_id"))
+        );
+
+        let mut oversized_context = request();
+        oversized_context.admin_context = "x".repeat(2_001);
+        assert_eq!(
+            service.reply(oversized_context).await,
+            Err(CalmingError::TooLong {
+                field: "admin_context",
+                limit: 2_000,
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn ai_reply_is_trimmed_and_capped() {
+        let service =
+            CalmingService::new(Arc::new(FakeAi(Ok(format!("  {}  ", "mot ".repeat(110))))));
+        let reply = service.reply(request()).await.unwrap();
+        assert!(reply.generated_by_ai);
+        assert!(reply.content.chars().count() <= MAX_CALMING_CHARS + 1);
+        assert!(reply.content.ends_with('…'));
     }
 
     #[test]

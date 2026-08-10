@@ -57,3 +57,54 @@ pub fn cfg_i64(entries: &[BotGuildConfig], key: &str, default: i64) -> i64 {
         .and_then(|v| v.parse().ok())
         .unwrap_or(default)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn entry(key: &str, value: &str) -> BotGuildConfig {
+        BotGuildConfig {
+            id: Uuid::nil(),
+            guild_id: GuildId::new("guild"),
+            bot_name: "game-portal".into(),
+            config_key: key.into(),
+            config_value: value.into(),
+            updated_at: Utc::now(),
+        }
+    }
+
+    #[test]
+    fn reads_first_matching_raw_value() {
+        let entries = vec![entry("limit", "12"), entry("limit", "99")];
+        assert_eq!(cfg_str(&entries, "limit"), Some("12"));
+        assert_eq!(cfg_str(&entries, "missing"), None);
+    }
+
+    #[test]
+    fn parses_only_explicit_true_boolean_values() {
+        let entries = vec![
+            entry("true_word", "TRUE"),
+            entry("one", "1"),
+            entry("yes", "YeS"),
+            entry("false_word", "on"),
+        ];
+        assert!(cfg_bool(&entries, "true_word", false));
+        assert!(cfg_bool(&entries, "one", false));
+        assert!(cfg_bool(&entries, "yes", false));
+        assert!(!cfg_bool(&entries, "false_word", true));
+        assert!(cfg_bool(&entries, "missing", true));
+    }
+
+    #[test]
+    fn parses_integer_or_returns_default() {
+        let entries = vec![
+            entry("positive", "42"),
+            entry("negative", "-7"),
+            entry("bad", "x"),
+        ];
+        assert_eq!(cfg_i64(&entries, "positive", 0), 42);
+        assert_eq!(cfg_i64(&entries, "negative", 0), -7);
+        assert_eq!(cfg_i64(&entries, "bad", 10), 10);
+        assert_eq!(cfg_i64(&entries, "missing", 10), 10);
+    }
+}

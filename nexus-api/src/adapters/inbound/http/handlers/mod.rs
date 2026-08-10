@@ -2,11 +2,12 @@ pub mod bot_config;
 pub mod casino;
 pub mod coussin;
 pub mod game;
+pub mod grand_salon;
 pub mod wallet;
 pub mod wheel;
 
-pub use platform_common_api::errors::ApiError;
 use nexus_core::domain::errors::DomainError;
+pub use platform_common_api::errors::ApiError;
 
 /// Validation minimale d'un snowflake Discord (remplace le module
 /// `validation` de sentinel-api) : chiffres uniquement, longueur bornee.

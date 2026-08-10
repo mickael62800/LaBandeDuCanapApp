@@ -15,7 +15,6 @@ use std::time::Duration;
 use serde::Deserialize;
 use tracing::{error, info};
 
-
 const WORKER_NAME: &str = "game-portal";
 
 #[derive(Debug, Deserialize, Default)]
@@ -125,26 +124,34 @@ fn spawn_job(
                         "game_portal tick OK"
                     );
                     if report.errors > 0 {
-                        platform_common_worker::send_worker_log(&api_url,                             WORKER_NAME,
+                        platform_common_worker::send_worker_log(
+                            &api_url,
+                            WORKER_NAME,
                             "warn",
                             job,
                             &format!("job {} : {} erreurs", job, report.errors),
                             serde_json::json!({
                                 "event_type": format!("game_portal.{}.errors", job),
                                 "report": report.details,
-                            })).await;
+                            }),
+                        )
+                        .await;
                     }
                 }
                 Err(e) => {
                     error!(error = %e, job, "game_portal tick failed");
-                    platform_common_worker::send_worker_log(&api_url,                         WORKER_NAME,
+                    platform_common_worker::send_worker_log(
+                        &api_url,
+                        WORKER_NAME,
                         "error",
                         job,
                         &format!("job {} echec: {}", job, e),
                         serde_json::json!({
                             "event_type": format!("game_portal.{}.error", job),
                             "error": e,
-                        })).await;
+                        }),
+                    )
+                    .await;
                 }
             }
         }
@@ -172,7 +179,3 @@ async fn call_job(
         .await
         .map_err(|e| format!("decode JobReport: {e}"))
 }
-
-
-
-

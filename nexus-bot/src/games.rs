@@ -5,14 +5,13 @@
 //! `/game-admin create` genere un role Discord mentionnable (`<@&role_id>`).
 //! S'abonner = recevoir le role, se desabonner = perdre le role.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use serenity::all::{
-    ButtonStyle, Colour, CommandDataOptionValue, CommandInteraction, CommandOptionType,
-    ComponentInteraction, ComponentInteractionDataKind, Context, CreateActionRow, CreateButton,
-    CreateCommand, CreateCommandOption, CreateInteractionResponse,
-    CreateInteractionResponseMessage, CreateMessage, EditMessage, EditRole, GuildId,
-    ReactionType, RoleId, UserId,
+    Colour, CommandDataOptionValue, CommandInteraction, CommandOptionType, ComponentInteraction,
+    ComponentInteractionDataKind, Context, CreateCommand, CreateCommandOption,
+    CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, EditMessage,
+    EditRole, GuildId, ReactionType, RoleId,
 };
 use serenity::builder::CreateEmbed;
 use tracing::{info, warn};
@@ -526,7 +525,7 @@ async fn handle_panel(ctx: &Context, cmd: &CommandInteraction, api: &ApiClient, 
 
     // 2) Sauve le panel en DB. On a besoin de son id pour les custom_id des
     //    boutons, d'ou l'ordre : message d'abord, sauvegarde, puis boutons.
-    let panel = match api
+    let _panel = match api
         .save_panel(
             guild_id,
             &msg.channel_id.to_string(),
@@ -547,14 +546,9 @@ async fn handle_panel(ctx: &Context, cmd: &CommandInteraction, api: &ApiClient, 
         }
     };
 
-    // 3) Attache les boutons (un par jeu). Cliquer bascule le role d'abonnement.
-    let counts = match cmd.guild_id {
-        Some(gid) => count_subscribers(ctx, gid, &game_role_ids(&games_slice)).await,
-        None => HashMap::new(),
-    };
-    if let Err(e) =
-        edit_panel_with_buttons(ctx, &mut msg, &panel.id, &games_slice, &counts, None).await
-    {
+    // 3) Attache les reactions natives. Discord affiche alors automatiquement
+    //    le compteur et surligne la reaction choisie pour chaque membre.
+    if let Err(e) = edit_panel_with_reactions(ctx, &mut msg, &games_slice, None).await {
         reply(
             ctx,
             cmd,
@@ -647,14 +641,9 @@ async fn handle_refresh(ctx: &Context, cmd: &CommandInteraction, api: &ApiClient
         }
     };
 
-    // Met a jour l'embed ET les boutons (le catalogue et les compteurs ont pu changer).
-    let counts = match cmd.guild_id {
-        Some(gid) => count_subscribers(ctx, gid, &game_role_ids(&games_slice)).await,
-        None => HashMap::new(),
-    };
-    if let Err(e) =
-        edit_panel_with_buttons(ctx, &mut msg, &panel.id, &games_slice, &counts, Some(embed)).await
-    {
+    // Repasse aussi les anciens panneaux à la sélection par réactions : le
+    // compteur et l'état sélectionné sont gérés nativement par Discord.
+    if let Err(e) = edit_panel_with_reactions(ctx, &mut msg, &games_slice, Some(embed)).await {
         reply(ctx, cmd, &format!("Erreur edition : {e}")).await;
         return;
     }
@@ -665,6 +654,38 @@ async fn handle_refresh(ctx: &Context, cmd: &CommandInteraction, api: &ApiClient
         &format!("Panneau rafraichi ({} jeux).", games_slice.len()),
     )
     .await;
+}
+
+/// Convertit/actualise un panneau en sélecteur par réactions natives.
+///
+/// Les composants sont retirés afin d'éviter deux moyens de sélection
+/// concurrents. Ajouter une réaction déjà présente est idempotent côté Discord.
+async fn edit_panel_with_reactions(
+    ctx: &Context,
+    msg: &mut serenity::model::channel::Message,
+    games: &[&Game],
+    embed: Option<CreateEmbed>,
+) -> serenity::Result<()> {
+    let mut edit = EditMessage::new().components(Vec::new());
+    if let Some(embed) = embed {
+        edit = edit.embed(embed);
+    }
+    msg.edit(&ctx.http, edit).await?;
+
+    for reaction in panel_reactions(games) {
+        msg.react(&ctx.http, reaction).await?;
+    }
+    Ok(())
+}
+
+/// Liste dédupliquée des réactions valides d'un panneau.
+fn panel_reactions(games: &[&Game]) -> Vec<ReactionType> {
+    let mut seen = HashSet::new();
+    games
+        .iter()
+        .filter_map(|game| game.emoji.as_deref().and_then(parse_reaction_type))
+        .filter(|reaction| seen.insert(reaction.to_string()))
+        .collect()
 }
 
 pub(crate) fn build_panel_embed(category: Option<&str>, games: &[&Game]) -> CreateEmbed {
@@ -694,139 +715,11 @@ pub(crate) fn build_panel_embed(category: Option<&str>, games: &[&Game]) -> Crea
         }
         let mut s = lines.join("\n");
         s.push_str(
-            "\n\n*Clique sur un bouton ci-dessous pour rejoindre ou quitter un jeu et recevoir (ou non) ses notifications.*",
+            "\n\n*Clique sur une réaction ci-dessous pour rejoindre ou quitter un jeu et recevoir (ou non) ses notifications.*",
         );
         s
     };
     info_embed(&title).description(desc)
-}
-
-/// Rangées de boutons du panneau : un bouton par jeu (emoji + nom + nombre
-/// d'abonnés), cliquer bascule le rôle d'abonnement. Discord limite à 5 boutons
-/// par rangée et 5 rangées, soit `MAX_BUTTONS_PER_PANEL` jeux.
-///
-/// `counts` associe chaque `RoleId` à son nombre de porteurs (cf.
-/// [`count_subscribers`]) ; un jeu absent de la map (ou sans rôle) n'affiche
-/// pas de compteur.
-///
-/// `with_emoji` : quand `true`, chaque bouton porte l'icône du jeu. Un seul
-/// emoji rejeté par Discord (custom inaccessible, chaîne mal stockée) fait
-/// échouer TOUT le lot de composants — contrairement aux réactions qui
-/// échouaient jeu par jeu. Les appelants réessaient donc à `false` (nom seul)
-/// si l'envoi avec emojis échoue, pour que le panneau ait toujours ses boutons.
-pub(crate) fn build_panel_buttons(
-    panel_id: &str,
-    games: &[&Game],
-    counts: &HashMap<RoleId, usize>,
-    with_emoji: bool,
-) -> Vec<CreateActionRow> {
-    let mut rows = Vec::new();
-    for chunk in games.chunks(5) {
-        let mut buttons = Vec::with_capacity(chunk.len());
-        for g in chunk {
-            let count = g
-                .role_id
-                .as_deref()
-                .and_then(|s| s.parse::<u64>().ok())
-                .and_then(|rid| counts.get(&RoleId::new(rid)))
-                .copied();
-            // Le nom sert de libellé (les icônes seules déroutaient), suivi du
-            // nombre d'abonnés quand il est connu. Discord borne à 80 caractères.
-            let label: String = match count {
-                Some(n) => format!("{} · {}", g.game_name, n),
-                None => g.game_name.clone(),
-            }
-            .chars()
-            .take(80)
-            .collect();
-            let mut btn = CreateButton::new(format!("{PANEL_BUTTON_PREFIX}{panel_id}|{}", g.id))
-                .label(label)
-                .style(ButtonStyle::Secondary);
-            if with_emoji {
-                if let Some(rt) = g.emoji.as_deref().and_then(parse_reaction_type) {
-                    btn = btn.emoji(rt);
-                }
-            }
-            buttons.push(btn);
-        }
-        rows.push(CreateActionRow::Buttons(buttons));
-    }
-    rows
-}
-
-/// Édite le message d'un panneau avec ses boutons, en réessayant SANS emoji si
-/// Discord rejette le lot (cf. `build_panel_buttons`). `extra` permet de joindre
-/// un embed à jour (refresh) ou rien (déploiement, l'embed est déjà en place).
-///
-/// Renvoie l'erreur seulement si même la variante sans emoji échoue — là c'est
-/// un vrai problème (permissions, message supprimé), pas un emoji capricieux.
-async fn edit_panel_with_buttons(
-    ctx: &Context,
-    msg: &mut serenity::model::channel::Message,
-    panel_id: &str,
-    games: &[&Game],
-    counts: &HashMap<RoleId, usize>,
-    embed: Option<CreateEmbed>,
-) -> serenity::Result<()> {
-    let build = |edit: EditMessage, with_emoji: bool| {
-        edit.components(build_panel_buttons(panel_id, games, counts, with_emoji))
-    };
-    let base = || match &embed {
-        Some(e) => EditMessage::new().embed(e.clone()),
-        None => EditMessage::new(),
-    };
-    match msg.edit(&ctx.http, build(base(), true)).await {
-        Ok(()) => Ok(()),
-        Err(e) => {
-            warn!(error = %e, "Boutons avec emoji refuses par Discord, repli sans emoji");
-            msg.edit(&ctx.http, build(base(), false)).await
-        }
-    }
-}
-
-/// Compte les porteurs de chaque rôle de jeu en énumérant les membres de la
-/// guilde (pagination REST, 1000 par page). Nécessite l'intent GUILD_MEMBERS.
-///
-/// Appelé au déploiement et au rafraîchissement d'un panneau — pas à chaque
-/// clic — donc le coût de l'énumération reste marginal. En cas d'erreur (intent
-/// non activé, réseau), renvoie une map vide : les boutons s'affichent alors
-/// sans compteur plutôt que de bloquer le panneau.
-async fn count_subscribers(
-    ctx: &Context,
-    guild_id: GuildId,
-    roles: &HashSet<RoleId>,
-) -> HashMap<RoleId, usize> {
-    let mut counts: HashMap<RoleId, usize> = HashMap::new();
-    if roles.is_empty() {
-        return counts;
-    }
-    let mut after: Option<UserId> = None;
-    loop {
-        let batch = match guild_id.members(&ctx.http, Some(1000), after).await {
-            Ok(b) => b,
-            Err(e) => {
-                warn!(error = %e, "Comptage des abonnes impossible (intent GUILD_MEMBERS ?)");
-                break;
-            }
-        };
-        if batch.is_empty() {
-            break;
-        }
-        for member in &batch {
-            for role in &member.roles {
-                if roles.contains(role) {
-                    *counts.entry(*role).or_default() += 1;
-                }
-            }
-        }
-        // Page pleine = il reste probablement des membres : on pagine via le
-        // dernier id. Page partielle = fin de la liste.
-        if batch.len() < 1000 {
-            break;
-        }
-        after = batch.last().map(|m| m.user.id);
-    }
-    counts
 }
 
 /// Crée un rôle Discord pour chaque jeu qui n'en a pas encore et persiste
@@ -884,20 +777,6 @@ async fn ensure_game_roles(
         }
     }
 }
-
-/// Extrait les `RoleId` des jeux (ceux qui en ont un), pour le comptage.
-fn game_role_ids(games: &[&Game]) -> HashSet<RoleId> {
-    games
-        .iter()
-        .filter_map(|g| g.role_id.as_deref())
-        .filter_map(|s| s.parse::<u64>().ok())
-        .map(RoleId::new)
-        .collect()
-}
-
-
-
-
 
 // ── Component interactions (boutons + select menus legacy des panels) ──
 
@@ -1265,7 +1144,7 @@ pub(crate) fn parse_reaction_type(raw: &str) -> Option<ReactionType> {
     if s.is_empty() {
         return None;
     }
-    // Serenity parse nativement les emojis custom ("<:name:id>", "<a:name:id>") 
+    // Serenity parse nativement les emojis custom ("<:name:id>", "<a:name:id>")
     // et les emojis unicode.
     match ReactionType::try_from(s) {
         Ok(rt) => Some(rt),
@@ -1274,7 +1153,6 @@ pub(crate) fn parse_reaction_type(raw: &str) -> Option<ReactionType> {
 }
 
 // ── Helpers ──
-
 
 fn get_string_option(cmd: &CommandInteraction, name: &str) -> Option<String> {
     let sub = cmd.data.options.first()?;
@@ -1346,7 +1224,7 @@ async fn reply_component(ctx: &Context, component: &ComponentInteraction, conten
 pub fn spawn_listener(ctx: Context, api: std::sync::Arc<ApiClient>) {
     let ctx = ctx.clone();
     let api = api.clone();
-    
+
     // On ecoute la queue Redis de la meme maniere que game_portal.rs
     tokio::spawn(async move {
         crate::event_bus::listen_stream_group(
@@ -1357,25 +1235,38 @@ pub fn spawn_listener(ctx: Context, api: std::sync::Arc<ApiClient>) {
                 let api_clone = api.clone();
                 async move {
                     if let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw_event) {
-                        if let (Some(event), Some(data)) = (value.get("event").and_then(|v| v.as_str()), value.get("data")) {
+                        if let (Some(event), Some(data)) = (
+                            value.get("event").and_then(|v| v.as_str()),
+                            value.get("data"),
+                        ) {
                             if event == "games_panel_deploy" {
                                 if let (Some(guild_id), Some(channel_id)) = (
                                     data.get("guild_id").and_then(|v| v.as_str()),
-                                    data.get("channel_id").and_then(|v| v.as_str())
+                                    data.get("channel_id").and_then(|v| v.as_str()),
                                 ) {
                                     let category = data.get("category").and_then(|v| v.as_str());
-                                    deploy_panel_from_event(&ctx_clone, &api_clone, guild_id, channel_id, category).await;
+                                    deploy_panel_from_event(
+                                        &ctx_clone, &api_clone, guild_id, channel_id, category,
+                                    )
+                                    .await;
                                 }
                             }
                         }
                     }
                 }
-            }
-        ).await;
+            },
+        )
+        .await;
     });
 }
 
-async fn deploy_panel_from_event(ctx: &Context, api: &ApiClient, guild_id: &str, channel_id: &str, category: Option<&str>) {
+async fn deploy_panel_from_event(
+    ctx: &Context,
+    api: &ApiClient,
+    guild_id: &str,
+    channel_id: &str,
+    category: Option<&str>,
+) {
     let games = match api.list_games_by_category(guild_id, category).await {
         Ok(g) => g,
         Err(e) => {
@@ -1397,7 +1288,10 @@ async fn deploy_panel_from_event(ctx: &Context, api: &ApiClient, guild_id: &str,
         Err(_) => return,
     };
 
-    let msg = match chan_id.send_message(&ctx.http, CreateMessage::new().embed(embed)).await {
+    let msg = match chan_id
+        .send_message(&ctx.http, CreateMessage::new().embed(embed))
+        .await
+    {
         Ok(m) => m,
         Err(e) => {
             warn!(error = %e, "Erreur envoi message panel");
@@ -1405,7 +1299,10 @@ async fn deploy_panel_from_event(ctx: &Context, api: &ApiClient, guild_id: &str,
         }
     };
 
-    let _panel = match api.save_panel(guild_id, channel_id, &msg.id.to_string(), category).await {
+    let _panel = match api
+        .save_panel(guild_id, channel_id, &msg.id.to_string(), category)
+        .await
+    {
         Ok(p) => p,
         Err(e) => {
             warn!(error = %e, "Panel envoye mais erreur sauvegarde");
@@ -1429,12 +1326,17 @@ async fn deploy_panel_from_event(ctx: &Context, api: &ApiClient, guild_id: &str,
     }
 }
 
-pub async fn handle_reaction(api: &ApiClient, ctx: &Context, reaction: &serenity::all::Reaction, is_add: bool) {
+pub async fn handle_reaction(
+    api: &ApiClient,
+    ctx: &Context,
+    reaction: &serenity::all::Reaction,
+    is_add: bool,
+) {
     let guild_id = match reaction.guild_id {
         Some(g) => g,
         None => return,
     };
-    
+
     // On ignore les bots
     if reaction.user_id == Some(ctx.cache.current_user().id) {
         return;
@@ -1443,7 +1345,7 @@ pub async fn handle_reaction(api: &ApiClient, ctx: &Context, reaction: &serenity
         Some(id) => id,
         None => return,
     };
-    
+
     // Obtenir la reaction textuelle
     let reaction_str = match &reaction.emoji {
         ReactionType::Custom { id, .. } => id.to_string(),
@@ -1456,16 +1358,17 @@ pub async fn handle_reaction(api: &ApiClient, ctx: &Context, reaction: &serenity
         Ok(g) => g,
         Err(_) => return,
     };
-    
+
     let game = match games.iter().find(|g| {
         if let Some(emoji) = &g.emoji {
-            emoji == &reaction_str || parse_reaction_type(emoji).map(|rt| {
-                match rt {
-                    ReactionType::Custom { id, .. } => id.to_string() == reaction_str,
-                    ReactionType::Unicode(u) => u == reaction_str,
-                    _ => false
-                }
-            }).unwrap_or(false)
+            emoji == &reaction_str
+                || parse_reaction_type(emoji)
+                    .map(|rt| match rt {
+                        ReactionType::Custom { id, .. } => id.to_string() == reaction_str,
+                        ReactionType::Unicode(u) => u == reaction_str,
+                        _ => false,
+                    })
+                    .unwrap_or(false)
         } else {
             false
         }
@@ -1473,20 +1376,68 @@ pub async fn handle_reaction(api: &ApiClient, ctx: &Context, reaction: &serenity
         Some(g) => g,
         None => return,
     };
-    
+
     let role_id = match game.role_id.as_deref().and_then(|s| s.parse::<u64>().ok()) {
         Some(id) => RoleId::new(id),
         None => return,
     };
-    
+
     let member = match guild_id.member(&ctx.http, user_id).await {
         Ok(m) => m,
         Err(_) => return,
     };
-    
+
     if is_add {
         let _ = member.add_role(&ctx.http, role_id).await;
     } else {
         let _ = member.remove_role(&ctx.http, role_id).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn game(id: &str, emoji: Option<&str>) -> Game {
+        Game {
+            id: id.to_string(),
+            game_name: format!("Jeu {id}"),
+            emoji: emoji.map(str::to_string),
+            category: None,
+            role_id: None,
+        }
+    }
+
+    #[test]
+    fn panel_reactions_keeps_valid_unique_emojis_in_catalog_order() {
+        let games = [
+            game("1", Some(" 🎮 ")),
+            game("2", Some("🎯")),
+            game("3", Some("🎮")),
+            game("4", None),
+            game("5", Some("   ")),
+        ];
+        let refs = games.iter().collect::<Vec<_>>();
+
+        let reactions = panel_reactions(&refs);
+
+        assert_eq!(reactions.len(), 2);
+        assert!(matches!(&reactions[0], ReactionType::Unicode(value) if value == "🎮"));
+        assert!(matches!(&reactions[1], ReactionType::Unicode(value) if value == "🎯"));
+    }
+
+    #[test]
+    fn panel_reactions_supports_discord_custom_emojis() {
+        let games = [game("1", Some("<:battlefield:123456789012345678>"))];
+        let refs = games.iter().collect::<Vec<_>>();
+
+        let reactions = panel_reactions(&refs);
+
+        assert_eq!(reactions.len(), 1);
+        assert!(matches!(
+            &reactions[0],
+            ReactionType::Custom { id, animated: false, .. }
+                if id.get() == 123_456_789_012_345_678
+        ));
     }
 }

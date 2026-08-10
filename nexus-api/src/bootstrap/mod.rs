@@ -10,6 +10,7 @@ use nexus_core::application::coussin_service::CoussinService;
 use nexus_core::application::coussin_steal_service::CoussinStealService;
 use nexus_core::application::game::manage_game_servers_service::ManageGameServersService;
 use nexus_core::application::game::manage_templates_service::ManageGameTemplatesService;
+use nexus_core::application::grand_salon_service::GrandSalonService;
 use nexus_core::application::play_wheel_service::PlayWheelService;
 use nexus_core::application::wallet_service::WalletService;
 use nexus_core::ports::inbound::coussin_bet::CoussinBetUseCase;
@@ -70,12 +71,14 @@ use crate::adapters::outbound::postgres::game::session_repository::{
     PgGameSessionRegistrationRepository, PgGameTemplateSettingsRepository,
 };
 use crate::adapters::outbound::postgres::game::template_repository::PgGameTemplateRepository;
+use crate::adapters::outbound::postgres::grand_salon_repository::PgGrandSalonRepository;
 use crate::adapters::outbound::postgres::system::bot_config_repository::PgBotConfigRepository;
 use crate::adapters::outbound::postgres::wallet_repository::PgWalletRepository;
 use crate::adapters::outbound::postgres::wheel_repository::PgWheelRepository;
 
 #[derive(Clone)]
 pub struct AppState {
+    pub grand_salon: Arc<GrandSalonService>,
     pub play_wheel: Arc<dyn PlayWheelUseCase>,
     pub wheel_cases: Arc<dyn nexus_core::ports::inbound::wheel_cases::ManageWheelCasesUseCase>,
     pub get_wallet: Arc<dyn GetWalletUseCase>,
@@ -151,6 +154,10 @@ pub async fn build_state() -> Result<AppState, Box<dyn std::error::Error>> {
 
     let wheel_repo = Arc::new(PgWheelRepository::new(pool.clone()));
     let wallet_repo = Arc::new(PgWalletRepository::new(pool.clone()));
+    let grand_salon = Arc::new(GrandSalonService::new(
+        Arc::new(PgGrandSalonRepository::new(pool.clone())),
+        1_000,
+    ));
     let wheel_cases: Arc<dyn nexus_core::ports::inbound::wheel_cases::ManageWheelCasesUseCase> =
         Arc::new(
             nexus_core::application::wheel_cases_service::WheelCasesService::new(
@@ -315,6 +322,7 @@ pub async fn build_state() -> Result<AppState, Box<dyn std::error::Error>> {
     }
 
     Ok(AppState {
+        grand_salon,
         play_wheel: service,
         wheel_cases,
         get_wallet: wallet_service.clone(),

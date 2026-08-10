@@ -95,3 +95,57 @@ impl TrafficTrend {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::TimeZone;
+
+    fn point(second: u32, total: i64) -> TrafficPoint {
+        TrafficPoint {
+            timestamp: Utc.with_ymd_and_hms(2026, 8, 10, 12, 0, second).unwrap(),
+            total,
+            errors: 0,
+        }
+    }
+
+    #[test]
+    fn parses_known_log_windows_and_defaults_to_one_hour() {
+        assert_eq!(LogWindow::parse("1h"), LogWindow::OneHour);
+        assert_eq!(LogWindow::parse("24h"), LogWindow::TwentyFourHours);
+        assert_eq!(LogWindow::parse("7d"), LogWindow::SevenDays);
+        assert_eq!(LogWindow::parse("invalid"), LogWindow::OneHour);
+    }
+
+    #[test]
+    fn empty_trend_has_no_peak_or_alert() {
+        let trend = TrafficTrend::from_points(vec![]);
+        assert_eq!(trend.baseline_avg, 0.0);
+        assert_eq!(trend.peak, 0);
+        assert_eq!(trend.peak_at, None);
+        assert!(!trend.alert);
+        assert_eq!(trend.alert_reason, None);
+    }
+
+    #[test]
+    fn spike_needs_more_than_ten_buckets_to_be_significant() {
+        let points = (0..10).map(|second| point(second, 10)).collect();
+        let trend = TrafficTrend::from_points(points);
+        assert_eq!(trend.baseline_avg, 10.0);
+        assert!(!trend.alert);
+    }
+
+    #[test]
+    fn significant_spike_records_peak_and_explanation() {
+        let mut points: Vec<_> = (0..10).map(|second| point(second, 10)).collect();
+        let spike_at = point(10, 40).timestamp;
+        points.push(point(10, 40));
+
+        let trend = TrafficTrend::from_points(points);
+        assert!((trend.baseline_avg - (140.0 / 11.0)).abs() < f64::EPSILON);
+        assert_eq!(trend.peak, 40);
+        assert_eq!(trend.peak_at, Some(spike_at));
+        assert!(trend.alert);
+        assert!(trend.alert_reason.unwrap().contains("Pic à 40"));
+    }
+}

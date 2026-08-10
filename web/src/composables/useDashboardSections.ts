@@ -33,6 +33,7 @@ const ALL_SECTIONS: DashboardSection[] = [
   // sentinel-api verifie l'appartenance a SUPERADMIN_USER_IDS).
   { key: "nexus.servers", path: "/nexus/servers", label: "Serveurs de jeu", icon: "server", universe: "nexus" },
   { key: "nexus.economy", path: "/nexus/economie", label: "Economie", icon: "trending-up", universe: "nexus" },
+  { key: "nexus.grand-salon", path: "/nexus/grand-salon", label: "Le Grand Salon", icon: "users", universe: "nexus" },
   { key: "nexus.roue", path: "/nexus/roue", label: "Roue du Destin", icon: "zap", universe: "nexus" },
   { key: "nexus.coussin", path: "/nexus/coussin", label: "Coussin Piégé", icon: "gavel", universe: "nexus" },
   { key: "nexus.games", path: "/nexus/jeux", label: "Jeux mentionnables", icon: "target", universe: "nexus" },

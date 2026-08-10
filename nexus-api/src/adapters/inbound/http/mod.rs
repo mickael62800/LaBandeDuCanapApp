@@ -162,6 +162,46 @@ pub fn build_router_with(state: AppState, config: HttpConfig) -> Router {
 
     let api = Router::new()
         .route(
+            "/api/grand-salon/{guild_id}/habitues/{user_id}",
+            get(handlers::grand_salon::profile).post(handlers::grand_salon::join),
+        )
+        .route(
+            "/api/grand-salon/{guild_id}/habitues/{user_id}/daily",
+            post(handlers::grand_salon::daily),
+        )
+        .route(
+            "/api/grand-salon/{guild_id}/motions",
+            get(handlers::grand_salon::motions).post(handlers::grand_salon::propose),
+        )
+        .route(
+            "/api/grand-salon/{guild_id}/motions/{motion_id}/vote",
+            post(handlers::grand_salon::vote),
+        )
+        .route(
+            "/api/grand-salon/{guild_id}/gazette",
+            get(handlers::grand_salon::gazette),
+        )
+        .route(
+            "/api/grand-salon/{guild_id}/cercles",
+            get(handlers::grand_salon::cercles).post(handlers::grand_salon::create_cercle),
+        )
+        .route(
+            "/api/grand-salon/{guild_id}/dossiers/{user_id}",
+            get(handlers::grand_salon::dossiers),
+        )
+        .route(
+            "/api/grand-salon/{guild_id}/dossiers",
+            post(handlers::grand_salon::investigate),
+        )
+        .route(
+            "/api/grand-salon/{guild_id}/dossiers/{dossier_id}/reveal",
+            post(handlers::grand_salon::reveal),
+        )
+        .route(
+            "/api/grand-salon/internal/jobs/close-motions",
+            post(handlers::grand_salon::close_due),
+        )
+        .route(
             "/api/wheel/{guild_id}/{user_id}/spin",
             post(handlers::wheel::spin),
         )

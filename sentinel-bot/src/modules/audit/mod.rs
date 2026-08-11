@@ -383,18 +383,20 @@ pub async fn on_ready(ctx: &Context) {
 
 /// Intercepte tous les messages pour les cacher + tracker watched users.
 /// Met en cache un message pour pouvoir retrouver son contenu/auteur a la
-/// suppression. Appele pour TOUS les messages (bots inclus) afin de pouvoir
-/// identifier — et exclure — les editions/suppressions de bots des logs.
+/// suppression lorsque le module Audit est actif. Les messages de bots sont
+/// inclus afin d'identifier — et exclure — leurs editions/suppressions.
 pub async fn cache_message(ctx: &Context, msg: &Message) {
     let guild_id = match msg.guild_id {
         Some(g) => g,
         None => return,
     };
 
-    // Cache passif et borne : aucune action Discord/DB n'est declenchee ici.
-    // Ne pas le conditionner a une lecture reseau de la config Audit : une
-    // panne transitoire de l'API ferait perdre l'ancien contenu pour toujours,
-    // et empecherait aussi de retrouver un message apres reactivation du module.
+    // Respecte strictement le toggle du dashboard : module inactif signifie
+    // qu'aucun nouveau contenu de message n'entre dans le cache d'audit.
+    if !is_module_enabled(ctx, &guild_id.to_string(), MODULE_BOT_NAME).await {
+        return;
+    }
+
     let data = ctx.data.read().await;
     if let Some(cache) = data.get::<MessageCacheKey>() {
         cache.store(
@@ -468,6 +470,12 @@ pub async fn on_message_update(
     new: Option<Message>,
     event: MessageUpdateEvent,
 ) {
+    let Some(guild_id) = event.guild_id else {
+        return;
+    };
+    if !is_module_enabled(ctx, &guild_id.to_string(), MODULE_BOT_NAME).await {
+        return;
+    }
     handlers::message::handle_update(ctx, old, new, event).await;
 }
 

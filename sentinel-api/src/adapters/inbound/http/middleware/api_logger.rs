@@ -10,12 +10,14 @@ use tracing::warn;
 
 use crate::adapters::inbound::http::state::AppState;
 use crate::adapters::outbound::system::rate_limiter::RateLimiter;
+use crate::adapters::outbound::system::redis_log_stream;
 use ops_core::domain::entities::log_entry::LogEntry;
 use ops_core::ports::outbound::log_repository::LogRepository;
 
 #[derive(Clone)]
 pub struct ApiLoggerState {
     pub log_repo: Arc<dyn LogRepository>,
+    pub redis_client: redis::Client,
     pub rate_limiter: Option<Arc<RateLimiter>>,
 }
 
@@ -23,6 +25,7 @@ impl ApiLoggerState {
     pub fn from_app(state: &AppState) -> Self {
         Self {
             log_repo: state.shared.log_repo.clone(),
+            redis_client: state.shared.redis_client.clone(),
             rate_limiter: state.ops.rate_limiter.clone(),
         }
     }
@@ -34,6 +37,7 @@ pub async fn api_logger_middleware(
     next: Next,
 ) -> Response {
     let log_repo = s.log_repo.clone();
+    let redis_client = s.redis_client.clone();
     let rate_limiter = s.rate_limiter.clone();
     let method = request.method().to_string();
     let uri = request.uri().path().to_string();
@@ -123,8 +127,17 @@ pub async fn api_logger_middleware(
 
         let repo = log_repo.clone();
         tokio::spawn(async move {
-            if let Err(e) = repo.save(&entry).await {
-                warn!(error = %e, "Echec sauvegarde log API");
+            // La page Logs techniques lit les streams Redis par categorie.
+            // Sans ce XADD, les logs API existaient seulement dans Postgres et
+            // la colonne `api` restait vide.
+            redis_log_stream::xadd_log(&redis_client, &entry).await;
+
+            // Postgres ne conserve que les niveaux utiles a la forensique,
+            // comme le endpoint POST /api/logs utilise par les autres services.
+            if matches!(entry.level.as_str(), "warn" | "warning" | "error" | "fatal") {
+                if let Err(e) = repo.save(&entry).await {
+                    warn!(error = %e, "Echec sauvegarde log API");
+                }
             }
         });
     }

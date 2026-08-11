@@ -111,9 +111,10 @@ fn spawn_grpc_server(state: AppState, config: &AppConfig) {
     });
 }
 
-/// Bind Axum + log startup/shutdown en BDD + graceful shutdown.
+/// Bind Axum + journalisation systeme du cycle de vie + graceful shutdown.
 async fn serve_http(state: AppState, config: &AppConfig, pg_pool: PgPool) {
     let api_log_repo = state.shared.log_repo.clone();
+    let api_log_redis = state.shared.redis_client.clone();
 
     let app = router::build(
         state,
@@ -126,7 +127,7 @@ async fn serve_http(state: AppState, config: &AppConfig, pg_pool: PgPool) {
         .await
         .expect("Impossible de bind le port");
 
-    // Log demarrage en BDD
+    // Log de demarrage dans la stream lue par la colonne API du dashboard.
     {
         let entry = ops_core::domain::entities::log_entry::LogEntry {
             id: uuid::Uuid::new_v4(),
@@ -138,9 +139,11 @@ async fn serve_http(state: AppState, config: &AppConfig, pg_pool: PgPool) {
             category: "api".into(),
             details: serde_json::json!({"event": "startup", "bind": config.bind_addr()}),
         };
-        if let Err(e) = api_log_repo.save(&entry).await {
-            warn!(error = %e, "Echec sauvegarde log API");
-        }
+        sentinel_api::adapters::outbound::system::redis_log_stream::xadd_log(
+            &api_log_redis,
+            &entry,
+        )
+        .await;
     }
 
     info!("Sentinel API prêt (WebSocket sur /ws)");
@@ -163,7 +166,7 @@ async fn serve_http(state: AppState, config: &AppConfig, pg_pool: PgPool) {
     );
     tokio::time::sleep(shutdown_timeout).await;
 
-    // Log arret en BDD
+    // Log d'arret : Redis pour l'affichage, Postgres car niveau warn.
     {
         let entry = ops_core::domain::entities::log_entry::LogEntry {
             id: uuid::Uuid::new_v4(),
@@ -175,6 +178,11 @@ async fn serve_http(state: AppState, config: &AppConfig, pg_pool: PgPool) {
             category: "api".into(),
             details: serde_json::json!({"event": "shutdown"}),
         };
+        sentinel_api::adapters::outbound::system::redis_log_stream::xadd_log(
+            &api_log_redis,
+            &entry,
+        )
+        .await;
         if let Err(e) = api_log_repo.save(&entry).await {
             warn!(error = %e, "Echec sauvegarde log API");
         }

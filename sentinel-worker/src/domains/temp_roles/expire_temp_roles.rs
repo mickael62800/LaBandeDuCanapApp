@@ -80,4 +80,3 @@ pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
 
     Ok(())
 }
-

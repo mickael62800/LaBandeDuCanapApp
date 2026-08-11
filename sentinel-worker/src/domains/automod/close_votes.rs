@@ -78,4 +78,3 @@ pub async fn run(pool: &PgPool) -> Result<(), String> {
     info!(expired = rows.len(), closed, "Votes automod clotures");
     Ok(())
 }
-

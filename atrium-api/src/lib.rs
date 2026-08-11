@@ -8,10 +8,12 @@ use std::{net::SocketAddr, sync::Arc};
 
 use async_trait::async_trait;
 use atrium_core::{
-    application::{CalmingService, WelcomeService},
+    application::{CalmingService, ServerSummaryService, WelcomeService},
     domain::{ConversationScope, WelcomeError, WelcomePrompt, WelcomeRequest},
     ports::{
-        inbound::{GenerateCalmingReplyUseCase, GenerateWelcomeReplyUseCase},
+        inbound::{
+            GenerateCalmingReplyUseCase, GenerateServerSummaryUseCase, GenerateWelcomeReplyUseCase,
+        },
         outbound::{AiProviderError, WelcomeAiGateway},
     },
 };
@@ -41,6 +43,7 @@ pub struct AppState {
     pub config: AppConfig,
     pub welcome: Arc<dyn GenerateWelcomeReplyUseCase>,
     pub calming: Arc<dyn GenerateCalmingReplyUseCase>,
+    pub summary: Arc<dyn GenerateServerSummaryUseCase>,
     pub rag: Option<Arc<rag::RagService>>,
     pub budget: Option<Arc<budget::BudgetGuard>>,
     pub control: Option<Arc<control::BotControlStore>>,
@@ -140,6 +143,7 @@ pub fn router(
     let state = Arc::new(AppState {
         welcome: welcome_use_case(&config),
         calming: calming_use_case(&config),
+        summary: summary_use_case(&config),
         rag: Some(rag),
         budget: Some(budget),
         control: Some(control),
@@ -171,16 +175,10 @@ pub fn router_with_state(state: Arc<AppState>) -> Router {
             .and_then(|value| value.parse().ok())
             .unwrap_or(5),
     );
-    let router = Router::new()
-        .route("/health", get(health))
-        // Le recorder Prometheus etait installe et le middleware enregistrait
-        // bien les metriques… qui n'etaient exposees nulle part. Elles etaient
-        // donc collectees pour rien, et Atrium restait invisible dans Grafana.
-        .route("/metrics", get(metrics))
+    let bearer =
+        platform_common_api::bearer_auth::RequiredBearerToken::new(state.config.api_token.clone());
+    let protected = Router::new()
         .route("/v1/welcome/reply", post(welcome_reply))
-        // ── Administration (back-office) ──
-        // Servies au navigateur via la passerelle nginx /atrium-api/, qui
-        // valide la session Discord puis injecte le jeton cote serveur.
         .route(
             "/admin/guilds/{guild_id}/state",
             get(admin::get_state).put(admin::set_state),
@@ -194,6 +192,19 @@ pub fn router_with_state(state: Arc<AppState>) -> Router {
             "/admin/guilds/{guild_id}/knowledge",
             get(admin::get_knowledge),
         )
+        .route(
+            "/admin/guilds/{guild_id}/jobs/summary",
+            post(admin::job_generate_summary),
+        )
+        .route_layer(axum::middleware::from_fn_with_state(
+            bearer,
+            platform_common_api::bearer_auth::require,
+        ));
+
+    let router = Router::new()
+        .route("/health", get(health))
+        .route("/metrics", get(metrics))
+        .merge(protected)
         .layer(Extension(state))
         .layer(axum::middleware::from_fn(
             platform_common_api::metrics::metrics_middleware,
@@ -228,6 +239,10 @@ pub fn welcome_use_case(config: &AppConfig) -> Arc<dyn GenerateWelcomeReplyUseCa
 
 pub fn calming_use_case(config: &AppConfig) -> Arc<dyn GenerateCalmingReplyUseCase> {
     Arc::new(CalmingService::new(deepseek_gateway(config)))
+}
+
+pub fn summary_use_case(config: &AppConfig) -> Arc<dyn GenerateServerSummaryUseCase> {
+    Arc::new(ServerSummaryService::new(deepseek_gateway(config)))
 }
 
 pub mod grpc;
@@ -299,10 +314,8 @@ pub struct WelcomeReplyResponse {
 
 async fn welcome_reply(
     Extension(state): Extension<Arc<AppState>>,
-    headers: HeaderMap,
     Json(request): Json<WelcomeReplyRequest>,
 ) -> Result<Json<WelcomeReplyResponse>, ApiError> {
-    authorize(&headers, &state.config)?;
     if let Some(control) = &state.control {
         if !control
             .is_enabled(&request.guild_id)
@@ -412,16 +425,6 @@ pub fn merge_context(admin_context: &str, retrieved: &str) -> String {
         .chars()
         .take(12_000)
         .collect()
-}
-
-pub(crate) fn authorize(headers: &HeaderMap, config: &AppConfig) -> Result<(), ApiError> {
-    let expected = format!("Bearer {}", config.api_token);
-    let supplied = headers.get(AUTHORIZATION).and_then(|v| v.to_str().ok());
-    if supplied == Some(expected.as_str()) {
-        Ok(())
-    } else {
-        Err(ApiError::unauthorized())
-    }
 }
 
 impl From<ChannelKind> for ConversationScope {
@@ -540,12 +543,6 @@ impl ApiError {
             message,
         }
     }
-    pub(crate) fn unauthorized() -> Self {
-        Self {
-            status: StatusCode::UNAUTHORIZED,
-            message: "jeton API invalide",
-        }
-    }
     /// Dependance absente ou injoignable (base, store non construit).
     ///
     /// Distinct de `bad_request` : la requete est valable, c'est le service
@@ -565,11 +562,7 @@ impl From<WelcomeError> for ApiError {
 }
 impl axum::response::IntoResponse for ApiError {
     fn into_response(self) -> axum::response::Response {
-        (
-            self.status,
-            Json(serde_json::json!({"error": self.message})),
-        )
-            .into_response()
+        platform_common_api::errors::error_response(self.status, self.message)
     }
 }
 

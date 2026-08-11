@@ -58,7 +58,9 @@ pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
                 "channel_id": s.channel_id,
             }
         });
-        if let Err(e) = platform_common_worker::redis_helpers::xadd_event_json(&mut conn, &payload).await {
+        if let Err(e) =
+            platform_common_worker::redis_helpers::xadd_event_json(&mut conn, &payload).await
+        {
             warn!(sursis_id = %s.id, error = %e, "XADD sursis_ban failed");
         }
         info!(sursis_id = %s.id, guild_id = %s.guild_id, target = %s.username, "Sursis expire -> event ban emis");
@@ -67,4 +69,3 @@ pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
     info!(count = due.len(), "Sursis expires traites");
     Ok(())
 }
-

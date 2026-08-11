@@ -55,7 +55,8 @@ async fn main() {
     let pg_pool = platform_common_worker::create_pg_pool(&config.database_url).await;
     info!("PostgreSQL connecte");
 
-    let redis_client = platform_common_worker::redis_helpers::open_or_exit(config.redis_url.as_str());
+    let redis_client =
+        platform_common_worker::redis_helpers::open_or_exit(config.redis_url.as_str());
     match redis_client.get_multiplexed_async_connection().await {
         Ok(_) => info!("Redis connecte"),
         Err(e) => {
@@ -102,5 +103,3 @@ async fn main() {
     pg_pool.close().await;
     info!("Sentinel Worker arrete proprement");
 }
-
-

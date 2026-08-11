@@ -25,12 +25,18 @@ const MAX_BUCKETS: usize = 50_000;
 
 /// Age au-dela duquel un bucket inactif est purge, en secondes.
 const BUCKET_TTL_SECS: u64 = 120;
+const CLEANUP_INTERVAL_SECS: u64 = 60;
 
 #[derive(Clone)]
 pub struct RateLimiter {
-    inner: Arc<Mutex<HashMap<IpAddr, Bucket>>>,
+    inner: Arc<Mutex<LimiterState>>,
     max_tokens: u64,
     refill_per_sec: u64,
+}
+
+struct LimiterState {
+    buckets: HashMap<IpAddr, Bucket>,
+    last_cleanup: Instant,
 }
 
 struct Bucket {
@@ -42,7 +48,10 @@ impl RateLimiter {
     /// `requests_per_sec` est le debit soutenu ; le burst autorise vaut 10x.
     pub fn new(requests_per_sec: u64) -> Self {
         Self {
-            inner: Arc::new(Mutex::new(HashMap::new())),
+            inner: Arc::new(Mutex::new(LimiterState {
+                buckets: HashMap::new(),
+                last_cleanup: Instant::now(),
+            })),
             max_tokens: requests_per_sec * 10,
             refill_per_sec: requests_per_sec,
         }
@@ -50,8 +59,17 @@ impl RateLimiter {
 
     /// Consomme un jeton pour cette IP. `false` = requete a refuser.
     pub async fn check(&self, ip: IpAddr) -> bool {
-        let mut buckets = self.inner.lock().await;
+        let mut state = self.inner.lock().await;
         let now = Instant::now();
+
+        if now.duration_since(state.last_cleanup).as_secs() >= CLEANUP_INTERVAL_SECS {
+            state.buckets.retain(|_, bucket| {
+                now.duration_since(bucket.last_refill).as_secs() < BUCKET_TTL_SECS
+            });
+            state.last_cleanup = now;
+        }
+
+        let buckets = &mut state.buckets;
 
         if !buckets.contains_key(&ip) && buckets.len() >= MAX_BUCKETS {
             // Purge d'urgence avant de refuser : une table pleine de buckets
@@ -84,14 +102,17 @@ impl RateLimiter {
 
     /// Purge les buckets inactifs. A appeler periodiquement (~60 s).
     pub async fn cleanup(&self) {
-        let mut buckets = self.inner.lock().await;
+        let mut state = self.inner.lock().await;
         let now = Instant::now();
-        buckets.retain(|_, b| now.duration_since(b.last_refill).as_secs() < BUCKET_TTL_SECS);
+        state
+            .buckets
+            .retain(|_, b| now.duration_since(b.last_refill).as_secs() < BUCKET_TTL_SECS);
+        state.last_cleanup = now;
     }
 
     /// Nombre d'IP actuellement suivies (diagnostic et tests).
     pub async fn tracked_ips(&self) -> usize {
-        self.inner.lock().await.len()
+        self.inner.lock().await.buckets.len()
     }
 }
 

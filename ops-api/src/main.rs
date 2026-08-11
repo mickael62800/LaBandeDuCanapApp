@@ -59,20 +59,8 @@ async fn main() {
         ),
     );
 
-    // ── Surveillance de fond ──
-    // Demarree avant le serveur : le premier relevé sert de reference, et
-    // l'endpoint qui la sert repond « pas encore de relevé » entre-temps.
-    let container_monitor =
-        ops_api::container_monitor::spawn(docker_host.clone(), server_events.clone());
-
     let redis_client = redis::Client::open(config.redis_url.as_str())
-        .expect("Redis est requis pour l'API ops (deduplication d'alertes et logs)");
-
-    ops_api::alerts_dispatcher::spawn(
-        pool.clone(),
-        redis_client.clone(),
-        Some(container_monitor.clone()),
-    );
+        .expect("Redis est requis pour l'API ops (snapshots et logs)");
 
     let log_repo = Arc::new(ops_api::adapters::log_repository::PgLogRepository::new(
         pool.clone(),
@@ -162,7 +150,6 @@ async fn main() {
         alert_rules_uc,
         docker_host,
         server_events,
-        container_monitor,
         security_logs_uc,
         security_audit_uc,
         host_probe_uc,

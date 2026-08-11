@@ -285,11 +285,11 @@ impl GameServerRepository for DummyServerRepo {
     async fn count_active_for_guild(&self, _: &str) -> Result<(i32, i32), DomainError> {
         Ok((0, 0))
     }
-    async fn template_usage(&self, _: Uuid) -> Result<TemplateUsage, DomainError> {
-        Ok(TemplateUsage {
-            active_count: 0,
-            last_activity_at: None,
-        })
+    async fn template_usages(
+        &self,
+        _: &[Uuid],
+    ) -> Result<std::collections::HashMap<Uuid, TemplateUsage>, DomainError> {
+        Ok(std::collections::HashMap::new())
     }
     async fn set_session_channels(
         &self,

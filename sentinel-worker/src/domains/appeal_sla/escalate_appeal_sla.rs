@@ -210,4 +210,3 @@ async fn load_sla_configs(pool: &PgPool) -> Result<HashMap<String, GuildSlaConfi
 
     Ok(map)
 }
-

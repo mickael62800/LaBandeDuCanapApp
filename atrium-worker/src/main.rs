@@ -1,130 +1,57 @@
+//! Worker de fond de la plateforme d'accueil Atrium.
+
 use std::time::Duration;
-use tracing::{info, error};
-use sqlx::PgPool;
-use uuid::Uuid;
-use chrono::Utc;
-use reqwest::Client;
-use serde_json::json;
+
+use platform_common_worker::http_job::HttpJobClient;
+use serde::Deserialize;
+use tracing::info;
+
+#[derive(Debug, Deserialize)]
+struct SummaryJobResponse {
+    summary: String,
+    generated_by_ai: bool,
+}
 
 #[tokio::main]
 async fn main() {
-    dotenvy::dotenv().ok();
-    tracing_subscriber::fmt().init();
+    platform_common_worker::init_tracing("atrium_worker=info");
+    platform_common_worker::metrics::init_observability("atrium-worker");
 
-    info!("Démarrage du worker Atrium...");
+    let api_url =
+        std::env::var("ATRIUM_API_URL").unwrap_or_else(|_| "http://localhost:8090".into());
+    let api_token = std::env::var("ATRIUM_API_TOKEN").unwrap_or_default();
+    let guild_id = std::env::var("ATRIUM_PRIMARY_GUILD_ID")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| {
+            std::env::var("PUBLIC_GUILD_ID")
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+        })
+        .unwrap_or_else(|| {
+            tracing::error!(
+                "ATRIUM_PRIMARY_GUILD_ID ou PUBLIC_GUILD_ID doit identifier la guilde a resumer"
+            );
+            std::process::exit(2);
+        });
+    let interval_secs = platform_common_worker::env_u64("ATRIUM_SUMMARY_INTERVAL_SECS", 86_400);
+    let client = HttpJobClient::new(api_url.clone(), api_token, Duration::from_secs(30));
 
-    let database_url = platform_common_worker::load_database_url();
-    let deepseek_api_key = std::env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY manquant");
-    let pool = platform_common_worker::create_pg_pool(&database_url).await;
-    
-    let client = Client::new();
-
-    // Boucle principale du worker
-    loop {
-        info!("Atrium Worker: vérification des résumés météo en attente...");
-        
-        // Logique simplifiée pour la démo: On génère le résumé toutes les 24h
-        // (En prod, on utiliserait cron ou tokio-cron-scheduler)
-        
-        let guild_id = std::env::var("ATRIUM_PRIMARY_GUILD_ID").unwrap_or_else(|_| "123456789".to_string());
-        
-        match generate_summary(&pool, &client, &deepseek_api_key, &guild_id).await {
-            Ok(summary) => {
-                info!("Résumé généré avec succès: {} caractères", summary.len());
-                let id = Uuid::new_v4();
-                let now = Utc::now();
-                let start_date = now - chrono::Duration::days(7);
-                
-                let res = sqlx::query(
-                    "INSERT INTO atrium_server_summaries (id, guild_id, start_date, end_date, content, created_at) \
-                     VALUES ($1, $2, $3, $4, $5, $6)"
-                )
-                .bind(id)
-                .bind(&guild_id)
-                .bind(start_date)
-                .bind(now)
-                .bind(&summary)
-                .bind(now)
-                .execute(&pool)
-                .await;
-                
-                if let Err(e) = res {
-                    error!("Erreur lors de l'insertion du résumé en DB: {}", e);
-                }
-            },
-            Err(e) => {
-                error!("Erreur lors de la génération du résumé: {}", e);
-            }
+    info!(%api_url, %guild_id, interval_secs, "atrium-worker demarre");
+    platform_common_worker::spawn_interval("server-summary", interval_secs, move || {
+        let client = client.clone();
+        let path = format!("/admin/guilds/{guild_id}/jobs/summary");
+        async move {
+            let response: SummaryJobResponse = client.post_json(&path).await?;
+            info!(
+                ai = response.generated_by_ai,
+                taille = response.summary.len(),
+                "Resume meteo genere via Atrium API"
+            );
+            Ok(())
         }
-        
-        // Attendre 24 heures (ou une durée de test)
-        tokio::time::sleep(Duration::from_secs(86400)).await;
-    }
-}
-
-async fn generate_summary(pool: &PgPool, client: &Client, api_key: &str, guild_id: &str) -> Result<String, Box<dyn std::error::Error>> {
-    // 1. Récupérer un échantillon d'activité récente (ex: les 100 derniers messages parlant à l'IA)
-    let rows = sqlx::query(
-        "SELECT role, content FROM atrium_conversation_messages WHERE guild_id = $1 ORDER BY id DESC LIMIT 50"
-    )
-    .bind(guild_id)
-    .fetch_all(pool)
-    .await?;
-
-    let mut activity_log = String::new();
-    for row in rows.iter().rev() {
-        use sqlx::Row;
-        let role: String = row.try_get("role").unwrap_or_default();
-        let content: String = row.try_get("content").unwrap_or_default();
-        activity_log.push_str(&format!("{}: {}\n", role, content));
-    }
-    
-    if activity_log.is_empty() {
-        activity_log.push_str("Aucune activité récente.");
-    }
-
-    // 2. Interroger DeepSeek
-    let prompt = format!(
-        "Voici un échantillon de l'activité récente de notre serveur Discord.\n\
-        Fais un bref résumé 'Météo' (3-4 phrases) très fun, positif et décontracté de l'ambiance globale.\n\
-        Ne mentionne pas que tu as lu un 'échantillon', fais comme si tu avais tout suivi.\n\
-        Activité:\n{}",
-        activity_log
-    );
-
-    let payload = json!({
-        "model": "deepseek-chat",
-        "messages": [
-            {
-                "role": "system",
-                "content": "Tu es Atrium, un assistant IA cool."
-            },
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ],
-        "temperature": 0.7,
-        "max_tokens": 300
     });
 
-    let res = client.post("https://api.deepseek.com/chat/completions")
-        .header("Authorization", format!("Bearer {}", api_key))
-        .json(&payload)
-        .send()
-        .await?;
-
-    if !res.status().is_success() {
-        let err = res.text().await?;
-        return Err(format!("Erreur API DeepSeek: {}", err).into());
-    }
-
-    let json: serde_json::Value = res.json().await?;
-    let content = json["choices"][0]["message"]["content"]
-        .as_str()
-        .unwrap_or("Météo ensoleillée sur le serveur ! (Erreur de parsing AI)")
-        .to_string();
-
-    Ok(content)
+    platform_common_worker::shutdown_signal().await;
+    info!("atrium-worker arrete");
 }
-

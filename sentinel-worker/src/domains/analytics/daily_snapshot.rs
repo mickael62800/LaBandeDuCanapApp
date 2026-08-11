@@ -8,16 +8,11 @@
 use sqlx::PgPool;
 use tracing::info;
 
+use super::GuildJobReport;
 use platform_common_worker::api;
 
-#[derive(serde::Deserialize)]
-struct JobReport {
-    guilds_processed: usize,
-    guilds_skipped: usize,
-}
-
 pub async fn run(_pool: &PgPool) -> Result<(), String> {
-    let report: JobReport = api::post_empty("/api/analytics/snapshot/daily").await?;
+    let report: GuildJobReport = api::post_empty("/api/analytics/snapshot/daily").await?;
     if report.guilds_processed > 0 || report.guilds_skipped > 0 {
         info!(
             processed = report.guilds_processed,
@@ -27,4 +22,3 @@ pub async fn run(_pool: &PgPool) -> Result<(), String> {
     }
     Ok(())
 }
-

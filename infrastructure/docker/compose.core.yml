@@ -1,0 +1,814 @@
+# ============================================================================
+# DiscordSentinel — Docker Compose stack
+#
+# Convention :
+#   - context: ../..  (racine du repo)
+#   - Tous les services Rust utilisent les Dockerfiles generiques :
+#       infrastructure/docker/Dockerfile.rust-alpine  (gateway, bot, 13 workers)
+#       infrastructure/docker/Dockerfile.rust-debian  (api, glibc 2.38+ pour ONNX)
+#   - YAML anchors (x-...) pour eliminer la duplication entre workers.
+# ============================================================================
+
+# CRITIQUE — project name fige a `discordsentinel` pour preserver les volumes
+# existants (postgres_data, redis_data, etc.) malgre le deplacement du compose
+# vers infrastructure/docker/. Sans ca, un `docker compose up` lance depuis un autre
+# dossier creerait de NOUVEAUX volumes vides.
+# Domaine principal charge par docker-compose.yml via `include`.
+
+# ── Anchors partages ────────────────────────────────────────────────────────
+
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+# Defaults pour tous les services Rust : restart policy, init (tini PID 1),
+# logging avec rotation. A merger avec `<<: *rust-base`.
+x-rust-base: &rust-base
+  restart: unless-stopped
+  init: true
+  logging: *default-logging
+
+# Env minimale partagee par les workers HTTP sans acces direct a la DB.
+x-light-worker-env: &light-worker-env
+  METRICS_PORT: "9100"
+  RUST_LOG: ${RUST_LOG:-info}
+
+# Env partagee par les workers (pgbouncer + redis + api). Override possible
+# via merge ou redefinition. METRICS_PORT est utilise par worker-common pour
+# exposer /metrics (utilise par les healthchecks).
+x-worker-env: &worker-env
+  <<: *light-worker-env
+  DATABASE_URL: postgres://sentinel_app:${SENTINEL_DB_PASSWORD:-sentinel_app_secret}@pgbouncer:5432/discord_sentinel
+  REDIS_URL: redis://:${REDIS_PASSWORD:-sentinel_redis}@redis:6379
+  API_URL: http://api:3000
+  SENTINEL_API_KEY: ${SENTINEL_API_KEY:-}
+
+# Healthcheck commun aux workers : ping /metrics expose par worker-common.
+# Plus fiable que `pidof` (process bloque mais vivant => pidof passe).
+x-worker-healthcheck: &worker-healthcheck
+  test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:9100/metrics || exit 1"]
+  interval: 30s
+  timeout: 3s
+  retries: 3
+  start_period: 15s
+
+# Build alpine generique (workers, gateway, bot). Le BIN_NAME est specifie
+# par chaque service (le seul element qui change reellement).
+x-build-alpine: &build-alpine
+  context: ../..
+  dockerfile: infrastructure/docker/Dockerfile.rust-alpine
+
+# depends_on standard pour les workers DB-bound : pgbouncer + redis + api.
+# L'API doit etre healthy avant les workers, sinon ils echouent au boot
+# (heartbeat 401, lifecycle log timeout, /api/.../internal/jobs/* refuses).
+x-worker-deps-db-redis: &worker-deps-db-redis
+  pgbouncer:
+    condition: service_started
+  redis:
+    condition: service_healthy
+  api:
+    condition: service_healthy
+
+# Reseaux par defaut pour les workers : "internal" uniquement (PAS d'internet).
+# Override avec [internal, default] pour les workers qui ont besoin de Discord
+# (discord-audit-sync-worker).
+x-worker-networks-internal: &worker-networks-internal
+  - internal
+
+x-worker-networks-with-internet: &worker-networks-with-internet
+  - internal
+  - default
+
+services:
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Init mTLS gRPC : genere une CA + cert serveur + cert client partages.
+  # Idempotent (ne regenere pas si deja present). Volume shared en read-only
+  # avec l'API (server) et les clients gRPC (workers + bot).
+  # ──────────────────────────────────────────────────────────────────────────
+  grpc-certs-init:
+    image: alpine:3.20
+    container_name: sentinel-grpc-certs-init
+    environment:
+      CERT_DIR: /grpc-certs
+      CN_SERVER: api
+    volumes:
+      - grpc_certs:/grpc-certs
+      - ./scripts:/init:ro
+    # alpine:3.20 fournit busybox sans openssl, on l'installe au boot puis on
+    # lance le script. Pas de `command:` ici, l'entrypoint fait tout.
+    entrypoint:
+      - sh
+      - -c
+      - "apk add --no-cache openssl >/dev/null && sh /init/gen-grpc-certs.sh"
+    # Besoin d'internet pour `apk add openssl` au premier boot.
+    networks:
+      - default
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Infrastructure
+  # ──────────────────────────────────────────────────────────────────────────
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: sentinel-postgres
+    restart: unless-stopped
+    logging: *default-logging
+    # NOTE Phase 0 — observabilite : `shared_preload_libraries=pg_stat_statements`
+    # est obligatoire pour identifier les queries lentes (cf. docs/BASELINE_METRICS.md).
+    # Le `CREATE EXTENSION` correspondant est dans la migration `099_enable_pg_stat_statements.sql`.
+    #
+    # Phase 2 A.5 — Tuning RAM (cible serveur 16 GB) :
+    #   - shared_buffers 4GB (25 % RAM, 5-50x sur queries read-heavy)
+    #   - effective_cache_size 10GB (planificateur prefere index scans)
+    #   - work_mem 64MB (sorts/joins 10-100x, budget 30 conn x 64MB x 2 = 3.8GB max)
+    #   - maintenance_work_mem 1GB (VACUUM/REINDEX 5-10x)
+    #   - WAL tuning : wal_buffers=16MB, max_wal_size=4GB pour lisser les checkpoints
+    command: >-
+      postgres
+      -c max_connections=150
+      -c shared_buffers=4GB
+      -c effective_cache_size=10GB
+      -c work_mem=64MB
+      -c maintenance_work_mem=1GB
+      -c wal_buffers=16MB
+      -c checkpoint_completion_target=0.9
+      -c max_wal_size=4GB
+      -c min_wal_size=1GB
+      -c shared_preload_libraries=pg_stat_statements
+      -c pg_stat_statements.track=all
+      -c pg_stat_statements.max=10000
+    environment:
+      POSTGRES_USER: sentinel
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sentinel_secret}
+      POSTGRES_DB: discord_sentinel
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sentinel -d discord_sentinel"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    # SECURITE — postgres isole sur un reseau "data" interne (pas d'acces
+    # internet). Seul pgbouncer peut le joindre (lui-meme bi-network pour
+    # servir de bridge). Un service applicatif compromis ne peut PAS taper
+    # postgres en direct, il doit passer par pgbouncer (auth scram-sha-256).
+    networks:
+      - data
+
+  # PgBouncer en transaction pooling devant Postgres (pas de healthcheck CMD :
+  # edoburu/pgbouncer n'a ni nc ni pg_isready ; il demarre en ~1s apres postgres
+  # healthy donc `condition: service_started` cote consommateur suffit).
+  # One-shot : role applicatif NON-SUPERUSER pour la base de Sentinel.
+  #
+  # SECURITE — `POSTGRES_USER: sentinel` est le superuser du cluster, et un
+  # superuser IGNORE tous les GRANT. Tant que sentinel-api, sentinel-worker et
+  # ops-api s'y connectaient, leurs identifiants ouvraient AUSSI les bases
+  # `nexus`, `atrium` et surtout `auth` — celle qui contient les access et
+  # refresh tokens Discord des administrateurs. Le cloisonnement des trois
+  # autres plateformes ne servait donc qu'a moitie.
+  #
+  # `sentinel_app` possede `discord_sentinel` et rien d'autre.
+  sentinel-db-init:
+    image: postgres:16-alpine
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-sentinel_secret}
+      SENTINEL_DB_PASSWORD: ${SENTINEL_DB_PASSWORD:-sentinel_app_secret}
+    entrypoint:
+      - sh
+      - -euc
+      - |
+        PSQL="psql -h postgres -U sentinel -d discord_sentinel -v ON_ERROR_STOP=1"
+
+        # 1. Extension exigeant le superuser, posee ICI une fois pour toutes.
+        #    La migration 001 la demande en `CREATE EXTENSION IF NOT EXISTS` :
+        #    une fois presente, cet ordre devient un no-op et passe donc sous
+        #    un role ordinaire. C'est ce qui rend la bascule possible sans
+        #    toucher aux migrations.
+        $$PSQL -c "CREATE EXTENSION IF NOT EXISTS pg_stat_statements"
+
+        # 2. Role applicatif.
+        $$PSQL -tc "SELECT 1 FROM pg_roles WHERE rolname = 'sentinel_app'" | grep -q 1 ||
+          $$PSQL -c "CREATE ROLE sentinel_app LOGIN"
+        $$PSQL -c "ALTER ROLE sentinel_app WITH LOGIN PASSWORD '$$SENTINEL_DB_PASSWORD'"
+
+        # 3. Il possede la base et tout ce qu'elle contient. REASSIGN OWNED
+        #    transfere les objets existants d'un coup ; sans lui, le role ne
+        #    pourrait ni modifier le schema ni appliquer les migrations.
+        $$PSQL -c "ALTER DATABASE discord_sentinel OWNER TO sentinel_app"
+        $$PSQL -c "REASSIGN OWNED BY sentinel TO sentinel_app"
+        $$PSQL -c "ALTER SCHEMA public OWNER TO sentinel_app"
+        $$PSQL -c "GRANT CONNECT ON DATABASE discord_sentinel TO sentinel_app"
+
+        # 4. Fermeture croisee. Par defaut PostgreSQL accorde CONNECT a PUBLIC
+        #    sur toute base : sans ces REVOKE, `sentinel_app` pourrait ouvrir
+        #    une session sur `auth`, `nexus` et `atrium`. Il n'y lirait rien
+        #    (aucune table n'est accordee a PUBLIC), mais une session ouverte
+        #    est deja une surface. Les proprietaires et le superuser ne sont
+        #    pas concernes. `|| true` : les bases des profils inactifs
+        #    n'existent pas, et leur absence n'est pas une erreur.
+        for DB in auth nexus atrium; do
+          $$PSQL -c "REVOKE CONNECT ON DATABASE $$DB FROM PUBLIC" || true
+        done
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - data
+
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    container_name: sentinel-pgbouncer
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      DATABASE_URL: postgres://sentinel_app:${SENTINEL_DB_PASSWORD:-sentinel_app_secret}@postgres:5432/discord_sentinel
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 1000
+      DEFAULT_POOL_SIZE: 25
+      RESERVE_POOL_SIZE: 5
+      RESERVE_POOL_TIMEOUT: 3
+      MAX_PREPARED_STATEMENTS: 100
+      SERVER_RESET_QUERY: DISCARD ALL
+      ADMIN_USERS: sentinel_app
+      AUTH_TYPE: scram-sha-256
+    ports:
+      - "127.0.0.1:6432:5432"
+    depends_on:
+      sentinel-db-init:
+        condition: service_completed_successfully
+    # SECURITE — pgbouncer est bi-network : il joint postgres via "data"
+    # (isole) et expose le pool aux clients via "internal" (no-internet).
+    networks:
+      - data
+      - internal
+
+  redis:
+    image: redis:7-alpine
+    container_name: sentinel-redis
+    restart: unless-stopped
+    logging: *default-logging
+    command: >-
+      redis-server
+      --requirepass ${REDIS_PASSWORD:-sentinel_redis}
+      --maxmemory 2gb
+      --maxmemory-policy allkeys-lru
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-sentinel_redis}", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    # SECURITE — Redis n'a PAS besoin d'internet, isole sur "internal".
+    networks:
+      - internal
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Backend
+  # ──────────────────────────────────────────────────────────────────────────
+
+  api:
+    <<: *rust-base
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/Dockerfile.rust-debian
+      args:
+        BIN_NAME: sentinel-api
+        MIGRATIONS_SRC: sentinel-api/migrations
+    # SECURITE — `pid: host` partage le namespace PID de l'host avec le
+    # conteneur pour que sysinfo remonte le CPU/RAM reel (endpoint /api/system/info).
+    # Mitigations : `no-new-privileges` bloque toute escalade.
+    pid: host
+    security_opt:
+      - no-new-privileges:true
+    # SECURITE — l'API est reachable depuis l'exterieur UNIQUEMENT via le
+    # proxy nginx du service `web` (location /api/). On bind donc 127.0.0.1
+    # pour conserver un acces local debug (curl/SSH tunnel) sans exposer
+    # publiquement. Le gRPC 50051 est utilise par les bots/workers via le
+    # reseau docker interne, idem.
+    ports:
+      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:50051:50051"
+    # Healthcheck gRPC : avec mTLS active, on doit presenter le cert client
+    # pour passer le check. Si GRPC_TLS_DIR n'est pas defini (mode plain),
+    # ces flags sont ignores en pratique car le serveur n'exige rien.
+    # Note : -tls-server-name="api" car le SAN du cert serveur est "api".
+    healthcheck:
+      test:
+        - "CMD"
+        - "grpc_health_probe"
+        - "-addr=:50051"
+        - "-tls"
+        - "-tls-ca-cert=/grpc-certs/ca.pem"
+        - "-tls-client-cert=/grpc-certs/client.pem"
+        - "-tls-client-key=/grpc-certs/client.key"
+        - "-tls-server-name=api"
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+    environment:
+      # Relais des jeux joues depuis le site. Le navigateur ne joint
+      # jamais nexus-api : il passe par sentinel-api, seul composant a
+      # savoir QUI est connecte. La cle ne quitte donc pas le reseau interne.
+      NEXUS_API_URL: http://nexus-api:3100
+      NEXUS_API_KEY: ${NEXUS_API_KEY:-}
+      # Acces au daemon Docker : plus de socket ici, on passe par l'agent.
+      DOCKER_AGENT_URL: http://docker-agent:8095
+      DOCKER_AGENT_TOKEN: ${DOCKER_AGENT_TOKEN:?DOCKER_AGENT_TOKEN est requis}
+      # Serveur Discord unique servi par cette installation.
+      # Les API refusent tout autre guild_id ; les bots quittent toute
+      # autre guilde. Vide = verrou desactive.
+      PUBLIC_GUILD_ID: ${PUBLIC_GUILD_ID:-}
+      DATABASE_URL: postgres://sentinel_app:${SENTINEL_DB_PASSWORD:-sentinel_app_secret}@pgbouncer:5432/discord_sentinel
+      REDIS_URL: redis://:${REDIS_PASSWORD:-sentinel_redis}@redis:6379
+      SENTINEL_API_KEY: ${SENTINEL_API_KEY:-}
+      SENTINEL_REQUIRE_API_KEY: ${SENTINEL_REQUIRE_API_KEY:-true}
+      # Consommateur de l'identite : le gate superadmin ne resout plus
+      # l'identite lui-meme, il demande son verdict a auth-api.
+      AUTH_API_URL: http://auth-api:8096
+      AUTH_API_TOKEN: ${AUTH_API_TOKEN:?AUTH_API_TOKEN est requis}
+      # Gate RBAC global fail-closed par route (defaut false). Mettre a "true"
+      # active la deuxieme couche de defense en profondeur devant les gardes par
+      # handler. Surchargeable via la var RBAC_GLOBAL_GATE du .env docker.
+      RBAC_GLOBAL_GATE: ${RBAC_GLOBAL_GATE:-true}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+      # Optionnel : protege /metrics par un Bearer token. Vide = ouvert (scrape
+      # interne sans auth). Si defini, configurer aussi le job Prometheus.
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+      # NI DISCORD_CLIENT_SECRET NI WEB_FRONT_URL ici : le flux OAuth appartient
+      # a auth-api. Deux processus porteurs du meme client_secret, c'est deux
+      # endroits ou il peut fuiter — et un seul des deux le sert vraiment.
+      SUPERADMIN_USER_IDS: ${SUPERADMIN_USER_IDS:-}
+      # La source publique du .env est SENTINEL_BOT_TOKEN. Le nom injecte
+      # reste SENTINEL_DISCORD_TOKEN, celui lu par les binaires Rust.
+      SENTINEL_DISCORD_TOKEN: ${SENTINEL_BOT_TOKEN:-${SENTINEL_DISCORD_TOKEN:-${DISCORD_TOKEN:-}}}
+      DEEPSEEK_MODERATION_API_KEY: ${DEEPSEEK_MODERATION_API_KEY:-}
+      DEEPSEEK_MODERATION_MODEL: ${DEEPSEEK_MODERATION_MODEL:-deepseek-chat}
+      DEEPSEEK_MODERATION_ENDPOINT: ${DEEPSEEK_MODERATION_ENDPOINT:-https://api.deepseek.com/chat/completions}
+      VISION_MODEL_PATH: /models/vision/vision_sentinel.onnx
+      TEXT_MODEL_PATH: /models/text/text_sentinel.onnx
+      TEXT_TOKENIZER_PATH: /models/text/tokenizer.json
+      TEXT_MAX_LENGTH: "256"
+      RUST_LOG: ${RUST_LOG:-info}
+      # mTLS gRPC : si defini, le serveur exige un cert client signe par
+      # notre CA interne. Sinon plain HTTP/2.
+      GRPC_TLS_DIR: ${GRPC_TLS_DIR:-/grpc-certs}
+      # Pour l'endpoint /api/security/tls-cert : domaine du cert Let's Encrypt
+      # a lire dans /etc/letsencrypt/live/{WEB_DOMAIN}/cert.pem
+      WEB_DOMAIN: ${WEB_DOMAIN:-localhost}
+    volumes:
+      - ../../sentinel-ml/vision/exports:/models/vision:ro
+      - ../../sentinel-ml/text/exports:/models/text:ro
+      # PLUS de socket Docker ici : il equivaut a un acces root sur l'hote et
+      # n'a rien a faire dans le processus qui sert l'OAuth, la moderation et
+      # les routes communautaires. Les endpoints /api/docker/* passent par le
+      # service `docker-agent`, seul a le monter.
+      # Certs mTLS gRPC (genere par grpc-certs-init au boot, partage en RO).
+      - grpc_certs:/grpc-certs:ro
+      # Cert Let's Encrypt en RO pour endpoint /api/security/tls-cert
+      # (lecture de cert.pem pour afficher l'expiration sur la page Securite).
+      - letsencrypt_etc:/etc/letsencrypt:ro
+      # Fichiers host security (RW) :
+      # - Lecture : fail2ban-status.json, ssh-failures.json, disk-trend.json,
+      #   open-ports.json, file-integrity.json, etc. (genere par cron host).
+      # - Ecriture : bans-pending.txt / unbans-pending.txt (consomme par
+      #   sentinel-apply-bans.sh cron host) pour /api/security/ban-ip
+      #   et /api/security/unban-ip.
+      # Si le repertoire n'existe pas, les endpoints lecture retournent
+      # installed=false avec les instructions setup-host-security.sh.
+      - /var/lib/sentinel:/var/lib/sentinel
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      pgbouncer:
+        condition: service_started
+      grpc-certs-init:
+        condition: service_completed_successfully
+      docker-agent:
+        condition: service_started
+    # SECURITE — API a besoin d'internet (Discord OAuth, get_user_guilds).
+    # internal : Redis + pgbouncer + autres services internes.
+    # default : sortie internet (Discord).
+    networks:
+      - internal
+      - default
+
+  # ── Agent Docker ────────────────────────────────────────────────────────
+  #
+  # SEUL service du depot a monter /var/run/docker.sock, qui equivaut a un
+  # acces root sur l'hote. Il etait auparavant monte par `api`, c'est-a-dire
+  # par le processus qui sert aussi l'OAuth, la moderation Discord et toutes
+  # les routes communautaires : une faille dans cette surface donnait l'hote.
+  #
+  # L'agent n'a ni base, ni session, ni utilisateurs, ni route nginx. Il n'est
+  # joignable que sur le reseau `internal`, par les services qui portent
+  # DOCKER_AGENT_TOKEN, et n'expose que les operations du port `DockerHost`
+  # (liste blanche) — jamais un passe-plat generique vers l'API Docker.
+  docker-agent:
+    <<: *rust-base
+    build:
+      <<: *build-alpine
+      args:
+        BIN_NAME: docker-agent
+    environment:
+      RUST_LOG: ${RUST_LOG:-info}
+      DOCKER_AGENT_BIND_ADDR: 0.0.0.0:8095
+      # Requis : l'agent REFUSE de demarrer sans ses DEUX jetons (16 caracteres
+      # minimum, et differents l'un de l'autre). Mieux vaut un service arrete
+      # qu'un socket ouvert a tout le reseau interne.
+      #
+      # Un jeton par surface : `DOCKER_AGENT_TOKEN` administre l'hote (ops-api),
+      # `DOCKER_AGENT_GAME_TOKEN` pilote les serveurs de jeu (nexus-api). Avec
+      # un jeton unique, nexus-api pouvait arreter ou purger n'importe quel
+      # conteneur, `postgres` et `auth-api` compris.
+      DOCKER_AGENT_TOKEN: ${DOCKER_AGENT_TOKEN:?DOCKER_AGENT_TOKEN est requis}
+      DOCKER_AGENT_GAME_TOKEN: ${DOCKER_AGENT_GAME_TOKEN:?DOCKER_AGENT_GAME_TOKEN est requis}
+    # GID du groupe `docker` de l'host, proprietaire du socket. Sans lui, le
+    # user non-root du conteneur ne peut pas l'ouvrir.
+    # Override : DOCKER_GID=$(stat -c '%g' /var/run/docker.sock) dans .env.
+    group_add:
+      - "${DOCKER_GID:-988}"
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    # PAS de `ports:` — l'agent ne doit jamais etre joignable depuis l'hote
+    # ni depuis l'exterieur, uniquement par les autres conteneurs.
+    #
+    # `internal` uniquement : il n'a aucune raison de sortir sur internet.
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:8095/health || exit 1"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+  # ── API Exploitation ────────────────────────────────────────────────────
+  #
+  # Ecrans de la MACHINE hote (sondes, Docker, logs techniques, securite de
+  # l'hote, regles d'alerte), transverses aux trois plateformes Discord.
+  #
+  # Se connecte a la base de Sentinel : Postgres ne sait pas requeter entre
+  # bases logiques, or l'exploitation doit LIRE `logs` et `audit_logs`. La
+  # separation passe par un role restreint, pas par une base dediee.
+  ops-api:
+    <<: *rust-base
+    build:
+      <<: *build-alpine
+      args:
+        BIN_NAME: ops-api
+    environment:
+      RUST_LOG: ${RUST_LOG:-info}
+      OPS_API_BIND_ADDR: 0.0.0.0:3200
+      OPS_DATABASE_URL: postgres://sentinel_app:${SENTINEL_DB_PASSWORD:-sentinel_app_secret}@pgbouncer:5432/discord_sentinel
+      # Requis : l'API refuse de demarrer sans jeton d'au moins 16 caracteres.
+      OPS_API_TOKEN: ${OPS_API_TOKEN:?OPS_API_TOKEN est requis}
+      OPS_METRICS_TOKEN: ${OPS_METRICS_TOKEN:-}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-sentinel_redis}@redis:6379
+      # Journal des logins reussis : la table appartient a la base de
+      # l'identite, l'ecran « Securite de l'hote » la lit par HTTP. Meme
+      # relation qu'avec docker-agent pour le daemon Docker.
+      AUTH_API_URL: http://auth-api:8096
+      AUTH_API_TOKEN: ${AUTH_API_TOKEN:?AUTH_API_TOKEN est requis}
+      DOCKER_AGENT_URL: http://docker-agent:8095
+      DOCKER_AGENT_TOKEN: ${DOCKER_AGENT_TOKEN:?DOCKER_AGENT_TOKEN est requis}
+      WEB_DOMAIN: ${WEB_DOMAIN:-localhost}
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - /var/lib/sentinel:/var/lib/sentinel:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    networks:
+      - internal
+      - default
+    depends_on:
+      postgres:
+        condition: service_healthy
+      pgbouncer:
+        condition: service_started
+      docker-agent:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:3200/health || exit 1"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+  # Worker Exploitation : surveillance Docker et evaluation des alertes.
+  # Le snapshot courant est publie dans Redis puis servi par ops-api.
+  ops-worker:
+    <<: *rust-base
+    build:
+      <<: *build-alpine
+      args:
+        BIN_NAME: ops-worker
+    healthcheck: *worker-healthcheck
+    environment:
+      <<: *light-worker-env
+      OPS_DATABASE_URL: postgres://sentinel_app:${SENTINEL_DB_PASSWORD:-sentinel_app_secret}@pgbouncer:5432/discord_sentinel
+      REDIS_URL: redis://:${REDIS_PASSWORD:-sentinel_redis}@redis:6379
+      DOCKER_AGENT_URL: http://docker-agent:8095
+      DOCKER_AGENT_TOKEN: ${DOCKER_AGENT_TOKEN:?DOCKER_AGENT_TOKEN est requis}
+      SECURITY_ALERTS_WEBHOOK: ${SECURITY_ALERTS_WEBHOOK:-}
+      SECURITY_ALERTS_INTERVAL_SECS: ${SECURITY_ALERTS_INTERVAL_SECS:-300}
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - /var/lib/sentinel:/var/lib/sentinel:ro
+    depends_on:
+      pgbouncer:
+        condition: service_started
+      redis:
+        condition: service_healthy
+      docker-agent:
+        condition: service_started
+    networks:
+      - internal
+      - default
+
+  gateway:
+    <<: *rust-base
+    build:
+      <<: *build-alpine
+      args:
+        BIN_NAME: sentinel-gateway
+    # SECURITE — gateway reachable via /ws du proxy nginx, pas de raison
+    # de l'exposer publiquement. 127.0.0.1 = acces local debug uniquement.
+    ports:
+      - "127.0.0.1:3001:3001"
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:3001/health || exit 1"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 15s
+    environment:
+      REDIS_URL: redis://:${REDIS_PASSWORD:-sentinel_redis}@redis:6379
+      REDIS_CHANNEL: sentinel:events
+      # API_URL : utilise pour valider les tokens WS via /api/auth/check-access.
+      # Sans ca, fallback localhost:3000 -> appel vers gateway lui-meme -> WS rejete 401.
+      API_URL: http://api:3000
+      API_KEY: ${SENTINEL_API_KEY:-${API_KEY:-}}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+      HOST: 0.0.0.0
+      PORT: "3001"
+      MAX_CONNECTIONS: "1000"
+      RUST_LOG: ${RUST_LOG:-info}
+    depends_on:
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # NOTE — gateway a besoin de default pour que le port publish 127.0.0.1:3001
+    # fonctionne (Docker requiert un reseau non-internal pour le NAT host).
+    # En pratique, gateway ne fait jamais d'outbound internet (juste Redis +
+    # WebSocket inbound). Sa security depend du firewall externe (port non
+    # ouvert) + auth du token WebSocket.
+    networks:
+      - internal
+      - default
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # sentinel-worker : binaire unique qui orchestre tous les jobs
+  # periodiques (ex 15 workers fusionnes en avril 2026). Organise par
+  # domaine en interne : `src/domains/{domain}/{job}.rs`.
+  #
+  # Toutes les variables d'env de tous les domaines + acces internet
+  # (Discord pour les jobs ai/audit-sync/announcement) + grpc-certs
+  # pour le job export.
+  # ──────────────────────────────────────────────────────────────────────────
+  sentinel-worker:
+    <<: *rust-base
+    build:
+      <<: *build-alpine
+      args:
+        BIN_NAME: sentinel-worker
+    healthcheck: *worker-healthcheck
+    environment:
+      <<: *worker-env
+      # gRPC pour le job export
+      GRPC_API_URL: http://api:50051
+      GRPC_TLS_DIR: /grpc-certs
+      # Discord (audit-sync, announcement)
+      SENTINEL_DISCORD_TOKEN: ${SENTINEL_BOT_TOKEN:-${SENTINEL_DISCORD_TOKEN:-${DISCORD_TOKEN:-}}}
+      # Cleanup
+      VOICE_SESSIONS_RETENTION_DAYS: ${VOICE_SESSIONS_RETENTION_DAYS:-90}
+      LOGS_RETENTION_DAYS: ${LOGS_RETENTION_DAYS:-30}
+      CLOSED_TICKETS_RETENTION_DAYS: ${CLOSED_TICKETS_RETENTION_DAYS:-180}
+      CLEANUP_INTERVAL_HOURS: ${CLEANUP_INTERVAL_HOURS:-1}
+      VACUUM_ENABLED: ${VACUUM_ENABLED:-true}
+      VACUUM_INTERVAL_HOURS: ${VACUUM_INTERVAL_HOURS:-24}
+    volumes:
+      - grpc_certs:/grpc-certs:ro
+    depends_on:
+      pgbouncer:
+        condition: service_started
+      grpc-certs-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    # Acces internet (Discord) + interne (Postgres/Redis/API).
+    networks: *worker-networks-with-internet
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Bot unifie
+  # ──────────────────────────────────────────────────────────────────────────
+  #
+  # Les 15 anciens bots (audit, automod, cleanup, community,
+  # moderation, progression, roles, security, tickets, voice, welcome,
+  # image) ont ete fusionnes en un seul binaire `sentinel-bot` structure en
+  # modules. Un seul processus, une seule connexion Gateway Discord, un seul
+  # cache, une seule TypeMap.
+  #
+  # Sharding Discord :
+  #   SHARD_MODE=single  (defaut) : 1 shard, OK jusqu'a ~2500 guilds.
+  #   SHARD_MODE=auto             : Serenity spawn tous les shards recommandes.
+  #   SHARD_MODE=manual           : requiert SHARD_ID + SHARD_TOTAL (multi-replica).
+
+  sentinel-bot:
+    <<: *rust-base
+    build:
+      <<: *build-alpine
+      args:
+        BIN_NAME: sentinel-bot
+    # Le bot n'expose pas /metrics par worker-common ; on retombe sur pidof.
+    healthcheck:
+      test: ["CMD-SHELL", "pidof sentinel-app || exit 1"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 20s
+    environment:
+      # Serveur Discord unique servi par cette installation.
+      # Les API refusent tout autre guild_id ; les bots quittent toute
+      # autre guilde. Vide = verrou desactive.
+      PUBLIC_GUILD_ID: ${PUBLIC_GUILD_ID:-}
+      SENTINEL_DISCORD_TOKEN: ${SENTINEL_BOT_TOKEN:-${SENTINEL_DISCORD_TOKEN:-${DISCORD_TOKEN:-}}}
+      API_BASE_URL: http://api:3000
+      # Adresse PUBLIQUE du site, utilisee pour construire les URL d'images des
+      # embeds Discord (web/public/imgs/). Discord ne peut pas lire un fichier
+      # local du conteneur : il va chercher l'image lui-meme en HTTPS.
+      WEB_FRONT_URL: ${WEB_FRONT_URL:-}
+      GRPC_API_URL: http://api:50051
+      GRPC_TLS_DIR: /grpc-certs
+      # Le bot et son client gRPC lisent SENTINEL_API_KEY.
+      SENTINEL_API_KEY: ${SENTINEL_API_KEY:-${API_KEY:-}}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-sentinel_redis}@redis:6379
+      REDIS_CHANNEL: sentinel:events
+      VOICE_GUILD_ID: ${VOICE_GUILD_ID:-}
+      VOICE_PUBLIC_CREATOR_CHANNEL_ID: ${VOICE_PUBLIC_CREATOR_CHANNEL_ID:-}
+      VOICE_PRIVATE_CREATOR_CHANNEL_ID: ${VOICE_PRIVATE_CREATOR_CHANNEL_ID:-}
+      VOICE_LOG_CHANNEL_ID: ${VOICE_LOG_CHANNEL_ID:-}
+      TICKET_CATEGORY_ID: ${TICKET_CATEGORY_ID:-}
+      TICKET_CHANNEL_ID: ${TICKET_CHANNEL_ID:-}
+      SHARD_MODE: ${SHARD_MODE:-single}
+      RUST_LOG: ${RUST_LOG:-info}
+    volumes:
+      - grpc_certs:/grpc-certs:ro
+    depends_on:
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      grpc-certs-init:
+        condition: service_completed_successfully
+    # sentinel-bot : connexion Discord Gateway + REST -> internet + interne.
+    networks:
+      - internal
+      - default
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Web (SPA Vue 3 servie par nginx, HTTPS)
+  # ──────────────────────────────────────────────────────────────────────────
+
+  web:
+    build:
+      context: ../..
+      dockerfile: web/Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-}
+    restart: unless-stopped
+    init: true
+    logging: *default-logging
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      WEB_DOMAIN: ${WEB_DOMAIN:-localhost}
+      # Injectee cote serveur dans le proxy /nexus-api/ par
+      # /docker-entrypoint.d/30-nexus-key.sh. Ne transite JAMAIS jusqu'au
+      # navigateur : nexus-api n'a qu'une cle statique, la divulguer donnerait
+      # un acces admin complet a la plateforme jeux.
+      NEXUS_API_KEY: ${NEXUS_API_KEY:-}
+      # Meme principe pour le proxy /atrium-api/, injecte par
+      # /docker-entrypoint.d/31-atrium-key.sh. atrium-api n'est pas publie sur
+      # l'hote : cette passerelle est le SEUL chemin du back-office vers lui.
+      ATRIUM_API_TOKEN: ${ATRIUM_API_TOKEN:-}
+      # Injecté cote serveur dans le proxy /ops-api/ par /docker-entrypoint.d/32-ops-key.sh
+      OPS_API_TOKEN: ${OPS_API_TOKEN:-}
+      # Injecte par /docker-entrypoint.d/33-auth-key.sh dans les sous-requetes
+      # d'autorisation des TROIS passerelles. C'est le jeton le plus critique
+      # du conteneur web : sans lui, auth-api repond 401 et aucune passerelle
+      # ne laisse passer.
+      AUTH_API_TOKEN: ${AUTH_API_TOKEN:-}
+      # Configuration PUBLIQUE du site, ecrite dans site-config.json au
+      # demarrage. Sans PUBLIC_GUILD_ID, l'espace membre n'affiche aucune
+      # section : il ne sait pas de quel serveur parler.
+      PUBLIC_GUILD_ID: ${PUBLIC_GUILD_ID:-}
+      DISCORD_INVITE: ${DISCORD_INVITE:-}
+    volumes:
+      - letsencrypt_etc:/etc/letsencrypt
+      - letsencrypt_www:/var/www/certbot
+      # Logs scanner (444 sur paths suspects) ecrits par nginx, lus par
+      # le jail fail2ban `nginx-scanner` cote host. Le repertoire host
+      # /var/log/sentinel-nginx doit appartenir a UID 101 (user nginx
+      # dans nginx:1.27-alpine) — gere par setup-host-security.sh.
+      - /var/log/sentinel-nginx:/var/log/nginx/sentinel
+    healthcheck:
+      # 127.0.0.1 explicit : evite que wget resolve localhost en IPv6 [::1]
+      # alors que nginx ecoute en IPv4 -> faux positif "unhealthy".
+      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1/healthz || exit 1"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      api:
+        condition: service_healthy
+      gateway:
+        condition: service_started
+    # NOTE — web (nginx) a besoin de default pour que le port publish 80/443
+    # fonctionne (Docker requiert un reseau non-internal pour le NAT host).
+    # internal donne acces aux upstreams (api, gateway). nginx ne fait jamais
+    # d'outbound internet -> pas de risque d'exfiltration.
+    networks:
+      - internal
+      - default
+
+volumes:
+  postgres_data:
+  atrium_ollama_data:
+  redis_data:
+  # Reservations de ports de jeu + stream nexus:events. Persiste : perdre les
+  # reservations au redemarrage rouvrirait la porte aux collisions de port.
+  # (auth-redis n'a volontairement PAS de volume : ses cles derivent de secrets
+  # et expirent en 10 min.)
+  nexus_redis_data:
+  prometheus_data:
+  grafana_data:
+  letsencrypt_etc:
+  letsencrypt_www:
+  # Certs mTLS gRPC (CA + server + client) generes au boot par grpc-certs-init.
+  # Persistent : pas de regeneration au redemarrage. Pour rotater : delete le
+  # volume et relance le compose.
+  grpc_certs:
+
+# Networks (defense en profondeur, 3 niveaux d'isolation) :
+#
+#   - default (sentinel) : reseau AVEC internet sortant. Reserve aux services
+#     qui ont besoin de joindre Discord ou Let's Encrypt :
+#       api, sentinel-bot, certbot, discord-audit-sync-worker
+#     Les autres services n'ont PAS d'acces internet (defense exfiltration
+#     de donnees en cas de zero-day).
+#
+#   - internal : reseau SANS internet (internal: true) pour communication
+#     inter-services (Redis, gRPC, healthchecks, etc.). Tous les services
+#     y sont sauf postgres (sur "data").
+#
+#   - data : reseau isole pour postgres uniquement. Seuls les pgbouncer sont
+#     bi-network (data + internal) pour faire le pont — un par base logique :
+#     `pgbouncer` (discord_sentinel), `atrium-pgbouncer`, `nexus-pgbouncer`.
+#     Les `*-db-init` y passent aussi, mais ce sont des one-shot qui se
+#     terminent avant que l'API correspondante ne demarre.
+#     AUCUNE API n'est sur `data` : c'est ce qui garantit qu'une API
+#     compromise ne peut parler qu'a la base de sa propre plateforme.
+#
+# Resultat : un worker compromis sur "internal" seulement ne peut ni
+# atteindre postgres directement, ni exfiltrer des donnees vers internet.
+networks:
+  default:
+    name: sentinel
+    driver: bridge
+  internal:
+    name: sentinel-internal
+    driver: bridge
+    internal: true
+  data:
+    name: sentinel-data
+    driver: bridge
+    internal: true

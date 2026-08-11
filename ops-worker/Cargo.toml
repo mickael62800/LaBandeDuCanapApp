@@ -1,0 +1,27 @@
+[package]
+name = "ops-worker"
+version.workspace = true
+edition.workspace = true
+description = "Worker d'exploitation de l'hote : surveillance Docker et alertes"
+
+[[bin]]
+name = "ops-worker"
+path = "src/main.rs"
+
+[dependencies]
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sqlx = { workspace = true }
+redis = { workspace = true }
+tracing = { workspace = true }
+dotenvy = { workspace = true }
+chrono = { workspace = true }
+reqwest = { workspace = true }
+sysinfo = { version = "0.33", default-features = false, features = ["system", "disk"] }
+ops-api = { workspace = true }
+ops-core = { workspace = true }
+platform-common-worker = { path = "../platform-common-worker" }
+
+[lints]
+workspace = true

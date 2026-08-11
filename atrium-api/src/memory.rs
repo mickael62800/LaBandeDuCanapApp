@@ -1,6 +1,8 @@
 //! Memoire conversationnelle persistante et bornee par membre.
 
+use chrono::Utc;
 use sqlx::{PgPool, Row};
+use uuid::Uuid;
 
 use crate::AppConfig;
 
@@ -92,6 +94,50 @@ impl ConversationMemory {
         .execute(&mut *tx)
         .await?;
         tx.commit().await?;
+        Ok(())
+    }
+
+    pub async fn get_recent_activity(
+        &self,
+        guild_id: &str,
+        limit: i64,
+    ) -> Result<String, sqlx::Error> {
+        let rows = sqlx::query(
+            "SELECT role, content FROM atrium_conversation_messages WHERE guild_id = $1 ORDER BY id DESC LIMIT $2"
+        )
+        .bind(guild_id)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut activity_log = String::new();
+        for row in rows.iter().rev() {
+            let role: String = row.try_get("role").unwrap_or_default();
+            let content: String = row.try_get("content").unwrap_or_default();
+            activity_log.push_str(&format!("{}: {}\n", role, content));
+        }
+
+        Ok(activity_log)
+    }
+
+    pub async fn save_summary(&self, guild_id: &str, content: &str) -> Result<(), sqlx::Error> {
+        let id = Uuid::new_v4();
+        let now = Utc::now();
+        let start_date = now - chrono::Duration::days(7);
+
+        sqlx::query(
+            "INSERT INTO atrium_server_summaries (id, guild_id, start_date, end_date, content, created_at) \
+             VALUES ($1, $2, $3, $4, $5, $6)"
+        )
+        .bind(id)
+        .bind(guild_id)
+        .bind(start_date)
+        .bind(now)
+        .bind(content)
+        .bind(now)
+        .execute(&self.pool)
+        .await?;
+
         Ok(())
     }
 

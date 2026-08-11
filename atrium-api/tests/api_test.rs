@@ -53,6 +53,7 @@ fn setup_test_app(should_fail: bool) -> axum::Router {
         // obligatoire dans l'etat : on prend le vrai, qui ne joint le modele
         // qu'a l'appel. Aucun de ces tests ne l'appelle.
         calming: atrium_api::calming_use_case(&config),
+        summary: atrium_api::summary_use_case(&config),
         config,
         welcome: mock_use_case,
         rag: None,

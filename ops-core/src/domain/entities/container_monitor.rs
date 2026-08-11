@@ -17,6 +17,10 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
+/// Cle Redis partagee entre le producteur (`ops-worker`) et le lecteur
+/// (`ops-api`) du snapshot.
+pub const REDIS_STATE_KEY: &str = "ops:container_monitor:state";
+
 /// Etat d'un conteneur a un instant donne.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ContainerSnapshot {
@@ -71,7 +75,7 @@ pub struct ContainerChangeEntry {
 }
 
 /// Instantane courant + historique borne des changements.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ContainerMonitorState {
     pub last_check: String,
     pub current: Vec<ContainerSnapshot>,

@@ -88,9 +88,11 @@ pub fn start(redis_client: redis::Client, config: MonitorConfig) {
                             "type": if sentinel_core::domain::entities::system::config_parsers::is_worker_service(name) { "worker" } else { "bot" },
                         }
                     });
-                    if let Err(e) =
-                        platform_common_worker::redis_helpers::xadd_event(&mut conn, &event.to_string())
-                            .await
+                    if let Err(e) = platform_common_worker::redis_helpers::xadd_event(
+                        &mut conn,
+                        &event.to_string(),
+                    )
+                    .await
                     {
                         warn!(error = %e, "Erreur publication event offline sur Redis");
                     }
@@ -127,9 +129,11 @@ pub fn start(redis_client: redis::Client, config: MonitorConfig) {
                             "type": if sentinel_core::domain::entities::system::config_parsers::is_worker_service(name) { "worker" } else { "bot" },
                         }
                     });
-                    if let Err(e) =
-                        platform_common_worker::redis_helpers::xadd_event(&mut conn, &event.to_string())
-                            .await
+                    if let Err(e) = platform_common_worker::redis_helpers::xadd_event(
+                        &mut conn,
+                        &event.to_string(),
+                    )
+                    .await
                     {
                         warn!(error = %e, "Erreur publication event online sur Redis");
                     }
@@ -175,4 +179,3 @@ mod tests {
         assert_eq!(service_label("custom-service"), "Bot");
     }
 }
-

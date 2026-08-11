@@ -104,7 +104,9 @@ pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
                 "escalation_minutes": escalation_minutes,
             }
         });
-        let res = platform_common_worker::redis_helpers::xadd_event(&mut conn, &payload.to_string()).await;
+        let res =
+            platform_common_worker::redis_helpers::xadd_event(&mut conn, &payload.to_string())
+                .await;
         if let Err(e) = res {
             warn!(error = %e, ticket_id = %t.id, "XADD ticket_sla_escalated echoue");
         }
@@ -198,7 +200,9 @@ async fn scan_and_warn(
                 "warn_minutes": warn_minutes,
             }
         });
-        let res = platform_common_worker::redis_helpers::xadd_event(&mut conn, &payload.to_string()).await;
+        let res =
+            platform_common_worker::redis_helpers::xadd_event(&mut conn, &payload.to_string())
+                .await;
         if let Err(e) = res {
             warn!(error = %e, ticket_id = %t.id, "XADD ticket_sla_warned echoue");
         }
@@ -209,4 +213,3 @@ async fn scan_and_warn(
     }
     Ok(())
 }
-

@@ -1,0 +1,317 @@
+# Plateforme Nexus — activee par les profils nexus ou full.
+x-nexus-default-logging: &nexus-default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-nexus-rust-base: &nexus-rust-base
+  restart: unless-stopped
+  init: true
+  logging: *nexus-default-logging
+
+x-nexus-build-alpine: &nexus-build-alpine
+  context: ../..
+  dockerfile: infrastructure/docker/Dockerfile.rust-alpine
+
+x-nexus-light-worker-env: &nexus-light-worker-env
+  METRICS_PORT: "9100"
+  RUST_LOG: ${RUST_LOG:-info}
+
+x-nexus-worker-healthcheck: &nexus-worker-healthcheck
+  test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:9100/metrics || exit 1"]
+  interval: 30s
+  timeout: 3s
+  retries: 3
+  start_period: 15s
+
+services:
+
+  # Redis DEDIE a la plateforme jeux.
+  #
+  # Nexus est le seul des trois a pouvoir etre separe proprement : ses deux
+  # usages sont internes — la stream `nexus:events` (nexus-api publie,
+  # nexus-bot consomme) et l'allocation atomique des ports de jeu. Atrium, lui,
+  # CONSOMME `sentinel:events` (les demandes d'apaisement publiees par l'AutoMod
+  # de Sentinel) : le separer lui imposerait deux connexions Redis pour une
+  # cle de cooldown sans valeur. Il reste donc sur l'instance commune.
+  #
+  # Deux reglages different du Redis commun, et ce sont des CORRECTIONS :
+  #
+  #   - `noeviction` au lieu de `allkeys-lru`. Les reservations de port
+  #     (`game:port:*`, TTL 7 j) sont le garde-fou anti-collision : sous LRU,
+  #     Redis peut en evincer une encore active, et deux serveurs de jeu se
+  #     voient alors attribuer le meme port. Le symptome apparait au demarrage
+  #     du second, tres loin de la cause.
+  #   - Persistance activee (`appendonly`). Un redemarrage de l'instance
+  #     commune perdait ces reservations, avec le meme risque.
+  nexus-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    logging: *nexus-default-logging
+    command: >-
+      redis-server
+      --requirepass ${NEXUS_REDIS_PASSWORD:-nexus_redis_secret}
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy noeviction
+    # PAS de `ports:` : joignable seulement par nexus-api et nexus-bot.
+    volumes:
+      - nexus_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${NEXUS_REDIS_PASSWORD:-nexus_redis_secret}", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+    profiles:
+      - nexus
+      - full
+
+  # One-shot : cree le ROLE `nexus` et la base `nexus` qu'il possede
+  # (idempotent, rejouable sur une installation existante).
+  #
+  # SECURITE — pourquoi un role dedie. `POSTGRES_USER: sentinel` est le
+  # superuser du cluster : un superuser IGNORE tous les GRANT. Tant que
+  # nexus-api se connectait avec ce compte, la separation en trois bases
+  # logiques etait purement decorative — ses identifiants ouvraient
+  # discord_sentinel et atrium. Le role `nexus` est un role ordinaire : il ne
+  # possede que sa base, et les GRANT s'appliquent vraiment a lui.
+  #
+  # La reciproque n'est PAS fermee : sentinel-api et atrium-api se connectent
+  # encore en superuser et peuvent donc lire la base nexus. Les basculer
+  # demande de traiter leurs `CREATE EXTENSION` (pgvector cote Atrium n'est pas
+  # une extension « trusted », elle exige le superuser) — chantier distinct.
+  nexus-db-init:
+    image: postgres:16-alpine
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-sentinel_secret}
+      NEXUS_DB_PASSWORD: ${NEXUS_DB_PASSWORD:-nexus_secret}
+    entrypoint:
+      - sh
+      - -euc
+      - |
+        PSQL="psql -h postgres -U sentinel -d discord_sentinel -v ON_ERROR_STOP=1"
+
+        # 1. Role dedie. `ALTER` inconditionnel ensuite : une rotation de
+        #    NEXUS_DB_PASSWORD dans le .env doit prendre effet au redemarrage,
+        #    sinon l'API se retrouve avec un mot de passe que la base ignore.
+        $$PSQL -tc "SELECT 1 FROM pg_roles WHERE rolname = 'nexus'" | grep -q 1 ||
+          $$PSQL -c "CREATE ROLE nexus LOGIN"
+        $$PSQL -c "ALTER ROLE nexus WITH LOGIN PASSWORD '$$NEXUS_DB_PASSWORD'"
+
+        # 2. Base possedee par ce role. CREATE DATABASE ne peut pas tourner
+        #    dans un bloc transactionnel -> commande separee.
+        $$PSQL -tc "SELECT 1 FROM pg_database WHERE datname = 'nexus'" | grep -q 1 ||
+          $$PSQL -c "CREATE DATABASE nexus OWNER nexus"
+
+        # 3. Reprise d'une installation ou la base existait deja, creee par
+        #    `sentinel`. Sans ca, le role `nexus` ne pourrait pas ecrire dans
+        #    ses propres tables. REASSIGN OWNED transfere tout d'un coup.
+        $$PSQL -c "ALTER DATABASE nexus OWNER TO nexus"
+        psql -h postgres -U sentinel -d nexus -v ON_ERROR_STOP=1 \
+          -c "REASSIGN OWNED BY sentinel TO nexus" \
+          -c "ALTER SCHEMA public OWNER TO nexus"
+
+        # 4. Fermeture croisee. Par defaut PostgreSQL accorde CONNECT a PUBLIC
+        #    sur toute base : sans ce REVOKE, le role `nexus` pourrait ouvrir
+        #    une session sur discord_sentinel. Il n'y lirait rien (aucune table
+        #    n'est accordee a PUBLIC), mais une session ouverte est deja une
+        #    surface. Le proprietaire et les superusers ne sont pas concernes.
+        $$PSQL -c "REVOKE CONNECT ON DATABASE discord_sentinel FROM PUBLIC"
+        $$PSQL -c "GRANT CONNECT ON DATABASE nexus TO nexus"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - data
+    profiles:
+      - nexus
+      - full
+
+  # Pool dedie, symetrique d'atrium-pgbouncer : nexus-api reste sur le reseau
+  # interne et ne joint jamais PostgreSQL directement. Avant, il etait bi-network
+  # (data + internal) faute de pool pour la base `nexus` — ce qui contredisait
+  # l'invariant documente en bas de ce fichier (« seul pgbouncer est
+  # bi-network ») et donnait a l'API des jeux une route directe vers l'instance
+  # qui heberge aussi discord_sentinel.
+  nexus-pgbouncer:
+    image: edoburu/pgbouncer:latest
+    restart: unless-stopped
+    logging: *nexus-default-logging
+    environment:
+      DATABASE_URL: postgres://nexus:${NEXUS_DB_PASSWORD:-nexus_secret}@postgres:5432/nexus
+      # SESSION, pas TRANSACTION : nexus-api applique ses migrations au boot
+      # (`sqlx::migrate!`), qui prend un verrou d'avis de SESSION. En pooling
+      # transactionnel ce verrou est rendu au retour de chaque transaction et
+      # ne protege plus rien — deux instances qui demarrent ensemble peuvent
+      # appliquer la meme migration. Ce pool n'est pas ici pour le debit (le
+      # volume jeux est faible) mais pour tenir nexus-api hors du reseau `data`.
+      POOL_MODE: session
+      MAX_CLIENT_CONN: 100
+      DEFAULT_POOL_SIZE: 10
+      RESERVE_POOL_SIZE: 2
+      ADMIN_USERS: nexus
+      AUTH_TYPE: scram-sha-256
+    depends_on:
+      nexus-db-init:
+        condition: service_completed_successfully
+    networks:
+      - data
+      - internal
+    profiles:
+      - nexus
+      - full
+
+  nexus-api:
+    <<: *nexus-rust-base
+    build:
+      <<: *nexus-build-alpine
+      args:
+        BIN_NAME: nexus-api
+    # PAS de `ports:` volontairement — point d'entree unique. nexus-api n'est
+    # joignable que par le reseau docker `internal` : le proxy nginx du service
+    # `web` (qui authentifie et injecte la cle), le bot et le worker. Pour un
+    # acces de debug ponctuel :
+    #   docker compose exec nexus-api wget -qO- http://127.0.0.1:3100/health
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:3100/health || exit 1"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 15s
+    environment:
+      # Serveur Discord unique servi par cette installation.
+      # Les API refusent tout autre guild_id ; les bots quittent toute
+      # autre guilde. Vide = verrou desactive.
+      PUBLIC_GUILD_ID: ${PUBLIC_GUILD_ID:-}
+      # Via nexus-pgbouncer (le pgbouncer principal ne route que
+      # discord_sentinel). L'API ne touche jamais postgres directement, et se
+      # connecte avec le role `nexus` — pas le superuser du cluster.
+      NEXUS_DATABASE_URL: postgres://nexus:${NEXUS_DB_PASSWORD:-nexus_secret}@nexus-pgbouncer:5432/nexus
+      NEXUS_API_KEY: ${NEXUS_API_KEY:-}
+      NEXUS_API_PORT: "3100"
+      NEXUS_GRPC_PORT: "3101"
+      # L'API Nexus appelle aussi Discord (gestion des salons de session).
+      # Elle doit recevoir le meme token que nexus-bot.
+      NEXUS_DISCORD_TOKEN: ${NEXUS_BOT_TOKEN:-${NEXUS_DISCORD_TOKEN:-}}
+      # Optionnel : protege /metrics par un Bearer. Vide = ouvert (le port
+      # n'est joignable que depuis le reseau interne ou vit Prometheus).
+      # Si defini, configurer le meme token dans le job prometheus.
+      NEXUS_METRICS_TOKEN: ${NEXUS_METRICS_TOKEN:-}
+      # Origines CORS autorisees. Vide = origines de dev uniquement ; en prod
+      # le front est same-origin derriere nginx, donc CORS ne joue pas.
+      NEXUS_ALLOWED_ORIGINS: ${NEXUS_ALLOWED_ORIGINS:-${ALLOWED_ORIGINS:-}}
+      # Rate limit par IP. Le debit "heavy" s'applique aux routes qui lancent
+      # un conteneur (create/start/stop/restart/delete/command) : deliberement
+      # bas, un humain qui clique ne l'atteint jamais.
+      NEXUS_RATE_LIMIT_PER_SEC: ${NEXUS_RATE_LIMIT_PER_SEC:-50}
+      NEXUS_HEAVY_RATE_LIMIT_PER_SEC: ${NEXUS_HEAVY_RATE_LIMIT_PER_SEC:-2}
+      NEXUS_MAX_BODY_SIZE: ${NEXUS_MAX_BODY_SIZE:-10485760}
+      # Nombre de proxies de confiance devant l'API (nginx du service web).
+      # Sert a lire la bonne IP dans X-Forwarded-For sans se faire spoofer.
+      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
+      # Redis DEDIE (cf. le service `nexus-redis`) : allocation atomique des
+      # ports de jeu ET bus d'evenements game-portal (stream nexus:events
+      # consomme par nexus-bot). Sans lui, l'API bascule sur un publieur inerte
+      # et les salons de session ne sont jamais crees.
+      REDIS_URL: redis://:${NEXUS_REDIS_PASSWORD:-nexus_redis_secret}@nexus-redis:6379
+      # Runtime des serveurs de jeu : docker | noop. `noop` par defaut (aucun
+      # container reel) : passer a `docker` quand la flotte doit tourner.
+      #
+      # `docker` ne veut plus dire « socket local » : les operations passent par
+      # `docker-agent`, seul processus du depot a monter /var/run/docker.sock.
+      NEXUS_GAME_RUNTIME: ${NEXUS_GAME_RUNTIME:-noop}
+      DOCKER_AGENT_URL: http://docker-agent:8095
+      # Jeton de la surface `/game/*` SEULEMENT. Ne pas y mettre
+      # DOCKER_AGENT_TOKEN : il ouvre l'arret et la purge de tous les
+      # conteneurs de l'hote.
+      DOCKER_AGENT_GAME_TOKEN: ${DOCKER_AGENT_GAME_TOKEN:?DOCKER_AGENT_GAME_TOKEN est requis}
+      RUST_LOG: ${RUST_LOG:-info}
+    # NI `group_add: docker` NI montage du socket : ce service n'a plus rien a
+    # faire avec le daemon Docker. Le socket equivaut a un acces root sur
+    # l'hote, et nexus-api sert aussi la vitrine publique du portail.
+    # Ne PAS les remettre : c'est l'etat dont on sort.
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      docker-agent:
+        condition: service_healthy
+      nexus-pgbouncer:
+        condition: service_started
+      nexus-db-init:
+        condition: service_completed_successfully
+      nexus-redis:
+        condition: service_healthy
+    networks:
+      - internal
+    profiles:
+      - nexus
+      - full
+
+  nexus-bot:
+    <<: *nexus-rust-base
+    build:
+      <<: *nexus-build-alpine
+      args:
+        BIN_NAME: nexus-bot
+    environment:
+      # Serveur Discord unique servi par cette installation.
+      # Les API refusent tout autre guild_id ; les bots quittent toute
+      # autre guilde. Vide = verrou desactive.
+      PUBLIC_GUILD_ID: ${PUBLIC_GUILD_ID:-}
+      # La source publique du .env est NEXUS_BOT_TOKEN. Le binaire Nexus
+      # lit NEXUS_DISCORD_TOKEN ; conserver aussi ce fallback historique.
+      NEXUS_DISCORD_TOKEN: ${NEXUS_BOT_TOKEN:-${NEXUS_DISCORD_TOKEN:-}}
+      NEXUS_API_URL: http://nexus-api:3100
+      NEXUS_API_KEY: ${NEXUS_API_KEY:-}
+      # Consomme la stream nexus:events (creation/suppression des salons de
+      # session game-portal). MEME instance que nexus-api : un bus dont le
+      # producteur et le consommateur sont sur deux Redis differents ne
+      # transporte rien, et l'echec est silencieux.
+      REDIS_URL: redis://:${NEXUS_REDIS_PASSWORD:-nexus_redis_secret}@nexus-redis:6379
+      RUST_LOG: ${RUST_LOG:-info}
+    depends_on:
+      nexus-api:
+        condition: service_healthy
+      nexus-redis:
+        condition: service_healthy
+    # Connexion Discord Gateway -> internet + interne (nexus-api, redis).
+    networks:
+      - internal
+      - default
+    profiles:
+      - nexus
+      - full
+
+  # Jobs periodiques game-portal : health-check des containers, extinction des
+  # serveurs inactifs, reconciliation etat DB/Docker, nettoyage des images,
+  # revelation d'IP et ping quotidien. Le worker ne touche NI la DB NI Docker :
+  # il appelle les endpoints internes de nexus-api.
+  nexus-worker:
+    <<: *nexus-rust-base
+    build:
+      <<: *nexus-build-alpine
+      args:
+        BIN_NAME: nexus-worker
+    healthcheck: *nexus-worker-healthcheck
+    environment:
+      <<: *nexus-light-worker-env
+      NEXUS_API_URL: http://nexus-api:3100
+      NEXUS_API_KEY: ${NEXUS_API_KEY:-}
+      GAME_HEALTH_CHECK_INTERVAL_SECS: ${GAME_HEALTH_CHECK_INTERVAL_SECS:-30}
+      GAME_IDLE_SHUTDOWN_CHECK_INTERVAL_SECS: ${GAME_IDLE_SHUTDOWN_CHECK_INTERVAL_SECS:-3600}
+      GAME_RECONCILER_INTERVAL_SECS: ${GAME_RECONCILER_INTERVAL_SECS:-3600}
+      GAME_IMAGE_CLEANUP_INTERVAL_SECS: ${GAME_IMAGE_CLEANUP_INTERVAL_SECS:-86400}
+      GAME_REVEAL_IP_INTERVAL_SECS: ${GAME_REVEAL_IP_INTERVAL_SECS:-300}
+      GAME_DAILY_PING_INTERVAL_SECS: ${GAME_DAILY_PING_INTERVAL_SECS:-3600}
+    depends_on:
+      nexus-api:
+        condition: service_healthy
+    # Pas d'internet : ne parle qu'a nexus-api.
+    networks:
+      - internal
+    profiles:
+      - nexus
+      - full

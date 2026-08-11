@@ -5,26 +5,13 @@
 // publique, ce comportement expulserait un visiteur non connecte hors du site.
 // Ici, aucune credential n'est envoyee et une erreur reste une erreur.
 
-const PUBLIC_BASE = "/api/public";
+import { publicGet } from "./publicHttp";
 
 export interface PublicGuild {
   guild_id: string;
   name: string;
   icon: string | null;
   member_count: number;
-}
-
-async function publicGet<T>(path: string): Promise<T> {
-  const res = await fetch(`${PUBLIC_BASE}${path}`, {
-    // Pas de cookie : ces pages doivent se comporter identiquement pour un
-    // visiteur anonyme et pour un membre connecte.
-    credentials: "omit",
-    headers: { Accept: "application/json" },
-  });
-  if (!res.ok) {
-    throw new Error(`Erreur ${res.status}`);
-  }
-  return (await res.json()) as T;
 }
 
 export const publicSiteService = {

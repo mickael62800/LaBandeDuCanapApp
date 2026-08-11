@@ -23,33 +23,34 @@ use ops_core::domain::entities::docker_host::{
 };
 use ops_core::domain::errors::DomainError;
 use ops_core::ports::outbound::docker_host::DockerHost;
-use reqwest::Client;
+use platform_common_api::docker_agent_client::{DockerAgentClient, DockerAgentError};
 use serde::de::DeserializeOwned;
 
 pub struct HttpDockerHost {
-    client: Client,
-    base_url: String,
-    token: String,
+    agent: DockerAgentClient,
 }
 
 impl HttpDockerHost {
     /// `base_url` : `http://docker-agent:8095` en compose.
     pub fn new(base_url: String, token: String) -> Self {
         Self {
-            // Delai genereux : un `prune` d'images peut durer, la mesure du
-            // `system df` aussi sur un hote charge. Trop court, l'ecran
-            // afficherait une panne la ou l'operation se termine tres bien.
-            client: Client::builder()
-                .timeout(std::time::Duration::from_secs(120))
-                .build()
-                .unwrap_or_default(),
-            base_url,
-            token,
+            agent: DockerAgentClient::new(base_url, token, std::time::Duration::from_secs(120)),
         }
     }
 
-    fn url(&self, path: &str) -> String {
-        format!("{}{}", self.base_url.trim_end_matches('/'), path)
+    fn map_error(error: DockerAgentError) -> DomainError {
+        match &error {
+            DockerAgentError::Transport(source) => {
+                tracing::warn!(error = %source, "docker-agent injoignable")
+            }
+            DockerAgentError::Rejected { status, detail } => {
+                tracing::warn!(%status, body = %detail, "docker-agent a refuse l'operation")
+            }
+            DockerAgentError::InvalidResponse(source) => {
+                tracing::warn!(error = %source, "reponse docker-agent illisible")
+            }
+        }
+        DomainError::Internal(error.to_string())
     }
 
     /// Traduit toute panne de transport en `DomainError`. L'agent tourne
@@ -59,85 +60,39 @@ impl HttpDockerHost {
         &self,
         request: reqwest::RequestBuilder,
     ) -> Result<T, DomainError> {
-        let response = request
-            .bearer_auth(&self.token)
-            .send()
-            .await
-            .map_err(|error| {
-                tracing::warn!(%error, "docker-agent injoignable");
-                DomainError::Internal("docker-agent injoignable".into())
-            })?;
-
-        let status = response.status();
-        if !status.is_success() {
-            let detail = response.text().await.unwrap_or_default();
-            tracing::warn!(%status, body = %detail, "docker-agent a refuse l'operation");
-            return Err(DomainError::Internal(format!(
-                "docker-agent: reponse {status}"
-            )));
-        }
-
-        response.json::<T>().await.map_err(|error| {
-            tracing::warn!(%error, "reponse docker-agent illisible");
-            DomainError::Internal("reponse docker-agent illisible".into())
-        })
+        self.agent.send_json(request).await.map_err(Self::map_error)
     }
 
     /// Variante pour les operations sans corps de reponse (204).
     async fn send_unit(&self, request: reqwest::RequestBuilder) -> Result<(), DomainError> {
-        let response = request
-            .bearer_auth(&self.token)
-            .send()
-            .await
-            .map_err(|error| {
-                tracing::warn!(%error, "docker-agent injoignable");
-                DomainError::Internal("docker-agent injoignable".into())
-            })?;
-
-        let status = response.status();
-        if status.is_success() {
-            Ok(())
-        } else {
-            let detail = response.text().await.unwrap_or_default();
-            tracing::warn!(%status, body = %detail, "docker-agent a refuse l'operation");
-            Err(DomainError::Internal(format!(
-                "docker-agent: reponse {status}"
-            )))
-        }
+        self.agent.send_unit(request).await.map_err(Self::map_error)
     }
 }
 
 #[async_trait]
 impl DockerHost for HttpDockerHost {
     async fn version_info(&self) -> Result<DockerVersionInfo, DomainError> {
-        self.send(self.client.get(self.url("/version"))).await
+        self.send(self.agent.get("/version")).await
     }
 
     async fn disk_usage(&self) -> Result<DiskUsage, DomainError> {
-        self.send(self.client.get(self.url("/disk-usage"))).await
+        self.send(self.agent.get("/disk-usage")).await
     }
 
     async fn list_containers(&self, all: bool) -> Result<Vec<ContainerSummary>, DomainError> {
-        self.send(
-            self.client
-                .get(self.url("/containers"))
-                .query(&[("all", all)]),
-        )
-        .await
+        self.send(self.agent.get("/containers").query(&[("all", all)]))
+            .await
     }
 
     async fn start_container(&self, id: &str) -> Result<(), DomainError> {
-        self.send_unit(
-            self.client
-                .post(self.url(&format!("/containers/{id}/start"))),
-        )
-        .await
+        self.send_unit(self.agent.post(&format!("/containers/{id}/start")))
+            .await
     }
 
     async fn stop_container(&self, id: &str, timeout_secs: i64) -> Result<(), DomainError> {
         self.send_unit(
-            self.client
-                .post(self.url(&format!("/containers/{id}/stop")))
+            self.agent
+                .post(&format!("/containers/{id}/stop"))
                 .query(&[("timeout_secs", timeout_secs)]),
         )
         .await
@@ -145,8 +100,8 @@ impl DockerHost for HttpDockerHost {
 
     async fn restart_container(&self, id: &str, timeout_secs: i64) -> Result<(), DomainError> {
         self.send_unit(
-            self.client
-                .post(self.url(&format!("/containers/{id}/restart")))
+            self.agent
+                .post(&format!("/containers/{id}/restart"))
                 .query(&[("timeout_secs", timeout_secs)]),
         )
         .await
@@ -159,8 +114,8 @@ impl DockerHost for HttpDockerHost {
         remove_volumes: bool,
     ) -> Result<(), DomainError> {
         self.send_unit(
-            self.client
-                .post(self.url(&format!("/containers/{id}/remove")))
+            self.agent
+                .post(&format!("/containers/{id}/remove"))
                 .query(&[("force", force), ("remove_volumes", remove_volumes)]),
         )
         .await
@@ -172,96 +127,64 @@ impl DockerHost for HttpDockerHost {
         tail: u32,
         timestamps: bool,
     ) -> Result<String, DomainError> {
-        let response = self
-            .client
-            .get(self.url(&format!("/containers/{id}/logs")))
-            .query(&[
+        self.agent
+            .send_text(self.agent.get(&format!("/containers/{id}/logs")).query(&[
                 ("tail", tail.to_string()),
                 ("timestamps", timestamps.to_string()),
-            ])
-            .bearer_auth(&self.token)
-            .send()
+            ]))
             .await
-            .map_err(|error| {
-                tracing::warn!(%error, "docker-agent injoignable");
-                DomainError::Internal("docker-agent injoignable".into())
-            })?;
-
-        if !response.status().is_success() {
-            return Err(DomainError::Internal(format!(
-                "docker-agent: reponse {}",
-                response.status()
-            )));
-        }
-
-        // Les logs sont du texte brut, pas du JSON : les passer par `json()`
-        // les re-encoderait inutilement.
-        response.text().await.map_err(|error| {
-            tracing::warn!(%error, "lecture des logs impossible");
-            DomainError::Internal("lecture des logs impossible".into())
-        })
+            .map_err(Self::map_error)
     }
 
     async fn list_images(&self) -> Result<Vec<ImageSummary>, DomainError> {
-        self.send(self.client.get(self.url("/images"))).await
+        self.send(self.agent.get("/images")).await
     }
 
     async fn remove_image(&self, id: &str, force: bool, no_prune: bool) -> Result<(), DomainError> {
         self.send_unit(
-            self.client
-                .post(self.url(&format!("/images/{id}/remove")))
+            self.agent
+                .post(&format!("/images/{id}/remove"))
                 .query(&[("force", force), ("no_prune", no_prune)]),
         )
         .await
     }
 
     async fn list_volumes(&self) -> Result<Vec<VolumeSummary>, DomainError> {
-        self.send(self.client.get(self.url("/volumes"))).await
+        self.send(self.agent.get("/volumes")).await
     }
 
     async fn remove_volume(&self, name: &str, force: bool) -> Result<(), DomainError> {
         self.send_unit(
-            self.client
-                .post(self.url(&format!("/volumes/{name}/remove")))
+            self.agent
+                .post(&format!("/volumes/{name}/remove"))
                 .query(&[("force", force)]),
         )
         .await
     }
 
     async fn list_networks(&self) -> Result<Vec<NetworkSummary>, DomainError> {
-        self.send(self.client.get(self.url("/networks"))).await
+        self.send(self.agent.get("/networks")).await
     }
 
     async fn prune_containers(&self) -> Result<PruneOutcome, DomainError> {
-        self.send(self.client.post(self.url("/prune/containers")))
-            .await
+        self.send(self.agent.post("/prune/containers")).await
     }
 
     async fn prune_images(&self, all: bool) -> Result<PruneOutcome, DomainError> {
-        self.send(
-            self.client
-                .post(self.url("/prune/images"))
-                .query(&[("all", all)]),
-        )
-        .await
+        self.send(self.agent.post("/prune/images").query(&[("all", all)]))
+            .await
     }
 
     async fn prune_volumes(&self) -> Result<PruneOutcome, DomainError> {
-        self.send(self.client.post(self.url("/prune/volumes")))
-            .await
+        self.send(self.agent.post("/prune/volumes")).await
     }
 
     async fn prune_networks(&self) -> Result<PruneOutcome, DomainError> {
-        self.send(self.client.post(self.url("/prune/networks")))
-            .await
+        self.send(self.agent.post("/prune/networks")).await
     }
 
     async fn prune_build_cache(&self, all: bool) -> Result<PruneOutcome, DomainError> {
-        self.send(
-            self.client
-                .post(self.url("/prune/build-cache"))
-                .query(&[("all", all)]),
-        )
-        .await
+        self.send(self.agent.post("/prune/build-cache").query(&[("all", all)]))
+            .await
     }
 }

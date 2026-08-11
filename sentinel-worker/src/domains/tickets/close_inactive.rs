@@ -86,7 +86,9 @@ pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
             }
         });
 
-        let res = platform_common_worker::redis_helpers::xadd_event(&mut conn, &payload.to_string()).await;
+        let res =
+            platform_common_worker::redis_helpers::xadd_event(&mut conn, &payload.to_string())
+                .await;
         if let Err(e) = res {
             warn!(error = %e, ticket_id = %t.id, "XADD ticket_auto_closed echoue");
         }
@@ -112,4 +114,3 @@ async fn load_timeouts(pool: &PgPool) -> HashMap<String, i64> {
         .filter_map(|(g, v)| v.parse::<i64>().ok().map(|n| (g, n)))
         .collect()
 }
-

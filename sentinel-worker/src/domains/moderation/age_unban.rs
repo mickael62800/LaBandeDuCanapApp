@@ -61,7 +61,9 @@ pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
             }
         });
 
-        if let Err(e) = platform_common_worker::redis_helpers::xadd_event_json(&mut conn, &payload).await {
+        if let Err(e) =
+            platform_common_worker::redis_helpers::xadd_event_json(&mut conn, &payload).await
+        {
             warn!(id = %ban.id, error = %e, "XADD age_ban_lift failed");
         }
 
@@ -76,4 +78,3 @@ pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
     info!(count = due.len(), "Bans d'age echus traites");
     Ok(())
 }
-

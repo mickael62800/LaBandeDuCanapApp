@@ -1,4 +1,4 @@
-//! Worker periodique de supervision : evalue des regles d'alerte CONFIGURABLES
+//! Evalue periodiquement les regles d'alerte configurables.
 //! (table `alert_rules`) contre les indicateurs collectes (ressources host,
 //! services offline, auth failures, cert TLS, conteneurs) et envoie un webhook
 //! Discord quand un seuil est franchi.

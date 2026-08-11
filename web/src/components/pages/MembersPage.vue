@@ -11,6 +11,7 @@ import MemberStatusBadge from "../atoms/MemberStatusBadge.vue";
 import PaginationBar from "../molecules/PaginationBar.vue";
 import MemberDetailDrawer from "../organisms/MemberDetailDrawer.vue";
 import AdminPageShell from "../layouts/AdminPageShell.vue";
+import { formatShortMonthDate as formatDate } from "../../composables/useFormatDate";
 
 const { selectedGuildId } = useGuildSelector();
 
@@ -53,11 +54,6 @@ watch(selectedGuildId, () => { closeMember(); fetchMembers(); });
 
 async function onSelectMember(userId: string) {
   await selectMember(userId);
-}
-
-function formatDate(date: string | null): string {
-  if (!date) return "-";
-  return new Date(date).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" });
 }
 
 function rolesCount(roles: unknown): number {

@@ -12,6 +12,7 @@
 // helper mort se maintient indéfiniment.
 
 pub mod api;
+pub mod http_job;
 pub mod metrics;
 pub mod redis_helpers;
 
@@ -31,6 +32,43 @@ const DEFAULT_PG_MAX_CONNECTIONS: u32 = 5;
 const DEFAULT_PG_ACQUIRE_TIMEOUT_SECS: u64 = 5;
 /// Intervalle de heartbeat par defaut (secondes).
 const DEFAULT_HEARTBEAT_INTERVAL_SECS: u64 = 30;
+
+/// Lit un entier positif depuis l'environnement, avec warning et valeur par
+/// defaut si la variable est invalide.
+pub fn env_u64(name: &str, default: u64) -> u64 {
+    match std::env::var(name) {
+        Ok(value) => value.parse().unwrap_or_else(|_| {
+            warn!(var = name, %value, default, "valeur invalide, defaut applique");
+            default
+        }),
+        Err(_) => default,
+    }
+}
+
+/// Lance une fonction immediatement puis a intervalle fixe, sans chevauchement.
+pub fn spawn_interval<F, Fut>(name: &'static str, interval_secs: u64, mut task: F)
+where
+    F: FnMut() -> Fut + Send + 'static,
+    Fut: std::future::Future<Output = Result<(), String>> + Send + 'static,
+{
+    info!(task = name, interval_secs, "Tache periodique planifiee");
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(interval_secs.max(1)));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            interval.tick().await;
+            let started = std::time::Instant::now();
+            match task().await {
+                Ok(()) => tracing::debug!(
+                    task = name,
+                    elapsed_ms = started.elapsed().as_millis(),
+                    "Tick termine"
+                ),
+                Err(error) => error!(task = name, %error, "Tick en echec"),
+            }
+        }
+    });
+}
 
 // ── Init ──
 
@@ -89,24 +127,15 @@ pub async fn create_pg_pool(database_url: &str) -> PgPool {
 /// Meme route et meme garde que `send_worker_log` : sans collecteur declare par
 /// la plateforme, on ne poste pas.
 pub async fn send_lifecycle_log(api_url: &str, worker_name: &str, level: &str, message: &str) {
-    let Some(api_key) = LOG_API_KEY.get().and_then(|k| k.as_deref()) else {
-        return;
-    };
-    let mut req = reqwest::Client::new()
-        .post(format!("{}/api/logs", api_url))
-        .json(&serde_json::json!({
-            "level": level,
-            "bot": worker_name,
-            "server": "",
-            "message": message,
-            "category": "worker",
-        }));
-    if !api_key.is_empty() {
-        req = req.bearer_auth(api_key);
-    }
-    if let Err(e) = req.send().await {
-        warn!(error = %e, worker = worker_name, "Erreur envoi log lifecycle");
-    }
+    send_worker_log(
+        api_url,
+        worker_name,
+        level,
+        "lifecycle",
+        message,
+        serde_json::json!({ "event_type": "worker.lifecycle" }),
+    )
+    .await;
 }
 
 // ── Heartbeat ──
@@ -375,6 +404,7 @@ pub fn load_env_bool(key: &str, default: bool) -> bool {
 /// (`/api/logs`) que leur API n'expose meme pas. Une requete par tick, un 404,
 /// et l'echec avale en `debug!` — invisible.
 static LOG_API_KEY: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+static LOG_HTTP_CLIENT: std::sync::OnceLock<http_job::HttpJobClient> = std::sync::OnceLock::new();
 
 /// Active le push HTTP des logs de jobs vers l'API de la plateforme.
 ///
@@ -409,7 +439,6 @@ pub async fn send_worker_log(
     let Some(api_key) = LOG_API_KEY.get().and_then(|k| k.as_deref()) else {
         return;
     };
-    let client = reqwest::Client::new();
     // Merge job dans les details pour retrouver facilement
     let mut details_obj = match details {
         serde_json::Value::Object(m) => m,
@@ -424,19 +453,21 @@ pub async fn send_worker_log(
         serde_json::Value::String(format!("job.{}", level)),
     );
 
-    let mut req = client
-        .post(format!("{}/api/logs", api_url))
-        .json(&serde_json::json!({
-            "level": level,
-            "bot": worker_name,
-            "message": message,
-            "category": "worker",
-            "details": serde_json::Value::Object(details_obj),
-        }));
-    if !api_key.is_empty() {
-        req = req.bearer_auth(api_key);
-    }
-    if let Err(e) = req.send().await {
+    let payload = serde_json::json!({
+        "level": level,
+        "bot": worker_name,
+        "message": message,
+        "category": "worker",
+        "details": serde_json::Value::Object(details_obj),
+    });
+    let client = LOG_HTTP_CLIENT.get_or_init(|| {
+        http_job::HttpJobClient::new(
+            api_url.to_owned(),
+            api_key.to_owned(),
+            Duration::from_secs(10),
+        )
+    });
+    if let Err(e) = client.post_json_unit("/api/logs", &payload).await {
         tracing::debug!(error = %e, worker = worker_name, "send_worker_log echec");
     }
 }
@@ -601,4 +632,3 @@ mod tests {
         assert_eq!(result, 50);
     }
 }
-

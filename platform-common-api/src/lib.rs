@@ -24,6 +24,8 @@
 //! servie par `auth-api` et consommee ici de la meme facon par tout le monde.
 
 pub mod auth_client;
+pub mod bearer_auth;
+pub mod docker_agent_client;
 pub mod errors;
 pub mod http;
 pub mod metrics;

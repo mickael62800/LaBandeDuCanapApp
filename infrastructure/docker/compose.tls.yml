@@ -1,0 +1,64 @@
+# Renouvellement Let's Encrypt — active par le profil tls.
+x-tls-default-logging: &tls-default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+
+  # Certbot Let's Encrypt — active via profile `tls`.
+  certbot:
+    image: certbot/certbot:latest
+    restart: unless-stopped
+    logging: *tls-default-logging
+    volumes:
+      - letsencrypt_etc:/etc/letsencrypt
+      - letsencrypt_www:/var/www/certbot
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      WEB_DOMAIN: ${WEB_DOMAIN:-}
+      LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL:-}
+      LETSENCRYPT_STAGING: ${LETSENCRYPT_STAGING:-}
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        set -eu
+        apk add --no-cache docker-cli >/dev/null
+        if [ -z "$${WEB_DOMAIN:-}" ] || [ -z "$${LETSENCRYPT_EMAIL:-}" ]; then
+          echo "[certbot] WEB_DOMAIN et LETSENCRYPT_EMAIL requis dans .env"
+          sleep infinity
+        fi
+        STAGING_FLAG=""
+        if [ -n "$${LETSENCRYPT_STAGING:-}" ]; then
+          STAGING_FLAG="--staging"
+          echo "[certbot] STAGING mode actif (certs non trustables, pour tests)"
+        fi
+        # On RESTART le conteneur web (et non un simple HUP nginx) : le symlink
+        # /etc/nginx/certs -> cert actif est pose par l'entrypoint AU DEMARRAGE
+        # uniquement, et il pointe sur le self-signed tant que le conteneur n'a
+        # pas ete relance. Un reload nginx re-lit le meme symlink (toujours
+        # self-signed) : seul un restart re-execute l'entrypoint et bascule sur
+        # le cert Let's Encrypt fraichement emis. Le conteneur certbot ne monte
+        # pas /etc/nginx/certs, il ne peut donc pas re-symlinker lui-meme.
+        DEPLOY_HOOK='docker restart $$(docker ps -q -f label=com.docker.compose.service=web) || true'
+        certbot certonly --webroot -w /var/www/certbot \
+          --non-interactive --agree-tos --email "$$LETSENCRYPT_EMAIL" \
+          $$STAGING_FLAG --keep-until-expiring \
+          -d "$$WEB_DOMAIN" || echo "[certbot] premiere obtention echouee, retry au prochain cycle"
+        docker restart $$(docker ps -q -f label=com.docker.compose.service=web) 2>/dev/null || true
+        trap exit TERM
+        while :; do
+          certbot renew --webroot -w /var/www/certbot --quiet \
+            --deploy-hook "$$DEPLOY_HOOK" || true
+          sleep 12h & wait $${!}
+        done
+    depends_on:
+      web:
+        condition: service_started
+    # certbot a besoin d'internet (Let's Encrypt ACME).
+    networks:
+      - default
+    profiles:
+      - tls

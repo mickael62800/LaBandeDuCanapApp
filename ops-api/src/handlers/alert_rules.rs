@@ -6,12 +6,11 @@
 //! use case (`ManageAlertRules` + `PgAlertRuleRepository`).
 
 use axum::extract::{Path, State};
-use axum::http::HeaderMap;
 use axum::Json;
 use ops_core::domain::entities::alert_rule::{AlertRule, AlertRuleUpdate};
 use serde::{Deserialize, Serialize};
 
-use crate::{authorize, ApiError, AppState};
+use crate::{ApiError, AppState};
 
 #[derive(Serialize)]
 pub struct AlertRuleDto {
@@ -41,11 +40,7 @@ impl From<AlertRule> for AlertRuleDto {
 }
 
 /// GET /alert-rules — toutes les regles, actives ou non.
-pub async fn list(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-) -> Result<Json<Vec<AlertRuleDto>>, ApiError> {
-    authorize(&headers, &state.config)?;
+pub async fn list(State(state): State<AppState>) -> Result<Json<Vec<AlertRuleDto>>, ApiError> {
     let rules = state.alert_rules_uc.list().await?;
     Ok(Json(rules.into_iter().map(Into::into).collect()))
 }
@@ -65,11 +60,9 @@ pub struct UpdateAlertRuleDto {
 /// sans changer ce qu'elle mesure.
 pub async fn update(
     State(state): State<AppState>,
-    headers: HeaderMap,
     Path(id): Path<String>,
     Json(dto): Json<UpdateAlertRuleDto>,
 ) -> Result<Json<AlertRuleDto>, ApiError> {
-    authorize(&headers, &state.config)?;
     let update = AlertRuleUpdate {
         enabled: dto.enabled,
         threshold: dto.threshold,

@@ -697,4 +697,3 @@ impl From<&WorkerConfig> for CleanupConfig {
         }
     }
 }
-

@@ -54,7 +54,9 @@ pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
                 "imposed_rate": s.imposed_rate,
             }
         });
-        let res = platform_common_worker::redis_helpers::xadd_event(&mut conn, &payload.to_string()).await;
+        let res =
+            platform_common_worker::redis_helpers::xadd_event(&mut conn, &payload.to_string())
+                .await;
         if let Err(e) = res {
             warn!(error = %e, guild = %s.guild_id, "XADD slowmode_expired echoue");
         }
@@ -66,4 +68,3 @@ pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
     }
     Ok(())
 }
-

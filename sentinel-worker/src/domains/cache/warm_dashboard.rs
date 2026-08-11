@@ -108,4 +108,3 @@ async fn compute_dashboard(pool: &PgPool, guild_id: &str) -> Result<DashboardOve
         active_members: active_members.0,
     })
 }
-

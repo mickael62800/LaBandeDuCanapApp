@@ -24,7 +24,7 @@ use crate::ApiError;
 use crate::AppState;
 use ops_core::domain::entities::docker_host::compute_overview;
 
-use crate::{authorize, handlers::ok_response};
+use crate::handlers::ok_response;
 
 /// Helper d'audit log pour les actions Docker destructives.
 /// Tracking via tracing::info! structure -> apparait dans les logs API
@@ -165,11 +165,7 @@ pub struct PruneResultDto {
 
 // ── Overview (df + version) ───────────────────────────────────────────────
 
-pub async fn get_overview(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-) -> Result<Json<OverviewDto>, ApiError> {
-    authorize(&headers, &state.config)?;
+pub async fn get_overview(State(state): State<AppState>) -> Result<Json<OverviewDto>, ApiError> {
     let info = state.docker_host.version_info().await?;
     let usage = state.docker_host.disk_usage().await?;
     let agg = compute_overview(&usage);
@@ -208,10 +204,8 @@ pub struct ListContainersQuery {
 
 pub async fn list_containers(
     State(state): State<AppState>,
-    headers: HeaderMap,
     Query(q): Query<ListContainersQuery>,
 ) -> Result<Json<Vec<ContainerDto>>, ApiError> {
-    authorize(&headers, &state.config)?;
     let list = state
         .docker_host
         .list_containers(q.all.unwrap_or(true))
@@ -246,7 +240,6 @@ pub async fn start_container(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    authorize(&headers, &state.config)?;
     audit_docker(&state, &actor_from(&headers), "container.start", &id);
     state.docker_host.start_container(&id).await?;
     Ok(ok_response())
@@ -264,7 +257,6 @@ pub async fn stop_container(
     Path(id): Path<String>,
     Query(q): Query<StopQuery>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    authorize(&headers, &state.config)?;
     audit_docker(&state, &actor_from(&headers), "container.stop", &id);
     state
         .docker_host
@@ -279,7 +271,6 @@ pub async fn restart_container(
     Path(id): Path<String>,
     Query(q): Query<StopQuery>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    authorize(&headers, &state.config)?;
     audit_docker(&state, &actor_from(&headers), "container.restart", &id);
     state
         .docker_host
@@ -302,7 +293,6 @@ pub async fn remove_container(
     Path(id): Path<String>,
     Query(q): Query<RemoveContainerQuery>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    authorize(&headers, &state.config)?;
     audit_docker(&state, &actor_from(&headers), "container.remove", &id);
     state
         .docker_host
@@ -326,11 +316,9 @@ pub struct LogsDto {
 
 pub async fn container_logs(
     State(state): State<AppState>,
-    headers: HeaderMap,
     Path(id): Path<String>,
     Query(q): Query<LogsQuery>,
 ) -> Result<Json<LogsDto>, ApiError> {
-    authorize(&headers, &state.config)?;
     let tail = q.tail.unwrap_or(200).min(5000);
     let logs = state
         .docker_host
@@ -341,11 +329,7 @@ pub async fn container_logs(
 
 // ── Images ────────────────────────────────────────────────────────────────
 
-pub async fn list_images(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-) -> Result<Json<Vec<ImageDto>>, ApiError> {
-    authorize(&headers, &state.config)?;
+pub async fn list_images(State(state): State<AppState>) -> Result<Json<Vec<ImageDto>>, ApiError> {
     let list = state.docker_host.list_images().await?;
     let out: Vec<ImageDto> = list
         .into_iter()
@@ -382,7 +366,6 @@ pub async fn remove_image(
     Path(id): Path<String>,
     Query(q): Query<RemoveImageQuery>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    authorize(&headers, &state.config)?;
     audit_docker(&state, &actor_from(&headers), "image.remove", &id);
     state
         .docker_host
@@ -393,11 +376,7 @@ pub async fn remove_image(
 
 // ── Volumes ───────────────────────────────────────────────────────────────
 
-pub async fn list_volumes(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-) -> Result<Json<Vec<VolumeDto>>, ApiError> {
-    authorize(&headers, &state.config)?;
+pub async fn list_volumes(State(state): State<AppState>) -> Result<Json<Vec<VolumeDto>>, ApiError> {
     let list = state.docker_host.list_volumes().await?;
     let out: Vec<VolumeDto> = list
         .into_iter()
@@ -420,7 +399,6 @@ pub async fn remove_volume(
     Path(name): Path<String>,
     Query(q): Query<RemoveImageQuery>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    authorize(&headers, &state.config)?;
     audit_docker(&state, &actor_from(&headers), "volume.remove", &name);
     state
         .docker_host
@@ -433,9 +411,7 @@ pub async fn remove_volume(
 
 pub async fn list_networks(
     State(state): State<AppState>,
-    headers: HeaderMap,
 ) -> Result<Json<Vec<NetworkDto>>, ApiError> {
-    authorize(&headers, &state.config)?;
     let list = state.docker_host.list_networks().await?;
     let out: Vec<NetworkDto> = list
         .into_iter()
@@ -464,7 +440,6 @@ pub async fn prune_containers(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<PruneResultDto>, ApiError> {
-    authorize(&headers, &state.config)?;
     audit_docker(&state, &actor_from(&headers), "prune.containers", "*");
     let r = state.docker_host.prune_containers().await?;
     Ok(Json(prune_dto(r)))
@@ -483,7 +458,6 @@ pub async fn prune_images(
     headers: HeaderMap,
     Query(q): Query<PruneImagesQuery>,
 ) -> Result<Json<PruneResultDto>, ApiError> {
-    authorize(&headers, &state.config)?;
     audit_docker(
         &state,
         &actor_from(&headers),
@@ -505,7 +479,6 @@ pub async fn prune_volumes(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<PruneResultDto>, ApiError> {
-    authorize(&headers, &state.config)?;
     audit_docker(&state, &actor_from(&headers), "prune.volumes", "*");
     let r = state.docker_host.prune_volumes().await?;
     Ok(Json(prune_dto(r)))
@@ -515,7 +488,6 @@ pub async fn prune_networks(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<PruneResultDto>, ApiError> {
-    authorize(&headers, &state.config)?;
     audit_docker(&state, &actor_from(&headers), "prune.networks", "*");
     let r = state.docker_host.prune_networks().await?;
     Ok(Json(prune_dto(r)))
@@ -545,7 +517,6 @@ pub async fn prune_system(
     headers: HeaderMap,
     Query(q): Query<PruneSystemQuery>,
 ) -> Result<Json<PruneSystemDto>, ApiError> {
-    authorize(&headers, &state.config)?;
     audit_docker(
         &state,
         &actor_from(&headers),
@@ -596,7 +567,6 @@ pub async fn prune_build_cache(
     headers: HeaderMap,
     Query(q): Query<PruneBuildCacheQuery>,
 ) -> Result<Json<PruneResultDto>, ApiError> {
-    authorize(&headers, &state.config)?;
     let all = q.all.unwrap_or(true);
     audit_docker(
         &state,
@@ -619,17 +589,22 @@ pub struct ContainerChangesResponse {
 
 /// GET /containers/changes — instantane courant + derniers changements.
 ///
-/// Lit l'etat partage alimente par container_monitor, dans ce meme
-/// processus : aucune requete Docker ici, la reponse est immediate.
+/// Lit l'etat publie dans Redis par `ops-worker`.
 pub async fn container_changes(
     State(state): State<AppState>,
-    headers: HeaderMap,
 ) -> Result<Json<ContainerChangesResponse>, ApiError> {
-    authorize(&headers, &state.config)?;
-    let snapshot = state.container_monitor.read().await;
+    let snapshot = crate::container_monitor::load(&state.redis_client)
+        .await
+        .map_err(|error| {
+            tracing::warn!(%error, "lecture du snapshot conteneurs impossible");
+            ApiError(
+                axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                "snapshot indisponible".into(),
+            )
+        })?;
     Ok(Json(ContainerChangesResponse {
-        last_check: snapshot.last_check.clone(),
-        current: snapshot.current.clone(),
-        changes_24h: snapshot.recent_changes.clone(),
+        last_check: snapshot.last_check,
+        current: snapshot.current,
+        changes_24h: snapshot.recent_changes,
     }))
 }

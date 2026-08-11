@@ -1,0 +1,259 @@
+# Plateforme Atrium — activee par les profils atrium ou full.
+x-atrium-default-logging: &atrium-default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-atrium-rust-base: &atrium-rust-base
+  restart: unless-stopped
+  init: true
+  logging: *atrium-default-logging
+
+x-atrium-build-alpine: &atrium-build-alpine
+  context: ../..
+  dockerfile: infrastructure/docker/Dockerfile.rust-alpine
+
+x-atrium-light-worker-env: &atrium-light-worker-env
+  METRICS_PORT: "9100"
+  RUST_LOG: ${RUST_LOG:-info}
+
+x-atrium-worker-healthcheck: &atrium-worker-healthcheck
+  test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:9100/metrics || exit 1"]
+  interval: 30s
+  timeout: 3s
+  retries: 3
+  start_period: 15s
+
+services:
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Atrium — bot d'accueil IA (profil optionnel)
+  # ──────────────────────────────────────────────────────────────────────────
+  # L'API appelle DeepSeek et le bot joint Discord : tous deux ont donc acces
+  # sortant. Leur liaison gRPC reste interne et n'expose aucun port sur l'hote.
+  atrium-api:
+    <<: *atrium-rust-base
+    build:
+      <<: *atrium-build-alpine
+      args:
+        BIN_NAME: atrium-api
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:8090/health || exit 1"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 15s
+    environment:
+      ATRIUM_API_BIND_ADDR: 0.0.0.0:8090
+      ATRIUM_GRPC_BIND_ADDR: 0.0.0.0:8091
+      ATRIUM_API_TOKEN: ${ATRIUM_API_TOKEN:-}
+      ATRIUM_GRPC_TOKEN: ${ATRIUM_GRPC_TOKEN:?ATRIUM_GRPC_TOKEN est requis}
+      DEEPSEEK_API_KEY: ${ATRIUM_DEEPSEEK_API_KEY:-${DEEPSEEK_API_KEY:-}}
+      DEEPSEEK_MODEL: ${ATRIUM_DEEPSEEK_MODEL:-${DEEPSEEK_MODEL:-deepseek-v4-flash}}
+      ATRIUM_API_RATE_LIMIT_PER_SEC: ${ATRIUM_API_RATE_LIMIT_PER_SEC:-5}
+      ATRIUM_USER_COOLDOWN_SECS: ${ATRIUM_USER_COOLDOWN_SECS:-10}
+      ATRIUM_USER_DAILY_LIMIT: ${ATRIUM_USER_DAILY_LIMIT:-30}
+      ATRIUM_GLOBAL_DAILY_LIMIT: ${ATRIUM_GLOBAL_DAILY_LIMIT:-500}
+      # Base logique Atrium, isolee derriere son pool dedie.
+      ATRIUM_RAG_DATABASE_URL: ${ATRIUM_RAG_DATABASE_URL:-postgres://atrium:${ATRIUM_DB_PASSWORD:-atrium_secret}@atrium-pgbouncer:5432/atrium}
+      ATRIUM_EMBEDDINGS_BASE_URL: ${ATRIUM_EMBEDDINGS_BASE_URL:-http://atrium-ollama:11434/v1}
+      ATRIUM_EMBEDDINGS_API_KEY: ${ATRIUM_EMBEDDINGS_API_KEY:-}
+      ATRIUM_EMBEDDINGS_MODEL: ${ATRIUM_EMBEDDINGS_MODEL:-nomic-embed-text}
+      RUST_LOG: ${RUST_LOG:-info}
+    depends_on:
+      atrium-pgbouncer:
+        condition: service_started
+      atrium-ollama-init:
+        condition: service_completed_successfully
+    networks:
+      - internal
+      - default
+    profiles:
+      - atrium
+      - full
+
+  # Generation periodique du resume d'activite du serveur. Comme nexus-worker,
+  # il delegue toute la logique metier a l'API et reste sur le reseau interne.
+  atrium-worker:
+    <<: *atrium-rust-base
+    build:
+      <<: *atrium-build-alpine
+      args:
+        BIN_NAME: atrium-worker
+    healthcheck: *atrium-worker-healthcheck
+    environment:
+      <<: *atrium-light-worker-env
+      ATRIUM_API_URL: http://atrium-api:8090
+      ATRIUM_API_TOKEN: ${ATRIUM_API_TOKEN:-}
+      ATRIUM_PRIMARY_GUILD_ID: ${PUBLIC_GUILD_ID:-}
+      ATRIUM_SUMMARY_INTERVAL_SECS: ${ATRIUM_SUMMARY_INTERVAL_SECS:-86400}
+    depends_on:
+      atrium-api:
+        condition: service_healthy
+    networks:
+      - internal
+    profiles:
+      - atrium
+      - full
+
+  # Embeddings RAG locaux : pas de cle API ni de cout par requete.
+  # Le modele est telecharge une fois dans le volume persistant puis reste
+  # limite pour ne pas affamer Sentinel, Nexus et PostgreSQL.
+  atrium-ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    logging: *atrium-default-logging
+    mem_limit: 2g
+    cpus: 1.5
+    # Le serveur effectue lui-meme le telechargement demande par le client
+    # `ollama pull`; il doit donc resoudre et joindre registry.ollama.ai.
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    volumes:
+      - atrium_ollama_data:/root/.ollama
+    healthcheck:
+      # Le modele est telecharge par `atrium-ollama-init` apres ce check :
+      # verifier seulement que le serveur repond, sans creer une dependance
+      # circulaire entre le healthcheck et le pull.
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks:
+      - internal
+      - default
+    profiles:
+      - atrium
+      - full
+
+  # Le pull est separe du serveur Ollama : le healthcheck du serveur peut
+  # devenir vert avant le telechargement, mais Atrium ne demarre qu'apres.
+  atrium-ollama-init:
+    image: ollama/ollama:latest
+    command: ["pull", "nomic-embed-text"]
+    environment:
+      # Le client Ollama du job doit joindre le serveur du conteneur voisin,
+      # pas son propre localhost.
+      OLLAMA_HOST: http://atrium-ollama:11434
+    # Certains hotes Docker ont un resolv.conf non exploitable dans le bridge
+    # (erreur 127.0.0.11). Ce job doit resoudre registry.ollama.ai une fois.
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    volumes:
+      - atrium_ollama_data:/root/.ollama
+    depends_on:
+      atrium-ollama:
+        condition: service_healthy
+    networks:
+      - internal
+      # Necessaire uniquement au telechargement initial du modele depuis le
+      # registre Ollama. Le serveur Ollama reste sur le reseau interne.
+      - default
+    restart: "no"
+    profiles:
+      - atrium
+      - full
+
+  atrium-bot:
+    <<: *atrium-rust-base
+    build:
+      <<: *atrium-build-alpine
+      args:
+        BIN_NAME: atrium-bot
+    healthcheck:
+      test: ["CMD-SHELL", "pidof sentinel-app || exit 1"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 20s
+    environment:
+      ATRIUM_DISCORD_TOKEN: ${ATRIUM_DISCORD_TOKEN:-}
+      # Consomme les demandes d'apaisement publiees par Sentinel AutoMod.
+      REDIS_URL: redis://:${REDIS_PASSWORD:-sentinel_redis}@redis:6379
+      ATRIUM_GRPC_URL: http://atrium-api:8091
+      ATRIUM_GRPC_TOKEN: ${ATRIUM_GRPC_TOKEN:?ATRIUM_GRPC_TOKEN est requis}
+      ATRIUM_GENERAL_CHANNEL_ID: ${ATRIUM_GENERAL_CHANNEL_ID:-}
+      ATRIUM_SERVER_CONTEXT: ${ATRIUM_SERVER_CONTEXT:-}
+      RUST_LOG: ${RUST_LOG:-info}
+    depends_on:
+      atrium-api:
+        condition: service_healthy
+    networks:
+      - internal
+      - default
+    profiles:
+      - atrium
+      - full
+
+  # One-shot idempotent : Atrium a sa base logique, dans l'unique conteneur
+  # PostgreSQL de la plateforme.
+  # One-shot : role `atrium` non-superuser, sa base, et l'extension pgvector.
+  #
+  # pgvector n'est PAS une extension « trusted » : son installation exige le
+  # superuser. C'etait le blocage qui laissait atrium-api connecte en
+  # `sentinel`, donc capable de lire les bases des autres plateformes. La levee
+  # tient en un ordre : on cree l'extension ICI, sous le compte qui en a le
+  # droit ; le `CREATE EXTENSION IF NOT EXISTS vector` de la migration 001
+  # devient alors un no-op et passe sous un role ordinaire.
+  atrium-db-init:
+    image: postgres:16-alpine
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-sentinel_secret}
+      ATRIUM_DB_PASSWORD: ${ATRIUM_DB_PASSWORD:-atrium_secret}
+    entrypoint:
+      - sh
+      - -euc
+      - |
+        PSQL="psql -h postgres -U sentinel -d discord_sentinel -v ON_ERROR_STOP=1"
+
+        $$PSQL -tc "SELECT 1 FROM pg_roles WHERE rolname = 'atrium'" | grep -q 1 ||
+          $$PSQL -c "CREATE ROLE atrium LOGIN"
+        $$PSQL -c "ALTER ROLE atrium WITH LOGIN PASSWORD '$$ATRIUM_DB_PASSWORD'"
+
+        $$PSQL -tc "SELECT 1 FROM pg_database WHERE datname = 'atrium'" | grep -q 1 ||
+          $$PSQL -c "CREATE DATABASE atrium OWNER atrium"
+
+        $$PSQL -c "ALTER DATABASE atrium OWNER TO atrium"
+        psql -h postgres -U sentinel -d atrium -v ON_ERROR_STOP=1 \
+          -c "CREATE EXTENSION IF NOT EXISTS vector" \
+          -c "REASSIGN OWNED BY sentinel TO atrium" \
+          -c "ALTER SCHEMA public OWNER TO atrium"
+
+        $$PSQL -c "GRANT CONNECT ON DATABASE atrium TO atrium"
+        $$PSQL -c "REVOKE CONNECT ON DATABASE discord_sentinel FROM PUBLIC"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - data
+    profiles:
+      - atrium
+      - full
+
+  # Pool dedie : atrium-api reste sur le reseau interne et ne joint jamais
+  # PostgreSQL directement.
+  atrium-pgbouncer:
+    image: edoburu/pgbouncer:latest
+    restart: unless-stopped
+    logging: *atrium-default-logging
+    environment:
+      DATABASE_URL: postgres://atrium:${ATRIUM_DB_PASSWORD:-atrium_secret}@postgres:5432/atrium
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 100
+      DEFAULT_POOL_SIZE: 10
+      RESERVE_POOL_SIZE: 2
+      ADMIN_USERS: atrium
+      AUTH_TYPE: scram-sha-256
+    depends_on:
+      atrium-db-init:
+        condition: service_completed_successfully
+    networks:
+      - data
+      - internal
+    profiles:
+      - atrium
+      - full

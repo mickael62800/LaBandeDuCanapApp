@@ -212,4 +212,3 @@ async fn publish_result(redis: &redis::Client, job_id: Uuid, payload: &serde_jso
         }
     }
 }
-

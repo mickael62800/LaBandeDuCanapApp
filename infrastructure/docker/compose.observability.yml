@@ -1,0 +1,109 @@
+# Outils d'administration et observabilite optionnels.
+x-observability-default-logging: &observability-default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Supervision et outils d'administration.
+  # - monitoring : ensemble historique complet
+  # - tools : pgAdmin + Redis Commander uniquement
+  # - observability : Prometheus + Grafana uniquement
+  # - full : tous les modules optionnels applicatifs (hors TLS)
+  # ──────────────────────────────────────────────────────────────────────────
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: sentinel-pgadmin
+    restart: unless-stopped
+    logging: *observability-default-logging
+    # SECURITE — pgadmin = panneau admin DB, JAMAIS expose publiquement.
+    # Acces via SSH tunnel : ssh -L 5050:localhost:5050 user@host
+    ports:
+      - "127.0.0.1:5050:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@sentinel.local}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # pgadmin a besoin de joindre postgres (sur "data") direct.
+    networks:
+      - data
+    profiles:
+      - monitoring
+      - tools
+      - full
+
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: sentinel-redis-commander
+    restart: unless-stopped
+    logging: *observability-default-logging
+    # SECURITE — redis-commander = panneau admin Redis, JAMAIS expose
+    # publiquement. Acces SSH tunnel : ssh -L 8081:localhost:8081 user@host
+    ports:
+      - "127.0.0.1:8081:8081"
+    environment:
+      REDIS_HOSTS: local:redis:6379:0:${REDIS_PASSWORD:-sentinel_redis}
+    depends_on:
+      redis:
+        condition: service_healthy
+    # redis-commander a besoin de joindre Redis (sur "internal").
+    networks:
+      - internal
+    profiles:
+      - monitoring
+      - tools
+      - full
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: sentinel-prometheus
+    restart: unless-stopped
+    logging: *observability-default-logging
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ../../infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+    # prometheus scrape /metrics sur les workers (tous sur "internal").
+    networks:
+      - internal
+    profiles:
+      - monitoring
+      - observability
+      - full
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: sentinel-grafana
+    restart: unless-stopped
+    logging: *observability-default-logging
+    ports:
+      - "127.0.0.1:3002:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ../../infrastructure/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../../infrastructure/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+    # grafana query prometheus (sur "internal").
+    networks:
+      - internal
+    profiles:
+      - monitoring
+      - observability
+      - full

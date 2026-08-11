@@ -25,10 +25,8 @@ ops-core = { workspace = true }
 reqwest = { workspace = true }
 # Deduplication des alertes (cle a TTL = cooldown de la regle).
 redis = { workspace = true }
-# Sondes CPU/RAM/disque de l'hote pour l'evaluation des regles.
 # Lecture de l'expiration du certificat TLS de l'hote.
 x509-parser = "0.16"
-sysinfo = { version = "0.33", default-features = false, features = ["system", "disk"] }
 uuid = { workspace = true, features = ["v4"] }
 
 [lints]

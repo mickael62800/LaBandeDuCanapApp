@@ -74,4 +74,3 @@ pub async fn run(pool: &PgPool, redis: &redis::Client, query_limit: i64) -> Resu
     info!(count, "watched_users cache refreshed");
     Ok(())
 }
-

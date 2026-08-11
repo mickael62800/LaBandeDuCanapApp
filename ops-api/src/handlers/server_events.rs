@@ -5,8 +5,6 @@
 //! Helper `record_server_event` : ecriture best-effort (log l'erreur sans bloquer
 //! l'action principale de l'appelant).
 
-use crate::authorize;
-use axum::http::HeaderMap;
 use std::sync::Arc;
 
 use axum::extract::Query;
@@ -66,11 +64,9 @@ pub struct ServerEventDto {
 
 pub async fn list_server_events(
     State(state): State<AppState>,
-    headers: HeaderMap,
 
     Query(q): Query<ServerEventsQuery>,
 ) -> Result<Json<Vec<ServerEventDto>>, ApiError> {
-    authorize(&headers, &state.config)?;
     let events = state
         .server_events_uc
         .list(q.action_prefix, q.severity, q.limit)

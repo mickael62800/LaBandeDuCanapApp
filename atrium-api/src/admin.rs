@@ -11,8 +11,8 @@
 //!
 //! SECURITE
 //!
-//! Meme jeton `ATRIUM_API_TOKEN` que le reste de l'API, verifie par
-//! `authorize`. Le navigateur ne le connait jamais : nginx l'injecte cote
+//! Meme jeton `ATRIUM_API_TOKEN` que le reste de l'API, verifie par le
+//! middleware Bearer commun. Le navigateur ne le connait jamais : nginx l'injecte cote
 //! serveur sur `/atrium-api/`, apres avoir valide la session Discord et
 //! l'appartenance a SUPERADMIN_USER_IDS (`auth_request`). C'est exactement le
 //! montage retenu pour Nexus — un seul modele de passerelle a comprendre.
@@ -25,14 +25,11 @@ use std::sync::Arc;
 
 use axum::{
     extract::{Extension, Path},
-    http::HeaderMap,
     Json,
 };
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    authorize, budget::BudgetStats, guild_config, rag::IndexedDocument, ApiError, AppState,
-};
+use crate::{budget::BudgetStats, guild_config, rag::IndexedDocument, ApiError, AppState};
 
 #[derive(Serialize)]
 pub struct StateResponse {
@@ -53,10 +50,8 @@ pub struct SetStateRequest {
 /// Etat active/desactive d'Atrium pour un serveur.
 pub async fn get_state(
     Extension(state): Extension<Arc<AppState>>,
-    headers: HeaderMap,
     Path(guild_id): Path<String>,
 ) -> Result<Json<StateResponse>, ApiError> {
-    authorize(&headers, &state.config)?;
     let control = state
         .control
         .as_ref()
@@ -70,11 +65,9 @@ pub async fn get_state(
 
 pub async fn set_state(
     Extension(state): Extension<Arc<AppState>>,
-    headers: HeaderMap,
     Path(guild_id): Path<String>,
     Json(request): Json<SetStateRequest>,
 ) -> Result<Json<StateResponse>, ApiError> {
-    authorize(&headers, &state.config)?;
     if request.actor_id.trim().is_empty() {
         return Err(ApiError::bad_request("actor_id requis"));
     }
@@ -104,10 +97,8 @@ pub async fn set_state(
 /// Consommation du jour + limites configurees.
 pub async fn get_usage(
     Extension(state): Extension<Arc<AppState>>,
-    headers: HeaderMap,
     Path(guild_id): Path<String>,
 ) -> Result<Json<BudgetStats>, ApiError> {
-    authorize(&headers, &state.config)?;
     let budget = state
         .budget
         .as_ref()
@@ -135,10 +126,8 @@ pub struct ContextConfigResponse {
 /// les édite dans un bloc distinct.
 pub async fn get_config(
     Extension(state): Extension<Arc<AppState>>,
-    headers: HeaderMap,
     Path(guild_id): Path<String>,
 ) -> Result<Json<ContextConfigResponse>, ApiError> {
-    authorize(&headers, &state.config)?;
     let pool = state
         .config_pool
         .as_ref()
@@ -172,11 +161,9 @@ pub struct SetConfigRequest {
 /// configuration fantome que personne ne saurait expliquer plus tard.
 pub async fn set_config(
     Extension(state): Extension<Arc<AppState>>,
-    headers: HeaderMap,
     Path(guild_id): Path<String>,
     Json(request): Json<SetConfigRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    authorize(&headers, &state.config)?;
     let pool = state
         .config_pool
         .as_ref()
@@ -248,10 +235,8 @@ pub async fn set_config(
 /// Documents indexes dans la base de connaissances de la guilde.
 pub async fn get_knowledge(
     Extension(state): Extension<Arc<AppState>>,
-    headers: HeaderMap,
     Path(guild_id): Path<String>,
 ) -> Result<Json<Vec<IndexedDocument>>, ApiError> {
-    authorize(&headers, &state.config)?;
     let rag = state
         .rag
         .as_ref()
@@ -261,4 +246,51 @@ pub async fn get_knowledge(
         ApiError::unavailable("lecture des documents impossible")
     })?;
     Ok(Json(documents))
+}
+
+#[derive(Serialize)]
+pub struct JobSummaryResponse {
+    pub summary: String,
+    pub generated_by_ai: bool,
+}
+
+/// Endpoint interne/admin declenche par atrium-worker pour generer la meteo d'ambiance.
+pub async fn job_generate_summary(
+    Extension(state): Extension<Arc<AppState>>,
+    Path(guild_id): Path<String>,
+) -> Result<Json<JobSummaryResponse>, ApiError> {
+    let memory = state
+        .memory
+        .as_ref()
+        .ok_or_else(|| ApiError::unavailable("memoire Atrium indisponible"))?;
+    let activity = memory
+        .get_recent_activity(&guild_id, 50)
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "Lecture de l'activite recente impossible");
+            ApiError::unavailable("lecture de l'activite impossible")
+        })?;
+
+    let reply = state
+        .summary
+        .generate_summary(atrium_core::domain::ServerSummaryRequest {
+            guild_id: guild_id.clone(),
+            sample_activity: activity,
+        })
+        .await
+        .map_err(|_| ApiError::bad_request("erreur generation du resume"))?;
+
+    memory
+        .save_summary(&guild_id, &reply.content)
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "Sauvegarde du resume meteo impossible");
+            ApiError::unavailable("sauvegarde du resume impossible")
+        })?;
+
+    tracing::info!(guild_id = %guild_id, "Resume meteo Atrium genere et sauvegarde avec succes");
+    Ok(Json(JobSummaryResponse {
+        summary: reply.content,
+        generated_by_ai: reply.generated_by_ai,
+    }))
 }

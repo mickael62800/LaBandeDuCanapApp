@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
 use crate::domain::entities::game::server::{GameServer, GameServerStatus};
@@ -9,6 +10,21 @@ pub trait GameServerRepository: Send + Sync {
     /// Insere une ligne en statut `created`. Retourne l'entite avec id genere.
     async fn create(&self, server: NewGameServer) -> Result<GameServer, DomainError>;
     async fn find_by_id(&self, id: Uuid) -> Result<Option<GameServer>, DomainError>;
+
+    /// Retourne en lot les identifiants qui correspondent encore a un serveur
+    /// non supprime. L'implementation par defaut garde les adapters de test
+    /// simples ; les adapters de stockage doivent surcharger pour effectuer
+    /// une seule requete.
+    async fn find_existing_ids(&self, ids: &[Uuid]) -> Result<HashSet<Uuid>, DomainError> {
+        let mut existing = HashSet::with_capacity(ids.len());
+        for id in ids {
+            if self.find_by_id(*id).await?.is_some() {
+                existing.insert(*id);
+            }
+        }
+        Ok(existing)
+    }
+
     async fn list_by_guild(&self, guild_id: &str) -> Result<Vec<GameServer>, DomainError>;
     async fn list_running(&self) -> Result<Vec<GameServer>, DomainError>;
     async fn list_active(&self) -> Result<Vec<GameServer>, DomainError>;
@@ -57,11 +73,15 @@ pub trait GameServerRepository: Send + Sync {
     /// Pour le calcul de quota.
     async fn count_active_for_guild(&self, guild_id: &str) -> Result<(i32, i32), DomainError>;
 
-    /// Pour un template donne, retourne (nb_servers_actifs, derniere_activite).
+    /// Pour les templates demandes, retourne (nb_servers_actifs,
+    /// derniere_activite) en lot.
     /// derniere_activite = MAX(updated_at) sur tous les serveurs (incluant
     /// soft-deleted) qui ont utilise ce template. Utilise par le job
     /// image-cleanup pour decider si l'image Docker peut etre supprimee.
-    async fn template_usage(&self, template_id: uuid::Uuid) -> Result<TemplateUsage, DomainError>;
+    async fn template_usages(
+        &self,
+        template_ids: &[Uuid],
+    ) -> Result<HashMap<Uuid, TemplateUsage>, DomainError>;
 
     /// Enregistre les salons Discord (texte + vocal) crees pour la session.
     /// Pose/efface les salons de session. Renvoie `true` si l'ecriture a bien

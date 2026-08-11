@@ -4,6 +4,8 @@
 // celle-ci n'exige pas de session. La clé d'API Nexus reste injectée côté
 // serveur et ne parvient jamais au navigateur.
 
+import { anonymousJsonGet } from "./publicHttp";
+
 export interface PublicGameServer {
   id: string;
   name: string;
@@ -22,12 +24,9 @@ export interface PublicGameServer {
 
 export const publicGamesService = {
   /** GET /api/public/games/{guild}/servers */
-  async listServers(guildId: string): Promise<PublicGameServer[]> {
-    const res = await fetch(
+  listServers(guildId: string): Promise<PublicGameServer[]> {
+    return anonymousJsonGet<PublicGameServer[]>(
       `/nexus-public/api/public/games/${encodeURIComponent(guildId)}/servers`,
-      { credentials: "omit", headers: { Accept: "application/json" } },
     );
-    if (!res.ok) throw new Error(`Erreur ${res.status}`);
-    return (await res.json()) as PublicGameServer[];
   },
 };

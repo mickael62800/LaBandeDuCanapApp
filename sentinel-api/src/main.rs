@@ -61,8 +61,6 @@ async fn main() {
     }
 
     let state = bootstrap::build_app_state(&config, pg_pool.clone(), redis_client).await;
-    bootstrap::spawn_security_workers(&state);
-
     spawn_grpc_server(state.clone(), &config);
     serve_http(state, &config, pg_pool).await;
 }

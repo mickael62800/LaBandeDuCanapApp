@@ -2,6 +2,20 @@
  * Formate les dates en français : "28 mars 2026 à 14h35"
  * Utilisable partout dans l'application.
  */
+export function formatShortMonthDate(
+  raw: string | undefined | null,
+  empty = "-",
+): string {
+  if (!raw) return empty;
+  const date = new Date(raw);
+  if (isNaN(date.getTime())) return raw;
+  return date.toLocaleDateString("fr-FR", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
 export function useFormatDate() {
   function formatDate(raw: string | undefined | null): string {
     if (!raw) return "";
@@ -76,5 +90,6 @@ export function useFormatDate() {
     formatShortDateTime,
     formatDateTimeShort,
     formatDateTimeNumeric,
+    formatShortMonthDate,
   };
 }

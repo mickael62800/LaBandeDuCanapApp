@@ -60,7 +60,9 @@ pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
                 "user_id": q.user_id,
             }
         });
-        let res = platform_common_worker::redis_helpers::xadd_event(&mut conn, &payload.to_string()).await;
+        let res =
+            platform_common_worker::redis_helpers::xadd_event(&mut conn, &payload.to_string())
+                .await;
         if let Err(e) = res {
             warn!(error = %e, guild = %q.guild_id, user = %q.user_id, "XADD quarantine_expired echoue");
         }
@@ -72,4 +74,3 @@ pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
     }
     Ok(())
 }
-

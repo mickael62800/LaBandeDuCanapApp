@@ -22,6 +22,7 @@ members = [
     "atrium-worker", "platform-common-bot", "platform-common-worker",
     "ops-core",
     "ops-api",
+    "ops-worker",
     # Identite : OAuth2 Discord, sessions web, gate superadmin. Extraite de
     # sentinel-api pour que les trois plateformes la consomment a egalite.
     "auth-core",

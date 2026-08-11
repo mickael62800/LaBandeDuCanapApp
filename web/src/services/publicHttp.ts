@@ -5,14 +5,19 @@
 // serveur sans compte, et une erreur 401 sur une section ne doit pas éjecter
 // quelqu'un de la page.
 
-/** GET sur `/api/public{path}`. */
-export async function publicGet<T>(path: string): Promise<T> {
-  const res = await fetch(`/api/public${path}`, {
+/** GET JSON anonyme vers une URL publique complete. */
+export async function anonymousJsonGet<T>(url: string): Promise<T> {
+  const res = await fetch(url, {
     credentials: "omit",
     headers: { Accept: "application/json" },
   });
   if (!res.ok) throw new Error(`Erreur ${res.status}`);
   return (await res.json()) as T;
+}
+
+/** GET sur `/api/public{path}`. */
+export function publicGet<T>(path: string): Promise<T> {
+  return anonymousJsonGet<T>(`/api/public${path}`);
 }
 
 /** Construit une query string en ignorant les paramètres absents. */

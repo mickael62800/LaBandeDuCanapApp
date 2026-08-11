@@ -4,6 +4,7 @@
 //! et applique les defaults documentes en migration 189. Centralise pour
 //! eviter de dupliquer les defaults dans chaque use case.
 
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::domain::entities::game::server::{
@@ -225,6 +226,24 @@ pub async fn load_game_portal_config(
         session_daily_ping_hour: parse_i32(find(&entries, "session_daily_ping_hour"), 18)
             .clamp(0, 23),
     })
+}
+
+/// Charge une seule fois la configuration de chaque guild pour la duree d'un
+/// job. Le cache reste local a l'appel afin qu'un cycle suivant voie toujours
+/// les changements de configuration.
+pub async fn load_game_portal_configs<'a>(
+    bot_config: &Arc<dyn BotConfigRepository>,
+    guild_ids: impl IntoIterator<Item = &'a str>,
+) -> Result<HashMap<String, GamePortalConfig>, DomainError> {
+    let guild_ids = guild_ids.into_iter().collect::<HashSet<_>>();
+    let mut configs = HashMap::with_capacity(guild_ids.len());
+
+    for guild_id in guild_ids {
+        let config = load_game_portal_config(bot_config, guild_id).await?;
+        configs.insert(guild_id.to_string(), config);
+    }
+
+    Ok(configs)
 }
 
 #[cfg(test)]

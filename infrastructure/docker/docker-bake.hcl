@@ -1,27 +1,41 @@
 # ============================================================================
-# docker buildx bake — builds parallels.
-# Lance toujours depuis la racine du repo :
-#   docker buildx bake -f infrastructure/docker/docker-bake.hcl
-#   docker buildx bake -f infrastructure/docker/docker-bake.hcl workers
-#   docker buildx bake -f infrastructure/docker/docker-bake.hcl api gateway bot
+# BuildKit Bake — construit en parallele les images reellement deployees par
+# docker-compose.yml. Lancer depuis la racine du depot :
 #
-# Surcharger le tag :
-#   TAG=v1.2.3 docker buildx bake -f infrastructure/docker/docker-bake.hcl
+#   docker buildx bake -f infrastructure/docker/docker-bake.hcl
+#   docker buildx bake -f infrastructure/docker/docker-bake.hcl core
+#   docker buildx bake -f infrastructure/docker/docker-bake.hcl workers
+#   docker buildx bake -f infrastructure/docker/docker-bake.hcl atrium nexus
 # ============================================================================
 
-variable "TAG" { default = "local" }
+variable "TAG" { default = "latest" }
 
 group "default" {
-  targets = ["api", "gateway", "bot", "web", "workers"]
+  targets = [
+    "api", "web", "auth-api", "docker-agent", "ops-api", "ops-worker",
+    "gateway", "sentinel-bot", "sentinel-worker",
+    "atrium-api", "atrium-bot", "atrium-worker",
+    "nexus-api", "nexus-bot", "nexus-worker",
+  ]
+}
+
+group "core" {
+  targets = [
+    "api", "web", "auth-api", "docker-agent", "ops-api", "ops-worker",
+    "gateway", "sentinel-bot", "sentinel-worker",
+  ]
 }
 
 group "workers" {
-  targets = [
-    "worker-ai", "worker-analytics", "worker-appeal-sla", "worker-audit-cache",
-    "worker-cache", "worker-cleanup",
-    "worker-discord-audit-sync", "worker-export", "worker-moderation",
-    "worker-monitoring", "worker-temp-roles",
-  ]
+  targets = ["sentinel-worker", "ops-worker", "atrium-worker", "nexus-worker"]
+}
+
+group "atrium" {
+  targets = ["atrium-api", "atrium-bot", "atrium-worker"]
+}
+
+group "nexus" {
+  targets = ["nexus-api", "nexus-bot", "nexus-worker"]
 }
 
 target "_alpine-base" {
@@ -40,40 +54,35 @@ target "api" {
     BIN_NAME       = "sentinel-api"
     MIGRATIONS_SRC = "sentinel-api/migrations"
   }
-  tags = ["sentinel/api:${TAG}"]
+  tags = ["discordsentinel-api:${TAG}"]
 }
 
 target "gateway" {
   inherits = ["_alpine-base"]
   args     = { BIN_NAME = "sentinel-gateway" }
-  tags     = ["sentinel/gateway:${TAG}"]
+  tags     = ["discordsentinel-gateway:${TAG}"]
 }
 
-target "bot" {
+# Toutes les autres applications Rust partagent le meme Dockerfile Alpine.
+# La matrice maintient un seul cache Cargo Chef/BuildKit par dependances tout
+# en produisant une cible et une image distinctes par binaire.
+target "rust-app" {
   inherits = ["_alpine-base"]
-  args = {
-    BIN_NAME   = "sentinel-bot"
+  matrix = {
+    app = [
+      "auth-api", "docker-agent", "ops-api", "ops-worker",
+      "sentinel-bot", "sentinel-worker",
+      "atrium-api", "atrium-bot", "atrium-worker",
+      "nexus-api", "nexus-bot", "nexus-worker",
+    ]
   }
-  tags = ["sentinel/bot:${TAG}"]
+  name = "${app}"
+  args = { BIN_NAME = "${app}" }
+  tags = ["discordsentinel-${app}:${TAG}"]
 }
 
 target "web" {
   context    = "."
   dockerfile = "web/Dockerfile"
-  tags       = ["sentinel/web:${TAG}"]
-}
-
-# Matrix : 13 workers en une seule cible parametrique (buildx bake >= 0.13).
-target "worker" {
-  inherits = ["_alpine-base"]
-  matrix = {
-    name = [
-      "ai", "analytics", "appeal-sla", "audit-cache",
-      "cache", "cleanup", "discord-audit-sync", "export",
-      "moderation", "monitoring", "temp-roles",
-    ]
-  }
-  name = "worker-${name}"
-  args = { BIN_NAME = "sentinel-${name}-worker" }
-  tags = ["sentinel/${name}-worker:${TAG}"]
+  tags       = ["discordsentinel-web:${TAG}"]
 }

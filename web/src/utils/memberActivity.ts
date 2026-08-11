@@ -4,6 +4,7 @@
  * Toutes prennent la donnee en argument (aucun acces a un state reactif).
  */
 import type { UserActivity, UserDossier } from "../types";
+export { formatShortMonthDate as formatMemberDate } from "../composables/useFormatDate";
 
 export type Meta = Record<string, unknown> | null | undefined;
 
@@ -13,11 +14,6 @@ export const VOCAL_EVENTS = ["voice_join", "voice_leave", "voice_move"];
 const ONE_DAY = 86_400_000;
 
 // ── Formatage ────────────────
-export function formatMemberDate(date: string | null): string {
-  if (!date) return "-";
-  return new Date(date).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" });
-}
-
 export function formatDuration(seconds: number): string {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);

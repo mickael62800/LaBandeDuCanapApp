@@ -78,7 +78,9 @@ pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
             }
         });
 
-        if let Err(e) = platform_common_worker::redis_helpers::xadd_event_json(&mut conn, &payload).await {
+        if let Err(e) =
+            platform_common_worker::redis_helpers::xadd_event_json(&mut conn, &payload).await
+        {
             warn!(reminder_id = %ban.id, error = %e, "XADD sanction_expired_unban failed");
         }
 
@@ -93,4 +95,3 @@ pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
     info!(count = expired.len(), "Bans temporaires expires traites");
     Ok(())
 }
-

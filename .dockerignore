@@ -53,6 +53,8 @@ sentinel-ml/*/datasets/
 docker-compose.yml
 docker-compose.*.yml
 infrastructure/docker/docker-compose*.yml
+infrastructure/docker/compose.*.yml
+infrastructure/docker/docker-bake.hcl
 **/Dockerfile
 
 # Logos / assets non-builds

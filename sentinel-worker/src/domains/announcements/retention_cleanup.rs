@@ -24,4 +24,3 @@ pub async fn run(_pool: &PgPool) -> Result<(), String> {
     );
     Ok(())
 }
-

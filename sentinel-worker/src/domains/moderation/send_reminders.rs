@@ -82,7 +82,9 @@ pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
             }
         });
 
-        if let Err(e) = platform_common_worker::redis_helpers::xadd_event_json(&mut conn, &payload).await {
+        if let Err(e) =
+            platform_common_worker::redis_helpers::xadd_event_json(&mut conn, &payload).await
+        {
             warn!(reminder_id = %reminder.id, error = %e, "XADD reminder failed");
         }
 
@@ -99,4 +101,3 @@ pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
     info!(count = reminders.len(), "Rappels de sanctions envoyes");
     Ok(())
 }
-

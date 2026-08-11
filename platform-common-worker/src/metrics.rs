@@ -3,7 +3,7 @@
 //! Usage typique dans `main.rs` d'un worker :
 //!
 //! ```ignore
-//! use crate::common::metrics;
+//! use platform_common_worker::metrics;
 //!
 //! #[tokio::main]
 //! async fn main() {

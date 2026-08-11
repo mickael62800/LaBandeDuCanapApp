@@ -29,14 +29,13 @@
 use std::sync::Arc;
 
 use axum::extract::FromRef;
-use axum::http::{header::AUTHORIZATION, HeaderMap, StatusCode};
+use axum::http::StatusCode;
 use axum::routing::get;
 use axum::{Json, Router};
 use ops_core::ports::inbound::manage_alert_rules::ManageAlertRulesUseCase;
 use platform_common_api::{rate_limit_middleware, RateLimiter};
 
 pub mod adapters;
-pub mod alerts_dispatcher;
 pub mod config;
 pub mod container_monitor;
 pub mod handlers;
@@ -55,11 +54,6 @@ pub struct AppState {
     /// Journal des evenements de la machine (qui a arrete quoi).
     pub server_events:
         Arc<dyn ops_core::ports::outbound::server_event_repository::ServerEventRepository>,
-    /// Instantane des conteneurs, alimente par `container_monitor`. Partage en
-    /// memoire avec la boucle : le processus qui produit la donnee est celui
-    /// qui la sert.
-    pub container_monitor: container_monitor::SharedMonitorState,
-
     // -- Logs systeme --
     pub system_logs_uc:
         Arc<dyn ops_core::ports::inbound::manage_system_logs::ManageSystemLogsUseCase>,
@@ -88,9 +82,6 @@ impl FromRef<AppState> for Arc<AppConfig> {
 pub struct ApiError(pub StatusCode, pub String);
 
 impl ApiError {
-    pub fn unauthorized() -> Self {
-        Self(StatusCode::UNAUTHORIZED, "jeton API invalide".into())
-    }
     pub fn not_found(what: &str) -> Self {
         Self(StatusCode::NOT_FOUND, what.to_owned())
     }
@@ -109,41 +100,25 @@ impl From<ops_core::domain::errors::DomainError> for ApiError {
             E::NotImplemented(_) => StatusCode::NOT_IMPLEMENTED,
             E::Internal(_) | E::Infrastructure(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
-        // Le detail technique part dans les logs, pas dans la reponse : cette
-        // API n'est appelee que par le back-office, et une trace SQL dans le
-        // navigateur ne rend service qu'a un attaquant.
-        if status.is_server_error() {
-            tracing::error!(%error, "erreur interne");
-            return Self(status, "erreur interne".into());
-        }
-        Self(status, error.to_string())
+        Self(
+            status,
+            platform_common_api::errors::public_message(status, &error),
+        )
     }
 }
 
 impl axum::response::IntoResponse for ApiError {
     fn into_response(self) -> axum::response::Response {
-        (self.0, Json(serde_json::json!({ "error": self.1 }))).into_response()
-    }
-}
-
-/// Verifie le jeton injecte par nginx. L'API n'a aucune notion d'utilisateur :
-/// l'identite a deja ete resolue par la passerelle.
-pub fn authorize(headers: &HeaderMap, config: &AppConfig) -> Result<(), ApiError> {
-    let expected = format!("Bearer {}", config.api_token);
-    let supplied = headers.get(AUTHORIZATION).and_then(|v| v.to_str().ok());
-    if supplied == Some(expected.as_str()) {
-        Ok(())
-    } else {
-        Err(ApiError::unauthorized())
+        platform_common_api::errors::error_response(self.0, &self.1)
     }
 }
 
 pub fn router(state: AppState) -> Router {
     let rate_limiter = RateLimiter::new(state.config.rate_limit_per_sec);
+    let bearer =
+        platform_common_api::bearer_auth::RequiredBearerToken::new(state.config.api_token.clone());
 
-    let router = Router::new()
-        .route("/health", get(health))
-        .route("/metrics", get(handlers::metrics::metrics))
+    let protected = Router::new()
         .route("/alert-rules", get(handlers::alert_rules::list))
         // ── Conteneurs de l'hote ──
         .route("/docker/overview", get(handlers::docker::get_overview))
@@ -273,6 +248,15 @@ pub fn router(state: AppState) -> Router {
             "/alert-rules/{id}",
             axum::routing::patch(handlers::alert_rules::update),
         )
+        .route_layer(axum::middleware::from_fn_with_state(
+            bearer,
+            platform_common_api::bearer_auth::require,
+        ));
+
+    let router = Router::new()
+        .route("/health", get(health))
+        .route("/metrics", get(handlers::metrics::metrics))
+        .merge(protected)
         .with_state(state)
         .layer(axum::middleware::from_fn(
             platform_common_api::metrics::metrics_middleware,

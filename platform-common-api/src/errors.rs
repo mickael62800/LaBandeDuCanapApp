@@ -4,6 +4,21 @@ use axum::response::Response;
 use axum::Json;
 use platform_common::errors::DomainError;
 
+/// Construit l'enveloppe d'erreur JSON commune a toutes les APIs.
+pub fn error_response(status: StatusCode, message: &str) -> Response {
+    (status, Json(serde_json::json!({ "error": message }))).into_response()
+}
+
+/// Masque les details techniques des erreurs serveur et les journalise.
+pub fn public_message(status: StatusCode, error: &impl std::fmt::Display) -> String {
+    if status.is_server_error() {
+        tracing::error!(%error, "erreur interne");
+        "erreur interne".to_owned()
+    } else {
+        error.to_string()
+    }
+}
+
 /// Enveloppe d'erreur API : mappe DomainError -> statut HTTP + JSON.
 pub struct ApiError(pub DomainError);
 
@@ -33,6 +48,23 @@ impl IntoResponse for ApiError {
                 )
             }
         };
-        (status, Json(serde_json::json!({ "error": msg }))).into_response()
+        error_response(status, &msg)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn masque_uniquement_les_erreurs_serveur() {
+        assert_eq!(
+            public_message(StatusCode::INTERNAL_SERVER_ERROR, &"sql password=secret"),
+            "erreur interne"
+        );
+        assert_eq!(
+            public_message(StatusCode::BAD_REQUEST, &"champ invalide"),
+            "champ invalide"
+        );
     }
 }

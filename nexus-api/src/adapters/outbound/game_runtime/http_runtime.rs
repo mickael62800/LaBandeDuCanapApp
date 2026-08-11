@@ -18,7 +18,7 @@
 //! bollard -> domaine dans le depot.
 
 use async_trait::async_trait;
-use reqwest::Client;
+use platform_common_api::docker_agent_client::{DockerAgentClient, DockerAgentError};
 use serde::de::DeserializeOwned;
 
 use nexus_core::domain::errors::DomainError;
@@ -27,9 +27,7 @@ use nexus_core::ports::outbound::game::container_runtime::{
 };
 
 pub struct HttpGameRuntime {
-    client: Client,
-    base_url: String,
-    token: String,
+    agent: DockerAgentClient,
     /// Fige au demarrage par un appel a `/game/operational`.
     ///
     /// `is_operational` est synchrone dans le port (il sert a REFUSER une
@@ -49,26 +47,11 @@ impl HttpGameRuntime {
     /// operations de cycle de vie sont refusees — exactement ce que faisait le
     /// repli `noop` quand le socket etait absent.
     pub async fn connect(base_url: String, token: String) -> Self {
-        let client = Client::builder()
-            // Genereux : un `pull` d'image de serveur de jeu se compte en
-            // minutes. Trop court, l'API declarerait en panne une creation qui
-            // se termine tres bien.
-            .timeout(std::time::Duration::from_secs(600))
-            .build()
-            .unwrap_or_default();
-
-        let operational = client
-            .get(format!(
-                "{}/game/operational",
-                base_url.trim_end_matches('/')
-            ))
-            .bearer_auth(&token)
-            .timeout(std::time::Duration::from_secs(5))
-            .send()
-            .await
-            .ok()
-            .filter(|r| r.status().is_success())
-            .is_some();
+        let agent =
+            DockerAgentClient::new(base_url.clone(), token, std::time::Duration::from_secs(600));
+        let operational = agent
+            .probe("/game/operational", std::time::Duration::from_secs(5))
+            .await;
 
         if !operational {
             tracing::warn!(
@@ -77,67 +60,34 @@ impl HttpGameRuntime {
             );
         }
 
-        Self {
-            client,
-            base_url,
-            token,
-            operational,
-        }
+        Self { agent, operational }
     }
 
-    fn url(&self, path: &str) -> String {
-        format!("{}{}", self.base_url.trim_end_matches('/'), path)
+    fn map_error(error: DockerAgentError) -> DomainError {
+        match &error {
+            DockerAgentError::Transport(source) => {
+                tracing::warn!(error = %source, "docker-agent injoignable")
+            }
+            DockerAgentError::Rejected { status, detail } => {
+                tracing::warn!(%status, body = %detail, "docker-agent a refuse l'operation")
+            }
+            DockerAgentError::InvalidResponse(source) => {
+                tracing::warn!(error = %source, "reponse docker-agent illisible")
+            }
+        }
+        DomainError::Internal(error.to_string())
     }
 
     async fn send<T: DeserializeOwned>(
         &self,
         request: reqwest::RequestBuilder,
     ) -> Result<T, DomainError> {
-        let response = request
-            .bearer_auth(&self.token)
-            .send()
-            .await
-            .map_err(|error| {
-                tracing::warn!(%error, "docker-agent injoignable");
-                DomainError::Internal("docker-agent injoignable".into())
-            })?;
-
-        let status = response.status();
-        if !status.is_success() {
-            let detail = response.text().await.unwrap_or_default();
-            tracing::warn!(%status, body = %detail, "docker-agent a refuse l'operation");
-            return Err(DomainError::Internal(format!(
-                "docker-agent: reponse {status}"
-            )));
-        }
-
-        response.json::<T>().await.map_err(|error| {
-            tracing::warn!(%error, "reponse docker-agent illisible");
-            DomainError::Internal("reponse docker-agent illisible".into())
-        })
+        self.agent.send_json(request).await.map_err(Self::map_error)
     }
 
     /// Variante pour les operations sans corps de reponse (204).
     async fn send_unit(&self, request: reqwest::RequestBuilder) -> Result<(), DomainError> {
-        let response = request
-            .bearer_auth(&self.token)
-            .send()
-            .await
-            .map_err(|error| {
-                tracing::warn!(%error, "docker-agent injoignable");
-                DomainError::Internal("docker-agent injoignable".into())
-            })?;
-
-        let status = response.status();
-        if status.is_success() {
-            Ok(())
-        } else {
-            let detail = response.text().await.unwrap_or_default();
-            tracing::warn!(%status, body = %detail, "docker-agent a refuse l'operation");
-            Err(DomainError::Internal(format!(
-                "docker-agent: reponse {status}"
-            )))
-        }
+        self.agent.send_unit(request).await.map_err(Self::map_error)
     }
 }
 
@@ -148,39 +98,33 @@ impl ContainerRuntime for HttpGameRuntime {
     }
 
     async fn ensure_network(&self, name: &str) -> Result<(), DomainError> {
-        self.send_unit(
-            self.client
-                .post(self.url(&format!("/game/networks/{name}/ensure"))),
-        )
-        .await
+        self.send_unit(self.agent.post(&format!("/game/networks/{name}/ensure")))
+            .await
     }
 
     async fn ensure_volume(&self, name: &str) -> Result<(), DomainError> {
-        self.send_unit(
-            self.client
-                .post(self.url(&format!("/game/volumes/{name}/ensure"))),
-        )
-        .await
+        self.send_unit(self.agent.post(&format!("/game/volumes/{name}/ensure")))
+            .await
     }
 
     async fn pull_image_if_missing(&self, image: &str) -> Result<(), DomainError> {
         self.send_unit(
-            self.client
-                .post(self.url("/game/images/pull"))
+            self.agent
+                .post("/game/images/pull")
                 .json(&serde_json::json!({ "image": image })),
         )
         .await
     }
 
     async fn create_container(&self, spec: &ContainerSpec) -> Result<String, DomainError> {
-        self.send(self.client.post(self.url("/game/containers")).json(spec))
+        self.send(self.agent.post("/game/containers").json(spec))
             .await
     }
 
     async fn start_container(&self, container_id: &str) -> Result<(), DomainError> {
         self.send_unit(
-            self.client
-                .post(self.url(&format!("/game/containers/{container_id}/start"))),
+            self.agent
+                .post(&format!("/game/containers/{container_id}/start")),
         )
         .await
     }
@@ -192,8 +136,8 @@ impl ContainerRuntime for HttpGameRuntime {
         content: &str,
     ) -> Result<(), DomainError> {
         self.send_unit(
-            self.client
-                .post(self.url(&format!("/game/containers/{container_id}/upload")))
+            self.agent
+                .post(&format!("/game/containers/{container_id}/upload"))
                 .json(&serde_json::json!({ "path": path, "content": content })),
         )
         .await
@@ -205,8 +149,8 @@ impl ContainerRuntime for HttpGameRuntime {
         timeout_secs: u32,
     ) -> Result<(), DomainError> {
         self.send_unit(
-            self.client
-                .post(self.url(&format!("/game/containers/{container_id}/stop")))
+            self.agent
+                .post(&format!("/game/containers/{container_id}/stop"))
                 .query(&[("timeout_secs", timeout_secs)]),
         )
         .await
@@ -218,8 +162,8 @@ impl ContainerRuntime for HttpGameRuntime {
         timeout_secs: u32,
     ) -> Result<(), DomainError> {
         self.send_unit(
-            self.client
-                .post(self.url(&format!("/game/containers/{container_id}/restart")))
+            self.agent
+                .post(&format!("/game/containers/{container_id}/restart"))
                 .query(&[("timeout_secs", timeout_secs)]),
         )
         .await
@@ -227,24 +171,21 @@ impl ContainerRuntime for HttpGameRuntime {
 
     async fn remove_container(&self, container_id: &str) -> Result<(), DomainError> {
         self.send_unit(
-            self.client
-                .post(self.url(&format!("/game/containers/{container_id}/remove"))),
+            self.agent
+                .post(&format!("/game/containers/{container_id}/remove")),
         )
         .await
     }
 
     async fn remove_volume(&self, name: &str) -> Result<(), DomainError> {
-        self.send_unit(
-            self.client
-                .post(self.url(&format!("/game/volumes/{name}/remove"))),
-        )
-        .await
+        self.send_unit(self.agent.post(&format!("/game/volumes/{name}/remove")))
+            .await
     }
 
     async fn remove_image(&self, image: &str, force: bool) -> Result<bool, DomainError> {
         self.send(
-            self.client
-                .post(self.url("/game/images/remove"))
+            self.agent
+                .post("/game/images/remove")
                 .json(&serde_json::json!({ "image": image, "force": force })),
         )
         .await
@@ -252,31 +193,30 @@ impl ContainerRuntime for HttpGameRuntime {
 
     async fn inspect(&self, container_id: &str) -> Result<Option<ContainerStatus>, DomainError> {
         self.send(
-            self.client
-                .get(self.url(&format!("/game/containers/{container_id}/inspect"))),
+            self.agent
+                .get(&format!("/game/containers/{container_id}/inspect")),
         )
         .await
     }
 
     async fn stats(&self, container_id: &str) -> Result<ContainerStats, DomainError> {
         self.send(
-            self.client
-                .get(self.url(&format!("/game/containers/{container_id}/stats"))),
+            self.agent
+                .get(&format!("/game/containers/{container_id}/stats")),
         )
         .await
     }
 
     async fn logs(&self, container_id: &str, lines: u32) -> Result<Vec<String>, DomainError> {
         self.send(
-            self.client
-                .get(self.url(&format!("/game/containers/{container_id}/logs")))
+            self.agent
+                .get(&format!("/game/containers/{container_id}/logs"))
                 .query(&[("lines", lines)]),
         )
         .await
     }
 
     async fn list_managed_containers(&self) -> Result<Vec<ManagedContainer>, DomainError> {
-        self.send(self.client.get(self.url("/game/containers/managed")))
-            .await
+        self.send(self.agent.get("/game/containers/managed")).await
     }
 }

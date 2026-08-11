@@ -177,4 +177,3 @@ async fn compute_analytics(pool: &PgPool, guild_id: &str) -> Result<AnalyticsBun
         peak_hours,
     })
 }
-

@@ -626,4 +626,3 @@ pub fn start(
     // Variables inutilisees a ce stade.
     let _ = (pool, shutdown, redis_client, api_url);
 }
-

@@ -206,4 +206,3 @@ mod tests {
         assert!(!is_due(Some(t(1)), -5, Utc::now()));
     }
 }
-

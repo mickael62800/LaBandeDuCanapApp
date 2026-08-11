@@ -5,6 +5,12 @@
 //! Tout le metier est dans l'API — les jobs ici sont des tickers qui
 //! POST vers les endpoints `/api/analytics/*`.
 
+#[derive(serde::Deserialize)]
+pub(super) struct GuildJobReport {
+    pub guilds_processed: usize,
+    pub guilds_skipped: usize,
+}
+
 pub mod daily_snapshot;
 pub mod hourly_snapshot;
 pub mod publish_monthly_ranking;

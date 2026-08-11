@@ -1,0 +1,196 @@
+# Identite partagee par Sentinel, Ops, Atrium et Nexus.
+x-auth-default-logging: &auth-default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-auth-rust-base: &auth-rust-base
+  restart: unless-stopped
+  init: true
+  logging: *auth-default-logging
+
+x-auth-build-alpine: &auth-build-alpine
+  context: ../..
+  dockerfile: infrastructure/docker/Dockerfile.rust-alpine
+
+services:
+
+  # Redis DEDIE a l'identite.
+  #
+  # SECURITE — pourquoi ne pas reutiliser le Redis commun.
+  #
+  # auth-api y stocke deux choses : les `state` CSRF du flux OAuth
+  # (`oauth:web:state:*`) et le cache « jeton -> identite » (`user_id:*`).
+  # Sur l'instance partagee, tout service porteur de REDIS_URL — les trois
+  # bots, les trois workers, la gateway — pouvait les lire. C'est-a-dire
+  # resoudre l'identite derriere n'importe quel jeton, et forger un callback
+  # OAuth avec un `state` valide. Separer la base de l'identite sans separer
+  # son Redis ne protegeait que la moitie du chemin.
+  #
+  # Deux differences de reglage avec le Redis commun, toutes deux voulues :
+  #
+  #   - AUCUNE persistance (`--save ""`, `--appendonly no`, pas de volume).
+  #     Ces cles derivent de secrets et expirent en 10 min ; les ecrire sur
+  #     disque serait un risque sans contrepartie. Un redemarrage coute au pire
+  #     les logins en cours de route et un cache froid.
+  #   - `noeviction` au lieu de `allkeys-lru`. Sous LRU, Redis peut evincer un
+  #     `state` CSRF encore valide : le login echoue alors avec « state
+  #     invalide », sans rien dans les logs qui l'explique. Le jeu de donnees
+  #     tient en quelques centaines de cles auto-expirantes — la memoire n'est
+  #     pas la ressource contrainte ici.
+  auth-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    logging: *auth-default-logging
+    command: >-
+      redis-server
+      --requirepass ${AUTH_REDIS_PASSWORD:-auth_redis_secret}
+      --save ""
+      --appendonly no
+      --maxmemory 128mb
+      --maxmemory-policy noeviction
+    # PAS de `ports:` et pas de volume : joignable seulement par auth-api,
+    # et rien ne touche le disque.
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${AUTH_REDIS_PASSWORD:-auth_redis_secret}", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+
+  # ── Identite (auth-api) ─────────────────────────────────────────────────
+  #
+  # Source de verite unique de « qui est connecte », pour les TROIS plateformes
+  # et pour l'exploitation. Extraite de sentinel-api, qui en etait le
+  # proprietaire de fait : Nexus et Atrium n'avaient aucun moyen de savoir qui
+  # appelle, et la passerelle nginx devait demander son avis a sentinel-api
+  # avant de les servir. Meme geste que l'extraction de `ops`.
+  #
+  # Role `auth` dedie : cette base contient les access/refresh tokens Discord
+  # des administrateurs. C'est la base la plus sensible du deploiement, et la
+  # seule raison suffisante a elle seule d'avoir un compte par plateforme.
+  auth-db-init:
+    image: postgres:16-alpine
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-sentinel_secret}
+      AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD:-auth_secret}
+    entrypoint:
+      - sh
+      - -euc
+      - |
+        PSQL="psql -h postgres -U sentinel -d discord_sentinel -v ON_ERROR_STOP=1"
+
+        $$PSQL -tc "SELECT 1 FROM pg_roles WHERE rolname = 'auth'" | grep -q 1 ||
+          $$PSQL -c "CREATE ROLE auth LOGIN"
+        $$PSQL -c "ALTER ROLE auth WITH LOGIN PASSWORD '$$AUTH_DB_PASSWORD'"
+
+        $$PSQL -tc "SELECT 1 FROM pg_database WHERE datname = 'auth'" | grep -q 1 ||
+          $$PSQL -c "CREATE DATABASE auth OWNER auth"
+
+        # Reprise d'une installation ou la base existait deja.
+        $$PSQL -c "ALTER DATABASE auth OWNER TO auth"
+        psql -h postgres -U sentinel -d auth -v ON_ERROR_STOP=1 \
+          -c "REASSIGN OWNED BY sentinel TO auth" \
+          -c "ALTER SCHEMA public OWNER TO auth"
+
+        $$PSQL -c "GRANT CONNECT ON DATABASE auth TO auth"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - data
+
+  auth-pgbouncer:
+    image: edoburu/pgbouncer:latest
+    restart: unless-stopped
+    logging: *auth-default-logging
+    environment:
+      DATABASE_URL: postgres://auth:${AUTH_DB_PASSWORD:-auth_secret}@postgres:5432/auth
+      # SESSION : auth-api applique ses migrations au boot (verrou d'avis de
+      # session). Meme raison que pour nexus-pgbouncer.
+      POOL_MODE: session
+      MAX_CLIENT_CONN: 100
+      DEFAULT_POOL_SIZE: 10
+      RESERVE_POOL_SIZE: 2
+      ADMIN_USERS: auth
+      AUTH_TYPE: scram-sha-256
+    depends_on:
+      auth-db-init:
+        condition: service_completed_successfully
+    networks:
+      - data
+      - internal
+
+  auth-api:
+    <<: *auth-rust-base
+    build:
+      <<: *auth-build-alpine
+      args:
+        BIN_NAME: auth-api
+    # PAS de `ports:` — joignable par la passerelle nginx et par les services
+    # internes uniquement.
+    environment:
+      AUTH_DATABASE_URL: postgres://auth:${AUTH_DB_PASSWORD:-auth_secret}@auth-pgbouncer:5432/auth
+      AUTH_API_BIND_ADDR: 0.0.0.0:8096
+      # Jeton des appelants de service (nginx auth_request, sentinel-api,
+      # ops-api). Requis : sans lui, /access et /security/* seraient ouverts a
+      # tout le reseau interne.
+      AUTH_API_TOKEN: ${AUTH_API_TOKEN:?AUTH_API_TOKEN est requis}
+      # Instance DEDIEE (cf. le commentaire du service `auth-redis`) : les
+      # `state` CSRF et le cache d'identite ne doivent pas etre lisibles par
+      # les bots, les workers et la gateway.
+      REDIS_URL: redis://:${AUTH_REDIS_PASSWORD:-auth_redis_secret}@auth-redis:6379
+      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID:-}
+      DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:-}
+      DISCORD_REDIRECT_URI: ${DISCORD_REDIRECT_URI:-}
+      WEB_FRONT_URL: ${WEB_FRONT_URL:-}
+      SUPERADMIN_USER_IDS: ${SUPERADMIN_USER_IDS:-}
+      RUST_LOG: ${RUST_LOG:-info}
+    depends_on:
+      auth-pgbouncer:
+        condition: service_started
+      auth-redis:
+        condition: service_healthy
+    # `default` en plus d'`internal` : le flux OAuth appelle Discord.
+    networks:
+      - internal
+      - default
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:8096/health || exit 1"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 15s
+
+  # One-shot : recopie les sessions et le journal de login depuis
+  # discord_sentinel vers la base de l'identite. Tourne APRES auth-api, qui
+  # cree les tables par ses migrations.
+  #
+  # `ON CONFLICT DO NOTHING` : rejouable sans doublon. Les lignes ne sont PAS
+  # supprimees de discord_sentinel — tant que la bascule n'est pas validee,
+  # l'ancien chemin doit continuer de fonctionner.
+  auth-data-import:
+    image: postgres:16-alpine
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-sentinel_secret}
+    entrypoint:
+      - sh
+      - -euc
+      - |
+        for T in web_oauth_sessions successful_logins; do
+          echo "Reprise de $$T..."
+          psql -h postgres -U sentinel -d discord_sentinel -v ON_ERROR_STOP=1 \
+            -c "\copy (SELECT * FROM $$T) TO STDOUT" \
+          | psql -h postgres -U sentinel -d auth -v ON_ERROR_STOP=1 \
+            -c "CREATE TEMP TABLE tmp_$$T (LIKE $$T INCLUDING DEFAULTS);
+                \copy tmp_$$T FROM STDIN;
+                INSERT INTO $$T SELECT * FROM tmp_$$T ON CONFLICT (id) DO NOTHING;"
+        done
+        echo "Reprise terminee."
+    depends_on:
+      auth-api:
+        condition: service_healthy
+    networks:
+      - data

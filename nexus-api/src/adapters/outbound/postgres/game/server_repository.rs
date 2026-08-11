@@ -2,6 +2,7 @@ use crate::adapters::outbound::postgres::pg_ctx;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sqlx::{FromRow, PgPool};
+use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
 use nexus_core::domain::entities::game::server::{GameServer, GameServerStatus};
@@ -148,6 +149,23 @@ impl GameServerRepository for PgGameServerRepository {
         .await
         .map_err(pg_ctx("find game_server"))?;
         row.map(GameServer::try_from).transpose()
+    }
+
+    async fn find_existing_ids(&self, ids: &[Uuid]) -> Result<HashSet<Uuid>, DomainError> {
+        if ids.is_empty() {
+            return Ok(HashSet::new());
+        }
+
+        let rows = sqlx::query_scalar::<_, Uuid>(
+            "SELECT id FROM game_servers \
+             WHERE id = ANY($1) AND deleted_at IS NULL AND status != 'deleted'",
+        )
+        .bind(ids)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(pg_ctx("find existing game_server ids"))?;
+
+        Ok(rows.into_iter().collect())
     }
 
     async fn list_by_guild(&self, guild_id: &str) -> Result<Vec<GameServer>, DomainError> {
@@ -389,24 +407,42 @@ impl GameServerRepository for PgGameServerRepository {
         Ok((count, mem))
     }
 
-    async fn template_usage(&self, template_id: uuid::Uuid) -> Result<TemplateUsage, DomainError> {
+    async fn template_usages(
+        &self,
+        template_ids: &[Uuid],
+    ) -> Result<HashMap<Uuid, TemplateUsage>, DomainError> {
+        if template_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
         // active_count : serveurs non-deletes utilisant ce template.
         // last_activity : MAX(updated_at) sur TOUS les serveurs ayant utilise
         // le template (incluant deletes), pour respecter la grace period.
-        let row: (i64, Option<chrono::DateTime<chrono::Utc>>) = sqlx::query_as(
-            "SELECT \
-                 (SELECT COUNT(*)::bigint FROM game_servers \
-                  WHERE template_id = $1 AND deleted_at IS NULL), \
-                 (SELECT MAX(updated_at) FROM game_servers WHERE template_id = $1)",
+        let rows: Vec<(Uuid, i64, Option<chrono::DateTime<chrono::Utc>>)> = sqlx::query_as(
+            "SELECT template_id, \
+                    COUNT(*) FILTER (WHERE deleted_at IS NULL)::bigint, \
+                    MAX(updated_at) \
+             FROM game_servers \
+             WHERE template_id = ANY($1) \
+             GROUP BY template_id",
         )
-        .bind(template_id)
-        .fetch_one(&self.pool)
+        .bind(template_ids)
+        .fetch_all(&self.pool)
         .await
-        .map_err(pg_ctx("template_usage"))?;
-        Ok(TemplateUsage {
-            active_count: i32::try_from(row.0).unwrap_or(i32::MAX),
-            last_activity_at: row.1,
-        })
+        .map_err(pg_ctx("template_usages"))?;
+
+        Ok(rows
+            .into_iter()
+            .map(|(template_id, active_count, last_activity_at)| {
+                (
+                    template_id,
+                    TemplateUsage {
+                        active_count: i32::try_from(active_count).unwrap_or(i32::MAX),
+                        last_activity_at,
+                    },
+                )
+            })
+            .collect())
     }
 
     async fn set_session_channels(

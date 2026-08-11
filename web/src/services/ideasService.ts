@@ -80,7 +80,10 @@ function toQuery(params: ListIdeasParams): string {
 
 export const ideasService = {
   list(params: ListIdeasParams = {}): Promise<Idea[]> {
-    return httpGet(`/api/ideas/${toQuery(params)}`);
+    // La collection est montee sur `/api/ideas` sans slash final. Axum traite
+    // `/api/ideas` et `/api/ideas/` comme deux chemins distincts : placer le
+    // slash avant la query faisait donc repondre 404 en production.
+    return httpGet(`/api/ideas${toQuery(params)}`);
   },
   get(id: string): Promise<IdeaDetail> {
     return httpGet(`/api/ideas/${id}`);

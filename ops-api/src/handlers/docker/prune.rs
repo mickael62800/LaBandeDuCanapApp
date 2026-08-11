@@ -244,6 +244,26 @@ pub struct PruneBuildCacheQuery {
     pub all: Option<bool>,
 }
 
+/// POST /api/docker/prune/build-cache — purge le build cache Docker (buildkit).
+pub async fn prune_build_cache(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(q): Query<PruneBuildCacheQuery>,
+) -> Result<Json<PruneResultDto>, ApiError> {
+    let all = q.all.unwrap_or(true);
+    let actor = actor_from(&headers);
+    let target = if all { "all=true" } else { "all=false" };
+    let r = audited(
+        &state,
+        &actor,
+        "prune.build_cache",
+        target,
+        state.docker_host.prune_build_cache(all),
+    )
+    .await?;
+    Ok(Json(prune_dto(r)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{prune_step, prune_step_skipped};
@@ -279,24 +299,4 @@ mod tests {
         assert_eq!(step.space_reclaimed_bytes, 0);
         assert!(step.error.is_none());
     }
-}
-
-/// POST /api/docker/prune/build-cache — purge le build cache Docker (buildkit).
-pub async fn prune_build_cache(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Query(q): Query<PruneBuildCacheQuery>,
-) -> Result<Json<PruneResultDto>, ApiError> {
-    let all = q.all.unwrap_or(true);
-    let actor = actor_from(&headers);
-    let target = if all { "all=true" } else { "all=false" };
-    let r = audited(
-        &state,
-        &actor,
-        "prune.build_cache",
-        target,
-        state.docker_host.prune_build_cache(all),
-    )
-    .await?;
-    Ok(Json(prune_dto(r)))
 }

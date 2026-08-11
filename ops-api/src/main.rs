@@ -59,8 +59,17 @@ async fn main() {
         ),
     );
 
-    let redis_client = redis::Client::open(config.redis_url.as_str())
-        .expect("Redis est requis pour l'API ops (snapshots et logs)");
+    let redis_client = {
+        let client = redis::Client::open(config.redis_url.as_str())
+            .expect("Redis est requis pour l'API ops (snapshots et logs)");
+        // ConnectionManager : une seule connexion multiplexee, auto-reconnectante,
+        // partagee (par clone) entre toutes les requetes. ops-api demarre apres
+        // `redis` (service_healthy cote compose), donc la connexion initiale
+        // reussit ; ensuite le manager retente tout seul en cas de coupure.
+        redis::aio::ConnectionManager::new(client)
+            .await
+            .expect("connexion Redis (ConnectionManager) impossible")
+    };
 
     let log_repo = Arc::new(ops_api::adapters::log_repository::PgLogRepository::new(
         pool.clone(),

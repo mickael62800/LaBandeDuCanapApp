@@ -61,7 +61,10 @@ pub struct AppState {
     // -- Logs systeme --
     pub system_logs_uc:
         Arc<dyn ops_core::ports::inbound::manage_system_logs::ManageSystemLogsUseCase>,
-    pub redis_client: redis::Client,
+    /// Connexion Redis multiplexee et auto-reconnectante, partagee par toutes
+    /// les requetes (streams de logs, snapshot conteneurs, sonde readiness). Un
+    /// clone partage le meme pipe : plus d'ouverture de connexion par appel.
+    pub redis_client: redis::aio::ConnectionManager,
 
     // ── Securite de l'hote ──
     pub security_logs_uc:
@@ -333,10 +336,8 @@ async fn check_postgres(pool: &sqlx::PgPool) -> bool {
         .is_ok()
 }
 
-async fn check_redis(client: &redis::Client) -> bool {
-    let Ok(mut conn) = client.get_multiplexed_async_connection().await else {
-        return false;
-    };
+async fn check_redis(manager: &redis::aio::ConnectionManager) -> bool {
+    let mut conn = manager.clone();
     redis::cmd("PING")
         .query_async::<String>(&mut conn)
         .await

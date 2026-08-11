@@ -17,7 +17,7 @@
 //! Cle Redis : `logs:{category}` (ex `logs:bot`, `logs:worker`, ...).
 //! Field unique du stream : `data` (JSON serialise du LogEntry).
 
-use redis::Client;
+use redis::aio::ConnectionManager;
 use tracing::warn;
 
 use ops_core::domain::entities::log_entry::LogEntry;
@@ -39,7 +39,7 @@ fn stream_key(category: &str) -> String {
 /// Redis est down, on log un warn et on continue. Les warns/errors
 /// passent egalement par Postgres (cf handler), donc rien n'est perdu
 /// pour la forensique.
-pub async fn xadd_log(client: &Client, entry: &LogEntry) {
+pub async fn xadd_log(manager: &ConnectionManager, entry: &LogEntry) {
     let json = match serde_json::to_string(entry) {
         Ok(j) => j,
         Err(e) => {
@@ -49,13 +49,9 @@ pub async fn xadd_log(client: &Client, entry: &LogEntry) {
     };
     let key = stream_key(&entry.category);
 
-    let mut conn = match client.get_multiplexed_async_connection().await {
-        Ok(c) => c,
-        Err(e) => {
-            warn!(error = %e, "Echec connexion Redis pour log stream XADD");
-            return;
-        }
-    };
+    // ConnectionManager est multiplexe et auto-reconnectant : un clone partage
+    // le meme pipe, plus d'ouverture de connexion par appel.
+    let mut conn = manager.clone();
 
     let res: redis::RedisResult<String> = redis::cmd("XADD")
         .arg(&key)
@@ -78,7 +74,7 @@ pub async fn xadd_log(client: &Client, entry: &LogEntry) {
 /// sans perdre la page demandee. En pratique : on lit `limit * 4` (cap a
 /// MAXLEN), on filtre, puis on tronque a `limit`.
 pub async fn xrevrange_logs(
-    client: &Client,
+    manager: &ConnectionManager,
     category: &str,
     level: Option<&str>,
     limit: usize,
@@ -86,13 +82,7 @@ pub async fn xrevrange_logs(
     let key = stream_key(category);
     let read_count = (limit.saturating_mul(if level.is_some() { 4 } else { 1 })).min(STREAM_MAXLEN);
 
-    let mut conn = match client.get_multiplexed_async_connection().await {
-        Ok(c) => c,
-        Err(e) => {
-            warn!(error = %e, "Echec connexion Redis pour log stream XREVRANGE");
-            return Vec::new();
-        }
-    };
+    let mut conn = manager.clone();
 
     // XREVRANGE key + - COUNT n  -> Vec<(id, Vec<(field, value)>)>
     let raw: redis::RedisResult<Vec<(String, Vec<(String, String)>)>> = redis::cmd("XREVRANGE")
@@ -135,15 +125,9 @@ pub async fn xrevrange_logs(
 }
 
 /// Vide la stream d'une categorie (utilise par DELETE /api/logs/{cat}).
-pub async fn delete_stream(client: &Client, category: &str) {
+pub async fn delete_stream(manager: &ConnectionManager, category: &str) {
     let key = stream_key(category);
-    let mut conn = match client.get_multiplexed_async_connection().await {
-        Ok(c) => c,
-        Err(e) => {
-            warn!(error = %e, "Echec connexion Redis pour DEL stream");
-            return;
-        }
-    };
+    let mut conn = manager.clone();
     let res: redis::RedisResult<i64> = redis::cmd("DEL").arg(&key).query_async(&mut conn).await;
     if let Err(e) = res {
         warn!(error = %e, key = %key, "Echec Redis DEL stream");

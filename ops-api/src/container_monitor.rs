@@ -2,11 +2,10 @@
 
 use ops_core::domain::entities::container_monitor::{ContainerMonitorState, REDIS_STATE_KEY};
 
-pub async fn load(redis_client: &redis::Client) -> Result<ContainerMonitorState, String> {
-    let mut connection = redis_client
-        .get_multiplexed_async_connection()
-        .await
-        .map_err(|error| error.to_string())?;
+pub async fn load(
+    redis: &redis::aio::ConnectionManager,
+) -> Result<ContainerMonitorState, String> {
+    let mut connection = redis.clone();
     let encoded: Option<String> = redis::cmd("GET")
         .arg(REDIS_STATE_KEY)
         .query_async(&mut connection)

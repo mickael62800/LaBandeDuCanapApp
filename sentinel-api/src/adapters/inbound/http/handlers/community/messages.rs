@@ -15,7 +15,7 @@ use redis::AsyncCommands;
 use serde::Deserialize;
 
 use crate::adapters::inbound::http::errors::ApiError;
-use crate::adapters::inbound::http::state::AppState;
+use crate::bootstrap::state::CommunityState;
 use sentinel_core::domain::errors::DomainError;
 
 const STREAM_KEY: &str = "sentinel:events";
@@ -38,7 +38,7 @@ pub struct SendMessageDto {
 
 /// POST /api/messages/{guild_id}/{channel_id}
 pub async fn send_message(
-    State(state): State<AppState>,
+    State(state): State<CommunityState>,
     Path((guild_id, channel_id)): Path<(String, String)>,
     Json(dto): Json<SendMessageDto>,
 ) -> Result<Json<serde_json::Value>, ApiError> {

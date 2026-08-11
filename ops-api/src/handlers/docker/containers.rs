@@ -99,7 +99,9 @@ pub async fn stop_container(
         &actor,
         "container.stop",
         &id,
-        state.docker_host.stop_container(&id, q.timeout.unwrap_or(10)),
+        state
+            .docker_host
+            .stop_container(&id, q.timeout.unwrap_or(10)),
     )
     .await?;
     Ok(ok_response())
@@ -145,9 +147,11 @@ pub async fn remove_container(
         &actor,
         "container.remove",
         &id,
-        state
-            .docker_host
-            .remove_container(&id, q.force.unwrap_or(false), q.volumes.unwrap_or(false)),
+        state.docker_host.remove_container(
+            &id,
+            q.force.unwrap_or(false),
+            q.volumes.unwrap_or(false),
+        ),
     )
     .await?;
     Ok(ok_response())

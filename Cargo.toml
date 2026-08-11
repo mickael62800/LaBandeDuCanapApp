@@ -82,7 +82,7 @@ tonic = { version = "0.13", features = ["transport", "codegen", "prost", "gzip",
 serenity = { version = "0.12", default-features = false, features = ["client", "gateway", "model", "cache", "rustls_backend"] }
 
 # Redis
-redis = { version = "0.27", features = ["tokio-comp", "aio", "streams"] }
+redis = { version = "0.27", features = ["tokio-comp", "aio", "streams", "connection-manager"] }
 
 # Postgres (sqlx) — features maximales unionees entre tous les crates :
 # runtime-tokio + tls-rustls + postgres + uuid + chrono + json. Cargo unifie

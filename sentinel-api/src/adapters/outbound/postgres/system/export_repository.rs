@@ -140,15 +140,25 @@ impl ExportRepository for PgExportRepository {
         max_rows: i64,
     ) -> Result<Vec<ModerationActionExport>, DomainError> {
         let rows: Vec<ModerationActionRow> = sqlx::query_as(
-            "SELECT id, guild_id, moderator_id, moderator_name, target_id, target_name, \
-                    action_type, reason, duration, created_at \
-             FROM moderation_actions WHERE guild_id = $1 ORDER BY created_at DESC LIMIT $2",
+            "SELECT id, guild_id, \
+                    COALESCE(actor_id, '') AS moderator_id, \
+                    COALESCE(actor_name, '') AS moderator_name, \
+                    COALESCE(target_id, '') AS target_id, \
+                    COALESCE(target_name, '') AS target_name, \
+                    regexp_replace(event_type, '^mod_', '') AS action_type, \
+                    COALESCE(details->>'reason', '') AS reason, \
+                    CASE WHEN jsonb_typeof(details->'duration_secs') = 'number' \
+                         THEN (details->>'duration_secs')::bigint ELSE NULL END AS duration, \
+                    created_at \
+             FROM audit_logs \
+             WHERE guild_id = $1 AND event_type LIKE 'mod_%' \
+             ORDER BY created_at DESC LIMIT $2",
         )
         .bind(guild_id)
         .bind(max_rows)
         .fetch_all(&self.pool)
         .await
-        .map_err(pg_ctx("query moderation_actions"))?;
+        .map_err(pg_ctx("query moderation actions from audit_logs"))?;
         Ok(rows
             .into_iter()
             .map(|r| ModerationActionExport {
@@ -164,5 +174,37 @@ impl ExportRepository for PgExportRepository {
                 created_at: r.created_at,
             })
             .collect())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[sqlx::test(migrations = "../sentinel-api/migrations")]
+    async fn moderation_export_reads_audit_log_payload(pool: PgPool) -> sqlx::Result<()> {
+        let action_id = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO audit_logs \
+                 (id, guild_id, event_type, actor_id, actor_name, target_id, target_name, details) \
+             VALUES ($1, 'guild-1', 'mod_mute_temp', 'moderator-1', 'Moderator', \
+                     'target-1', 'Target', \
+                     '{\"reason\":\"spam\",\"duration_secs\":600}'::jsonb)",
+        )
+        .bind(action_id)
+        .execute(&pool)
+        .await?;
+
+        let rows = PgExportRepository::new(pool)
+            .fetch_moderation_actions("guild-1", 10)
+            .await
+            .unwrap();
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].id, action_id);
+        assert_eq!(rows[0].action_type, "mute_temp");
+        assert_eq!(rows[0].reason, "spam");
+        assert_eq!(rows[0].duration, Some(600));
+        Ok(())
     }
 }

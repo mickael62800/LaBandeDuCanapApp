@@ -5,14 +5,28 @@
 // serveur sans compte, et une erreur 401 sur une section ne doit pas éjecter
 // quelqu'un de la page.
 
-/** GET JSON anonyme vers une URL publique complete. */
-export async function anonymousJsonGet<T>(url: string): Promise<T> {
-  const res = await fetch(url, {
+import { requestJson } from "@/api/httpTransport";
+
+export interface PublicRequestOptions {
+  signal?: AbortSignal;
+  timeoutMs?: number;
+}
+
+/** GET JSON anonyme vers une URL publique complète. */
+export async function anonymousJsonGet<T>(
+  url: string,
+  options: PublicRequestOptions = {},
+): Promise<T> {
+  const { data } = await requestJson<T>({
+    url,
+    method: "GET",
     credentials: "omit",
-    headers: { Accept: "application/json" },
+    headers: () => ({ Accept: "application/json" }),
+    signal: options.signal,
+    timeoutMs: options.timeoutMs,
+    backend: "Public",
   });
-  if (!res.ok) throw new Error(`Erreur ${res.status}`);
-  return (await res.json()) as T;
+  return data;
 }
 
 /** GET sur `/api/public{path}`. */

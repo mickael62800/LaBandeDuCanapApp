@@ -17,8 +17,8 @@ use tracing::warn;
 use crate::adapters::inbound::http::errors::ApiError;
 use crate::adapters::inbound::http::helpers::ok_response;
 use crate::adapters::inbound::http::middleware::superadmin::WebUser;
-use crate::adapters::inbound::http::state::AppState;
 use crate::adapters::inbound::http::validation;
+use crate::bootstrap::state::BotPersistenceState;
 use sentinel_core::domain::entities::system::discord_ids::GuildId;
 use sentinel_core::domain::entities::system::discord_ids::RoleId;
 use sentinel_core::domain::entities::system::discord_ids::UserId;
@@ -51,13 +51,13 @@ pub struct NameHistoryEntryDto {
 /// `member_nickname_history`. Trie par created_at desc, max 50 entrees.
 /// Respect de l'archi hexagonale : passe par `audit_logs_uc.list()`.
 pub async fn list_name_history(
-    State(state): State<AppState>,
+    State(state): State<BotPersistenceState>,
     _user: Option<Extension<WebUser>>,
     ValidatedGuildUser { guild_id, user_id }: ValidatedGuildUser,
 ) -> Result<Json<Vec<NameHistoryEntryDto>>, ApiError> {
     use sentinel_core::ports::inbound::audit::manage_audit_logs::AuditLogFilters;
     let logs = state
-        .audit.audit_logs_uc
+        .audit_logs_uc
         .list(
             Some(&guild_id),
             AuditLogFilters {
@@ -98,14 +98,14 @@ pub async fn list_name_history(
 
 /// POST /api/name-history
 pub async fn create_name_history(
-    State(state): State<AppState>,
+    State(state): State<BotPersistenceState>,
     _user: Option<Extension<WebUser>>,
     Json(dto): Json<CreateNameHistoryDto>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     // Validation
     validation::validate_guild_user_path(&dto.guild_id, &dto.user_id).map_err(ApiError)?;
 
-    state.audit.audit_logs_uc.create(sentinel_core::ports::inbound::audit::manage_audit_logs::CreateAuditLogCommand {
+    state.audit_logs_uc.create(sentinel_core::ports::inbound::audit::manage_audit_logs::CreateAuditLogCommand {
         guild_id: dto.guild_id,
         event_type: sentinel_core::domain::entities::audit::audit_log::AUDIT_EVENT_MEMBER_NICKNAME_HISTORY.into(),
         actor_id: None,
@@ -139,13 +139,12 @@ pub struct UpdateStreakDto {
 
 /// PATCH /api/levels/{guild_id}/{user_id}/streak
 pub async fn update_streak(
-    State(state): State<AppState>,
+    State(state): State<BotPersistenceState>,
     _user: Option<Extension<WebUser>>,
     ValidatedGuildUser { guild_id, user_id }: ValidatedGuildUser,
     Json(dto): Json<UpdateStreakDto>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     state
-        .system
         .bot_persistence_uc
         .update_streak(
             &guild_id,
@@ -177,14 +176,13 @@ pub struct UpdateTicketSlaDto {
 
 /// PATCH /api/tickets/{id}/sla
 pub async fn update_ticket_sla(
-    State(state): State<AppState>,
+    State(state): State<BotPersistenceState>,
     _user: Option<Extension<WebUser>>,
     Path(id): Path<String>,
     Json(dto): Json<UpdateTicketSlaDto>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let uuid = validation::parse_uuid("id", &id).map_err(ApiError)?;
     state
-        .system
         .tickets_uc
         .update_sla(
             uuid,
@@ -221,7 +219,7 @@ pub struct SponsorshipRow {
 
 /// POST /api/sponsorships
 pub async fn create_sponsorship(
-    State(state): State<AppState>,
+    State(state): State<BotPersistenceState>,
     _user: Option<Extension<WebUser>>,
     Json(dto): Json<CreateSponsorshipDto>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
@@ -234,7 +232,6 @@ pub async fn create_sponsorship(
     // Pass-through pour les appels bot-internal (user absent).
 
     state
-        .community
         .sponsorship_repo
         .create(&dto.guild_id, &dto.sponsor_id, &dto.sponsored_id)
         .await
@@ -246,7 +243,7 @@ pub async fn create_sponsorship(
 
 /// GET /api/sponsorships/{guild_id}
 pub async fn list_sponsorships(
-    State(state): State<AppState>,
+    State(state): State<BotPersistenceState>,
     _user: Option<Extension<WebUser>>,
     ValidatedGuild { guild_id }: ValidatedGuild,
 ) -> Result<
@@ -256,7 +253,6 @@ pub async fn list_sponsorships(
     // Validation
 
     let entries = state
-        .community
         .sponsorship_repo
         .list(&guild_id)
         .await
@@ -292,7 +288,7 @@ pub struct TempRoleRow {
 
 /// POST /api/temp-roles
 pub async fn create_temp_role(
-    State(state): State<AppState>,
+    State(state): State<BotPersistenceState>,
     _user: Option<Extension<WebUser>>,
     Json(dto): Json<CreateTempRoleDto>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
@@ -304,7 +300,6 @@ pub async fn create_temp_role(
     // C5 — Gate user : moderator+ requis pour assigner un role temporaire.
 
     state
-        .community
         .temp_role_repo
         .create(&dto.guild_id, &dto.user_id, &dto.role_id, &dto.expires_at)
         .await
@@ -316,7 +311,7 @@ pub async fn create_temp_role(
 
 /// GET /api/temp-roles/{guild_id}
 pub async fn list_temp_roles(
-    State(state): State<AppState>,
+    State(state): State<BotPersistenceState>,
     _user: Option<Extension<WebUser>>,
     ValidatedGuild { guild_id }: ValidatedGuild,
 ) -> Result<
@@ -326,7 +321,6 @@ pub async fn list_temp_roles(
     // Validation
 
     let entries = state
-        .community
         .temp_role_repo
         .list_active(&guild_id)
         .await
@@ -340,7 +334,7 @@ pub async fn list_temp_roles(
 
 /// DELETE /api/temp-roles/{guild_id}/{user_id}/{role_id}
 pub async fn delete_temp_role(
-    State(state): State<AppState>,
+    State(state): State<BotPersistenceState>,
     _user: Option<Extension<WebUser>>,
     Path((guild_id, user_id, role_id)): Path<(String, String, String)>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
@@ -354,7 +348,6 @@ pub async fn delete_temp_role(
     // X-Discord-Token → pass-through non-breaking.
 
     state
-        .community
         .temp_role_repo
         .delete(&guild_id, &user_id, &role_id)
         .await
@@ -401,7 +394,7 @@ pub struct PendingActionRow {
 
 /// POST /api/moderation/pending
 pub async fn create_pending_action(
-    State(state): State<AppState>,
+    State(state): State<BotPersistenceState>,
     _user: Option<Extension<WebUser>>,
     Json(dto): Json<CreatePendingActionDto>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
@@ -416,7 +409,6 @@ pub async fn create_pending_action(
     .map_err(ApiError)?;
 
     match state
-        .moderation
         .pending_action_repo
         .create(
             &dto.guild_id,
@@ -441,7 +433,7 @@ pub async fn create_pending_action(
 
 /// GET /api/moderation/pending/{guild_id}
 pub async fn list_pending_actions(
-    State(state): State<AppState>,
+    State(state): State<BotPersistenceState>,
     _user: Option<Extension<WebUser>>,
     ValidatedGuild { guild_id }: ValidatedGuild,
 ) -> Result<
@@ -451,7 +443,6 @@ pub async fn list_pending_actions(
     // Validation
 
     let entries = state
-        .moderation
         .pending_action_repo
         .list_pending(&guild_id)
         .await
@@ -471,7 +462,7 @@ pub struct ResolvePendingActionDto {
 
 /// PATCH /api/moderation/pending/{id}
 pub async fn resolve_pending_action(
-    State(state): State<AppState>,
+    State(state): State<BotPersistenceState>,
     // TODO(secu, ex-H10) : la reverification � lookup du guild_id de l'action
     // pending puis gate Moderator+ � n'est PAS implementee. Seuls les
     // middlewares du routeur protegent cette route. L'ancien
@@ -483,7 +474,6 @@ pub async fn resolve_pending_action(
     let uuid = validation::parse_uuid("id", &id).map_err(ApiError)?;
 
     state
-        .moderation
         .pending_action_repo
         .resolve(uuid, &dto.status, &dto.reviewed_by)
         .await

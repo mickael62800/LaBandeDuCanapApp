@@ -11,7 +11,7 @@ struct ExpiredSlowmode {
     imposed_rate: i32,
 }
 
-pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
+pub async fn run(pool: &PgPool, redis: &redis::aio::ConnectionManager) -> Result<(), String> {
     let candidates: Vec<ExpiredSlowmode> = sqlx::query_as(
         "SELECT guild_id, previous_states, imposed_rate \
          FROM security_slowmode_active \
@@ -27,7 +27,7 @@ pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
         return Ok(());
     }
 
-    let mut conn = platform_common_worker::redis_helpers::get_conn(redis).await?;
+    let mut conn = redis.clone();
 
     let mut reverted = 0u32;
     for s in &candidates {

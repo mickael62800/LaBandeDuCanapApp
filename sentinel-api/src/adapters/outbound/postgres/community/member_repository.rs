@@ -372,3 +372,33 @@ struct AnniversaryRow {
     joined_at: DateTime<Utc>,
     years: i32,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[sqlx::test(migrations = "../sentinel-api/migrations")]
+    async fn reset_member_preserves_moderation_audit_trail(pool: PgPool) -> sqlx::Result<()> {
+        sqlx::query(
+            "INSERT INTO audit_logs (id, guild_id, event_type, target_id, details) \
+             VALUES (gen_random_uuid(), 'guild-1', 'mod_warn', 'target-1', '{}'::jsonb)",
+        )
+        .execute(&pool)
+        .await?;
+
+        let totals = PgMemberRepository::new(pool.clone())
+            .reset_member("guild-1", "target-1")
+            .await
+            .unwrap();
+        let audit_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM audit_logs \
+             WHERE guild_id = 'guild-1' AND target_id = 'target-1' AND event_type LIKE 'mod_%'",
+        )
+        .fetch_one(&pool)
+        .await?;
+
+        assert_eq!(audit_count, 1);
+        assert!(totals.iter().all(|(key, _)| *key != "moderation_actions"));
+        Ok(())
+    }
+}

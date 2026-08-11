@@ -20,7 +20,7 @@ struct InactiveTicket {
     inactive_days: i64,
 }
 
-pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
+pub async fn run(pool: &PgPool, redis: &redis::aio::ConnectionManager) -> Result<(), String> {
     // Charge les overrides per-guild (inactive_close_days). 1 query.
     let timeouts = load_timeouts(pool).await;
 
@@ -44,7 +44,7 @@ pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
         return Ok(());
     }
 
-    let mut conn = platform_common_worker::redis_helpers::get_conn(redis).await?;
+    let mut conn = redis.clone();
 
     let mut closed = 0u32;
     for t in &candidates {

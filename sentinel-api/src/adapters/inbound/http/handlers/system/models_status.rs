@@ -5,7 +5,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use tracing::info;
 
-use crate::adapters::inbound::http::state::AppState;
+use crate::bootstrap::state::AiState;
 use sentinel_core::domain::entities::ai::ai_models::format_model_display_name;
 
 #[derive(Debug, Serialize)]
@@ -21,7 +21,7 @@ pub struct ModelsStatusResponse {
 }
 
 /// GET /api/models/status — retourne l'etat des modeles IA charges
-pub async fn get_models_status(State(state): State<AppState>) -> Json<ModelsStatusResponse> {
+pub async fn get_models_status(State(state): State<AiState>) -> Json<ModelsStatusResponse> {
     let vision_path = std::env::var("VISION_MODEL_PATH").unwrap_or_default();
     let text_path = std::env::var("TEXT_MODEL_PATH").unwrap_or_default();
 
@@ -29,12 +29,12 @@ pub async fn get_models_status(State(state): State<AppState>) -> Json<ModelsStat
         ModelInfo {
             name: format_model_display_name("Vision", &vision_path),
             model_type: "vision".to_string(),
-            loaded: state.ai.inference.vision_available(),
+            loaded: state.inference.vision_available(),
         },
         ModelInfo {
             name: format_model_display_name("Text", &text_path),
             model_type: "text".to_string(),
-            loaded: state.ai.inference.text_available(),
+            loaded: state.inference.text_available(),
         },
     ];
 
@@ -54,11 +54,11 @@ pub struct ReloadResponse {
 
 /// POST /api/models/reload — recharge un modele ONNX a chaud
 pub async fn reload_model(
-    State(state): State<AppState>,
+    State(state): State<AiState>,
     Json(req): Json<ReloadRequest>,
 ) -> (StatusCode, Json<ReloadResponse>) {
     info!(model_type = %req.model_type, "Rechargement du modele demande");
-    match state.ai.inference.reload(&req.model_type) {
+    match state.inference.reload(&req.model_type) {
         Ok(msg) => {
             info!("{}", msg);
             (

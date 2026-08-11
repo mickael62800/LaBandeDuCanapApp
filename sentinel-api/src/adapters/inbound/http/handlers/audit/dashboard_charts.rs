@@ -7,15 +7,14 @@ use crate::adapters::inbound::http::dto::audit::dashboard_charts::DailyActivityD
 use crate::adapters::inbound::http::errors::ApiError;
 use crate::adapters::inbound::http::helpers::map_to_dtos;
 use crate::adapters::inbound::http::helpers::normalize_days;
-use crate::adapters::inbound::http::state::AppState;
+use crate::bootstrap::state::CommunityState;
 
 pub async fn get_activity_trend(
-    State(state): State<AppState>,
+    State(state): State<CommunityState>,
     Query(params): Query<ChartQueryParams>,
 ) -> Result<Json<Vec<DailyActivityDto>>, ApiError> {
     let days = normalize_days(params.days, 30, 90);
     let activity = state
-        .community
         .daily_activity_repo
         .get_activity(params.guild_id.as_deref(), days)
         .await?;

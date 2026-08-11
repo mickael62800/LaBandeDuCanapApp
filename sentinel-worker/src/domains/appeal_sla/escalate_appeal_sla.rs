@@ -23,7 +23,7 @@ use super::{DEFAULT_SLA_ESCALATION_MINUTES, DEFAULT_SLA_FIRST_RESPONSE_MINUTES};
 /// **Semantique** : on escalade UNE fois par ticket (flag `escalated_at`).
 /// Le UPDATE se fait avant l'XADD pour garantir l'idempotence meme si
 /// plusieurs instances du worker tournent en parallele.
-pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
+pub async fn run(pool: &PgPool, redis: &redis::aio::ConnectionManager) -> Result<(), String> {
     // Recuperer la config SLA par guild (une seule query)
     let sla_configs = load_sla_configs(pool).await?;
 
@@ -49,7 +49,7 @@ pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
         return Ok(());
     }
 
-    let mut conn = platform_common_worker::redis_helpers::get_conn(redis).await?;
+    let mut conn = redis.clone();
 
     let now = Utc::now();
     let mut escalated = 0u32;

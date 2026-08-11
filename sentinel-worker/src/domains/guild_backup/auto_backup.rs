@@ -41,7 +41,7 @@ struct GuildAuto {
     interval_hours: i64,
 }
 
-pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
+pub async fn run(pool: &PgPool, redis: &redis::aio::ConnectionManager) -> Result<(), String> {
     // 1. Config auto-backup par guild (enabled + interval_hours) en 1 query.
     let configs = load_configs(pool).await;
     if configs.is_empty() {
@@ -53,7 +53,7 @@ pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
     let last_by_guild = load_last_snapshots(pool).await?;
 
     let now = Utc::now();
-    let mut conn = redis_helpers::get_conn(redis).await?;
+    let mut conn = redis.clone();
 
     let mut published = 0u32;
     for (guild_id, cfg) in &configs {

@@ -21,7 +21,7 @@ struct DashboardOverview {
 }
 
 /// Pre-compute dashboard overview stats per guild and store in Redis.
-pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
+pub async fn run(pool: &PgPool, redis: &redis::aio::ConnectionManager) -> Result<(), String> {
     let guilds: Vec<GuildRow> =
         sqlx::query_as::<_, GuildRow>("SELECT guild_id FROM guilds ORDER BY name")
             .fetch_all(pool)
@@ -32,10 +32,7 @@ pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
         return Ok(());
     }
 
-    let mut conn = redis
-        .get_multiplexed_async_connection()
-        .await
-        .map_err(|e| format!("Redis connection: {e}"))?;
+    let mut conn = redis.clone();
 
     let mut count = 0u64;
 

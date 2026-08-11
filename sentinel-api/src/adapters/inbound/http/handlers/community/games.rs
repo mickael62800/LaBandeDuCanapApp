@@ -32,7 +32,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::adapters::inbound::http::errors::ApiError;
 use crate::adapters::inbound::http::middleware::superadmin::WebUser;
-use crate::adapters::inbound::http::state::AppState;
+use crate::bootstrap::state::NexusGamesState;
 use sentinel_core::domain::errors::DomainError;
 
 const HISTORY_LIMIT: i64 = 15;
@@ -97,7 +97,7 @@ fn require_ctx(user: &Option<Extension<WebUser>>) -> Result<&WebUser, ApiError> 
 /// Prise dans la configuration et non dans l'URL : l'application est
 /// mono-serveur, et laisser le client la choisir rouvrirait la porte que le
 /// verrou mono-serveur vient de fermer.
-fn guild(state: &AppState) -> Result<&str, ApiError> {
+fn guild(state: &NexusGamesState) -> Result<&str, ApiError> {
     if state.guild_id.is_empty() {
         return Err(ApiError(DomainError::NotImplemented(
             "aucun serveur configure : les jeux sont indisponibles".into(),
@@ -107,7 +107,7 @@ fn guild(state: &AppState) -> Result<&str, ApiError> {
 }
 
 fn client(
-    state: &AppState,
+    state: &NexusGamesState,
 ) -> Result<&crate::adapters::outbound::nexus_games::NexusGamesClient, ApiError> {
     if !state.nexus_games.is_configured() {
         return Err(ApiError(DomainError::NotImplemented(
@@ -122,7 +122,7 @@ fn client(
 /// Jamais lu depuis la requete : il est enregistre avec chaque mouvement de
 /// coins et apparait dans le classement. Le laisser au client permettrait de
 /// s'y afficher sous le nom de quelqu'un d'autre.
-async fn display_name(_state: &AppState, _guild_id: &str, user_id: &str) -> String {
+async fn display_name(_state: &NexusGamesState, _guild_id: &str, user_id: &str) -> String {
     user_id.to_string()
 }
 
@@ -147,7 +147,7 @@ pub struct CoussinDto {
 /// Lecture seule. Les actions du jeu restent sur Discord : leur interet
 /// tient a la reaction dans le salon.
 pub async fn my_coussin(
-    State(state): State<AppState>,
+    State(state): State<NexusGamesState>,
     user: Option<Extension<WebUser>>,
 ) -> Result<Json<CoussinDto>, ApiError> {
     let ctx = require_ctx(&user)?;
@@ -176,7 +176,7 @@ pub async fn my_coussin(
 
 /// GET /api/me/games/wallet
 pub async fn my_wallet(
-    State(state): State<AppState>,
+    State(state): State<NexusGamesState>,
     user: Option<Extension<WebUser>>,
 ) -> Result<Json<WalletDto>, ApiError> {
     let ctx = require_ctx(&user)?;
@@ -205,7 +205,7 @@ pub async fn my_wallet(
 
 /// GET /api/me/games/history
 pub async fn my_history(
-    State(state): State<AppState>,
+    State(state): State<NexusGamesState>,
     user: Option<Extension<WebUser>>,
     Query(q): Query<LimitQuery>,
 ) -> Result<Json<Vec<TransactionDto>>, ApiError> {
@@ -236,7 +236,7 @@ pub async fn my_history(
 
 /// GET /api/me/games/leaderboard
 pub async fn leaderboard(
-    State(state): State<AppState>,
+    State(state): State<NexusGamesState>,
     user: Option<Extension<WebUser>>,
     Query(q): Query<LimitQuery>,
 ) -> Result<Json<Vec<RankDto>>, ApiError> {
@@ -266,7 +266,7 @@ pub async fn leaderboard(
 /// Sert au DESSIN de la roue. En cas d'echec, le site retombe sur ses cases
 /// par defaut : une roue non dessinee serait pire qu'une roue approximative.
 pub async fn wheel_cases(
-    State(state): State<AppState>,
+    State(state): State<NexusGamesState>,
     user: Option<Extension<WebUser>>,
 ) -> Result<Json<crate::adapters::outbound::nexus_games::WheelCases>, ApiError> {
     require_ctx(&user)?;
@@ -280,7 +280,7 @@ pub async fn wheel_cases(
 /// (`try_claim_today`, atomique), pas ici : un controle recopie de ce cote
 /// aurait diverge de celui du bot des la premiere evolution.
 pub async fn spin_wheel(
-    State(state): State<AppState>,
+    State(state): State<NexusGamesState>,
     user: Option<Extension<WebUser>>,
 ) -> Result<Json<SpinDto>, ApiError> {
     let ctx = require_ctx(&user)?;

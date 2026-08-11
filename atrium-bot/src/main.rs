@@ -5,9 +5,9 @@ use std::sync::{
 
 use atrium_proto::welcome::v1::{
     bot_control_service_client::BotControlServiceClient,
-    calming_service_client::CalmingServiceClient,
-    welcome_service_client::WelcomeServiceClient, BotStateRequest, ConversationScope,
-    GenerateCalmingRequest, GenerateReplyRequest, SetBotStateRequest,
+    calming_service_client::CalmingServiceClient, welcome_service_client::WelcomeServiceClient,
+    BotStateRequest, ConversationScope, GenerateCalmingRequest, GenerateReplyRequest,
+    SetBotStateRequest,
 };
 use platform_common::EventBus;
 use serde::Deserialize;

@@ -2,8 +2,7 @@
 /// Evite la duplication des reply_text, reply_ephemeral, etc.
 use serenity::all::{
     ChannelId, Colour, CommandInteraction, ComponentInteraction, Context, CreateEmbed,
-    CreateInteractionResponse, CreateInteractionResponseMessage,
-    CreateMessage, ModalInteraction,
+    CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, ModalInteraction,
 };
 use tracing::warn;
 
@@ -11,7 +10,6 @@ pub use platform_common_bot::discord_helpers::{
     defer_ephemeral, edit_response_embed, edit_response_feedback, edit_response_text,
     followup_ephemeral_embed, reply_ephemeral, reply_ephemeral_embed, require_guild_id,
 };
-
 
 /// Verifie si le module est active pour un guild. Charge la config sous le
 /// `bot_name` du module (ex: "automod-bot") et check la cle "enabled".
@@ -179,9 +177,7 @@ pub async fn guild_config_or_default(
         .unwrap_or_default()
 }
 
-pub use platform_common_bot::discord_helpers::{
-    option_bool, option_i64, option_str, option_user,
-};
+pub use platform_common_bot::discord_helpers::{option_bool, option_i64, option_str, option_user};
 
 /// Lit un `ChannelId` depuis une cle arbitraire de la config guild du module.
 /// Retourne `None` si la cle est absente, vide, ou ne parse pas en id > 0.

@@ -17,17 +17,17 @@ fn channels_cache_ttl_is_10_minutes() {
 }
 
 #[test]
-fn reset_tables_has_nine_entries() {
-    // Regle metier : reset_member touche exactement 9 tables (6 moderation/
+fn reset_tables_has_eight_entries() {
+    // Regle metier : reset_member touche exactement 8 tables (5 moderation/
     // surveillance + activity_log + user_stats + voice_sessions).
-    assert_eq!(MEMBER_RESET_TABLES.len(), 9);
+    assert_eq!(MEMBER_RESET_TABLES.len(), 8);
 }
 
 #[test]
 fn reset_tables_include_core_moderation() {
     let tables: Vec<&str> = MEMBER_RESET_TABLES.iter().map(|t| t.sql_table).collect();
     assert!(tables.contains(&"infractions"));
-    assert!(tables.contains(&"moderation_actions"));
+    assert!(!tables.contains(&"audit_logs"));
     assert!(tables.contains(&"user_strikes"));
     assert!(tables.contains(&"user_notes"));
     assert!(tables.contains(&"manual_watched_users"));
@@ -35,14 +35,8 @@ fn reset_tables_include_core_moderation() {
 }
 
 #[test]
-fn reset_tables_use_target_id_for_moderation_actions_and_reminders() {
-    // Regle : `moderation_actions` et `sanction_reminders` utilisent target_id
-    // (la personne moderee), pas user_id (le moderateur).
-    let moderation = MEMBER_RESET_TABLES
-        .iter()
-        .find(|t| t.sql_table == "moderation_actions")
-        .unwrap();
-    assert_eq!(moderation.user_column, "target_id");
+fn reset_tables_use_target_id_for_reminders() {
+    // Les rappels utilisent target_id (la personne moderee), pas user_id.
     let reminders = MEMBER_RESET_TABLES
         .iter()
         .find(|t| t.sql_table == "sanction_reminders")
@@ -53,7 +47,7 @@ fn reset_tables_use_target_id_for_moderation_actions_and_reminders() {
 #[test]
 fn reset_tables_use_user_id_for_others() {
     for t in MEMBER_RESET_TABLES {
-        if t.sql_table != "moderation_actions" && t.sql_table != "sanction_reminders" {
+        if t.sql_table != "sanction_reminders" {
             assert_eq!(
                 t.user_column, "user_id",
                 "table {} should use user_id",

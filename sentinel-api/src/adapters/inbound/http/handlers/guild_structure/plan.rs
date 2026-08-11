@@ -17,8 +17,8 @@ use sentinel_core::ports::outbound::discord_api::{DiscordRoleInfo, NewChannel};
 
 use crate::adapters::inbound::http::errors::ApiError;
 use crate::adapters::inbound::http::extractors::ValidatedGuild;
-use crate::adapters::inbound::http::state::AppState;
 use crate::adapters::inbound::http::validation;
+use crate::bootstrap::state::CommunityState;
 
 // ── Lecture de l'existant ──
 
@@ -41,7 +41,7 @@ pub struct ExistingChannelDto {
 /// sur Discord. Sans gate, n'importe quel compte du panel apprendrait
 /// l'existence et le nom des salons de moderation ou de direction.
 pub async fn get_structure(
-    State(state): State<AppState>,
+    State(state): State<CommunityState>,
     ValidatedGuild { guild_id }: ValidatedGuild,
 ) -> Result<Json<Vec<ExistingChannelDto>>, ApiError> {
     let channels = state.discord_api.list_all_channels(&guild_id).await?;
@@ -67,7 +67,7 @@ pub async fn get_structure(
 /// Gate Admin : la hierarchie complete des roles renseigne sur l'organisation
 /// interne du serveur, et cet ecran est de toute facon reserve aux Admins.
 pub async fn list_roles(
-    State(state): State<AppState>,
+    State(state): State<CommunityState>,
     ValidatedGuild { guild_id }: ValidatedGuild,
 ) -> Result<Json<Vec<DiscordRoleInfo>>, ApiError> {
     Ok(Json(state.discord_api.list_roles(&guild_id).await?))
@@ -141,7 +141,7 @@ pub struct ApplyPlanResponse {
 /// n'annule pas les precedents, qui sont deja crees et le resteront) et chaque
 /// sort est rapporte a l'utilisateur.
 pub async fn apply_plan(
-    State(state): State<AppState>,
+    State(state): State<CommunityState>,
     ValidatedGuild { guild_id }: ValidatedGuild,
     Json(body): Json<ApplyPlanRequest>,
 ) -> Result<Json<ApplyPlanResponse>, ApiError> {
@@ -262,7 +262,7 @@ pub async fn apply_plan(
 ///    cette verification, un owner legitime de la guild A pourrait detruire un
 ///    salon de la guild B ou le bot est present.
 pub async fn delete_channel(
-    State(state): State<AppState>,
+    State(state): State<CommunityState>,
     ValidatedGuild { guild_id }: ValidatedGuild,
     Path((_, channel_id)): Path<(String, String)>,
 ) -> Result<Json<serde_json::Value>, ApiError> {

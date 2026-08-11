@@ -87,7 +87,6 @@ pub struct ReviewQueueEntry {
     pub target_name: Option<String>,
 }
 
-
 /// Faits Discord d'une cible envoyes a l'API pour l'evaluation de risque.
 #[derive(Debug)]
 pub struct TargetRiskFacts {
@@ -468,6 +467,3 @@ fn review_from_proto(r: proto_mod::ReviewEntry) -> ReviewQueueEntry {
 }
 
 use crate::shared::grpc_client::grpc_err_to_string;
-
-
-

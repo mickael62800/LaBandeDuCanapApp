@@ -13,6 +13,7 @@ description = "Common infrastructure for worker crates in the DiscordSentinel wo
 # (son unique appelant).
 platform-common = { workspace = true }
 tokio = { workspace = true }
+futures-util = { workspace = true }
 sqlx = { workspace = true }
 reqwest = { workspace = true }
 redis = { workspace = true }

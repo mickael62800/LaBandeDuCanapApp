@@ -5,14 +5,14 @@ use tracing::warn;
 
 use crate::adapters::inbound::http::errors::ApiError;
 use crate::adapters::inbound::http::extractors::ValidatedGuild;
-use crate::adapters::inbound::http::state::AppState;
+use crate::bootstrap::state::CommunityState;
 use sentinel_core::ports::outbound::discord_api::DiscordEmoji;
 
 const EMOJIS_CACHE_TTL_SECS: u64 = 600;
 
 /// GET /api/guilds/{guild_id}/emojis — liste les emojis custom.
 pub async fn list_emojis(
-    State(state): State<AppState>,
+    State(state): State<CommunityState>,
     ValidatedGuild { guild_id }: ValidatedGuild,
 ) -> Result<Json<Vec<DiscordEmoji>>, ApiError> {
     let cache_key = format!("guild:emojis:{guild_id}");

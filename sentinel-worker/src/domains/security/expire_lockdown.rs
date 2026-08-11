@@ -14,7 +14,7 @@ struct ExpiredLockdown {
     saved_states: serde_json::Value,
 }
 
-pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
+pub async fn run(pool: &PgPool, redis: &redis::aio::ConnectionManager) -> Result<(), String> {
     let candidates: Vec<ExpiredLockdown> = sqlx::query_as(
         "SELECT guild_id, saved_states \
          FROM security_lockdown_active \
@@ -30,7 +30,7 @@ pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
         return Ok(());
     }
 
-    let mut conn = platform_common_worker::redis_helpers::get_conn(redis).await?;
+    let mut conn = redis.clone();
 
     let mut reverted = 0u32;
     for lk in &candidates {

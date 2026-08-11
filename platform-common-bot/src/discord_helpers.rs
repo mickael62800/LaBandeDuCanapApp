@@ -1,6 +1,6 @@
 use serenity::all::{
-    CommandInteraction, Context, CreateEmbed,
-    CreateInteractionResponse, CreateInteractionResponseFollowup, CreateInteractionResponseMessage,
+    CommandInteraction, Context, CreateEmbed, CreateInteractionResponse,
+    CreateInteractionResponseFollowup, CreateInteractionResponseMessage,
 };
 use tracing::warn;
 

@@ -24,6 +24,16 @@ pub fn is_newer_snowflake(current: Option<&str>, candidate: &str) -> bool {
     }
 }
 
+/// Epoch Discord en millisecondes (2015-01-01T00:00:00Z).
+const DISCORD_EPOCH_MILLIS: u64 = 1_420_070_400_000;
+
+/// Retrouve l'heure de creation encodee dans un snowflake Discord.
+pub fn snowflake_created_at(snowflake: &str) -> Option<chrono::DateTime<chrono::Utc>> {
+    let snowflake = snowflake.parse::<u64>().ok()?;
+    let millis = (snowflake >> 22).checked_add(DISCORD_EPOCH_MILLIS)?;
+    chrono::DateTime::from_timestamp_millis(i64::try_from(millis).ok()?)
+}
+
 /// Mapping des action_types Discord numeriques vers des `event_type` lisibles
 /// stockes dans `audit_logs`. Les valeurs proviennent de la doc Discord :
 /// <https://discord.com/developers/docs/resources/audit-log#audit-log-entry-object-audit-log-events>
@@ -149,5 +159,20 @@ mod tests {
         // Si le curseur en base est corrompu (pas un u64), on accepte le
         // candidate pour se re-synchroniser.
         assert!(is_newer_snowflake(Some("corrupted"), "1234567890123456789"));
+    }
+
+    #[test]
+    fn snowflake_timestamp_uses_discord_epoch() {
+        let expected_millis = 1_700_000_000_000u64;
+        let snowflake = ((expected_millis - DISCORD_EPOCH_MILLIS) << 22).to_string();
+
+        let created_at = snowflake_created_at(&snowflake).unwrap();
+
+        assert_eq!(created_at.timestamp_millis(), expected_millis as i64);
+    }
+
+    #[test]
+    fn invalid_snowflake_has_no_timestamp() {
+        assert!(snowflake_created_at("invalid").is_none());
     }
 }

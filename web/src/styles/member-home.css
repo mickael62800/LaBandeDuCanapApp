@@ -1,0 +1,990 @@
+.mb {
+  flex: 1;
+  position: relative;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: clamp(1rem, 3vh, 2rem) clamp(1rem, 4vw, 3rem) 3rem;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(1.75rem, 4vh, 2.75rem);
+}
+
+.mb-hero,
+.mb-block,
+.mb-footer {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 68rem;
+  margin: 0 auto;
+}
+
+/* La barre de session (avatar, deconnexion, « Se connecter ») vivait ici en
+   `position: sticky`. Elle est passee dans `SiteHeader`, partagee par les
+   trois pages publiques.
+
+   Effet de bord bienvenu : `.mb-bar` designait DEUX choses dans ce fichier —
+   cette barre et les barres d'evenement du calendrier plus bas — avec deux
+   regles homonymes dans la meme feuille scoped, qui se contaminaient
+   mutuellement (grid-column applique a l'en-tete, sticky applique aux
+   evenements). Le nom ne designe plus qu'une seule chose. */
+
+
+
+/* ── Accueil ── */
+
+
+
+
+.mb-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.9rem;
+  border-radius: var(--radius-pill);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.mb-chip b {
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+
+.mb-chip.link:hover {
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* ── Communs ── */
+.mb-block h2 {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0 0 0.9rem;
+  font-size: 1.15rem;
+}
+
+.mb-count {
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: var(--site-ink-4);
+  font-variant-numeric: tabular-nums;
+}
+
+.mb-nav {
+  margin-left: auto;
+  display: flex;
+  gap: 0.3rem;
+}
+
+.mb-nav button {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--site-ink-3);
+  border-radius: var(--radius-pill);
+  padding: 0.15rem 0.7rem;
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.mb-nav button:hover {
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.mb-live {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--site-live);
+  box-shadow: 0 0 10px var(--site-live);
+  animation: pulse 2.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.mb-pip {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  display: inline-block;
+}
+
+.mb-pip.on {
+  background: var(--site-live);
+  box-shadow: 0 0 8px var(--site-live);
+}
+
+.mb-pip.off {
+  background: var(--site-off);
+}
+
+.mb-hint {
+  color: var(--site-ink-4);
+  margin: 0;
+}
+
+.mb-erreur {
+  margin: 0.6rem 0 0;
+  color: #fca5a5;
+  font-size: 0.86rem;
+}
+
+.mb-tag {
+  font-size: 0.74rem;
+  padding: 1px 9px;
+  border-radius: var(--radius-pill);
+  background: rgba(168, 85, 247, 0.16);
+  color: var(--text-secondary);
+}
+
+.mb-tag.neutral {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.mb-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.mb-av {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  flex: none;
+  display: grid;
+  place-items: center;
+  background: var(--c);
+  color: var(--bg-primary);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.mb-av.sm {
+  width: 20px;
+  height: 20px;
+  font-size: 0.66rem;
+}
+
+.mb-av.lg {
+  width: 46px;
+  height: 46px;
+  font-size: 1.1rem;
+}
+
+
+.mb-soon {
+  align-self: flex-start;
+  font-size: 0.74rem;
+  color: var(--site-ink-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  padding: 2px 10px;
+}
+
+/* ── Serveurs de jeu ── */
+.mb-games {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(16.5rem, 1fr));
+  gap: 1.1rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.mb-game {
+  position: relative;
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+}
+
+.mb-game img,
+.mb-game-fallback {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+}
+
+.mb-game-fallback {
+  display: grid;
+  place-items: center;
+  font-size: 4rem;
+  background: rgba(168, 85, 247, 0.08);
+}
+
+.mb-game::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 42%, rgba(10, 4, 20, 0.94) 92%);
+}
+
+.mb-game-in {
+  position: absolute;
+  inset: auto 0 0 0;
+  z-index: 1;
+  padding: 0.9rem 1rem;
+}
+
+.mb-game-in strong {
+  display: block;
+  font-size: 1.08rem;
+}
+
+.mb-game-state {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  color: var(--site-ink-3);
+}
+
+/* Un serveur éteint reste visible mais s'efface : il informe sans attirer. */
+.mb-game.off img,
+.mb-game.off .mb-game-fallback {
+  filter: grayscale(0.85) brightness(0.55);
+}
+
+.mb-game-addr {
+  display: block;
+  margin-top: 0.2rem;
+  font-family: ui-monospace, "Cascadia Mono", Menlo, monospace;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mb-game-addr.muted {
+  color: var(--site-ink-4);
+  font-style: italic;
+}
+
+.mb-badge {
+  position: absolute;
+  top: 0.7rem;
+  right: 0.7rem;
+  z-index: 1;
+  background: rgba(34, 197, 94, 0.92);
+  color: #04220f;
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+}
+
+/* ── Cherche des joueurs ── */
+.mb-lfgs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.mb-lfg {
+  padding: 0.85rem 1.05rem;
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.mb-lfg-top {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.mb-lfg-auteur {
+  font-weight: 600;
+}
+
+.mb-lfg-quand {
+  margin-left: auto;
+  font-size: 0.76rem;
+  color: var(--site-ink-4);
+}
+
+.mb-lfg-texte {
+  margin: 0;
+  font-size: 0.89rem;
+  color: var(--site-ink-3);
+}
+
+.mb-lfg-foot {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.mb-lfg-besoin {
+  font-size: 0.83rem;
+  color: var(--text-secondary);
+}
+
+.mb-lfg-besoin b {
+  color: var(--accent);
+}
+
+.mb-lfg-avs {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-left: auto;
+}
+
+.mb-lfg-avs .mb-av {
+  margin-left: -6px;
+  border: 2px solid var(--bg-primary);
+}
+
+.mb-lfg-n {
+  font-size: 0.78rem;
+  color: var(--site-ink-3);
+}
+
+.mb-lfg-n.muted {
+  color: var(--site-ink-4);
+  font-style: italic;
+}
+
+.mb-lfg-btn {
+  background: rgba(168, 85, 247, 0.18);
+  border: 1px solid var(--border-strong);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  border-radius: var(--radius-pill);
+  padding: 0.28rem 0.95rem;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.mb-lfg-btn:hover:not(:disabled) {
+  background: rgba(168, 85, 247, 0.3);
+}
+
+.mb-lfg-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ── Calendrier ── */
+.mb-cal {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--bg-card);
+}
+
+.mb-cal-head {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  border-bottom: 1px solid var(--border);
+}
+
+.mb-cal-head div {
+  padding: 0.6rem 0.4rem;
+  text-align: center;
+  font-size: 0.78rem;
+  color: var(--site-ink-4);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.mb-cal-head div.today {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.mb-cal-head b {
+  display: block;
+  font-size: 1.05rem;
+  color: var(--text-primary);
+  letter-spacing: 0;
+}
+
+.mb-cal-body {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  grid-template-rows: repeat(var(--rows, 2), minmax(2.6rem, auto));
+  gap: 0.3rem;
+  padding: 0.6rem;
+  /* Filets verticaux dessinés en dégradé plutôt qu'en éléments : sept bordures
+     de plus alourdiraient l'arbre sans rien apporter. */
+  background-image: repeating-linear-gradient(
+    to right,
+    transparent 0,
+    transparent calc(100% / 7 - 1px),
+    rgba(168, 85, 247, 0.08) calc(100% / 7 - 1px),
+    rgba(168, 85, 247, 0.08) calc(100% / 7)
+  );
+}
+
+.mb-bar {
+  grid-row: var(--row);
+  grid-column: var(--from) / span var(--span);
+  border-radius: var(--radius-sm);
+  padding: 0.4rem 0.6rem;
+  font-size: 0.8rem;
+  background: color-mix(in srgb, var(--ev) 26%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ev) 55%, transparent);
+  border-left: 3px solid var(--ev);
+  overflow: hidden;
+}
+
+/* Un événement qui déborde de la semaine perd son arrondi côté tronqué :
+   le lecteur voit qu'il continue au-delà. */
+.mb-bar.clipped {
+  border-radius: var(--radius-sm) 0.15rem 0.15rem 0.55rem;
+}
+
+.mb-bar strong {
+  display: block;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mb-bar span {
+  color: var(--site-ink-3);
+  font-size: 0.74rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.mb-cal-vide {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  margin: 0;
+  align-self: center;
+  text-align: center;
+  color: var(--site-ink-4);
+  font-size: 0.88rem;
+}
+
+/* ── Prochain rendez-vous ── */
+.mb-feature {
+  --accent-event: var(--accent);
+  padding: 1.2rem 1.3rem;
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent-event);
+}
+
+.mb-feature-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.mb-feature-body h3 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.mb-feature-body p {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--site-ink-3);
+}
+
+/* ── Événements en liste ── */
+.mb-events {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.mb-events.secondaires {
+  margin-top: 0.8rem;
+}
+
+.mb-event {
+  --accent-event: var(--accent);
+  padding: 0.9rem 1.1rem;
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent-event);
+}
+
+.mb-event.ongoing {
+  background: rgba(34, 197, 94, 0.07);
+  border-color: rgba(34, 197, 94, 0.25);
+}
+
+.mb-event-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.mb-event-desc {
+  margin: 0.35rem 0 0;
+  font-size: 0.88rem;
+  color: var(--site-ink-3);
+}
+
+.mb-event-when {
+  display: inline-block;
+  margin-top: 0.35rem;
+  font-size: 0.82rem;
+  color: var(--site-ink-4);
+}
+
+/* État vide : présent mais discret. Il informe de ce qui viendra sans
+   occuper la place d'un vrai contenu. */
+.mb-vide {
+  margin: 0;
+  padding: 0.85rem 1.05rem;
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px dashed var(--border);
+  color: var(--site-ink-4);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+/* ── Message de configuration ── */
+.mb-config {
+  margin: 0;
+  padding: 0.9rem 1.1rem;
+  border-radius: var(--radius-lg);
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: #f8d9a0;
+  font-size: 0.9rem;
+}
+
+.mb-config code {
+  font-family: ui-monospace, "Cascadia Mono", Menlo, monospace;
+  font-size: 0.85em;
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.3);
+}
+
+/* ── Vocal ── */
+.mb-vocaux {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 0.9rem;
+}
+
+.mb-vc {
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.mb-vc-head {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.6rem 0.85rem;
+  background: rgba(168, 85, 247, 0.09);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+
+.mb-vc-nom {
+  font-weight: 600;
+}
+
+/* Discret : le salon réservé n'est pas une alerte, juste une précision. */
+.mb-vc-prive {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--site-ink-3);
+  border: 1px solid var(--site-ink-4);
+  border-radius: var(--radius-xs);
+  padding: 0 0.3em;
+}
+
+.mb-vc-n {
+  margin-left: auto;
+  font-size: 0.78rem;
+  color: var(--site-ink-4);
+  font-variant-numeric: tabular-nums;
+}
+
+.mb-vc-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.mb-vm {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.3rem 0.45rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.88rem;
+}
+
+.mb-vm-nom {
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mb-vm-ico {
+  font-size: 0.78rem;
+  opacity: 0.75;
+}
+
+/* Le premier pousse les suivants à droite ; sans ça, deux icônes se
+   colleraient au pseudo au lieu de s'aligner en bout de ligne. */
+.mb-vm-ico:first-of-type {
+  margin-left: auto;
+}
+
+/* ── Écrit ── */
+.mb-textes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.mb-tc {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0.9rem;
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+
+.mb-tc-hash {
+  color: var(--site-ink-4);
+  font-weight: 700;
+}
+
+.mb-tc-nom {
+  font-weight: 600;
+}
+
+.mb-tc-avs {
+  display: flex;
+  margin-left: auto;
+}
+
+.mb-tc-avs .mb-av {
+  margin-left: -6px;
+  border: 2px solid var(--bg-primary);
+}
+
+.mb-tc-when {
+  font-size: 0.78rem;
+  color: var(--site-ink-4);
+  white-space: nowrap;
+}
+
+/* ── Sondages ── */
+.mb-poll {
+  padding: 1.1rem 1.2rem;
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.mb-poll + .mb-poll {
+  margin-top: 0.8rem;
+}
+
+.mb-poll h3 {
+  margin: 0;
+  font-size: 1.02rem;
+}
+
+.mb-poll-desc {
+  margin: 0;
+  font-size: 0.87rem;
+  color: var(--site-ink-3);
+}
+
+.mb-poll-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.mb-poll-line {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: 0.88rem;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: default;
+}
+
+.mb-poll-line.votable {
+  cursor: pointer;
+}
+
+.mb-poll-line.votable:hover {
+  color: #fff;
+}
+
+/* Le choix du lecteur se distingue par la graisse, pas par une couleur : la
+   couleur est déjà porteuse de sens sur les barres. */
+.mb-poll-line.mine {
+  font-weight: 700;
+}
+
+.mb-poll-pct {
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.mb-poll-bar {
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.07);
+  margin: 0.2rem 0 0.1rem;
+  overflow: hidden;
+}
+
+.mb-poll-bar i {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-pill);
+  transition: width 0.35s ease;
+}
+
+.mb-poll-n {
+  font-size: 0.75rem;
+  color: var(--site-ink-4);
+  font-variant-numeric: tabular-nums;
+}
+
+.mb-poll-foot {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--site-ink-4);
+}
+
+/* ── Deux colonnes ── */
+.mb-duo {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  gap: 1.1rem;
+}
+
+.mb-panel {
+  padding: 1.1rem 1.2rem;
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+}
+
+.mb-panel h3 {
+  margin: 0 0 0.7rem;
+  font-size: 1.02rem;
+}
+
+.mb-mom {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.mb-mom-av {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+}
+
+.mb-mom-nom {
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+
+.mb-mom-quoi {
+  font-size: 0.86rem;
+  color: var(--site-ink-3);
+}
+
+.mb-annivs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.mb-anniv {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.9rem;
+}
+
+.mb-anniv-nom {
+  font-weight: 600;
+}
+
+.mb-anniv-age {
+  font-size: 0.76rem;
+  padding: 1px 9px;
+  border-radius: var(--radius-pill);
+  background: rgba(168, 85, 247, 0.18);
+  color: var(--text-secondary);
+}
+
+.mb-anniv-date {
+  margin-left: auto;
+  font-size: 0.8rem;
+  color: var(--site-ink-4);
+}
+
+/* ── Nouveaux venus ── */
+.mb-nouveaux {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.mb-nv {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.7rem 0.25rem 0.25rem;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+/* ── Annonces ── */
+.mb-anns {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.mb-ann {
+  display: grid;
+  grid-template-columns: 8rem 1fr;
+  gap: 0.9rem;
+  padding: 0.75rem;
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+}
+
+.mb-ann.pinned {
+  border-color: var(--border-strong);
+}
+
+.mb-ann-img {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+}
+
+.mb-ann h3 {
+  margin: 0 0 0.2rem;
+  font-size: 0.98rem;
+}
+
+.mb-ann p {
+  margin: 0 0 0.3rem;
+  font-size: 0.86rem;
+  color: var(--site-ink-3);
+}
+
+.mb-ann-when {
+  font-size: 0.76rem;
+  color: var(--site-ink-4);
+}
+
+/* ── Pied ── */
+.mb-footer {
+  margin-top: auto;
+  padding-top: 1rem;
+  text-align: center;
+}
+
+.mb-admin-link {
+  color: var(--site-ink-4);
+  font-size: 0.9rem;
+}
+
+.mb-admin-link:hover {
+  color: var(--text-secondary);
+}
+
+@media (max-width: 760px) {
+  .mb-ann {
+    grid-template-columns: 1fr;
+  }
+
+  .mb-nav {
+    margin-left: 0;
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mb-live {
+    animation: none;
+  }
+
+  .mb-poll-bar i {
+    transition: none;
+  }
+}

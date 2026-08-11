@@ -50,13 +50,22 @@ export const useRealtimeStore = defineStore("realtime", () => {
   function cleanup() {
     for (const u of unlisteners) u();
     unlisteners.length = 0;
+    disconnect();
     initialized = false;
   }
 
   async function onEvent(eventType: string, callback: (data: unknown) => void): Promise<UnlistenFn> {
-    const unlisten = await listen(`ws:${eventType}`, (event) => callback(event.payload));
-    unlisteners.push(unlisten);
-    return unlisten;
+    const rawUnlisten = await listen(`ws:${eventType}`, (event) => callback(event.payload));
+    let active = true;
+    const managedUnlisten = () => {
+      if (!active) return;
+      active = false;
+      rawUnlisten();
+      const index = unlisteners.indexOf(managedUnlisten);
+      if (index >= 0) unlisteners.splice(index, 1);
+    };
+    unlisteners.push(managedUnlisten);
+    return managedUnlisten;
   }
 
   return { connected, wsUrl, init, connect, disconnect, cleanup, getStatus, onEvent };

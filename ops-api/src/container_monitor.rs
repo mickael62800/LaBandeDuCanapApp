@@ -2,9 +2,7 @@
 
 use ops_core::domain::entities::container_monitor::{ContainerMonitorState, REDIS_STATE_KEY};
 
-pub async fn load(
-    redis: &redis::aio::ConnectionManager,
-) -> Result<ContainerMonitorState, String> {
+pub async fn load(redis: &redis::aio::ConnectionManager) -> Result<ContainerMonitorState, String> {
     let mut connection = redis.clone();
     let encoded: Option<String> = redis::cmd("GET")
         .arg(REDIS_STATE_KEY)

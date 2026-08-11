@@ -21,7 +21,10 @@ pub async fn container_changes(
         .await
         .map_err(|error| {
             tracing::warn!(%error, "lecture du snapshot conteneurs impossible");
-            ApiError(StatusCode::SERVICE_UNAVAILABLE, "snapshot indisponible".into())
+            ApiError(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "snapshot indisponible".into(),
+            )
         })?;
     Ok(Json(ContainerChangesResponse {
         last_check: snapshot.last_check,

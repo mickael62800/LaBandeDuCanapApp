@@ -32,9 +32,7 @@ struct AuditModRow {
 
 impl From<AuditModRow> for ModerationAction {
     fn from(row: AuditModRow) -> Self {
-        let action_type = row
-            .event_type
-            .strip_prefix("mod_")
+        let action_type = ModerationAction::action_type_from_audit_event(&row.event_type)
             .unwrap_or(&row.event_type)
             .to_string();
         let reason = row
@@ -93,61 +91,39 @@ impl PgModerationRepository {
     }
 }
 
-#[derive(sqlx::FromRow)]
-struct ActionRow {
-    id: Uuid,
-    guild_id: String,
-    channel_id: String,
-    moderator_id: String,
-    moderator_name: String,
-    target_id: String,
-    target_name: String,
-    action_type: String,
-    reason: String,
-    gravity: Option<crate::adapters::outbound::postgres::types::PgModerationGravity>,
-    duration: Option<i64>,
-    created_at: chrono::DateTime<chrono::Utc>,
-}
-
-impl From<ActionRow> for ModerationAction {
-    fn from(row: ActionRow) -> Self {
-        Self {
-            id: row.id,
-            guild_id: row.guild_id.into(),
-            channel_id: row.channel_id.into(),
-            moderator_id: row.moderator_id,
-            moderator_name: row.moderator_name,
-            target_id: row.target_id,
-            target_name: row.target_name,
-            target_display_name: None,
-            action_type: row.action_type,
-            reason: row.reason,
-            gravity: row.gravity.map(Into::into),
-            duration: row.duration.and_then(|d| u64::try_from(d).ok()),
-            created_at: row.created_at,
-        }
-    }
-}
-
 #[async_trait]
 impl ModerationRepository for PgModerationRepository {
-    async fn save(&self, _action: &ModerationAction) -> Result<(), DomainError> {
-        // Phase 4 : on n'ecrit plus dans `moderation_actions`. Le dual-write
-        // dans `audit_logs` est gere par ManageModerationService::log_action
-        // via audit_logs_uc. Cette methode est conservee pour ne pas casser
-        // l'interface ModerationRepository, mais devient un no-op.
+    async fn save(&self, action: &ModerationAction) -> Result<(), DomainError> {
+        sqlx::query(
+            "INSERT INTO audit_logs \
+                 (id, guild_id, event_type, actor_id, actor_name, target_id, target_name, \
+                  channel_id, channel_name, details, created_at) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL, $9, $10)",
+        )
+        .bind(action.id)
+        .bind(action.guild_id.as_str())
+        .bind(action.audit_event_type())
+        .bind(&action.moderator_id)
+        .bind(&action.moderator_name)
+        .bind(&action.target_id)
+        .bind(&action.target_name)
+        .bind(action.channel_id.as_str())
+        .bind(action.audit_details())
+        .bind(action.created_at)
+        .execute(&self.pool)
+        .await
+        .map_err(pg_ctx("insert moderation audit log"))?;
         Ok(())
     }
 
     async fn find_by_id(&self, id: Uuid) -> Result<Option<ModerationAction>, DomainError> {
-        // Phase 4 : on cherche par details->>'action_id' dans audit_logs.
         let row = sqlx::query_as::<_, AuditModRow>(
             "SELECT id, guild_id, event_type, actor_id, actor_name, target_id, target_name, channel_id, details, created_at \
              FROM audit_logs \
-             WHERE event_type LIKE 'mod_%' AND details->>'action_id' = $1 \
+             WHERE event_type LIKE 'mod_%' AND id = $1 \
              LIMIT 1",
         )
-        .bind(id.to_string())
+        .bind(id)
         .fetch_optional(&self.pool)
         .await
         .map_err(pg_err)?;
@@ -293,28 +269,22 @@ impl ModerationRepository for PgModerationRepository {
     }
 
     async fn delete_action(&self, id: uuid::Uuid) -> Result<bool, DomainError> {
-        // Phase 4 : on supprime depuis audit_logs en matchant details->>'action_id'.
-        let result = sqlx::query(
-            "DELETE FROM audit_logs WHERE event_type LIKE 'mod_%' AND details->>'action_id' = $1",
-        )
-        .bind(id.to_string())
-        .execute(&self.pool)
-        .await
-        .map_err(pg_err)?;
+        let result =
+            sqlx::query("DELETE FROM audit_logs WHERE event_type LIKE 'mod_%' AND id = $1")
+                .bind(id)
+                .execute(&self.pool)
+                .await
+                .map_err(pg_err)?;
         Ok(result.rows_affected() > 0)
     }
 
     async fn action_guild_id(&self, action_id: Uuid) -> Result<Option<String>, DomainError> {
-        // Phase 4 : `moderation_actions` n'est plus ecrite (save() est un
-        // no-op). Lookup dans `audit_logs` (event_type 'mod_%') ou l'action_id
-        // est stocke dans details->>'action_id' — identique a delete_action /
-        // find_action_for_reversal.
         let row: Option<(String,)> = sqlx::query_as(
             "SELECT guild_id FROM audit_logs \
-             WHERE event_type LIKE 'mod_%' AND details->>'action_id' = $1 \
+             WHERE event_type LIKE 'mod_%' AND id = $1 \
              LIMIT 1",
         )
-        .bind(action_id.to_string())
+        .bind(action_id)
         .fetch_optional(&self.pool)
         .await
         .map_err(pg_ctx("fetch action guild_id"))?;
@@ -328,8 +298,9 @@ impl ModerationRepository for PgModerationRepository {
         window_secs: i64,
     ) -> Result<i64, DomainError> {
         let count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM moderation_actions \
-             WHERE guild_id = $1 AND moderator_id = $2 \
+            "SELECT COUNT(*) FROM audit_logs \
+             WHERE guild_id = $1 AND actor_id = $2 AND event_type LIKE 'mod_%' \
+               AND event_type NOT IN ('mod_unban', 'mod_unmute') \
                AND created_at > NOW() - ($3::double precision * INTERVAL '1 second')",
         )
         .bind(guild_id)
@@ -348,24 +319,20 @@ impl ModerationRepository for PgModerationRepository {
         Option<sentinel_core::domain::entities::moderation::action::reversal::ActionReversalInfo>,
         DomainError,
     > {
-        // Phase 4 : lookup dans `audit_logs` (event_type='mod_*') ; action_id est
-        // stocke dans `details->>'action_id'`. action_type derive de event_type
-        // en strippant le prefixe 'mod_'.
         let row: Option<(String, Option<String>, Option<String>, String)> = sqlx::query_as(
             "SELECT guild_id, target_id, target_name, event_type \
              FROM audit_logs \
-             WHERE event_type LIKE 'mod_%' AND details->>'action_id' = $1 \
+             WHERE event_type LIKE 'mod_%' AND id = $1 \
              LIMIT 1",
         )
-        .bind(action_id.to_string())
+        .bind(action_id)
         .fetch_optional(&self.pool)
         .await
         .map_err(pg_ctx("fetch action"))?;
 
         Ok(
             row.map(|(guild_id, target_id_opt, target_name_opt, event_type)| {
-                let action_type = event_type
-                    .strip_prefix("mod_")
+                let action_type = ModerationAction::action_type_from_audit_event(&event_type)
                     .unwrap_or(&event_type)
                     .to_string();
                 sentinel_core::domain::entities::moderation::action::reversal::ActionReversalInfo {
@@ -376,5 +343,56 @@ impl ModerationRepository for PgModerationRepository {
                 }
             }),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_action() -> ModerationAction {
+        ModerationAction {
+            id: Uuid::new_v4(),
+            guild_id: "guild-1".into(),
+            channel_id: "channel-1".into(),
+            moderator_id: "moderator-1".into(),
+            moderator_name: "Moderator".into(),
+            target_id: "target-1".into(),
+            target_name: "Target".into(),
+            target_display_name: None,
+            action_type: "warn".into(),
+            reason: "raison".into(),
+            gravity: Some(ModerationGravity::Medium),
+            duration: Some(60),
+            created_at: chrono::Utc::now(),
+        }
+    }
+
+    #[sqlx::test(migrations = "../sentinel-api/migrations")]
+    async fn moderation_action_round_trips_through_audit_logs(pool: PgPool) -> sqlx::Result<()> {
+        let repo = PgModerationRepository::new(pool.clone());
+        let action = sample_action();
+
+        repo.save(&action).await.unwrap();
+
+        let stored = repo.find_by_id(action.id).await.unwrap().unwrap();
+        assert_eq!(stored.id, action.id);
+        assert_eq!(stored.action_type, "warn");
+        assert_eq!(stored.reason, "raison");
+        assert_eq!(stored.duration, Some(60));
+        assert_eq!(
+            repo.count_recent_mod_actions("guild-1", "moderator-1", 3600)
+                .await
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM audit_logs WHERE id = $1")
+                .bind(action.id)
+                .fetch_one(&pool)
+                .await?,
+            1
+        );
+        Ok(())
     }
 }

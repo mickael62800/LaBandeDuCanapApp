@@ -25,17 +25,13 @@ pub struct MemberResetTable {
 
 /// Tables purgees par `POST /api/members/{guild_id}/{user_id}/reset`, dans
 /// l'ordre d'execution. Regle metier : quelles donnees de moderation on
-/// efface quand on "reset" un membre (operation irreversible).
+/// efface quand on "reset" un membre (operation irreversible). Les traces
+/// `audit_logs` sont volontairement conservees selon la politique d'audit.
 pub const MEMBER_RESET_TABLES: &[MemberResetTable] = &[
     MemberResetTable {
         sql_table: "infractions",
         user_column: "user_id",
         response_key: "infractions",
-    },
-    MemberResetTable {
-        sql_table: "moderation_actions",
-        user_column: "target_id",
-        response_key: "moderation_actions",
     },
     MemberResetTable {
         sql_table: "user_strikes",

@@ -1,11 +1,12 @@
 // Client du backend d'exploitation, servi en meme origine par nginx.
 import { BackendHttpError, createBackendClient } from "./backendHttp";
+import type { HttpErrorDetails } from "./httpError";
 
 const OPS_BASE = "/ops-api";
 
 export class OpsHttpError extends BackendHttpError {
-  constructor(message: string, status: number) {
-    super(message, status, "OpsHttpError");
+  constructor(message: string, details: HttpErrorDetails) {
+    super(message, details, "OpsHttpError");
   }
 }
 
@@ -15,7 +16,7 @@ const request = createBackendClient({
   forbiddenMessage: "Accès à l'exploitation refusé.",
   unavailableMessage:
     "L'API d'exploitation ne répond pas. Le service est-il démarré ?",
-  makeError: (message, status) => new OpsHttpError(message, status),
+  makeError: (message, details) => new OpsHttpError(message, details),
 });
 
 export const opsGet = <T>(path: string) => request<T>("GET", path);

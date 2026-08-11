@@ -462,4 +462,3 @@ mod tests {
         assert!(merged.chars().all(|c| c == 'é'));
     }
 }
-

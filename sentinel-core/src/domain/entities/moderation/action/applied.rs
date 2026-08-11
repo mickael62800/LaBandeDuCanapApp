@@ -28,6 +28,29 @@ pub struct ModerationAction {
     pub created_at: DateTime<Utc>,
 }
 
+impl ModerationAction {
+    pub const AUDIT_EVENT_PREFIX: &'static str = "mod_";
+
+    /// Type d'evenement canonique persiste dans `audit_logs`.
+    pub fn audit_event_type(&self) -> String {
+        format!("{}{}", Self::AUDIT_EVENT_PREFIX, self.action_type)
+    }
+
+    /// Payload canonique des champs propres a une action de moderation.
+    pub fn audit_details(&self) -> serde_json::Value {
+        serde_json::json!({
+            "reason": self.reason,
+            "gravity": self.gravity.as_ref().map(|gravity| gravity.as_str()),
+            "duration_secs": self.duration,
+            "action_id": self.id.to_string(),
+        })
+    }
+
+    pub fn action_type_from_audit_event(event_type: &str) -> Option<&str> {
+        event_type.strip_prefix(Self::AUDIT_EVENT_PREFIX)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserModerationHistory {
     pub target_id: String,

@@ -113,7 +113,7 @@ fn spawn_grpc_server(state: AppState, config: &AppConfig) {
 
 /// Bind Axum + log startup/shutdown en BDD + graceful shutdown.
 async fn serve_http(state: AppState, config: &AppConfig, pg_pool: PgPool) {
-    let api_log_repo = state.log_repo.clone();
+    let api_log_repo = state.shared.log_repo.clone();
 
     let app = router::build(
         state,

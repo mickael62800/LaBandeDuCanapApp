@@ -7,7 +7,7 @@ import { useToast } from "./useToast";
  * (ou null) et est appele a chaque changement de selection.
  */
 export function useGuildFetch<T>(
-  fetcher: (guildId: string | null) => Promise<T>,
+  fetcher: (guildId: string | null, signal: AbortSignal) => Promise<T>,
   initialValue: T,
   options?: {
     guildScoped?: boolean;
@@ -30,14 +30,21 @@ export function useGuildFetch<T>(
 
   const guildScoped = options?.guildScoped ?? true;
   const immediate = options?.immediate ?? true;
+  let sequence = 0;
+  let controller: AbortController | null = null;
 
   async function refresh() {
+    const currentSequence = ++sequence;
+    controller?.abort();
+    controller = new AbortController();
     loading.value = true;
     error.value = null;
     try {
       const guildId = guildScoped ? (guildIdFilter.value ?? null) : null;
-      data.value = await fetcher(guildId);
+      const result = await fetcher(guildId, controller.signal);
+      if (currentSequence === sequence) data.value = result;
     } catch (e) {
+      if (currentSequence !== sequence || controller.signal.aborted) return;
       const msg = String(e);
       if (msg.includes("Connection refused") || msg.includes("network") || msg.includes("connect")) {
         error.value = "Connexion au serveur impossible. Verifiez que l'API est demarree.";
@@ -49,7 +56,7 @@ export function useGuildFetch<T>(
       console.error(`Echec du chargement ${label} :`, e);
       showError(error.value ?? `Echec du chargement ${label}.`);
     } finally {
-      loading.value = false;
+      if (currentSequence === sequence) loading.value = false;
     }
   }
 

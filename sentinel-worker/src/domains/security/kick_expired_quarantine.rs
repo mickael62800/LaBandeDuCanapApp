@@ -14,7 +14,7 @@ struct ExpiredQuarantine {
     user_id: String,
 }
 
-pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
+pub async fn run(pool: &PgPool, redis: &redis::aio::ConnectionManager) -> Result<(), String> {
     let candidates: Vec<ExpiredQuarantine> = sqlx::query_as(
         "SELECT guild_id, user_id \
          FROM security_quarantine_pending \
@@ -30,7 +30,7 @@ pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
         return Ok(());
     }
 
-    let mut conn = platform_common_worker::redis_helpers::get_conn(redis).await?;
+    let mut conn = redis.clone();
 
     let mut kicked = 0u32;
     for q in &candidates {

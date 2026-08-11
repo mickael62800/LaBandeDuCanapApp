@@ -5,8 +5,15 @@ export class Store {
   static async load(file: string): Promise<Store> { return new Store(file); }
   private ns(key: string) { return `ds.store:${this.file}:${key}`; }
   async get<T>(key: string): Promise<T | null> {
-    const raw = localStorage.getItem(this.ns(key));
-    return raw ? (JSON.parse(raw) as T) : null;
+    const storageKey = this.ns(key);
+    const raw = localStorage.getItem(storageKey);
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as T;
+    } catch {
+      localStorage.removeItem(storageKey);
+      return null;
+    }
   }
   async set(key: string, value: unknown): Promise<void> {
     localStorage.setItem(this.ns(key), JSON.stringify(value));

@@ -6,6 +6,7 @@ import App from "./App.vue";
 import { routes } from "./router";
 import { useAuth } from "./composables/useAuth";
 import { initAppData, resetAppInit } from "./composables/useAppInit";
+import { useGuildSelector } from "./composables/useGuildSelector";
 import "./styles/global.css";
 
 const router = createRouter({
@@ -46,7 +47,6 @@ router.beforeEach(async (to, _from, next) => {
   // immediatement. Les composables singleton (useBotDefinitions, useBotEnabledStatus)
   // auront leur cache rempli quand les pages les liront.
   if (user.value) {
-    const { useGuildSelector } = await import("./composables/useGuildSelector");
     const { selectedGuildId } = useGuildSelector();
     const gid = selectedGuildId.value;
     if (gid) {

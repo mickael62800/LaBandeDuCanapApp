@@ -34,7 +34,7 @@ struct ExpiredBan {
     expires_at: DateTime<Utc>,
 }
 
-pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
+pub async fn run(pool: &PgPool, redis: &redis::aio::ConnectionManager) -> Result<(), String> {
     let expired = sqlx::query_as::<_, ExpiredBan>(
         "UPDATE sanction_reminders SET unban_status = 'done'
          WHERE id IN (
@@ -57,7 +57,7 @@ pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
         return Ok(());
     }
 
-    let mut conn = platform_common_worker::redis_helpers::get_conn(redis).await?;
+    let mut conn = redis.clone();
 
     for ban in &expired {
         if !is_worker_enabled(pool, &ban.guild_id, "moderation-bot").await {

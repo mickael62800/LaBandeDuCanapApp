@@ -42,9 +42,7 @@ async fn main() {
     );
     let server_events: Arc<
         dyn ops_core::ports::outbound::server_event_repository::ServerEventRepository,
-    > = Arc::new(ops_adapters::server_event_repository::PgServerEventRepository::new(
-        pool.clone(),
-    ));
+    > = Arc::new(ops_adapters::server_event_repository::PgServerEventRepository::new(pool.clone()));
     // Docker passe par l'agent : ce processus ne monte jamais le socket.
     let docker_host: Arc<dyn ops_core::ports::outbound::docker_host::DockerHost> =
         Arc::new(ops_adapters::http_docker_host::HttpDockerHost::new(

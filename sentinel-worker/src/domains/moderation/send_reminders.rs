@@ -30,7 +30,7 @@ struct PendingReminder {
 /// On ne fait PAS de notification Discord directe ici car le worker n'a pas
 /// de connexion gateway. Le pattern XADD→bot consumer est le meme que pour
 /// `temp-roles-worker`.
-pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
+pub async fn run(pool: &PgPool, redis: &redis::aio::ConnectionManager) -> Result<(), String> {
     // Claim atomique : UPDATE + RETURNING evite la race condition
     // multi-worker (pas de double XADD).
     let reminders = sqlx::query_as::<_, PendingReminder>(
@@ -53,7 +53,7 @@ pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
         return Ok(());
     }
 
-    let mut conn = platform_common_worker::redis_helpers::get_conn(redis).await?;
+    let mut conn = redis.clone();
 
     for reminder in &reminders {
         if !is_worker_enabled(pool, &reminder.guild_id, "moderation-bot").await {

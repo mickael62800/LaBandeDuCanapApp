@@ -6,9 +6,10 @@ use std::time::Duration;
 use chrono::{Timelike, Utc};
 use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
+use tokio::sync::watch;
 use tracing::{error, info, warn};
 
-use platform_common_worker;
+use platform_common_worker::{self, JobMetrics, SupervisedTask};
 
 const WORKER_NAME: &str = "announcements";
 const STREAM_KEY: &str = "sentinel:events";
@@ -55,47 +56,69 @@ struct RenderedAnnouncement {
 
 /// Spawn la boucle d'annonces : aligne sur HH:00:00 UTC, puis tick
 /// toutes les heures. Ne bloque pas l'appelant.
-pub fn start(api_url: String, redis_client: redis::Client, publish_interval_secs: u64) {
-    tokio::spawn(async move {
+pub fn start(
+    http_client: reqwest::Client,
+    api_url: String,
+    mut redis: redis::aio::ConnectionManager,
+    publish_interval_secs: u64,
+    mut shutdown: watch::Receiver<bool>,
+) -> SupervisedTask {
+    SupervisedTask::spawn("publish_due_announcements", async move {
         let api_key = std::env::var("API_KEY").unwrap_or_default();
+        let mut job_metrics = JobMetrics::new("publish_due_announcements", WORKER_NAME);
 
         let initial_delay = compute_initial_delay();
         info!(
             delay_secs = initial_delay.as_secs(),
             "announcements: aligning on next hour boundary"
         );
-        tokio::time::sleep(initial_delay).await;
-
-        let http_client = match reqwest::Client::builder()
-            .timeout(Duration::from_secs(15))
-            .build()
-        {
-            Ok(c) => c,
-            Err(e) => {
-                error!(error = %e, "announcements: HTTP client init failed");
-                return;
+        tokio::select! {
+            biased;
+            changed = shutdown.changed() => {
+                if changed.is_err() || *shutdown.borrow() {
+                    job_metrics.stopped();
+                    return;
+                }
             }
-        };
+            _ = tokio::time::sleep(initial_delay) => {}
+        }
 
-        let mut interval = tokio::time::interval(Duration::from_secs(publish_interval_secs));
+        let mut interval = tokio::time::interval(Duration::from_secs(publish_interval_secs.max(1)));
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
         loop {
-            interval.tick().await;
-            if let Err(e) = run_one_tick(&http_client, &api_url, &api_key, &redis_client).await {
-                error!(error = %e, "announcements tick error");
-                platform_common_worker::send_worker_log(
-                    &api_url,
-                    WORKER_NAME,
-                    "error",
-                    "tick",
-                    &format!("Tick error: {e}"),
-                    serde_json::json!({ "event_type": "announcement.tick.error", "error": e }),
-                )
-                .await;
+            tokio::select! {
+                biased;
+                changed = shutdown.changed() => {
+                    if changed.is_err() || *shutdown.borrow() {
+                        break;
+                    }
+                }
+                _ = interval.tick() => {
+                    let started = std::time::Instant::now();
+                    job_metrics.started();
+                    if let Err(e) = run_one_tick(&http_client, &api_url, &api_key, &mut redis).await {
+                        job_metrics.failed(started.elapsed());
+                        error!(error = %e, "announcements tick error");
+                        platform_common_worker::send_worker_log(
+                            &api_url,
+                            WORKER_NAME,
+                            "error",
+                            "tick",
+                            &format!("Tick error: {e}"),
+                            serde_json::json!({ "event_type": "announcement.tick.error", "error": e }),
+                        )
+                        .await;
+                    } else {
+                        job_metrics.succeeded(started.elapsed());
+                    }
+                }
             }
         }
-    });
+
+        job_metrics.stopped();
+        info!("announcements: boucle arretee (shutdown)");
+    })
 }
 
 fn compute_initial_delay() -> Duration {
@@ -112,7 +135,7 @@ async fn run_one_tick(
     http: &reqwest::Client,
     api_url: &str,
     api_key: &str,
-    redis_client: &redis::Client,
+    redis: &mut redis::aio::ConnectionManager,
 ) -> Result<(), String> {
     let url = format!(
         "{api_url}/api/announcements/internal/due?limit={}",
@@ -146,11 +169,6 @@ async fn run_one_tick(
         "announcements: publishing via Redis stream"
     );
 
-    let mut conn = redis_client
-        .get_multiplexed_async_connection()
-        .await
-        .map_err(|e| format!("Redis conn: {e}"))?;
-
     for p in &payloads {
         let payload_json = serde_json::to_string(&serde_json::json!({
             "event": "announcement_publish",
@@ -158,7 +176,7 @@ async fn run_one_tick(
         }))
         .map_err(|e| format!("encode payload: {e}"))?;
 
-        let res: redis::RedisResult<String> = conn
+        let res: redis::RedisResult<String> = redis
             .xadd_maxlen(
                 STREAM_KEY,
                 redis::streams::StreamMaxlen::Approx(STREAM_MAXLEN),

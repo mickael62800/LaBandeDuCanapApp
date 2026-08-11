@@ -10,6 +10,25 @@ use tracing::{info, warn};
 
 use crate::config::CleanupConfig;
 
+const DELETE_OLD_LOGS_SQL: &str =
+    "DELETE FROM logs WHERE \"timestamp\" < NOW() - make_interval(days => $1)";
+
+fn record_cleanup_success(table: &'static str, rows: u64) {
+    metrics::counter!("cleanup_rows_total", "table" => table).increment(rows);
+}
+
+fn record_cleanup_error(table: &'static str) {
+    metrics::counter!("cleanup_errors_total", "table" => table).increment(1);
+}
+
+async fn delete_old_logs(pool: &PgPool, days: i64) -> Result<u64, sqlx::Error> {
+    sqlx::query(DELETE_OLD_LOGS_SQL)
+        .bind(days)
+        .execute(pool)
+        .await
+        .map(|result| result.rows_affected())
+}
+
 /// Garde ANTI-PURGE-TOTALE : une retention <= 0 rend `NOW() - interval '0 day'`
 /// egal a `NOW()` -> `WHERE created_at < NOW()` supprimerait TOUTE la table (et
 /// une valeur negative supprimerait meme les lignes futures). On refuse alors
@@ -40,8 +59,13 @@ pub async fn run(pool: &PgPool, config: &CleanupConfig) -> Result<(), String> {
             .execute(pool)
             .await
             {
-                Ok(r) => r.rows_affected(),
+                Ok(r) => {
+                    let rows = r.rows_affected();
+                    record_cleanup_success("voice_sessions", rows);
+                    rows
+                }
                 Err(e) => {
+                    record_cleanup_error("voice_sessions");
                     warn!(error = %e, "Erreur suppression voice_sessions");
                     errors.push(format!("voice_sessions: {e}"));
                     0
@@ -54,22 +78,18 @@ pub async fn run(pool: &PgPool, config: &CleanupConfig) -> Result<(), String> {
     let logs_days = valid_retention(config.logs_retention_days, "logs/audit/user_activity");
 
     let logs_deleted = match logs_days {
-        Some(days) => {
-            match sqlx::query(
-                "DELETE FROM logs WHERE created_at < NOW() - make_interval(days => $1)",
-            )
-            .bind(days)
-            .execute(pool)
-            .await
-            {
-                Ok(r) => r.rows_affected(),
-                Err(e) => {
-                    warn!(error = %e, "Erreur suppression logs");
-                    errors.push(format!("logs: {e}"));
-                    0
-                }
+        Some(days) => match delete_old_logs(pool, days).await {
+            Ok(rows) => {
+                record_cleanup_success("logs", rows);
+                rows
             }
-        }
+            Err(e) => {
+                record_cleanup_error("logs");
+                warn!(error = %e, "Erreur suppression logs");
+                errors.push(format!("logs: {e}"));
+                0
+            }
+        },
         None => 0,
     };
 
@@ -86,8 +106,13 @@ pub async fn run(pool: &PgPool, config: &CleanupConfig) -> Result<(), String> {
             .execute(pool)
             .await
             {
-                Ok(r) => r.rows_affected(),
+                Ok(r) => {
+                    let rows = r.rows_affected();
+                    record_cleanup_success("ticket_messages", rows);
+                    rows
+                }
                 Err(e) => {
+                    record_cleanup_error("ticket_messages");
                     warn!(error = %e, "Erreur suppression ticket_messages");
                     errors.push(format!("ticket_messages: {e}"));
                     0
@@ -105,8 +130,13 @@ pub async fn run(pool: &PgPool, config: &CleanupConfig) -> Result<(), String> {
         .execute(pool)
         .await
         {
-            Ok(r) => r.rows_affected(),
+            Ok(r) => {
+                let rows = r.rows_affected();
+                record_cleanup_success("audit_logs", rows);
+                rows
+            }
             Err(e) => {
+                record_cleanup_error("audit_logs");
                 warn!(error = %e, "Erreur suppression audit_logs");
                 errors.push(format!("audit_logs: {e}"));
                 0
@@ -124,8 +154,13 @@ pub async fn run(pool: &PgPool, config: &CleanupConfig) -> Result<(), String> {
         .execute(pool)
         .await
         {
-            Ok(r) => r.rows_affected(),
+            Ok(r) => {
+                let rows = r.rows_affected();
+                record_cleanup_success("user_activity_log", rows);
+                rows
+            }
             Err(e) => {
+                record_cleanup_error("user_activity_log");
                 warn!(error = %e, "Erreur suppression user_activity_log");
                 errors.push(format!("user_activity_log: {e}"));
                 0
@@ -152,5 +187,32 @@ pub async fn run(pool: &PgPool, config: &CleanupConfig) -> Result<(), String> {
         Ok(())
     } else {
         Err(format!("Erreurs partielles: {}", errors.join("; ")))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[sqlx::test(migrations = "../sentinel-api/migrations")]
+    async fn deletes_only_logs_older_than_retention(pool: PgPool) -> sqlx::Result<()> {
+        sqlx::query(
+            "INSERT INTO logs (\"timestamp\", message) VALUES \
+             (NOW() - INTERVAL '31 days', 'old cleanup test'), \
+             (NOW() - INTERVAL '29 days', 'recent cleanup test')",
+        )
+        .execute(&pool)
+        .await?;
+
+        let deleted = delete_old_logs(&pool, 30).await?;
+        let remaining: Vec<String> = sqlx::query_scalar(
+            "SELECT message FROM logs WHERE message IN ('old cleanup test', 'recent cleanup test')",
+        )
+        .fetch_all(&pool)
+        .await?;
+
+        assert_eq!(deleted, 1);
+        assert_eq!(remaining, vec!["recent cleanup test"]);
+        Ok(())
     }
 }

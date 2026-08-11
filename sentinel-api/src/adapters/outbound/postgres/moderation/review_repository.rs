@@ -26,8 +26,13 @@ impl ReviewRepository for PgReviewRepository {
         reason: Option<&str>,
     ) -> Result<ReviewEntry, sentinel_core::domain::errors::DomainError> {
         let row: (uuid::Uuid, chrono::DateTime<chrono::Utc>) = sqlx::query_as(
-            "INSERT INTO review_queue (action_id, guild_id, added_by, added_by_name, reason) \
-             VALUES ($1, $2, $3, $4, $5) RETURNING id, added_at",
+            "INSERT INTO review_queue \
+                 (action_id, action_created_at, guild_id, added_by, added_by_name, reason) \
+             SELECT a.id, a.created_at, $2, $3, $4, $5 \
+             FROM audit_logs a \
+             WHERE a.id = $1 AND a.event_type LIKE 'mod_%' \
+             ORDER BY a.created_at DESC LIMIT 1 \
+             RETURNING id, added_at",
         )
         .bind(action_id)
         .bind(guild_id)
@@ -76,9 +81,12 @@ impl ReviewRepository for PgReviewRepository {
 
         let rows: Vec<Row> = sqlx::query_as(
             "SELECT r.id, r.action_id, r.added_by, r.added_by_name, r.reason, r.added_at, \
-                    a.action_type, a.target_name, a.reason AS action_reason \
+                    regexp_replace(a.event_type, '^mod_', '') AS action_type, \
+                    COALESCE(a.target_name, '') AS target_name, \
+                    COALESCE(a.details->>'reason', '') AS action_reason \
              FROM review_queue r \
-             INNER JOIN moderation_actions a ON a.id = r.action_id \
+             INNER JOIN audit_logs a \
+                ON a.id = r.action_id AND a.created_at = r.action_created_at \
              WHERE r.guild_id = $1 AND r.status = 'pending' \
              ORDER BY r.added_at ASC LIMIT 50",
         )
@@ -143,5 +151,36 @@ impl ReviewRepository for PgReviewRepository {
                 .await
                 .map_err(pg_err)?;
         Ok(row.map(|r| r.0))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[sqlx::test(migrations = "../sentinel-api/migrations")]
+    async fn review_is_linked_to_partitioned_audit_action(pool: PgPool) -> sqlx::Result<()> {
+        let action_id = uuid::Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO audit_logs \
+                 (id, guild_id, event_type, actor_id, target_id, target_name, details) \
+             VALUES ($1, 'guild-1', 'mod_warn', 'moderator-1', 'target-1', 'Target', \
+                     '{\"reason\":\"spam\"}'::jsonb)",
+        )
+        .bind(action_id)
+        .execute(&pool)
+        .await?;
+
+        let repo = PgReviewRepository::new(pool);
+        repo.add(action_id, "guild-1", "admin-1", "Admin", None)
+            .await
+            .unwrap();
+        let pending = repo.list_pending("guild-1").await.unwrap();
+
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].action_id, action_id);
+        assert_eq!(pending[0].action_type.as_deref(), Some("warn"));
+        assert_eq!(pending[0].action_reason.as_deref(), Some("spam"));
+        Ok(())
     }
 }

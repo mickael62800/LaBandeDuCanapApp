@@ -17,11 +17,11 @@
 //!
 //! # Action types Discord couverts (MVP)
 //!
-//! - 20 = `MEMBER_KICK`       â†’ `discord_audit:member_kick`
-//! - 22 = `MEMBER_BAN_ADD`    â†’ `discord_audit:member_ban`
-//! - 23 = `MEMBER_BAN_REMOVE` â†’ `discord_audit:member_unban`
-//! - 24 = `MEMBER_UPDATE`     â†’ `discord_audit:member_timeout` (si timeout)
-//! - 25 = `MEMBER_ROLE_UPDATE`â†’ `discord_audit:member_role_update`
+//! - 20 = `MEMBER_KICK`       -> `discord_audit:member_kick`
+//! - 22 = `MEMBER_BAN_ADD`    -> `discord_audit:member_ban`
+//! - 23 = `MEMBER_BAN_REMOVE` -> `discord_audit:member_unban`
+//! - 24 = `MEMBER_UPDATE`     -> `discord_audit:member_timeout` (si timeout)
+//! - 25 = `MEMBER_ROLE_UPDATE`-> `discord_audit:member_role_update`
 //!
 //! Les autres types (channel/role create/delete, message delete, etc.) sont
 //! ignores par le MVP — ils peuvent etre ajoutes incrementalement dans
@@ -29,9 +29,9 @@
 //!
 //! # Dedup
 //!
-//! On stocke l'`entry_id` Discord dans `details.discord_entry_id` pour pouvoir
-//! dedupliquer au niveau DB si le meme entry est re-ingere (ex: apres un
-//! reset du `last_entry_id`). Le sync normal evite ca via le curseur.
+//! L'`entry_id` Discord vit dans la colonne dediee `discord_entry_id`. Son
+//! index unique avec `created_at` rend les relectures idempotentes, y compris
+//! apres un reset du curseur. Le lot et le curseur sont commites ensemble.
 //!
 //! # Rate limits
 //!
@@ -40,16 +40,158 @@
 //! headers `X-RateLimit-Remaining` et `Retry-After` ne sont pas encore
 //! respectes — a ajouter si on scale a beaucoup de guilds.
 
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
-use sqlx::PgPool;
+use sqlx::{PgPool, Postgres, QueryBuilder};
 use tracing::{debug, info, warn};
 
 use super::ENTRIES_PER_CALL;
 
 const DISCORD_API_BASE: &str = "https://discord.com/api/v10";
 
-pub async fn run(pool: &PgPool, bot_token: &str) -> Result<(), String> {
+use sentinel_core::domain::services::audit::discord_audit::{
+    is_newer_snowflake, map_action_type, snowflake_created_at,
+};
+
+#[derive(Debug)]
+struct PreparedAuditEntry {
+    discord_entry_id: String,
+    event_type: String,
+    actor_id: Option<String>,
+    actor_name: Option<String>,
+    target_id: Option<String>,
+    details: serde_json::Value,
+    created_at: DateTime<Utc>,
+}
+
+fn prepare_entries(
+    audit_log: &AuditLogResponse,
+    last_entry_id: Option<&str>,
+) -> Result<(Vec<PreparedAuditEntry>, Option<String>), String> {
+    let user_map: HashMap<&str, &str> = audit_log
+        .users
+        .iter()
+        .map(|user| (user.id.as_str(), user.username.as_str()))
+        .collect();
+    let mut newest_id = last_entry_id.map(str::to_owned);
+    let mut entries = Vec::new();
+
+    // Sans curseur Discord renvoie du plus recent au plus ancien ; avec
+    // `after`, l'ordre est croissant. La transaction ne depend pas de cet
+    // ordre et calcule toujours le maximum numerique pour le curseur.
+    for entry in audit_log.audit_log_entries.iter().rev() {
+        if is_newer_snowflake(newest_id.as_deref(), &entry.id) {
+            newest_id = Some(entry.id.clone());
+        }
+
+        let Some(event_type) = map_action_type(entry.action_type) else {
+            continue;
+        };
+        let created_at = snowflake_created_at(&entry.id)
+            .ok_or_else(|| format!("snowflake Discord invalide: {}", entry.id))?;
+        let actor_name = entry
+            .user_id
+            .as_deref()
+            .and_then(|user_id| user_map.get(user_id).copied())
+            .map(str::to_owned);
+        let details = serde_json::json!({
+            "discord_entry_id": entry.id,
+            "action_type_raw": entry.action_type,
+            "changes": entry.changes,
+            "options": entry.options,
+            "reason": entry.reason,
+        });
+
+        entries.push(PreparedAuditEntry {
+            discord_entry_id: entry.id.clone(),
+            event_type,
+            actor_id: entry.user_id.clone(),
+            actor_name,
+            target_id: entry.target_id.clone(),
+            details,
+            created_at,
+        });
+    }
+
+    Ok((entries, newest_id))
+}
+
+async fn persist_batch(
+    pool: &PgPool,
+    guild_id: &str,
+    entries: &[PreparedAuditEntry],
+    newest_id: Option<&str>,
+) -> Result<u32, String> {
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|error| format!("begin audit sync transaction: {error}"))?;
+
+    let inserted = if entries.is_empty() {
+        0
+    } else {
+        let mut query = QueryBuilder::<Postgres>::new(
+            "INSERT INTO audit_logs \
+             (guild_id, discord_entry_id, event_type, actor_id, actor_name, target_id, details, created_at) ",
+        );
+        query.push_values(entries, |mut row, entry| {
+            row.push_bind(guild_id)
+                .push_bind(&entry.discord_entry_id)
+                .push_bind(&entry.event_type)
+                .push_bind(&entry.actor_id)
+                .push_bind(&entry.actor_name)
+                .push_bind(&entry.target_id)
+                .push_bind(&entry.details)
+                .push_bind(entry.created_at);
+        });
+        query.push(
+            " ON CONFLICT (discord_entry_id, created_at) \
+              WHERE discord_entry_id IS NOT NULL DO NOTHING",
+        );
+        query
+            .build()
+            .execute(&mut *tx)
+            .await
+            .map_err(|error| format!("insert audit batch: {error}"))?
+            .rows_affected()
+    };
+
+    // Le curseur ne peut jamais regresser si deux instances synchronisent la
+    // meme guild en parallele. Il est commite dans la meme transaction que le lot.
+    sqlx::query(
+        "INSERT INTO discord_audit_sync_state \
+             (guild_id, last_entry_id, last_synced_at, last_error, consecutive_errors) \
+         VALUES ($1, $2, NOW(), NULL, 0) \
+         ON CONFLICT (guild_id) DO UPDATE SET \
+            last_entry_id = CASE \
+                WHEN EXCLUDED.last_entry_id IS NULL THEN discord_audit_sync_state.last_entry_id \
+                WHEN discord_audit_sync_state.last_entry_id IS NULL \
+                  OR discord_audit_sync_state.last_entry_id !~ '^[0-9]+$' \
+                  OR (EXCLUDED.last_entry_id ~ '^[0-9]+$' AND \
+                      EXCLUDED.last_entry_id::numeric > discord_audit_sync_state.last_entry_id::numeric) \
+                THEN EXCLUDED.last_entry_id \
+                ELSE discord_audit_sync_state.last_entry_id \
+            END, \
+            last_synced_at = NOW(), \
+            last_error = NULL, \
+            consecutive_errors = 0",
+    )
+    .bind(guild_id)
+    .bind(newest_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|error| format!("update sync state: {error}"))?;
+
+    tx.commit()
+        .await
+        .map_err(|error| format!("commit audit sync transaction: {error}"))?;
+
+    u32::try_from(inserted).map_err(|_| format!("insert count overflow: {inserted}"))
+}
+
+pub async fn run(pool: &PgPool, http: &reqwest::Client, bot_token: &str) -> Result<(), String> {
     // 1. Recuperer les guilds a synchroniser
     let guilds: Vec<(String,)> = sqlx::query_as("SELECT guild_id FROM guilds")
         .fetch_all(pool)
@@ -61,17 +203,12 @@ pub async fn run(pool: &PgPool, bot_token: &str) -> Result<(), String> {
         return Ok(());
     }
 
-    let http = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .build()
-        .map_err(|e| format!("reqwest client: {e}"))?;
-
     let mut total_imported = 0u32;
     let mut guilds_synced = 0u32;
     let mut guilds_errored = 0u32;
 
     for (guild_id,) in guilds {
-        match sync_guild(&http, pool, bot_token, &guild_id).await {
+        match sync_guild(http, pool, bot_token, &guild_id).await {
             Ok(imported) => {
                 total_imported += imported;
                 guilds_synced += 1;
@@ -169,119 +306,13 @@ async fn sync_guild(
         .await
         .map_err(|e| format!("discord parse: {e}"))?;
 
-    if audit_log.audit_log_entries.is_empty() {
-        // Pas de nouvelles entries — juste update last_synced_at
-        sqlx::query(
-            "INSERT INTO discord_audit_sync_state (guild_id, last_entry_id, last_synced_at, consecutive_errors) \
-             VALUES ($1, $2, NOW(), 0) \
-             ON CONFLICT (guild_id) DO UPDATE SET \
-                last_synced_at = NOW(), \
-                last_error = NULL, \
-                consecutive_errors = 0",
-        )
-        .bind(guild_id)
-        .bind(&last_entry_id)
-        .execute(pool)
-        .await
-        .map_err(|e| format!("update sync state: {e}"))?;
-        return Ok(0);
-    }
-
-    // Construit une map user_id â†’ username pour enrichir les inserts
-    let user_map: std::collections::HashMap<String, String> = audit_log
-        .users
-        .iter()
-        .map(|u| (u.id.clone(), u.username.clone()))
-        .collect();
-
-    // 3. Insert les entries pertinentes. Discord renvoie les entries du
-    //    plus recent au plus ancien — on inverse pour que les inserts
-    //    soient chronologiques et que `last_entry_id` reflete le plus
-    //    recent.
-    let mut inserted = 0u32;
-    let mut newest_id = last_entry_id.clone();
-
-    for entry in audit_log.audit_log_entries.iter().rev() {
-        let Some(event_type) = map_action_type(entry.action_type) else {
-            // Type d'action non couvert par le MVP — on skip mais on
-            // avance quand meme le curseur.
-            if is_newer_snowflake(newest_id.as_deref(), &entry.id) {
-                newest_id = Some(entry.id.clone());
-            }
-            continue;
-        };
-
-        let actor_name = entry
-            .user_id
-            .as_deref()
-            .and_then(|uid| user_map.get(uid).cloned());
-
-        let details = serde_json::json!({
-            "discord_entry_id": entry.id,
-            "action_type_raw": entry.action_type,
-            "changes": entry.changes,
-            "options": entry.options,
-            "reason": entry.reason,
-        });
-
-        let res = sqlx::query(
-            "INSERT INTO audit_logs (guild_id, event_type, actor_id, actor_name, target_id, details, created_at) \
-             VALUES ($1, $2, $3, $4, $5, $6, NOW())",
-        )
-        .bind(guild_id)
-        .bind(&event_type)
-        .bind(&entry.user_id)
-        .bind(&actor_name)
-        .bind(&entry.target_id)
-        .bind(&details)
-        .execute(pool)
-        .await;
-
-        match res {
-            Ok(_) => {
-                inserted += 1;
-                // Avancer le curseur SEULEMENT si l'INSERT a reussi.
-                // Sinon l'entry sera re-fetchee au prochain sync.
-                if is_newer_snowflake(newest_id.as_deref(), &entry.id) {
-                    newest_id = Some(entry.id.clone());
-                }
-            }
-            Err(e) => warn!(
-                error = %e,
-                entry_id = %entry.id,
-                event_type = %event_type,
-                "insert audit_log failed — curseur non avance"
-            ),
-        }
-    }
-
-    // 4. Update le curseur
-    sqlx::query(
-        "INSERT INTO discord_audit_sync_state (guild_id, last_entry_id, last_synced_at, consecutive_errors) \
-         VALUES ($1, $2, NOW(), 0) \
-         ON CONFLICT (guild_id) DO UPDATE SET \
-            last_entry_id = EXCLUDED.last_entry_id, \
-            last_synced_at = NOW(), \
-            last_error = NULL, \
-            consecutive_errors = 0",
-    )
-    .bind(guild_id)
-    .bind(&newest_id)
-    .execute(pool)
-    .await
-    .map_err(|e| format!("update sync state: {e}"))?;
-
-    Ok(inserted)
+    let (entries, newest_id) = prepare_entries(&audit_log, last_entry_id.as_deref())?;
+    persist_batch(pool, guild_id, &entries, newest_id.as_deref()).await
 }
 
-// La comparaison de snowflakes et le mapping des action_types Discord vivent
-// dans le core hexagonal (avec leurs tests, dont la régression P0 string vs
-// u64) — partagés avec le cache de messages d'audit du bot.
-use sentinel_core::domain::services::audit::discord_audit::{is_newer_snowflake, map_action_type};
-
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// -----------------------------------------------------------------------------
 // Discord API response types
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// -----------------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
 struct AuditLogResponse {
@@ -311,8 +342,141 @@ struct DiscordUser {
     username: String,
 }
 
-// Suppress unused warnings on DateTime import — utile si on ajoute du tracking
-// temporel plus tard
-fn _ensure_chrono_used() -> Option<DateTime<Utc>> {
-    None
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const DISCORD_EPOCH_MILLIS: u64 = 1_420_070_400_000;
+
+    fn snowflake(millis: u64, sequence: u64) -> String {
+        (((millis - DISCORD_EPOCH_MILLIS) << 22) | sequence).to_string()
+    }
+
+    fn prepared(entry_id: &str, target_id: &str) -> PreparedAuditEntry {
+        PreparedAuditEntry {
+            discord_entry_id: entry_id.into(),
+            event_type: "discord_audit:member_ban".into(),
+            actor_id: Some("actor-1".into()),
+            actor_name: Some("Actor".into()),
+            target_id: Some(target_id.into()),
+            details: serde_json::json!({"discord_entry_id": entry_id}),
+            created_at: snowflake_created_at(entry_id).unwrap(),
+        }
+    }
+
+    #[test]
+    fn preparation_keeps_newest_cursor_even_for_unsupported_event() {
+        let supported_id = snowflake(1_700_000_000_000, 1);
+        let unsupported_id = snowflake(1_700_000_001_000, 2);
+        let response = AuditLogResponse {
+            audit_log_entries: vec![
+                AuditLogEntry {
+                    id: unsupported_id.clone(),
+                    user_id: None,
+                    target_id: None,
+                    action_type: 1,
+                    reason: None,
+                    changes: serde_json::Value::Null,
+                    options: serde_json::Value::Null,
+                },
+                AuditLogEntry {
+                    id: supported_id,
+                    user_id: Some("actor-1".into()),
+                    target_id: Some("target-1".into()),
+                    action_type: 22,
+                    reason: Some("reason".into()),
+                    changes: serde_json::Value::Null,
+                    options: serde_json::Value::Null,
+                },
+            ],
+            users: vec![DiscordUser {
+                id: "actor-1".into(),
+                username: "Actor".into(),
+            }],
+        };
+
+        let (entries, newest) = prepare_entries(&response, None).unwrap();
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].actor_name.as_deref(), Some("Actor"));
+        assert_eq!(newest.as_deref(), Some(unsupported_id.as_str()));
+    }
+
+    #[sqlx::test(migrations = "../sentinel-api/migrations")]
+    async fn replay_is_idempotent_and_cursor_never_regresses(pool: PgPool) -> sqlx::Result<()> {
+        let older_id = snowflake(1_700_000_000_000, 1);
+        let newer_id = snowflake(1_700_000_001_000, 2);
+        let entries = vec![
+            prepared(&older_id, "target-1"),
+            prepared(&newer_id, "target-2"),
+        ];
+
+        let first = persist_batch(&pool, "guild-1", &entries, Some(&newer_id))
+            .await
+            .unwrap();
+        let replay = persist_batch(&pool, "guild-1", &entries, Some(&newer_id))
+            .await
+            .unwrap();
+        persist_batch(&pool, "guild-1", &[], Some(&older_id))
+            .await
+            .unwrap();
+
+        let count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM audit_logs WHERE guild_id = 'guild-1' \
+             AND discord_entry_id IS NOT NULL",
+        )
+        .fetch_one(&pool)
+        .await?;
+        let cursor: String = sqlx::query_scalar(
+            "SELECT last_entry_id FROM discord_audit_sync_state WHERE guild_id = 'guild-1'",
+        )
+        .fetch_one(&pool)
+        .await?;
+        let created_at: DateTime<Utc> =
+            sqlx::query_scalar("SELECT created_at FROM audit_logs WHERE discord_entry_id = $1")
+                .bind(&older_id)
+                .fetch_one(&pool)
+                .await?;
+
+        assert_eq!(first, 2);
+        assert_eq!(replay, 0);
+        assert_eq!(count, 2);
+        assert_eq!(cursor, newer_id);
+        assert_eq!(created_at.timestamp_millis(), 1_700_000_000_000);
+        Ok(())
+    }
+
+    #[sqlx::test(migrations = "../sentinel-api/migrations")]
+    async fn failed_batch_rolls_back_rows_and_cursor(pool: PgPool) -> sqlx::Result<()> {
+        sqlx::query(
+            "INSERT INTO discord_audit_sync_state (guild_id, last_entry_id) \
+             VALUES ('guild-1', '1')",
+        )
+        .execute(&pool)
+        .await?;
+        let valid_id = snowflake(1_700_000_000_000, 1);
+        let invalid_id = snowflake(1_700_000_001_000, 2);
+        let entries = vec![
+            prepared(&valid_id, "target-1"),
+            prepared(&invalid_id, "target-id-over-20-chars"),
+        ];
+
+        let result = persist_batch(&pool, "guild-1", &entries, Some(&invalid_id)).await;
+
+        let count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM audit_logs WHERE guild_id = 'guild-1' \
+             AND discord_entry_id IS NOT NULL",
+        )
+        .fetch_one(&pool)
+        .await?;
+        let cursor: String = sqlx::query_scalar(
+            "SELECT last_entry_id FROM discord_audit_sync_state WHERE guild_id = 'guild-1'",
+        )
+        .fetch_one(&pool)
+        .await?;
+        assert!(result.is_err());
+        assert_eq!(count, 0);
+        assert_eq!(cursor, "1");
+        Ok(())
+    }
 }

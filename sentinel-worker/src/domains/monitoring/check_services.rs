@@ -1,34 +1,50 @@
 use std::collections::HashSet;
 
 use redis::AsyncCommands;
-use tracing::{error, info, warn};
+use tokio::sync::watch;
+use tracing::{info, warn};
+
+use platform_common_worker::{JobMetrics, SupervisedTask};
 
 use super::MonitorConfig;
 
 /// Demarre la boucle de monitoring : toutes les X secondes, verifie
 /// quels bots/workers sont en ligne et alerte via l'API quand un service disparait.
-pub fn start(redis_client: redis::Client, config: MonitorConfig) {
-    tokio::spawn(async move {
-        let interval = tokio::time::Duration::from_secs(config.check_interval_secs);
-        let http = reqwest::Client::new();
+pub fn start(
+    http: reqwest::Client,
+    mut redis: redis::aio::ConnectionManager,
+    config: MonitorConfig,
+    mut shutdown: watch::Receiver<bool>,
+) -> SupervisedTask {
+    SupervisedTask::spawn("monitor_services", async move {
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(
+            config.check_interval_secs.max(1),
+        ));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         let mut previous_online: HashSet<String> = HashSet::new();
         let mut first_run = true;
+        let mut job_metrics = JobMetrics::new("monitor_services", "monitoring-worker");
 
         loop {
-            tokio::time::sleep(interval).await;
-
-            let mut conn = match redis_client.get_multiplexed_async_connection().await {
-                Ok(c) => c,
-                Err(e) => {
-                    error!(error = %e, "Redis indisponible pour monitoring");
+            tokio::select! {
+                biased;
+                changed = shutdown.changed() => {
+                    if changed.is_err() || *shutdown.borrow() {
+                        break;
+                    }
                     continue;
                 }
-            };
+                _ = interval.tick() => {}
+            }
+
+            let started = std::time::Instant::now();
+            job_metrics.started();
 
             // Recuperer tous les services connus
-            let known: Vec<String> = match conn.smembers::<_, Vec<String>>("bots:known").await {
+            let known: Vec<String> = match redis.smembers::<_, Vec<String>>("bots:known").await {
                 Ok(k) => k,
                 Err(e) => {
+                    job_metrics.failed(started.elapsed());
                     warn!(error = %e, "Erreur lecture bots:known depuis Redis");
                     continue;
                 }
@@ -37,7 +53,7 @@ pub fn start(redis_client: redis::Client, config: MonitorConfig) {
             let mut current_online: HashSet<String> = HashSet::new();
 
             for name in &known {
-                let exists: bool = conn
+                let exists: bool = redis
                     .exists(format!("bot:online:{}", name))
                     .await
                     .unwrap_or(false);
@@ -55,6 +71,7 @@ pub fn start(redis_client: redis::Client, config: MonitorConfig) {
                     total = known.len(),
                     "Etat initial des services"
                 );
+                job_metrics.succeeded(started.elapsed());
                 continue;
             }
 
@@ -89,7 +106,7 @@ pub fn start(redis_client: redis::Client, config: MonitorConfig) {
                         }
                     });
                     if let Err(e) = platform_common_worker::redis_helpers::xadd_event(
-                        &mut conn,
+                        &mut redis,
                         &event.to_string(),
                     )
                     .await
@@ -130,7 +147,7 @@ pub fn start(redis_client: redis::Client, config: MonitorConfig) {
                         }
                     });
                     if let Err(e) = platform_common_worker::redis_helpers::xadd_event(
-                        &mut conn,
+                        &mut redis,
                         &event.to_string(),
                     )
                     .await
@@ -141,8 +158,12 @@ pub fn start(redis_client: redis::Client, config: MonitorConfig) {
             }
 
             previous_online = current_online;
+            job_metrics.succeeded(started.elapsed());
         }
-    });
+
+        job_metrics.stopped();
+        info!("Boucle de monitoring arretee (shutdown)");
+    })
 }
 
 /// Retourne le label d'un service (Bot ou Worker). Le prédicat de

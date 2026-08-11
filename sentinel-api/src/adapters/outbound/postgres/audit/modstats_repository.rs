@@ -33,10 +33,15 @@ impl ModstatsRepository for PgModstatsRepository {
         limit: i64,
     ) -> Result<Vec<ModeratorStat>, sentinel_core::domain::errors::DomainError> {
         let rows: Vec<Row> = sqlx::query_as(
-            "SELECT moderator_id, moderator_name, COUNT(*) AS action_count \
-             FROM moderation_actions \
-             WHERE guild_id = $1 AND created_at >= NOW() - make_interval(days => $2) \
-             GROUP BY moderator_id, moderator_name \
+            "SELECT actor_id AS moderator_id, \
+                    COALESCE(MAX(actor_name), actor_id) AS moderator_name, \
+                    COUNT(*) AS action_count \
+             FROM audit_logs \
+             WHERE guild_id = $1 AND event_type LIKE 'mod_%' \
+               AND event_type NOT IN ('mod_unban', 'mod_unmute') \
+               AND actor_id IS NOT NULL \
+               AND created_at >= NOW() - make_interval(days => $2) \
+             GROUP BY actor_id \
              ORDER BY action_count DESC \
              LIMIT $3",
         )
@@ -74,8 +79,7 @@ impl ModstatsRepository for PgModstatsRepository {
             kicks: i64,
         }
 
-        // Phase 4 : on lit depuis `audit_logs` (event_type='mod_*') et plus
-        // depuis `moderation_actions` qui n'est plus alimentee.
+        // Les statistiques partagent la source de verite `audit_logs`.
         // `days` est un i32 clampe cote use case (interpolation safe).
         let sql = format!(
             "SELECT \
@@ -169,5 +173,32 @@ impl ModstatsRepository for PgModstatsRepository {
                 kicks: r.kicks,
             })
             .collect())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[sqlx::test(migrations = "../sentinel-api/migrations")]
+    async fn top_moderators_reads_mod_events_from_audit_logs(pool: PgPool) -> sqlx::Result<()> {
+        sqlx::query(
+            "INSERT INTO audit_logs \
+                 (id, guild_id, event_type, actor_id, actor_name, target_id, details) \
+             VALUES (gen_random_uuid(), 'guild-1', 'mod_warn', 'moderator-1', \
+                     'Moderator', 'target-1', '{\"reason\":\"test\"}'::jsonb)",
+        )
+        .execute(&pool)
+        .await?;
+
+        let stats = PgModstatsRepository::new(pool)
+            .top_moderators("guild-1", 30, 10)
+            .await
+            .unwrap();
+
+        assert_eq!(stats.len(), 1);
+        assert_eq!(stats[0].moderator_id, "moderator-1");
+        assert_eq!(stats[0].action_count, 1);
+        Ok(())
     }
 }

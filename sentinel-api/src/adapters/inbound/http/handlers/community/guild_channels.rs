@@ -11,13 +11,13 @@ use redis::AsyncCommands;
 use tracing::warn;
 
 use crate::adapters::inbound::http::errors::ApiError;
-use crate::adapters::inbound::http::state::AppState;
 use crate::adapters::outbound::discord_api::DiscordChannel;
+use crate::bootstrap::state::CommunityState;
 use sentinel_core::domain::entities::community::guild_member_reset::CHANNELS_CACHE_TTL_SECS;
 
 /// GET /api/guilds/{guild_id}/channels — liste les salons texte.
 pub async fn list_text_channels(
-    State(state): State<AppState>,
+    State(state): State<CommunityState>,
     ValidatedGuild { guild_id }: ValidatedGuild,
 ) -> Result<Json<Vec<DiscordChannel>>, ApiError> {
     let cache_key = format!("guild:channels:{guild_id}");
@@ -51,7 +51,7 @@ pub async fn list_text_channels(
 /// + voice + stage). Utilise par les pickers config qui s'appliquent aux
 /// deux types (xp_channel_multipliers, etc.).
 pub async fn list_all_channels(
-    State(state): State<AppState>,
+    State(state): State<CommunityState>,
     ValidatedGuild { guild_id }: ValidatedGuild,
 ) -> Result<Json<Vec<DiscordChannel>>, ApiError> {
     let cache_key = format!("guild:channels:all:{guild_id}");

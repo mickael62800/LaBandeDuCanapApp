@@ -35,7 +35,7 @@ pub trait ModerationRepository: Send + Sync {
     ) -> Result<(), DomainError>;
     async fn delete_action(&self, id: uuid::Uuid) -> Result<bool, DomainError>;
 
-    /// Recupere le guild_id d'une action (SELECT guild_id FROM moderation_actions).
+    /// Recupere le guild_id d'une action stockee dans `audit_logs`.
     /// Default : None (pour les mocks de test).
     async fn action_guild_id(&self, _action_id: uuid::Uuid) -> Result<Option<String>, DomainError> {
         Ok(None)

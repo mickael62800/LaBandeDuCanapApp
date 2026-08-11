@@ -10,7 +10,7 @@ l'image Nginx qui sert le site.
 
 Aucun changement fonctionnel n'a ete applique pendant l'audit.
 
-## Etat des validations
+## Etat des validations au moment de l'audit
 
 - Les 60 tests Vitest passent dans 4 fichiers de tests.
 - Le build TypeScript et Vite passe en 4,75 secondes.
@@ -24,6 +24,34 @@ Aucun changement fonctionnel n'a ete applique pendant l'audit.
 La base est donc compilable et fonctionnelle, mais les tests actuels couvrent
 tres peu les chemins critiques : session, clients HTTP, route guards, temps
 reel et principaux composants.
+
+## Avancement du chantier
+
+Premiere passe appliquee le 11 aout 2026 :
+
+- transport JSON commun a Sentinel, Nexus, Ops, Atrium et aux routes publiques ;
+- erreurs HTTP typees avec statut, code, corps, request ID et backend ;
+- refresh de session deduplique et rejoue sur les quatre APIs ;
+- timeouts sur les appels reseau et chargement de `site-config.json` borne ;
+- requetes concurrentes protegees par annulation et strategie `latest wins` ;
+- stockage local defensif et suppression du cache d'URL obsolete ;
+- contrat WebSocket generique et specialise, timeout d'ouverture et reconnexion
+  exponentielle avec jitter et renouvellement de session ;
+- suppression des trois imports dynamiques sans effet ;
+- lint durci a zero avertissement et ajoute a la CI ;
+- decoupage Atomic Design des deux plus gros composants publics :
+  `MemberHomePage.vue` devient une page d'orchestration appuyee sur un
+  composable, un atome et sept organismes, tandis que `GamesPage.vue`
+  delegue ses cinq panneaux metier a des organismes specialises ;
+- extraction des formateurs communautaires et des feuilles de style de ces
+  deux pages, avec tests unitaires des nouvelles interfaces de composants.
+
+Etat apres cette passe : 80 tests dans 8 fichiers, build TypeScript/Vite valide,
+ESLint sans erreur ni avertissement. Tous les composants initialement au-dessus
+de 600 lignes sont maintenant sous ce seuil. Le client WebSocket Web n'insere
+plus aucun credential dans son URL. Le fractionnement de `types/index.ts`,
+l'accessibilite, les tests E2E et l'adaptation correspondante du gateway
+restent des chantiers separes.
 
 ## Synthese des priorites
 
@@ -157,6 +185,20 @@ La solution cible est une authentification par cookie HttpOnly same-origin ou
 l'echange HTTP d'une session valide contre un ticket WebSocket a usage unique
 et tres courte duree. Il faut migrer le gateway et le client ensemble.
 
+### Avancement Web
+
+Le client ouvre desormais une URL `/ws` sans query string, aussi bien avec une
+session Discord qu'avec une cle API configuree. Le renouvellement de session
+avant reconnexion ne reinsere pas le nouveau jeton dans l'URL. La configuration
+Nginx ne maintient donc plus un format de log special uniquement destine a
+masquer ces credentials.
+
+Le gateway actuel authentifie encore l'upgrade avec `token` ou
+`discord_token` dans la query string. Cette passe Web prepare l'authentification
+same-origin par cookie HttpOnly mais n'est pas compatible avec ce gateway tant
+que celui-ci n'a pas ete migre. Ne pas deployer les deux versions dans cet etat
+intermediaire.
+
 ### Fichiers concernes
 
 - `src/services/realtimeService.ts`
@@ -264,22 +306,22 @@ configuration n'est pas necessairement visible avant rechargement.
 
 ## Priorite 2 - Decouper les god files
 
-Les fichiers les plus volumineux sont :
+Tailles avant et apres le chantier :
 
-| Fichier | Lignes |
-| --- | ---: |
-| `MemberHomePage.vue` | 1 855 |
-| `GamesPage.vue` | 1 364 |
-| `ModerationJournalTab.vue` | 824 |
-| `CommunityLifePage.vue` | 781 |
-| `ServerBuilderPage.vue` | 722 |
-| `ComponentConfigForm.vue` | 697 |
-| `DockerAdminSection.vue` | 684 |
-| `WelcomeForm.vue` | 673 |
-| `AnnouncementFormModal.vue` | 662 |
-| `NexusServerDetailPage.vue` | 659 |
-| `TopBar.vue` | 608 |
-| `AtriumPage.vue` | 594 |
+| Fichier | Avant | Maintenant |
+| --- | ---: | ---: |
+| `MemberHomePage.vue` | 1 855 | 117 |
+| `GamesPage.vue` | 1 364 | 341 |
+| `ModerationJournalTab.vue` | 824 | 307 |
+| `CommunityLifePage.vue` | 781 | 258 |
+| `ServerBuilderPage.vue` | 722 | 583 |
+| `ComponentConfigForm.vue` | 697 | 431 |
+| `DockerAdminSection.vue` | 684 | 478 |
+| `WelcomeForm.vue` | 673 | 455 |
+| `AnnouncementFormModal.vue` | 662 | 542 |
+| `NexusServerDetailPage.vue` | 659 | 420 |
+| `TopBar.vue` | 608 | 165 |
+| `AtriumPage.vue` | 594 | 594 |
 
 `src/types/index.ts` atteint egalement 593 lignes et melange les domaines.
 
@@ -308,6 +350,18 @@ Les fichiers les plus volumineux sont :
 Chaque extraction doit commencer par des tests de comportement. L'objectif
 n'est pas seulement de diminuer le nombre de lignes, mais de donner a chaque
 bloc une responsabilite, des props/emits types et un cycle de vie autonome.
+
+### Realisation
+
+- `ModerationJournalTab` delegue les filtres et la table a deux organismes
+  types ; l'orchestration des confirmations et sanctions reste dans le parent.
+- `CommunityLifePage` delegue ses quatre domaines a quatre organismes : news,
+  sondages, membre du mois et recherche de joueurs.
+- Les feuilles de style des sept autres composants ont ete isolees avec leur
+  portee `scoped` conservee. Leurs scripts et templates sont ainsi separes de
+  la presentation sans modifier le comportement des formulaires.
+- Quatre tests de contrat couvrent les nouveaux props/emits, en complement des
+  tests des organismes publics.
 
 ## Priorite 3 - Elargir la couverture de tests
 

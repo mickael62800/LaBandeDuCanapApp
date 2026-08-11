@@ -169,7 +169,13 @@ pub fn spawn(
             let (sent, errors) = dispatch_webhooks(&client, &webhook, to_send).await;
 
             if generated > 0 {
-                tracing::info!(generated, deduplicated, sent, errors, "alerts: cycle termine");
+                tracing::info!(
+                    generated,
+                    deduplicated,
+                    sent,
+                    errors,
+                    "alerts: cycle termine"
+                );
             }
         }
     });

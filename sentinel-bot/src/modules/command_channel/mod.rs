@@ -52,6 +52,6 @@ pub async fn on_message(ctx: &Context, msg: &Message) -> bool {
     if let Err(e) = msg.delete(&ctx.http).await {
         debug!(error = %e, "Echec suppression message hors-commande");
     }
-    
+
     true
 }

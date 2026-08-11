@@ -73,15 +73,15 @@ use crate::adapters::inbound::http::state::AppState;
 
 /// Lance le serveur gRPC. A spawn dans une task tokio depuis `main.rs`.
 pub async fn serve_grpc(state: AppState, bind: SocketAddr) {
-    let api_key = state.api_key.clone();
+    let api_key = state.shared.api_key.clone();
 
     let progression = ProgressionGrpc {
         levels_uc: state.community.levels_uc.clone(),
-        broadcaster: state.broadcaster.clone(),
+        broadcaster: state.shared.broadcaster.clone(),
     };
     let stats = StatsGrpc {
         stats_uc: state.audit.stats_uc.clone(),
-        broadcaster: state.broadcaster.clone(),
+        broadcaster: state.shared.broadcaster.clone(),
     };
     let tickets = TicketsGrpc {
         tickets_uc: state.system.tickets_uc.clone(),
@@ -117,8 +117,8 @@ pub async fn serve_grpc(state: AppState, bind: SocketAddr) {
     let purge = PurgeGrpc {
         infractions_uc: state.moderation.infractions_uc.clone(),
         audit_logs_uc: state.audit.audit_logs_uc.clone(),
-        log_repo: state.log_repo.clone(),
-        broadcaster: state.broadcaster.clone(),
+        log_repo: state.shared.log_repo.clone(),
+        broadcaster: state.shared.broadcaster.clone(),
     };
     let export = ExportGrpc {
         uc: state.system.export_uc.clone(),
@@ -140,7 +140,7 @@ pub async fn serve_grpc(state: AppState, bind: SocketAddr) {
         reviews_uc: state.moderation.automod_reviews_uc.clone(),
         moderation_uc: state.moderation.moderation_uc.clone(),
         bot_config_repo: state.moderation.bot_config_repo.clone(),
-        broadcaster: state.broadcaster.clone(),
+        broadcaster: state.shared.broadcaster.clone(),
     };
     let action_messages = DiscordActionMessagesGrpc {
         uc: state.audit.discord_action_messages_uc.clone(),
@@ -164,7 +164,7 @@ pub async fn serve_grpc(state: AppState, bind: SocketAddr) {
     };
     let automod = AutomodGrpc {
         uc: state.ai.analyze_uc.clone(),
-        broadcaster: state.broadcaster.clone(),
+        broadcaster: state.shared.broadcaster.clone(),
         adaptive_slowmode_repo: state.moderation.automod_adaptive_slowmode_repo.clone(),
     };
     let images = ImagesGrpc {

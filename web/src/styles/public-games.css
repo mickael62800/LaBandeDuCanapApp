@@ -1,0 +1,689 @@
+.jx {
+  flex: 1;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: clamp(1rem, 3vh, 2rem) clamp(1rem, 4vw, 3rem) 3rem;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(1.75rem, 4vh, 2.5rem);
+}
+
+.jx-bar,
+.jx-hero,
+.jx-block {
+  width: 100%;
+  max-width: 62rem;
+  margin: 0 auto;
+}
+
+.jx-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 1rem;
+}
+
+
+
+.jx-solde {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 1.05rem;
+  padding: 0.3rem 1rem;
+  border-radius: var(--radius-pill);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+}
+
+/* Le solde change à l'issue du tirage : un bref éclat signale la mise à
+   jour, sinon le chiffre bouge sans qu'on le remarque. */
+.jx-solde.pulse {
+  animation: eclat 0.9s ease-out;
+}
+
+@keyframes eclat {
+  40% {
+    border-color: var(--accent);
+    color: #fff;
+    transform: scale(1.06);
+  }
+}
+
+
+
+
+
+.jx-block h2 {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0 0 1rem;
+  font-size: 1.15rem;
+}
+
+.jx-count {
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: var(--site-ink-4);
+}
+
+.jx-hint {
+  text-align: center;
+  color: var(--site-ink-4);
+}
+
+.jx-vide {
+  margin: 0;
+  padding: 0.85rem 1.05rem;
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px dashed var(--border);
+  color: var(--site-ink-4);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.jx-vide code {
+  font-family: ui-monospace, "Cascadia Mono", Menlo, monospace;
+  color: var(--text-secondary);
+}
+
+.jx-alerte {
+  margin: 0;
+  padding: 0.85rem 1.05rem;
+  border-radius: var(--radius-lg);
+  background: rgba(244, 63, 94, 0.1);
+  border: 1px solid rgba(244, 63, 94, 0.35);
+  color: #fca5a5;
+  font-size: 0.9rem;
+}
+
+
+
+
+/* ── La roue ── */
+.jx-roue-zone {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 2rem;
+  align-items: center;
+}
+
+.jx-roue-wrap {
+  position: relative;
+  width: min(20rem, 60vw);
+  aspect-ratio: 1;
+}
+
+/* Repère fixe en haut : c'est lui qui désigne la case gagnante. */
+.jx-fleche {
+  position: absolute;
+  top: -0.6rem;
+  left: 50%;
+  translate: -50% 0;
+  z-index: 2;
+  width: 0;
+  height: 0;
+  border-left: 0.7rem solid transparent;
+  border-right: 0.7rem solid transparent;
+  border-top: 1.1rem solid var(--text-primary);
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6));
+}
+
+.jx-roue {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 4px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 12px 50px rgba(168, 85, 247, 0.25);
+  /* Décélération longue : l'essentiel du plaisir est dans le ralentissement. */
+  transition: transform 3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.jx-case {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  justify-content: center;
+  /* Chaque emoji est poussé vers le bord puis redressé, sinon il pencherait
+     avec son secteur. */
+  padding-top: 0.9rem;
+}
+
+.jx-case-in {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.jx-roue-cote {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.jx-resultat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 1rem 1.2rem;
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+}
+
+.jx-resultat.rare {
+  border-color: var(--accent);
+  box-shadow: 0 0 30px rgba(168, 85, 247, 0.35);
+}
+
+.jx-gain {
+  font-size: 1.3rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.jx-gain.plus {
+  color: var(--success);
+}
+
+.jx-gain.moins {
+  color: var(--danger);
+}
+
+.jx-gain.neutre {
+  color: var(--site-ink-4);
+  font-size: 1rem;
+}
+
+.jx-apres {
+  font-size: 0.85rem;
+  color: var(--site-ink-3);
+}
+
+/* ── Classement ── */
+.jx-rangs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.jx-rang {
+  display: grid;
+  grid-template-columns: 2.2rem 1fr auto;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.6rem 1rem;
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+}
+
+.jx-rang.moi {
+  border-color: var(--border-strong);
+  background: rgba(168, 85, 247, 0.1);
+}
+
+.jx-place {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--site-ink-4);
+  text-align: right;
+}
+
+.jx-rang.moi .jx-place {
+  color: var(--accent);
+}
+
+.jx-nom {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jx-coins {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+/* ── Historique ── */
+.jx-txs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.jx-tx {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.55rem 1rem;
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+
+.jx-tx-desc {
+  color: var(--site-ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jx-tx-montant {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.jx-tx-montant.plus {
+  color: var(--success);
+}
+
+.jx-tx-montant.moins {
+  color: var(--danger);
+}
+
+.jx-tx-date {
+  font-size: 0.78rem;
+  color: var(--site-ink-4);
+  white-space: nowrap;
+}
+
+/* ── Carrousel ── */
+.jx-carrousel {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.jx-fleche-nav {
+  flex: none;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--site-ink-3);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.jx-fleche-nav:hover {
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.jx-vignettes {
+  list-style: none;
+  margin: 0;
+  padding: 0.2rem;
+  display: flex;
+  gap: 0.7rem;
+  overflow-x: auto;
+  /* Chaque vignette s'aligne proprement au défilement plutôt que de rester
+     coupée entre deux. */
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+
+.jx-vignettes::-webkit-scrollbar {
+  display: none;
+}
+
+.jx-vignette {
+  scroll-snap-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 9rem;
+  padding: 0.9rem 1rem;
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+.jx-vignette:hover {
+  transform: translateY(-2px);
+}
+
+/* Le jeu courant se distingue par sa couleur propre : avec plusieurs jeux,
+   un simple surlignage ne dirait pas lequel. */
+.jx-vignette.active {
+  border-color: var(--c);
+  box-shadow: 0 0 24px color-mix(in srgb, var(--c) 35%, transparent);
+  color: var(--text-primary);
+}
+
+.jx-vignette-emoji {
+  font-size: 1.8rem;
+  line-height: 1;
+}
+
+.jx-vignette-nom {
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.jx-vignette-tag {
+  font-size: 0.68rem;
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--site-ink-4);
+  white-space: nowrap;
+}
+
+/* Jouable des deux côtés : c'est l'information la plus utile de la vignette,
+   elle prend la couleur du jeu au lieu de se lire comme une mention grise. */
+.jx-vignette-tag.double {
+  background: color-mix(in srgb, var(--c) 22%, transparent);
+  color: var(--text-primary);
+}
+
+.jx-pitch {
+  margin: 0.8rem 0 0;
+  color: var(--site-ink-3);
+  font-size: 0.92rem;
+}
+
+/* ── Coussin Piégé ── */
+.cd-sous-titre {
+  margin: var(--space-2xl) 0 var(--space-lg);
+  font-size: 1.02rem;
+}
+
+.cd-fiche {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+  padding: var(--space-xl);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+}
+
+.cd-classe {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.cd-classe-emoji {
+  font-size: 2.4rem;
+  line-height: 1;
+}
+
+.cd-classe-nom {
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+.cd-classe-trait {
+  color: var(--site-ink-4);
+  font-size: 0.86rem;
+}
+
+.cd-identite {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-sm);
+}
+
+.cd-titre {
+  color: var(--accent);
+  font-style: italic;
+  font-size: 0.9rem;
+}
+
+.cd-niveau {
+  margin-left: auto;
+  padding: 2px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-bg);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.cd-pv-ligne {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  color: var(--site-ink-3);
+  margin-bottom: var(--space-xs);
+}
+
+.cd-jauge {
+  height: 10px;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+}
+
+/* Du vert au rouge selon ce qui reste : la couleur dit l'état avant que le
+   chiffre soit lu. */
+.cd-jauge i {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(90deg, var(--danger), var(--accent-warm), var(--success));
+  background-size: 300% 100%;
+  background-position: right;
+  transition: width var(--transition-base);
+}
+
+.cd-stats {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--space-sm);
+}
+
+.cd-stats li {
+  display: flex;
+  justify-content: space-between;
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 0.88rem;
+}
+
+.cd-stats b {
+  font-variant-numeric: tabular-nums;
+}
+
+.cd-stats .cd-dispo {
+  border: 1px solid var(--border-strong);
+}
+
+.cd-palmares {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: var(--space-md);
+}
+
+.cd-palmares li {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--space-md);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+}
+
+.cd-palmares b {
+  font-size: 1.4rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.cd-palmares span {
+  color: var(--site-ink-4);
+  font-size: 0.78rem;
+  text-align: center;
+}
+
+.cd-palmares .gagne b {
+  color: var(--success);
+}
+
+.cd-palmares .perdu b {
+  color: var(--danger);
+}
+
+.cd-objets {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.cd-objet {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-lg);
+  border-radius: var(--radius-pill);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  font-size: 0.88rem;
+}
+
+.cd-combats {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.cd-combat {
+  padding: var(--space-md) var(--space-lg);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  /* Le bord gauche porte l'issue : lisible en diagonale, sans lire le texte. */
+  border-left: 3px solid var(--site-off);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.cd-combat.gagne {
+  border-left-color: var(--success);
+}
+
+.cd-combat.perdu {
+  border-left-color: var(--danger);
+}
+
+.cd-combat-tete {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-sm);
+}
+
+.cd-issue {
+  font-weight: 700;
+}
+
+.cd-combat.gagne .cd-issue {
+  color: var(--success);
+}
+
+.cd-combat.perdu .cd-issue {
+  color: var(--danger);
+}
+
+.cd-adversaire {
+  color: var(--site-ink-3);
+  font-size: 0.9rem;
+}
+
+.cd-mise {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 0.88rem;
+}
+
+.cd-quand {
+  font-size: 0.76rem;
+  color: var(--site-ink-4);
+  white-space: nowrap;
+}
+
+.cd-des,
+.cd-special,
+.cd-chaos {
+  font-size: 0.84rem;
+  color: var(--site-ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.cd-chaos {
+  color: var(--accent);
+}
+
+.cd-recit {
+  margin: var(--space-xs) 0 0;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  color: var(--site-ink-4);
+  font-style: italic;
+}
+
+@media (max-width: 760px) {
+  .jx-roue-zone {
+    grid-template-columns: 1fr;
+    justify-items: center;
+  }
+
+  .jx-roue-cote {
+    align-items: center;
+    text-align: center;
+  }
+
+  .jx-tx {
+    grid-template-columns: auto 1fr auto;
+  }
+
+  .jx-tx-date {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jx-roue {
+    transition: none;
+  }
+
+  .jx-solde.pulse {
+    animation: none;
+  }
+}

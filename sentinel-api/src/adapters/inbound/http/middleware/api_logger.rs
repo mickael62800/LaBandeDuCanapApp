@@ -22,7 +22,7 @@ pub struct ApiLoggerState {
 impl ApiLoggerState {
     pub fn from_app(state: &AppState) -> Self {
         Self {
-            log_repo: state.log_repo.clone(),
+            log_repo: state.shared.log_repo.clone(),
             rate_limiter: state.ops.rate_limiter.clone(),
         }
     }

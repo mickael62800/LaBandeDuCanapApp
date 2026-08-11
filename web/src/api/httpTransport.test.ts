@@ -1,0 +1,169 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { HttpError, HttpTimeoutError } from "./httpError";
+import { fetchWithTimeout, requestJson } from "./httpTransport";
+import { tryRefreshSession } from "./http";
+
+function jsonResponse(body: unknown, status = 200, headers?: HeadersInit): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json", ...headers },
+  });
+}
+
+function memoryStorage(): Storage {
+  const values = new Map<string, string>();
+  return {
+    get length() { return values.size; },
+    clear: () => values.clear(),
+    getItem: (key) => values.get(key) ?? null,
+    key: (index) => [...values.keys()][index] ?? null,
+    removeItem: (key) => { values.delete(key); },
+    setItem: (key, value) => { values.set(key, String(value)); },
+  };
+}
+
+describe("requestJson", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.stubGlobal("localStorage", memoryStorage());
+    vi.stubGlobal("sessionStorage", memoryStorage());
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("retourne les données et conserve les en-têtes de réponse", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      jsonResponse([{ id: 1 }], 200, { "X-Total-Count": "42" }),
+    ));
+
+    const result = await requestJson<Array<{ id: number }>>({
+      url: "/api/items",
+      method: "GET",
+    });
+
+    expect(result.data).toEqual([{ id: 1 }]);
+    expect(result.response.headers.get("X-Total-Count")).toBe("42");
+  });
+
+  it("produit une HttpError structurée sans perdre le message métier", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({
+      error: "Données invalides : Valeur impossible",
+      code: "invalid_value",
+      request_id: "req-body",
+    }, 403, { "X-Request-Id": "req-header" })));
+
+    const error = await requestJson({
+      url: "/api/items",
+      method: "POST",
+      backend: "Sentinel",
+    }).catch((reason: unknown) => reason);
+
+    expect(error).toBeInstanceOf(HttpError);
+    expect(error).toMatchObject({
+      message: "Valeur impossible",
+      status: 403,
+      code: "invalid_value",
+      requestId: "req-header",
+      backend: "Sentinel",
+      body: {
+        error: "Données invalides : Valeur impossible",
+        code: "invalid_value",
+        request_id: "req-body",
+      },
+    });
+  });
+
+  it("borne le corps d'une erreur non JSON", async () => {
+    const longBody = "x".repeat(300);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(longBody, { status: 502 })));
+
+    await expect(requestJson({ url: "/proxy", method: "GET" }))
+      .rejects.toMatchObject({ status: 502, message: "x".repeat(200) });
+  });
+
+  it("rafraîchit puis rejoue une seule fois une requête 401", async () => {
+    let token = "old";
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ error: "expired" }, 401))
+      .mockResolvedValueOnce(jsonResponse({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    const refreshSession = vi.fn(async () => {
+      token = "new";
+      return true;
+    });
+
+    const { data } = await requestJson<{ ok: boolean }>({
+      url: "/api/items",
+      method: "GET",
+      headers: () => ({ Authorization: `Bearer ${token}` }),
+      refreshSession,
+    });
+
+    expect(data.ok).toBe(true);
+    expect(refreshSession).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({
+      headers: { Authorization: "Bearer new" },
+    });
+  });
+
+  it("signale la perte de session quand le refresh échoue", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ error: "expired" }, 401)));
+    const onUnauthorized = vi.fn();
+
+    await expect(requestJson({
+      url: "/api/items",
+      method: "GET",
+      refreshSession: async () => false,
+      onUnauthorized,
+    })).rejects.toMatchObject({ status: 401 });
+    expect(onUnauthorized).toHaveBeenCalledOnce();
+  });
+
+  it("retente les GET 503 et respecte Retry-After", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ error: "busy" }, 503, { "Retry-After": "0" }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(requestJson<{ ok: boolean }>({ url: "/api/items", method: "GET" }))
+      .resolves.toMatchObject({ data: { ok: true } });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("convertit un dépassement de délai en HttpTimeoutError", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", vi.fn((_input: RequestInfo | URL, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
+      })));
+
+    const result = expect(fetchWithTimeout("/slow", {}, 25))
+      .rejects.toBeInstanceOf(HttpTimeoutError);
+    await vi.advanceTimersByTimeAsync(25);
+    await result;
+  });
+
+  it("déduplique les refreshs de session concurrents", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({
+      token: "fresh-token",
+      id: "1",
+      username: "nexus",
+      is_superadmin: true,
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const [first, second] = await Promise.all([
+      tryRefreshSession(),
+      tryRefreshSession(),
+    ]);
+
+    expect(first).toBe(true);
+    expect(second).toBe(true);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(sessionStorage.getItem("ds.discord.token")).toBe("fresh-token");
+  });
+});

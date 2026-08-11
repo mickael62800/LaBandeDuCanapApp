@@ -62,9 +62,7 @@ pub fn init_prometheus() {
 /// Si `init_prometheus()` n'a pas été appelée, retourne une chaîne vide
 /// (Prometheus considère ça comme "pas de métrique" et ne lève pas d'erreur).
 pub async fn metrics_handler(
-    axum::extract::State(state): axum::extract::State<
-        crate::adapters::inbound::http::state::AppState,
-    >,
+    axum::extract::State(state): axum::extract::State<crate::bootstrap::state::SharedState>,
     headers: axum::http::HeaderMap,
 ) -> Response {
     // Protection optionnelle : si METRICS_TOKEN est defini, on exige

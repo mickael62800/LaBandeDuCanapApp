@@ -12,15 +12,15 @@ use crate::adapters::inbound::http::dto::system::bot_config::BotGuildConfigDto;
 use crate::adapters::inbound::http::dto::system::bot_config::DeleteConfigDto;
 use crate::adapters::inbound::http::dto::system::bot_config::SetConfigDto;
 use crate::adapters::inbound::http::errors::ApiError;
-use crate::adapters::inbound::http::state::AppState;
 use crate::adapters::inbound::http::validation;
+use crate::bootstrap::state::SystemState;
 
 const DEFINITIONS_TTL: u64 = 3600; // 1 heure
 const GUILD_CONFIG_TTL: u64 = 900; // 15 minutes
 
 /// GET /api/bots/definitions — liste des bots et leurs parametres disponibles (cache 1h)
 pub async fn get_definitions(
-    State(state): State<AppState>,
+    State(state): State<SystemState>,
 ) -> Result<Json<Vec<BotDefinitionDto>>, ApiError> {
     // Cache-first
     if let Ok(mut conn) = state.redis_client.get_multiplexed_async_connection().await {
@@ -51,7 +51,7 @@ pub async fn get_definitions(
 
 /// GET /api/bots/config/{guild_id} — config de tous les bots pour un serveur (cache 15min)
 pub async fn get_guild_config(
-    State(state): State<AppState>,
+    State(state): State<SystemState>,
     ValidatedGuild { guild_id }: ValidatedGuild,
 ) -> Result<Json<Vec<BotGuildConfigDto>>, ApiError> {
     // Validation
@@ -87,7 +87,7 @@ pub async fn get_guild_config(
 
 /// GET /api/bots/config/{guild_id}/{bot_name} — config d'un bot specifique pour un serveur
 pub async fn get_bot_config(
-    State(state): State<AppState>,
+    State(state): State<SystemState>,
     Path((guild_id, bot_name)): Path<(String, String)>,
 ) -> Result<Json<Vec<BotGuildConfigDto>>, ApiError> {
     // Validation
@@ -127,7 +127,7 @@ pub async fn get_bot_config(
 
 /// POST /api/bots/config — sauvegarder un parametre + invalider le cache
 pub async fn set_config(
-    State(state): State<AppState>,
+    State(state): State<SystemState>,
     Json(dto): Json<SetConfigDto>,
 ) -> Result<StatusCode, ApiError> {
     // Validation
@@ -191,7 +191,7 @@ pub async fn set_config(
 
 /// DELETE /api/bots/config — supprimer un parametre + invalider le cache
 pub async fn delete_config(
-    State(state): State<AppState>,
+    State(state): State<SystemState>,
     Json(dto): Json<DeleteConfigDto>,
 ) -> Result<StatusCode, ApiError> {
     // Validation

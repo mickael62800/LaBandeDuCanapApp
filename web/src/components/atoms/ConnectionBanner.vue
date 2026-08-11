@@ -30,10 +30,7 @@ onMounted(async () => {
 
   // Fallback : si aucun heartbeat recu en 90s, verifier via HTTP
   fallbackInterval = setInterval(async () => {
-    if (apiStatus.value === "ok") {
-      // Pas de heartbeat depuis longtemps ? Verifier
-      await checkApi();
-    }
+    await checkApi();
   }, 90000);
 });
 

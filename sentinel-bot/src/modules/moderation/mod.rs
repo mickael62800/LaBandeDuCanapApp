@@ -365,6 +365,3 @@ pub fn spawn_background(ctx: Context) {
         .await;
     });
 }
-
-
-

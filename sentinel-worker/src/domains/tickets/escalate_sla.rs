@@ -28,7 +28,7 @@ struct CandidateTicket {
     created_at: DateTime<Utc>,
 }
 
-pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
+pub async fn run(pool: &PgPool, redis: &redis::aio::ConnectionManager) -> Result<(), String> {
     let timeouts = load_escalation_timeouts(pool).await;
     let warn_thresholds = load_warn_thresholds(pool).await;
 
@@ -60,7 +60,7 @@ pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
         return Ok(());
     }
 
-    let mut conn = platform_common_worker::redis_helpers::get_conn(redis).await?;
+    let mut conn = redis.clone();
 
     let now = Utc::now();
     let mut escalated = 0u32;
@@ -143,7 +143,7 @@ async fn load_int_config(pool: &PgPool, key: &str) -> HashMap<String, i64> {
 
 async fn scan_and_warn(
     pool: &PgPool,
-    redis: &redis::Client,
+    redis: &redis::aio::ConnectionManager,
     thresholds: &HashMap<String, i64>,
 ) -> Result<(), String> {
     let candidates: Vec<CandidateTicket> = sqlx::query_as(
@@ -165,7 +165,7 @@ async fn scan_and_warn(
     if candidates.is_empty() {
         return Ok(());
     }
-    let mut conn = platform_common_worker::redis_helpers::get_conn(redis).await?;
+    let mut conn = redis.clone();
     let now = Utc::now();
     let mut warned = 0u32;
     for t in &candidates {

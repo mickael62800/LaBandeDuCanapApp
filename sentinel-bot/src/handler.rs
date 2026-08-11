@@ -139,7 +139,7 @@ impl EventHandler for Handler {
         // sont visibles partout meme apres bascule per-guild.
         let _ =
             serenity::model::application::Command::set_global_commands(&ctx.http, Vec::new()).await;
-        
+
         let guild_id = ready.guilds.first().map(|g| g.id);
         if let Some(gid) = guild_id {
             crate::command_registry::refresh_guild_commands(&ctx, gid).await;

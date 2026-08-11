@@ -1,49 +1,7 @@
 //! Assemblage complet de l'AppState : tous les repos + services (DI).
 
-use std::sync::Arc;
-
-use crate::adapters::inbound::http::state::AppState;
-use crate::adapters::outbound::batching::audit_log_batcher::BatchedPgAuditLogRepository;
-use crate::adapters::outbound::batching::batch_writer::BatchWriterConfig;
-use crate::adapters::outbound::batching::log_batcher::BatchedPgLogRepository;
-use crate::adapters::outbound::discord_api::DiscordApiService;
-use crate::adapters::outbound::job_client::JobClient;
-use crate::adapters::outbound::postgres::audit::analytics_repository::PgAnalyticsRepository;
-use crate::adapters::outbound::postgres::audit::modstats_repository::PgModstatsRepository;
-use crate::adapters::outbound::postgres::audit::security_event_repository::PgSecurityEventRepository;
-use crate::adapters::outbound::postgres::audit::stats_repository::PgStatsRepository;
-use crate::adapters::outbound::postgres::audit::user_activity_repository::PgUserActivityRepository;
-use crate::adapters::outbound::postgres::audit::watched_user_repository::PgWatchedUserRepository;
-use crate::adapters::outbound::postgres::community::daily_activity_repository::PgDailyActivityRepository;
-use crate::adapters::outbound::postgres::community::discord_role_repository::PgDiscordRoleRepository;
-use crate::adapters::outbound::postgres::community::level_repository::PgLevelRepository;
-use crate::adapters::outbound::postgres::community::sponsorship_repository::PgSponsorshipRepository;
-use crate::adapters::outbound::postgres::community::temp_role_repository::PgTempRoleRepository;
-use crate::adapters::outbound::postgres::community::welcome_config_repository::PgWelcomeConfigRepository;
-use crate::adapters::outbound::postgres::moderation::evidence_repository::PgEvidenceRepository;
-use crate::adapters::outbound::postgres::moderation::infraction_repository::PgInfractionRepository;
-use crate::adapters::outbound::postgres::moderation::moderation_repository::PgModerationRepository;
-use crate::adapters::outbound::postgres::moderation::pending_action_repository::PgPendingActionRepository;
-use crate::adapters::outbound::postgres::moderation::review_repository::PgReviewRepository;
-use crate::adapters::outbound::postgres::moderation::rule_repository::PgRuleRepository;
-use crate::adapters::outbound::postgres::moderation::strike_repository::PgStrikeRepository;
-use crate::adapters::outbound::postgres::system::bot_config_repository::PgBotConfigRepository;
-use crate::adapters::outbound::postgres::system::guild_repository::PgGuildRepository;
-use crate::adapters::outbound::postgres::system::ticket_repository::PgTicketRepository;
-use crate::adapters::outbound::redis_cache::RedisCache;
-use crate::config::AppConfig;
-use sentinel_core::application::ai::analyze_image_service::AnalyzeImageService;
-use sentinel_core::application::ai::analyze_message_service::AnalyzeMessageService;
-use sentinel_core::application::audit::manage_audit_logs_service::ManageAuditLogsService;
-use sentinel_core::application::audit::manage_security_service::ManageSecurityService;
-use sentinel_core::application::audit::manage_stats_service::ManageStatsService;
-use sentinel_core::application::audit::manage_watched_users_service::ManageWatchedUsersService;
-use sentinel_core::application::community::manage_levels_service::ManageLevelsService;
-use sentinel_core::application::moderation::manage_infractions_service::ManageInfractionsService;
-use sentinel_core::application::moderation::manage_moderation_service::ManageModerationService;
-use sentinel_core::application::moderation::manage_rules_service::ManageRulesService;
-use sentinel_core::application::system::export_service::ExportService;
-use sentinel_core::application::system::manage_tickets_service::ManageTicketsService;
+mod imports;
+use imports::*;
 
 /// Construit l'etat complet de l'application (tous les repos + services).
 /// Consomme le pool et le client Redis (via clones).
@@ -83,74 +41,8 @@ pub async fn build_app_state(
     // ── Event broadcaster (Redis pub/sub → gateway WebSocket) ──
     let broadcaster = crate::bootstrap::build_broadcaster(redis_client.clone());
 
-    // ── Inference ONNX ──
-    let (inference, tokenizer, inference_limiter) = crate::bootstrap::build_inference();
-
-    // Discord API (un seul client partage).
-    let discord_api: Arc<dyn crate::adapters::outbound::discord_api::DiscordApi> =
-        Arc::new(DiscordApiService::new(config.discord_bot_token.clone()));
-
-    // ── Services applicatifs ──
-    // Buffer in-memory partage (tension de salon). Pas de persistance :
-    // reset au restart bot, c'est OK car seulement les N derniers messages.
-    let channel_tension_buffer = Arc::new(
-        sentinel_core::domain::services::moderation::channel_tension::ChannelTensionBuffer::new(),
-    );
-
-    let deepseek_service = Arc::new(
-        crate::adapters::outbound::deepseek_moderation_service::DeepSeekModerationAdapter::from_env(
-        ),
-    );
-
-    let analyze_uc = Arc::new(
-        AnalyzeMessageService::new(
-            rule_repo.clone(),
-            infraction_repo.clone(),
-            cache.clone(),
-            bot_config_repo.clone(),
-            inference_limiter.clone(),
-        )
-        .with_deepseek(deepseek_service)
-        .with_text_inference(inference.clone(), tokenizer)
-        .with_channel_tension(channel_tension_buffer.clone()),
-    );
-    let analyze_image_uc = Arc::new(AnalyzeImageService::new(
-        inference.clone(),
-        rule_repo.clone(),
-        infraction_repo.clone(),
-        cache.clone(),
-        bot_config_repo.clone(),
-        inference_limiter.clone(),
-    ));
-    // Dataset IA : repo Postgres (SQL ai_dataset_messages) + use case (bornage
-    // des filtres, validation des ids). Le handler ne fait que RBAC + map.
-    let dataset_repo = Arc::new(
-        crate::adapters::outbound::postgres::ai::dataset_repository::PgDatasetRepository::new(
-            pg_pool.clone(),
-        ),
-    );
-    let dataset_uc: Arc<
-        dyn sentinel_core::ports::inbound::ai::manage_dataset::ManageDatasetUseCase,
-    > = Arc::new(
-        sentinel_core::application::ai::manage_dataset_service::ManageDatasetService::new(
-            dataset_repo,
-        ),
-    );
-
-    // File de jobs IA : repo Postgres (SQL ai_jobs) + use case (validation
-    // job_type/guild_id). Le handler ne fait que parse/map.
-    let ai_job_repo = Arc::new(
-        crate::adapters::outbound::postgres::ai::ai_job_repository::PgAiJobRepository::new(
-            pg_pool.clone(),
-        ),
-    );
-    let ai_jobs_uc: Arc<
-        dyn sentinel_core::ports::inbound::ai::manage_ai_jobs::ManageAiJobsUseCase,
-    > = Arc::new(
-        sentinel_core::application::ai::manage_ai_jobs_service::ManageAiJobsService::new(
-            ai_job_repo,
-        ),
-    );
+    let (discord_api, inference, analyze_uc, analyze_image_uc, dataset_uc, ai_jobs_uc) =
+        include!("app_state/ai.rs");
 
     let rules_uc = Arc::new(ManageRulesService::new(rule_repo.clone(), cache.clone()));
     let infractions_uc = Arc::new(ManageInfractionsService::new(infraction_repo.clone()));
@@ -159,8 +51,9 @@ pub async fn build_app_state(
         cache.clone(),
     ));
     // Phase 5C — Batch writes : idem que log_repo, pour les audit events.
-    // Phase 1 dual-write : creation deplacee plus tot pour pouvoir injecter
-    // audit_logs_uc dans security_uc et moderation_uc.
+    // Creation deplacee plus tot pour pouvoir injecter audit_logs_uc dans
+    // security_uc. Les actions de moderation passent directement par leur
+    // repository, dont la source de verite est aussi audit_logs.
     let audit_log_repo = Arc::new(BatchedPgAuditLogRepository::new(
         pg_pool.clone(),
         BatchWriterConfig::default(),
@@ -377,13 +270,11 @@ pub async fn build_app_state(
             bot_config_repo.clone(),
         ),
     );
-    let moderation_uc = Arc::new(
-        ManageModerationService::new(moderation_repo.clone(), strike_repo.clone(), cache.clone())
-            .with_audit_logs_uc(audit_logs_uc.clone()
-            as Arc<
-                dyn sentinel_core::ports::inbound::audit::manage_audit_logs::ManageAuditLogsUseCase,
-            >),
-    );
+    let moderation_uc = Arc::new(ManageModerationService::new(
+        moderation_repo.clone(),
+        strike_repo.clone(),
+        cache.clone(),
+    ));
     let discord_role_repo = Arc::new(PgDiscordRoleRepository::new(pg_pool.clone()));
 
     // Eligibilite Community : decisions server-side (prerequis de role +
@@ -547,15 +438,6 @@ pub async fn build_app_state(
         security_uc.clone(),
     ));
 
-    // ── Discord API service : instance deja creee plus haut.
-    // On re-declare ici pour garder la variable accessible dans la suite du
-    // bootstrap (AppState.discord_api).
-
-    // ── Job client (queue Redis → worker) ──
-    let queue_key =
-        std::env::var("REDIS_QUEUE_KEY").unwrap_or_else(|_| "sentinel:jobs".to_string());
-    let job_client = JobClient::new(redis_client.clone(), queue_key);
-
     // ── State ──
     let modstats_repo: Arc<
         dyn sentinel_core::ports::outbound::audit::modstats_repository::ModstatsRepository,
@@ -592,221 +474,5 @@ pub async fn build_app_state(
         ),
     );
 
-    // ── Sous-etats par domaine ──
-    //
-    // Construits AVANT le `AppState` plat pour que ce dernier puisse cloner
-    // depuis eux : une seule source par port, pas deux instanciations qui
-    // divergeraient silencieusement. Cf. `bootstrap::state` pour le pourquoi
-    // de la coexistence des deux formes pendant la migration.
-    let ai = crate::bootstrap::state::AiState {
-        analyze_uc: analyze_uc.clone(),
-        analyze_image_uc: analyze_image_uc.clone(),
-        dataset_uc: dataset_uc.clone(),
-        ai_jobs_uc: ai_jobs_uc.clone(),
-        inference: inference.clone(),
-        broadcaster: broadcaster.clone(),
-    };
-
-    let moderation = crate::bootstrap::state::ModerationState {
-        rules_uc: rules_uc.clone(),
-        infractions_uc: infractions_uc.clone(),
-        moderation_uc: moderation_uc.clone(),
-        modstats_uc: modstats_uc.clone(),
-        assess_target_risk_uc: assess_target_risk_uc.clone(),
-        automod_reviews_uc: automod_reviews_uc.clone(),
-        automod_adaptive_slowmode_repo: automod_adaptive_slowmode_repo.clone(),
-        sursis_uc: sursis_uc.clone(),
-        strikes_uc: strikes_uc.clone(),
-        cancel_action_uc: Arc::new(
-            sentinel_core::application::moderation::cancel_action_service::CancelModerationActionService::new(
-                moderation_uc.clone(),
-                discord_api.clone(),
-            ),
-        ),
-        evidence_repo: Arc::new(PgEvidenceRepository::new(pg_pool.clone())),
-        review_repo: Arc::new(PgReviewRepository::new(pg_pool.clone())),
-        pending_action_repo: Arc::new(PgPendingActionRepository::new(pg_pool.clone())),
-        modstats_repo: modstats_repo.clone(),
-        manage_reminders_uc: Arc::new(sentinel_core::application::moderation::manage_reminders_service::ManageRemindersService::new(
-            Arc::new(crate::adapters::outbound::postgres::moderation::reminder_repository::PgReminderRepository::new(pg_pool.clone()))
-        )),
-        notes_uc: Arc::new(sentinel_core::application::moderation::manage_notes_service::ManageNotesService::new(
-            Arc::new(crate::adapters::outbound::postgres::moderation::notes_repository::PgNotesRepository::new(pg_pool.clone()))
-        )),
-        broadcaster: broadcaster.clone(),
-        discord_api: discord_api.clone(),
-        bot_config_repo: bot_config_repo.clone(),
-    };
-
-    // Exploitation de la machine hote : transverse aux trois plateformes,
-    // donc distinct du metier Discord porte par SystemState.
-    let ops = crate::bootstrap::state::OpsState {
-        system_probe: Arc::new(
-            crate::adapters::outbound::system::pg_probe::PgSystemProbe::new(pg_pool.clone()),
-        ),
-        service_registry: service_registry.clone(),
-        rate_limiter: Some(Arc::new(
-            crate::adapters::outbound::system::rate_limiter::RateLimiter::from_env(),
-        )),
-        broadcaster: broadcaster.clone(),
-        redis_client: redis_client.clone(),
-    };
-
-    let system = crate::bootstrap::state::SystemState {
-        tickets_uc: tickets_uc.clone(),
-        reset_guild_uc: reset_guild_uc.clone(),
-        bot_persistence_uc: bot_persistence_uc.clone(),
-        quarantine_uc: quarantine_uc.clone(),
-        lockdown_uc: lockdown_uc.clone(),
-        slowmode_uc: slowmode_uc.clone(),
-        export_uc: Arc::new(ExportService::new(Arc::new(
-            crate::adapters::outbound::postgres::system::export_repository::PgExportRepository::new(
-                pg_pool.clone(),
-            ),
-        ))),
-        export_jobs_uc: Arc::new(
-            sentinel_core::application::system::manage_export_jobs_service::ManageExportJobsService::new(
-                Arc::new(
-                    crate::adapters::outbound::postgres::system::export_job_repository::PgExportJobRepository::new(
-                        pg_pool.clone(),
-                    ),
-                ),
-            ),
-        ),
-        guild_repo: guild_repo.clone(),
-        broadcaster: broadcaster.clone(),
-        discord_api: discord_api.clone(),
-        bot_config_repo: bot_config_repo.clone(),
-        redis_client: redis_client.clone(),
-        superadmin_user_ids: Arc::new(config.superadmin_user_ids.clone()),
-        api_key: config.api_key.clone(),
-    };
-
-    let member_repo = Arc::new(
-        crate::adapters::outbound::postgres::community::member_repository::PgMemberRepository::new(
-            pg_pool.clone(),
-        ),
-    );
-    let members_uc: Arc<
-        dyn sentinel_core::ports::inbound::community::manage_members::ManageMembersUseCase,
-    > = Arc::new(
-        sentinel_core::application::community::manage_members_service::ManageMembersService::new(
-            member_repo,
-            infractions_uc.clone(),
-            moderation_uc.clone(),
-            stats_uc.clone(),
-        ),
-    );
-
-    let role_panels_uc: Arc<
-        dyn sentinel_core::ports::inbound::community::manage_role_panels::ManageRolePanelsUseCase,
-    > = Arc::new(
-        sentinel_core::application::community::manage_role_panels_service::ManageRolePanelsService::new(
-            Arc::new(crate::adapters::outbound::postgres::community::role_panel_repository::PgRolePanelRepository::new(pg_pool.clone())),
-        ),
-    );
-
-    let voice_channels_uc: Arc<
-        dyn sentinel_core::ports::inbound::community::manage_voice_channels::ManageVoiceChannelsUseCase,
-    > = Arc::new(
-        sentinel_core::application::community::voice_channels::ManageVoiceChannelsService::new(
-            Arc::new(crate::adapters::outbound::postgres::community::voice_channel_repository::PgVoiceChannelRepository::new(pg_pool.clone())),
-            cache.clone(),
-            bot_config_repo.clone(),
-        ),
-    );
-
-    let community = crate::bootstrap::state::CommunityState {
-        events_uc: events_uc.clone(),
-        lfg_uc: lfg_uc.clone(),
-        members_uc: members_uc.clone(),
-        role_panels_uc: role_panels_uc.clone(),
-        voice_channels_uc: voice_channels_uc.clone(),
-        polls_uc: polls_uc.clone(),
-        spotlight_uc: spotlight_uc.clone(),
-        news_uc: news_uc.clone(),
-        ideas_uc: ideas_uc.clone(),
-        confessions_uc: confessions_uc.clone(),
-        announcements_uc: announcements_uc.clone(),
-        embeds_uc: embeds_uc.clone(),
-        presence_uc: presence_uc.clone(),
-        levels_uc: manage_levels_usecase.clone(),
-        monthly_ranking_uc: monthly_ranking_uc.clone(),
-        welcome_config_uc: welcome_config_uc.clone(),
-        eligibility_uc: eligibility_uc.clone(),
-        age_check_uc: age_check_uc.clone(),
-        manage_sponsorships_uc: Arc::new(
-            sentinel_core::application::community::manage_sponsorships_service::ManageSponsorshipsService::new(
-                Arc::new(PgSponsorshipRepository::new(pg_pool.clone())),
-                Arc::new(PgTempRoleRepository::new(pg_pool.clone())),
-            ),
-        ),
-        daily_activity_repo: daily_activity_repo.clone(),
-        discord_role_repo: discord_role_repo.clone(),
-        age_ban_repo: age_ban_repo.clone(),
-        sponsorship_repo: Arc::new(PgSponsorshipRepository::new(pg_pool.clone())),
-        temp_role_repo: Arc::new(PgTempRoleRepository::new(pg_pool.clone())),
-        broadcaster: broadcaster.clone(),
-        discord_api: discord_api.clone(),
-        bot_config_repo: bot_config_repo.clone(),
-        redis_client: redis_client.clone(),
-    };
-
-    let audit = crate::bootstrap::state::AuditState {
-        audit_logs_uc: audit_logs_uc.clone(),
-        watched_users_uc: watched_users_uc.clone(),
-        stats_uc: stats_uc.clone(),
-        detect_anomaly_uc: detect_anomaly_uc.clone(),
-        weekly_report_uc: weekly_report_uc.clone(),
-        snapshots_uc: snapshots_uc.clone(),
-        discord_action_messages_uc: discord_action_messages_uc.clone(),
-        security_uc: security_uc.clone(),
-        analytics_repo: analytics_repo.clone(),
-        user_activity_repo: user_activity_repo.clone(),
-        broadcaster: broadcaster.clone(),
-        bot_config_repo: bot_config_repo.clone(),
-        redis_client: redis_client.clone(),
-        daily_activity_repo: daily_activity_repo.clone(),
-        discord_api: discord_api.clone(),
-    };
-
-    let guild_backup = crate::bootstrap::state::GuildBackupState {
-        guild_snapshots_uc: guild_snapshots_uc.clone(),
-        pending_role_grants_uc: pending_role_grants_uc.clone(),
-        bot_config_repo: bot_config_repo.clone(),
-        broadcaster: broadcaster.clone(),
-    };
-
-    AppState {
-        ai,
-        ops: ops.clone(),
-        moderation: moderation.clone(),
-        audit: audit.clone(),
-        community: community.clone(),
-        system: system.clone(),
-        guild_backup: guild_backup.clone(),
-        log_repo,
-        bot_config_repo,
-        broadcaster,
-        job_client,
-        discord_api,
-        api_key: config.api_key.clone(),
-        guild_id: config.guild_id.clone(),
-        nexus_games: Arc::new(
-            crate::adapters::outbound::nexus_games::NexusGamesClient::new(
-                config.nexus_api_url.clone(),
-                config.nexus_api_key.clone(),
-            ),
-        ),
-        metrics_token: config.metrics_token.clone(),
-        discord_bot_token: config.discord_bot_token.clone(),
-        pg_pool: pg_pool.clone(),
-        redis_client: redis_client.clone(),
-        cache: Some(cache.clone()),
-        superadmin_user_ids: Arc::new(config.superadmin_user_ids.clone()),
-        auth: Arc::new(platform_common_api::auth_client::AuthClient::new(
-            std::env::var("AUTH_API_URL").unwrap_or_else(|_| "http://auth-api:8096".into()),
-            std::env::var("AUTH_API_TOKEN").unwrap_or_default(),
-        )),
-    }
+    include!("app_state/assembly.rs")
 }

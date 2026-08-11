@@ -162,8 +162,14 @@ impl SecurityAuditRepository for PgSecurityAuditRepository {
             let mut tx = self.pool.begin().await.map_err(pg_err)?;
             if options.include_api_logs {
                 api_logs = St::Deleted(
-                    purge_in_tx(&mut tx, "ops_logs_v", "timestamp", days, Some("category = 'api'"))
-                        .await?,
+                    purge_in_tx(
+                        &mut tx,
+                        "ops_logs_v",
+                        "timestamp",
+                        days,
+                        Some("category = 'api'"),
+                    )
+                    .await?,
                 );
             }
             if options.include_audit_logs {

@@ -16,12 +16,18 @@ pub mod http_job;
 pub mod metrics;
 pub mod redis_helpers;
 
-use std::time::Duration;
+use std::any::Any;
+use std::future::Future;
+use std::panic::AssertUnwindSafe;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use futures_util::stream::{FuturesUnordered, StreamExt};
+use futures_util::FutureExt;
 use platform_common::config_flags::parse_bool_str;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
 use tokio::signal;
+use tokio::task::{AbortHandle, JoinHandle};
 use tracing::{error, info, warn};
 
 // ── Constantes ──
@@ -32,6 +38,152 @@ const DEFAULT_PG_MAX_CONNECTIONS: u32 = 5;
 const DEFAULT_PG_ACQUIRE_TIMEOUT_SECS: u64 = 5;
 /// Intervalle de heartbeat par defaut (secondes).
 const DEFAULT_HEARTBEAT_INTERVAL_SECS: u64 = 30;
+
+/// Handle nomme d'une tache de fond conservee par le processus appelant.
+pub struct SupervisedTask {
+    name: &'static str,
+    handle: JoinHandle<()>,
+}
+
+impl SupervisedTask {
+    pub fn spawn<F>(name: &'static str, future: F) -> Self
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        Self {
+            name,
+            handle: tokio::spawn(future),
+        }
+    }
+
+    fn abort_handle(&self) -> AbortHandle {
+        self.handle.abort_handle()
+    }
+}
+
+/// Bilan de l'attente des taches pendant un arret gracieux.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct ShutdownReport {
+    pub completed: usize,
+    pub aborted: usize,
+    pub join_errors: usize,
+}
+
+/// Attend toutes les taches avec une echeance globale, puis annule celles qui
+/// depassent cette echeance. Le pool et les autres ressources peuvent etre
+/// fermes seulement apres le retour de cette fonction.
+pub async fn wait_for_tasks(tasks: Vec<SupervisedTask>, timeout: Duration) -> ShutdownReport {
+    let abort_handles: Vec<AbortHandle> = tasks.iter().map(SupervisedTask::abort_handle).collect();
+    let mut pending: FuturesUnordered<_> = tasks
+        .into_iter()
+        .map(|task| async move { (task.name, task.handle.await) })
+        .collect();
+    let mut report = ShutdownReport::default();
+    let deadline = tokio::time::sleep(timeout);
+    tokio::pin!(deadline);
+
+    loop {
+        tokio::select! {
+            _ = &mut deadline, if !pending.is_empty() => {
+                report.aborted = pending.len();
+                warn!(pending = report.aborted, "Echeance d'arret atteinte, annulation des taches restantes");
+                for handle in &abort_handles {
+                    handle.abort();
+                }
+                while let Some((name, result)) = pending.next().await {
+                    if let Err(error) = result {
+                        if !error.is_cancelled() {
+                            report.join_errors += 1;
+                            error!(task = name, %error, "Tache terminee anormalement pendant l'arret");
+                        }
+                    }
+                }
+                break;
+            }
+            result = pending.next() => {
+                let Some((name, result)) = result else { break };
+                match result {
+                    Ok(()) => report.completed += 1,
+                    Err(error) => {
+                        report.join_errors += 1;
+                        error!(task = name, %error, "Tache terminee anormalement");
+                    }
+                }
+            }
+        }
+    }
+
+    report
+}
+
+/// Metriques communes d'un job, y compris les boucles specialisees qui ne
+/// passent pas directement par `spawn_periodic`.
+pub struct JobMetrics {
+    job: &'static str,
+    worker: &'static str,
+    consecutive_errors: u64,
+}
+
+impl JobMetrics {
+    pub fn new(job: &'static str, worker: &'static str) -> Self {
+        ::metrics::gauge!("worker_job_alive", "job" => job, "worker" => worker).set(1.0);
+        ::metrics::gauge!("worker_job_consecutive_errors", "job" => job, "worker" => worker)
+            .set(0.0);
+        Self {
+            job,
+            worker,
+            consecutive_errors: 0,
+        }
+    }
+
+    pub fn started(&self) {
+        ::metrics::gauge!("worker_job_last_start_timestamp_seconds", "job" => self.job, "worker" => self.worker)
+            .set(unix_timestamp_seconds());
+    }
+
+    pub fn succeeded(&mut self, duration: Duration) {
+        self.consecutive_errors = 0;
+        ::metrics::gauge!("worker_job_last_success_timestamp_seconds", "job" => self.job, "worker" => self.worker)
+            .set(unix_timestamp_seconds());
+        self.record_duration(duration);
+        self.record_consecutive_errors();
+    }
+
+    pub fn failed(&mut self, duration: Duration) {
+        self.consecutive_errors = self.consecutive_errors.saturating_add(1);
+        self.record_duration(duration);
+        self.record_consecutive_errors();
+        ::metrics::counter!("worker_job_errors_total", "job" => self.job, "worker" => self.worker)
+            .increment(1);
+    }
+
+    pub fn panicked(&mut self, duration: Duration) {
+        self.failed(duration);
+        ::metrics::counter!("worker_job_panics_total", "job" => self.job, "worker" => self.worker)
+            .increment(1);
+    }
+
+    pub fn stopped(&self) {
+        ::metrics::gauge!("worker_job_alive", "job" => self.job, "worker" => self.worker).set(0.0);
+    }
+
+    fn record_duration(&self, duration: Duration) {
+        ::metrics::gauge!("worker_job_last_duration_seconds", "job" => self.job, "worker" => self.worker)
+            .set(duration.as_secs_f64());
+    }
+
+    fn record_consecutive_errors(&self) {
+        ::metrics::gauge!("worker_job_consecutive_errors", "job" => self.job, "worker" => self.worker)
+            .set(self.consecutive_errors as f64);
+    }
+}
+
+fn unix_timestamp_seconds() -> f64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs_f64()
+}
 
 /// Lit un entier positif depuis l'environnement, avec warning et valeur par
 /// defaut si la variable est invalide.
@@ -147,7 +299,12 @@ pub async fn send_lifecycle_log(api_url: &str, worker_name: &str, level: &str, m
 /// l'API retourne 401 silencieusement (reqwest::send() considere un 401 comme
 /// un succes reseau, donc le worker ne log meme pas l'erreur). L'API_KEY est
 /// lue depuis l'env au demarrage du heartbeat.
-pub fn start_heartbeat(api_url: String, worker_name: &'static str) {
+pub fn start_heartbeat(
+    client: reqwest::Client,
+    api_url: String,
+    worker_name: &'static str,
+    mut shutdown: tokio::sync::watch::Receiver<bool>,
+) -> SupervisedTask {
     let interval: u64 = std::env::var("HEARTBEAT_INTERVAL")
         .ok()
         .and_then(|v| v.parse().ok())
@@ -161,8 +318,7 @@ pub fn start_heartbeat(api_url: String, worker_name: &'static str) {
         );
     }
 
-    tokio::spawn(async move {
-        let client = reqwest::Client::new();
+    SupervisedTask::spawn("heartbeat", async move {
         let url = format!("{}/api/bots/heartbeat", api_url);
 
         loop {
@@ -185,9 +341,17 @@ pub fn start_heartbeat(api_url: String, worker_name: &'static str) {
                 }
             }
 
-            tokio::time::sleep(Duration::from_secs(interval)).await;
+            tokio::select! {
+                biased;
+                changed = shutdown.changed() => {
+                    if changed.is_err() || *shutdown.borrow() {
+                        break;
+                    }
+                }
+                _ = tokio::time::sleep(Duration::from_secs(interval.max(1))) => {}
+            }
         }
-    });
+    })
 }
 
 // ── Shutdown Signal ──
@@ -483,21 +647,23 @@ pub fn spawn_periodic<F>(
     name: &'static str,
     interval_secs: u64,
     pool: PgPool,
-    shutdown: tokio::sync::watch::Receiver<bool>,
+    mut shutdown: tokio::sync::watch::Receiver<bool>,
     api_url: String,
     worker_name: &'static str,
     task_fn: F,
-) where
+) -> SupervisedTask
+where
     F: Fn(
             PgPool,
         )
             -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), String>> + Send>>
         + Send
+        + Sync
         + 'static,
 {
     info!(task = name, interval_secs, "Tache periodique planifiee");
 
-    tokio::spawn(async move {
+    SupervisedTask::spawn(name, async move {
         // Log boot (info) — confirme cote API que ce job tourne effectivement
         send_worker_log(
             &api_url,
@@ -509,25 +675,22 @@ pub fn spawn_periodic<F>(
         )
         .await;
 
-        let interval = Duration::from_secs(interval_secs);
+        let mut interval = tokio::time::interval(Duration::from_secs(interval_secs.max(1)));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         let slow_threshold = Duration::from_secs(5);
         let mut tick_count: u64 = 0;
+        let mut job_metrics = JobMetrics::new(name, worker_name);
 
         loop {
-            tokio::time::sleep(interval).await;
-
-            if *shutdown.borrow() {
-                info!(task = name, "Tache periodique arretee (shutdown)");
-                send_worker_log(
-                    &api_url,
-                    worker_name,
-                    "info",
-                    name,
-                    &format!("Job {} arrete (shutdown)", name),
-                    serde_json::json!({ "ticks": tick_count, "event_type": "job.stopped" }),
-                )
-                .await;
-                break;
+            tokio::select! {
+                biased;
+                changed = shutdown.changed() => {
+                    if changed.is_err() || *shutdown.borrow() {
+                        break;
+                    }
+                    continue;
+                }
+                _ = interval.tick() => {}
             }
 
             // Verifie le flag enabled en DB avant chaque tick.
@@ -542,12 +705,14 @@ pub fn spawn_periodic<F>(
 
             tick_count += 1;
             let start = std::time::Instant::now();
-            let result = task_fn(pool.clone()).await;
+            job_metrics.started();
+            let result = run_caught_task(|| task_fn(pool.clone())).await;
             let elapsed = start.elapsed();
             let elapsed_ms = elapsed.as_millis() as u64;
 
             match result {
-                Ok(()) => {
+                TaskOutcome::Success => {
+                    job_metrics.succeeded(elapsed);
                     let level = if elapsed > slow_threshold {
                         "warn"
                     } else {
@@ -567,7 +732,8 @@ pub fn spawn_periodic<F>(
                         }),
                     ).await;
                 }
-                Err(e) => {
+                TaskOutcome::Error(e) => {
+                    job_metrics.failed(elapsed);
                     error!(task = name, error = %e, elapsed_ms, "Erreur tache periodique");
                     send_worker_log(
                         &api_url,
@@ -584,9 +750,72 @@ pub fn spawn_periodic<F>(
                     )
                     .await;
                 }
+                TaskOutcome::Panicked(panic) => {
+                    job_metrics.panicked(elapsed);
+                    error!(task = name, %panic, elapsed_ms, "Panic capturee dans la tache periodique");
+                    send_worker_log(
+                        &api_url,
+                        worker_name,
+                        "error",
+                        name,
+                        &format!("Panic job {} : {}", name, panic),
+                        serde_json::json!({
+                            "panic": panic,
+                            "elapsed_ms": elapsed_ms,
+                            "tick": tick_count,
+                            "event_type": "job.panic",
+                            "policy": "restart_next_tick",
+                        }),
+                    )
+                    .await;
+                }
             }
         }
-    });
+
+        job_metrics.stopped();
+        info!(task = name, "Tache periodique arretee (shutdown)");
+        send_worker_log(
+            &api_url,
+            worker_name,
+            "info",
+            name,
+            &format!("Job {} arrete (shutdown)", name),
+            serde_json::json!({ "ticks": tick_count, "event_type": "job.stopped" }),
+        )
+        .await;
+    })
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum TaskOutcome {
+    Success,
+    Error(String),
+    Panicked(String),
+}
+
+async fn run_caught_task<F, Fut>(task: F) -> TaskOutcome
+where
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = Result<(), String>>,
+{
+    match AssertUnwindSafe(async move { task().await })
+        .catch_unwind()
+        .await
+    {
+        Ok(Ok(())) => TaskOutcome::Success,
+        Ok(Err(error)) => TaskOutcome::Error(error),
+        Err(payload) => TaskOutcome::Panicked(panic_message(payload.as_ref())),
+    }
+}
+
+fn panic_message(payload: &(dyn Any + Send)) -> String {
+    if let Some(message) = payload.downcast_ref::<&str>() {
+        (*message).to_owned()
+    } else if let Some(message) = payload.downcast_ref::<String>() {
+        message.clone()
+    } else {
+        "panic sans message".to_owned()
+    }
 }
 
 #[cfg(test)]
@@ -605,6 +834,47 @@ mod tests {
     #[test]
     fn time_constants_coherent() {
         assert_eq!(SECS_PER_HOUR, SECS_PER_MINUTE * 60);
+    }
+
+    #[tokio::test]
+    async fn supervised_tasks_finish_before_the_deadline() {
+        let tasks = vec![SupervisedTask::spawn("short_job", async {})];
+
+        let report = wait_for_tasks(tasks, Duration::from_secs(1)).await;
+
+        assert_eq!(
+            report,
+            ShutdownReport {
+                completed: 1,
+                aborted: 0,
+                join_errors: 0,
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn supervised_tasks_are_aborted_after_the_deadline() {
+        let tasks = vec![SupervisedTask::spawn("long_job", async {
+            std::future::pending::<()>().await;
+        })];
+
+        let report = wait_for_tasks(tasks, Duration::from_millis(10)).await;
+
+        assert_eq!(report.completed, 0);
+        assert_eq!(report.aborted, 1);
+        assert_eq!(report.join_errors, 0);
+    }
+
+    #[tokio::test]
+    async fn periodic_task_panics_are_captured() {
+        let outcome = run_caught_task(|| async {
+            panic!("job exploded");
+            #[allow(unreachable_code)]
+            Ok(())
+        })
+        .await;
+
+        assert_eq!(outcome, TaskOutcome::Panicked("job exploded".to_owned()));
     }
 
     // ── config_or_env tests ──

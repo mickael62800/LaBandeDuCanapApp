@@ -22,7 +22,11 @@ use tracing::{debug, info, warn};
 const REDIS_KEY: &str = "audit:watched_users";
 const REDIS_TTL_SECS: u64 = 300;
 
-pub async fn run(pool: &PgPool, redis: &redis::Client, query_limit: i64) -> Result<(), String> {
+pub async fn run(
+    pool: &PgPool,
+    redis: &redis::aio::ConnectionManager,
+    query_limit: i64,
+) -> Result<(), String> {
     // 1. Query Postgres : union des user_ids avec infractions + manual.
     // `query_limit` est borne (100..100000) cote WorkerConfig, on peut donc
     // l'injecter directement dans le LIMIT.
@@ -48,7 +52,7 @@ pub async fn run(pool: &PgPool, redis: &redis::Client, query_limit: i64) -> Resu
         serde_json::to_string(&user_ids).map_err(|e| format!("serialize user_ids: {e}"))?;
 
     // 2. Push dans Redis (SET avec TTL)
-    let mut conn = platform_common_worker::redis_helpers::get_conn(redis).await?;
+    let mut conn = redis.clone();
 
     use redis::AsyncCommands;
     conn.set_ex::<_, _, ()>(REDIS_KEY, &serialized, REDIS_TTL_SECS)

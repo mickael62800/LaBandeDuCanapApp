@@ -21,10 +21,10 @@ pub fn open_or_exit(redis_url: &str) -> redis::Client {
 ///
 /// Format attendu : `payload` est le JSON serialise du struct
 /// `{ "event": "...", "data": {...} }` que les consumers parsent.
-pub async fn xadd_event(
-    conn: &mut redis::aio::MultiplexedConnection,
-    payload: &str,
-) -> redis::RedisResult<String> {
+pub async fn xadd_event<C>(conn: &mut C, payload: &str) -> redis::RedisResult<String>
+where
+    C: redis::aio::ConnectionLike + Send + Unpin,
+{
     redis::cmd("XADD")
         .arg(STREAM_KEY)
         .arg("MAXLEN")
@@ -39,22 +39,13 @@ pub async fn xadd_event(
 
 /// Variante qui prend un `serde_json::Value` deja construit et serialise
 /// avant XADD. Retourne `Err` si la serialisation OU le XADD echoue.
-pub async fn xadd_event_json(
-    conn: &mut redis::aio::MultiplexedConnection,
-    payload: &serde_json::Value,
-) -> Result<(), String> {
+pub async fn xadd_event_json<C>(conn: &mut C, payload: &serde_json::Value) -> Result<(), String>
+where
+    C: redis::aio::ConnectionLike + Send + Unpin,
+{
     let serialized = serde_json::to_string(payload).map_err(|e| format!("serialize: {e}"))?;
     xadd_event(conn, &serialized)
         .await
         .map_err(|e| format!("XADD: {e}"))?;
     Ok(())
-}
-
-/// Ouvre une connection multiplexee depuis un client. Wrapper trivial
-/// pour rendre le pattern uniforme dans les jobs.
-pub async fn get_conn(client: &redis::Client) -> Result<redis::aio::MultiplexedConnection, String> {
-    client
-        .get_multiplexed_async_connection()
-        .await
-        .map_err(|e| format!("redis connect: {e}"))
 }

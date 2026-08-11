@@ -9,7 +9,6 @@ use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use crate::application::moderation::manage_moderation_service::ManageModerationService;
-use crate::domain::entities::audit::audit_log::*;
 use crate::domain::entities::moderation::action::applied::*;
 use crate::domain::entities::moderation::action::strikes::*;
 use crate::domain::entities::system::rule::*;
@@ -18,47 +17,6 @@ use crate::ports::inbound::moderation::manage_moderation::*;
 use crate::ports::outbound::moderation::moderation_repository::ModerationRepository;
 use crate::ports::outbound::moderation::strike_repository::StrikeRepository;
 use crate::ports::outbound::system::cache::CachePort;
-struct NoOpAuditLogs;
-#[async_trait]
-impl crate::ports::inbound::audit::manage_audit_logs::ManageAuditLogsUseCase for NoOpAuditLogs {
-    async fn count(
-        &self,
-        _guild_id: Option<&str>,
-        _filters: &crate::ports::inbound::audit::manage_audit_logs::AuditLogFilters,
-    ) -> Result<i64, DomainError> {
-        Ok(0)
-    }
-
-    async fn create(
-        &self,
-        cmd: crate::ports::inbound::audit::manage_audit_logs::CreateAuditLogCommand,
-    ) -> Result<AuditLog, DomainError> {
-        Ok(AuditLog {
-            id: Uuid::new_v4(),
-            guild_id: cmd.guild_id,
-            event_type: cmd.event_type,
-            actor_id: cmd.actor_id,
-            actor_name: cmd.actor_name,
-            target_id: cmd.target_id,
-            target_name: cmd.target_name,
-            channel_id: cmd.channel_id,
-            channel_name: cmd.channel_name,
-            details: cmd.details,
-            created_at: chrono::Utc::now(),
-        })
-    }
-    async fn list(
-        &self,
-        _: Option<&str>,
-        _: crate::ports::inbound::audit::manage_audit_logs::AuditLogFilters,
-    ) -> Result<Vec<AuditLog>, DomainError> {
-        Ok(vec![])
-    }
-    async fn delete_older_than_days(&self, _: &str, _: i32) -> Result<u64, DomainError> {
-        Ok(0)
-    }
-}
-
 // ══════════════════════════════════════════════════════════
 // Mock Repository (in-memory)
 // ══════════════════════════════════════════════════════════
@@ -217,14 +175,11 @@ fn build_service() -> (ManageModerationService, Arc<InMemoryModerationRepo>) {
     let repo = Arc::new(InMemoryModerationRepo::new());
     let cache = Arc::new(NoOpCache);
     let strike_repo = Arc::new(NoOpStrikeRepo);
-    let svc =
-        ManageModerationService::new(
-            repo.clone() as Arc<dyn ModerationRepository>,
-            strike_repo as Arc<dyn StrikeRepository>,
-            cache as Arc<dyn CachePort>,
-        )
-        .with_audit_logs_uc(Arc::new(NoOpAuditLogs)
-            as Arc<dyn crate::ports::inbound::audit::manage_audit_logs::ManageAuditLogsUseCase>);
+    let svc = ManageModerationService::new(
+        repo.clone() as Arc<dyn ModerationRepository>,
+        strike_repo as Arc<dyn StrikeRepository>,
+        cache as Arc<dyn CachePort>,
+    );
     (svc, repo)
 }
 

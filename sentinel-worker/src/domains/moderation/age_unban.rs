@@ -23,7 +23,7 @@ struct DueAgeBan {
     user_id: String,
 }
 
-pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
+pub async fn run(pool: &PgPool, redis: &redis::aio::ConnectionManager) -> Result<(), String> {
     let due = sqlx::query_as::<_, DueAgeBan>(
         "UPDATE age_verification_bans SET status = 'lifted', lifted_at = NOW()
          WHERE id IN (
@@ -44,7 +44,7 @@ pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
         return Ok(());
     }
 
-    let mut conn = platform_common_worker::redis_helpers::get_conn(redis).await?;
+    let mut conn = redis.clone();
 
     for ban in &due {
         if !is_worker_enabled(pool, &ban.guild_id, "welcome-bot").await {

@@ -179,22 +179,22 @@ pub async fn load_temp_roles(ctx: &Context, guild_id: serenity::model::id::Guild
             Ok(entries) => {
                 let mut loaded = 0u32;
                 for entry in entries {
-                        let g = entry.guild_id.parse::<u64>().unwrap_or(0);
-                        let u = entry.user_id.parse::<u64>().unwrap_or(0);
-                        let r = entry.role_id.parse::<u64>().unwrap_or(0);
-                        if g > 0 && u > 0 && r > 0 {
-                            tracker.add_with_expiry_timestamp(g, u, r, &entry.expires_at);
-                            loaded += 1;
-                        }
-                    }
-                    if loaded > 0 {
-                        info!(guild = %gid, count = loaded, "Roles temporaires recharges");
+                    let g = entry.guild_id.parse::<u64>().unwrap_or(0);
+                    let u = entry.user_id.parse::<u64>().unwrap_or(0);
+                    let r = entry.role_id.parse::<u64>().unwrap_or(0);
+                    if g > 0 && u > 0 && r > 0 {
+                        tracker.add_with_expiry_timestamp(g, u, r, &entry.expires_at);
+                        loaded += 1;
                     }
                 }
-                Err(e) => {
-                    warn!(error = %e, guild = %gid, "Echec chargement roles temporaires");
+                if loaded > 0 {
+                    info!(guild = %gid, count = loaded, "Roles temporaires recharges");
                 }
             }
+            Err(e) => {
+                warn!(error = %e, guild = %gid, "Echec chargement roles temporaires");
+            }
+        }
     }
 }
 

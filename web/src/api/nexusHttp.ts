@@ -1,11 +1,12 @@
 // Client du backend Nexus, servi en meme origine par nginx.
 import { BackendHttpError, createBackendClient } from "./backendHttp";
+import type { HttpErrorDetails } from "./httpError";
 
 const NEXUS_BASE = "/nexus-api";
 
 export class NexusHttpError extends BackendHttpError {
-  constructor(message: string, status: number) {
-    super(message, status, "NexusHttpError");
+  constructor(message: string, details: HttpErrorDetails) {
+    super(message, details, "NexusHttpError");
   }
 }
 
@@ -14,7 +15,7 @@ const request = createBackendClient({
   errorLabel: "Nexus",
   forbiddenMessage: "Accès à la plateforme jeux refusé.",
   emptyStatuses: [202, 204],
-  makeError: (message, status) => new NexusHttpError(message, status),
+  makeError: (message, details) => new NexusHttpError(message, details),
 });
 
 const guildHeaders = (guildId: string | null) =>

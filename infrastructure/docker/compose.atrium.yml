@@ -204,6 +204,8 @@ services:
     environment:
       PGPASSWORD: ${POSTGRES_PASSWORD:-sentinel_secret}
       ATRIUM_DB_PASSWORD: ${ATRIUM_DB_PASSWORD:-atrium_secret}
+    volumes:
+      - ./scripts:/init:ro
     entrypoint:
       - sh
       - -euc
@@ -220,7 +222,8 @@ services:
         $$PSQL -c "ALTER DATABASE atrium OWNER TO atrium"
         psql -h postgres -U sentinel -d atrium -v ON_ERROR_STOP=1 \
           -c "CREATE EXTENSION IF NOT EXISTS vector" \
-          -c "REASSIGN OWNED BY sentinel TO atrium" \
+          -v target_role=atrium \
+          -f /init/reassign-public-objects.sql \
           -c "ALTER SCHEMA public OWNER TO atrium"
 
         $$PSQL -c "GRANT CONNECT ON DATABASE atrium TO atrium"

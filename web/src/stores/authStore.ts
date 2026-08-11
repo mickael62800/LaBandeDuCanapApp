@@ -1,9 +1,10 @@
 import { defineStore } from "pinia";
-import { errMsg } from "@/utils/errMsg";
 import { ref } from "vue";
 import { authService } from "@/services/authService";
 import { Store as KvStore } from "@/api/store";
 import { getDiscordToken } from "@/api/config";
+import { HttpError } from "@/api/httpError";
+import { httpGet, logoutSession, tryRefreshSession } from "@/api/http";
 import type { DiscordUser } from "@/api/config";
 
 const STORE_FILE = "auth.json";
@@ -41,7 +42,6 @@ export const useAuthStore = defineStore("auth", () => {
     // ce refresh sur /auth/* (le callback gere son propre cycle de vie et pose
     // le token lui-meme).
     if (!getDiscordToken() && !window.location.pathname.startsWith("/auth/")) {
-      const { tryRefreshSession } = await import("@/api/http");
       const ok = await tryRefreshSession();
       if (ok) {
         // tryRefreshSession a stocke le token + l'identite.
@@ -63,7 +63,6 @@ export const useAuthStore = defineStore("auth", () => {
     // session locale et on renvoie vers /login avec un message explicite.
     if (user.value) {
       try {
-        const { httpGet } = await import("@/api/http");
         await httpGet("/api/auth/check-access");
         // check-access ne repond 200 qu'aux superadmins (le middleware refuse
         // les autres). Y arriver prouve donc le statut : on (re)pose le flag,
@@ -76,13 +75,16 @@ export const useAuthStore = defineStore("auth", () => {
           } catch { /* ignore */ }
         }
       } catch (e) {
-        const msg = errMsg(e);
-        if (msg.includes("403")) {
+        if (e instanceof HttpError && e.status === 403) {
+          authService.logout();
           user.value = null;
           try {
             const store = await getKv();
             await store.delete(USER_KEY);
           } catch { /* ignore */ }
+          try {
+            await logoutSession();
+          } catch { /* best-effort */ }
           // Redirect manuel vers login avec message explicite.
           if (window.location.pathname !== "/login") {
             window.location.href = "/login?error=not_authorized";
@@ -111,7 +113,6 @@ export const useAuthStore = defineStore("auth", () => {
   async function logout() {
     // Supprime la session serveur + le cookie httpOnly (best-effort), puis purge local.
     try {
-      const { logoutSession } = await import("@/api/http");
       await logoutSession();
     } catch { /* ignore */ }
     authService.logout();

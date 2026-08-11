@@ -80,6 +80,14 @@ pub(crate) async fn audited<T>(
 ) -> Result<T, ApiError> {
     let result = op.await;
     let error = result.as_ref().err().map(|e| e.to_string());
-    record_docker_audit(state, actor, action, target, result.is_ok(), error.as_deref()).await;
+    record_docker_audit(
+        state,
+        actor,
+        action,
+        target,
+        result.is_ok(),
+        error.as_deref(),
+    )
+    .await;
     result.map_err(ApiError::from)
 }

@@ -48,7 +48,8 @@ impl GenerateServerSummaryUseCase for ServerSummaryService {
                 generated_by_ai: true,
             }),
             _ => Ok(ServerSummaryReply {
-                content: "Météo ensoleillée et ambiance au beau fixe sur le serveur ! ☀️".to_string(),
+                content: "Météo ensoleillée et ambiance au beau fixe sur le serveur ! ☀️"
+                    .to_string(),
                 generated_by_ai: false,
             }),
         }
@@ -87,7 +88,8 @@ mod tests {
 
     #[tokio::test]
     async fn generates_summary_successfully() {
-        let service = ServerSummaryService::new(Arc::new(FakeAi(Ok("Excellente ambiance !".into()))));
+        let service =
+            ServerSummaryService::new(Arc::new(FakeAi(Ok("Excellente ambiance !".into()))));
         let res = service
             .generate_summary(ServerSummaryRequest {
                 guild_id: "123".into(),

@@ -76,6 +76,8 @@ services:
     environment:
       PGPASSWORD: ${POSTGRES_PASSWORD:-sentinel_secret}
       AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD:-auth_secret}
+    volumes:
+      - ./scripts:/init:ro
     entrypoint:
       - sh
       - -euc
@@ -92,7 +94,8 @@ services:
         # Reprise d'une installation ou la base existait deja.
         $$PSQL -c "ALTER DATABASE auth OWNER TO auth"
         psql -h postgres -U sentinel -d auth -v ON_ERROR_STOP=1 \
-          -c "REASSIGN OWNED BY sentinel TO auth" \
+          -v target_role=auth \
+          -f /init/reassign-public-objects.sql \
           -c "ALTER SCHEMA public OWNER TO auth"
 
         $$PSQL -c "GRANT CONNECT ON DATABASE auth TO auth"

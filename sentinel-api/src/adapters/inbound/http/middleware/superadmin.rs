@@ -35,7 +35,7 @@ use axum::{
 use platform_common_api::auth_client::AccessOutcome;
 
 use crate::adapters::inbound::http::middleware::auth::AuthKind;
-use crate::adapters::inbound::http::state::AppState;
+use crate::bootstrap::state::SharedState;
 
 const DISCORD_TOKEN_HEADER: &str = "x-discord-token";
 
@@ -47,7 +47,7 @@ pub struct WebUser {
 }
 
 pub async fn superadmin_middleware(
-    State(state): State<AppState>,
+    State(state): State<SharedState>,
     request: Request<Body>,
     next: Next,
 ) -> Result<Response, StatusCode> {

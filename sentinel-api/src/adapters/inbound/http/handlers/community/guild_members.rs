@@ -163,7 +163,8 @@ pub struct SyncMembersPayload {
 ///
 /// Supprime :
 /// - infractions (table `infractions`)
-/// - actions de moderation (table `moderation_actions`, colonne target_id)
+/// Les traces d'actions dans `audit_logs` sont conservees selon la politique
+/// de retention et ne font pas partie de cette remise a zero.
 /// - strikes (`user_strikes`)
 /// - notes moderateurs (`user_notes`)
 /// - surveillance manuelle (`manual_watched_users`)

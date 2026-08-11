@@ -4,7 +4,7 @@ use axum::middleware::Next;
 use axum::response::Response;
 use subtle::ConstantTimeEq;
 
-use crate::adapters::inbound::http::state::AppState;
+use crate::bootstrap::state::SharedState;
 
 /// Marqueur du type d'authentification, insere en extension de requete par
 /// `auth_middleware` quand une `API_KEY` est configuree. Permet aux
@@ -26,7 +26,7 @@ pub enum AuthKind {
 /// Middleware d'authentification par Bearer token.
 /// Passe si aucune clé API n'est configurée (dev mode — log un warning).
 pub async fn auth_middleware(
-    axum::extract::State(state): axum::extract::State<AppState>,
+    axum::extract::State(state): axum::extract::State<SharedState>,
     mut request: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {

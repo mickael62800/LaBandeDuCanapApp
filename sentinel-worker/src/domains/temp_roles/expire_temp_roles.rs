@@ -23,7 +23,7 @@ struct ExpiredRole {
 ///
 /// On garde l'ancien pattern (le bot DELETE) pour rester compatible avec les
 /// flows existants. Le worker se contente de PUBLIER l'event.
-pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
+pub async fn run(pool: &PgPool, redis: &redis::aio::ConnectionManager) -> Result<(), String> {
     let expired: Vec<ExpiredRole> = sqlx::query_as::<_, ExpiredRole>(
         "SELECT id, guild_id, user_id, role_id FROM temp_roles \
          WHERE expires_at <= NOW() \
@@ -39,7 +39,7 @@ pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
         return Ok(());
     }
 
-    let mut conn = platform_common_worker::redis_helpers::get_conn(redis).await?;
+    let mut conn = redis.clone();
 
     let mut published = 0u32;
     for role in &expired {

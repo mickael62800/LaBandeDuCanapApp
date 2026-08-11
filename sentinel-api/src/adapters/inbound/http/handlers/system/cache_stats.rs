@@ -1,11 +1,11 @@
 use axum::extract::State;
 use axum::Json;
 
-use crate::adapters::inbound::http::state::AppState;
 use crate::adapters::outbound::redis_cache::CacheStats;
+use crate::bootstrap::state::CacheStatsState;
 
 /// GET /api/cache/stats — Retourne les statistiques hit/miss du cache Redis.
-pub async fn get_cache_stats(State(state): State<AppState>) -> Json<CacheStats> {
+pub async fn get_cache_stats(State(state): State<CacheStatsState>) -> Json<CacheStats> {
     match &state.cache {
         Some(cache) => Json(cache.stats()),
         None => Json(CacheStats {

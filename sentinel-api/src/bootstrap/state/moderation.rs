@@ -31,10 +31,8 @@ use crate::bootstrap::state::AppState;
 /// mute cote Discord (`discord_api`) et lit les seuils du serveur
 /// (`bot_config_repo`). Les ecrire ici les rend visibles.
 ///
-/// Ce qui n'y figure PAS est aussi une decision : `handlers/moderation/purge.rs`
-/// purge les audit-logs et les logs systeme, donc il reste sur `AppState` et
-/// suivra les domaines `audit` / `system`. L'y forcer aurait reconstitue un
-/// god-object en miniature.
+/// La purge, transversale aux domaines audit et systeme, extrait une vue
+/// `PurgeState` dediee plutot que d'elargir cet etat ou d'extraire `AppState`.
 #[derive(Clone)]
 pub struct ModerationState {
     pub rules_uc: Arc<dyn ManageRulesUseCase>,

@@ -8,6 +8,18 @@ const K_DISCORD_USER = "ds.discord.user";
 export interface ApiConfig { api_url: string; api_key: string }
 export interface DiscordUser { id: string; username: string; avatar?: string | null; global_name?: string | null; is_superadmin?: boolean }
 
+function parseStored<T>(key: string): T | null {
+  const raw = localStorage.getItem(key);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    // Une écriture interrompue ou une ancienne version ne doit pas casser le bootstrap.
+    localStorage.removeItem(key);
+    return null;
+  }
+}
+
 /**
  * Origines autorisées pour `api_url`. La config est en localStorage, donc
  * modifiable par tout code s'exécutant dans la page : sans whitelist, une config
@@ -43,9 +55,11 @@ function isAllowedApiUrl(value: string): boolean {
 }
 
 export function getApiConfig(): ApiConfig | null {
-  const raw = localStorage.getItem(K_API);
-  if (!raw) return null;
-  const cfg = JSON.parse(raw) as ApiConfig;
+  const cfg = parseStored<Partial<ApiConfig>>(K_API);
+  if (!cfg || typeof cfg.api_url !== "string" || typeof cfg.api_key !== "string") {
+    if (cfg) localStorage.removeItem(K_API);
+    return null;
+  }
   // Assainissement : si l'api_url stockée n'est pas dans la whitelist d'origines,
   // on la ramène à l'origin courant (défaut sûr) au lieu de faire confiance à une
   // valeur potentiellement empoisonnée. Une chaîne vide (= relatif/same-origin)
@@ -53,15 +67,19 @@ export function getApiConfig(): ApiConfig | null {
   if (cfg && cfg.api_url && !isAllowedApiUrl(cfg.api_url)) {
     cfg.api_url = window.location.origin;
   }
-  return cfg;
+  return cfg as ApiConfig;
 }
 export function setApiConfig(cfg: ApiConfig) {
   localStorage.setItem(K_API, JSON.stringify(cfg));
 }
 
 export function getDiscordUser(): DiscordUser | null {
-  const raw = localStorage.getItem(K_DISCORD_USER);
-  return raw ? JSON.parse(raw) : null;
+  const user = parseStored<Partial<DiscordUser>>(K_DISCORD_USER);
+  if (!user || typeof user.id !== "string" || typeof user.username !== "string") {
+    if (user) localStorage.removeItem(K_DISCORD_USER);
+    return null;
+  }
+  return user as DiscordUser;
 }
 export function setDiscordUser(u: DiscordUser | null) {
   if (u) localStorage.setItem(K_DISCORD_USER, JSON.stringify(u));

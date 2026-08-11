@@ -51,7 +51,7 @@ fn try_start_appeal(guild_id: &str, user_id: &str) -> bool {
     let mut map = appeal_cooldowns().lock().unwrap();
     let now = Instant::now();
     map.retain(|_, last| now.duration_since(*last) < APPEAL_COOLDOWN);
-    
+
     let key = (guild_id.to_string(), user_id.to_string());
     // `entry` plutot que `contains_key` + `insert` : une seule recherche de
     // hash, et l'insertion ne peut pas diverger du test qui la precede.
@@ -331,7 +331,9 @@ pub async fn handle_appeal_button(ctx: &Context, component: &ComponentInteractio
                 &ctx.http,
                 CreateInteractionResponse::Message(
                     CreateInteractionResponseMessage::new()
-                        .content("Vous avez déjà soumis un appel récemment. Patientez quelques minutes.")
+                        .content(
+                            "Vous avez déjà soumis un appel récemment. Patientez quelques minutes.",
+                        )
                         .ephemeral(true),
                 ),
             )

@@ -28,7 +28,8 @@ struct AiJobRow {
 /// deja chargees. Cela simplifie le deploiement (pas de duplication de modeles).
 pub async fn run(
     pool: &PgPool,
-    redis: &redis::Client,
+    redis: &mut redis::aio::ConnectionManager,
+    http: &reqwest::Client,
     api_url: &str,
     job_timeout_secs: u64,
     batch_size: i32,
@@ -72,11 +73,6 @@ pub async fn run(
 
     info!(count = claimed.len(), "Jobs IA claimes");
 
-    let http = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(60))
-        .build()
-        .map_err(|e| format!("http client: {e}"))?;
-
     // 3. Traitement de chaque job
     for job in claimed {
         let job_id = job.id;
@@ -94,7 +90,7 @@ pub async fn run(
             .await;
             continue;
         }
-        let result = process_job(&http, api_url, &job).await;
+        let result = process_job(http, api_url, &job).await;
 
         match result {
             Ok(payload) => {
@@ -184,7 +180,11 @@ async fn mark_done(pool: &PgPool, job_id: Uuid, payload: &serde_json::Value) -> 
     Ok(())
 }
 
-async fn publish_result(redis: &redis::Client, job_id: Uuid, payload: &serde_json::Value) {
+async fn publish_result(
+    redis: &mut redis::aio::ConnectionManager,
+    job_id: Uuid,
+    payload: &serde_json::Value,
+) {
     let channel = format!("ai_result:{job_id}");
     let key = format!("ai_result:{job_id}");
     let serialized = match serde_json::to_string(payload) {
@@ -195,20 +195,13 @@ async fn publish_result(redis: &redis::Client, job_id: Uuid, payload: &serde_jso
         }
     };
 
-    match redis.get_multiplexed_async_connection().await {
-        Ok(mut conn) => {
-            if let Err(e) = conn.publish::<_, _, ()>(&channel, &serialized).await {
-                tracing::warn!(error = %e, channel, "Echec Redis publish resultat AI");
-            }
-            if let Err(e) = conn
-                .set_ex::<_, _, ()>(&key, &serialized, REDIS_RESULT_TTL_SECS)
-                .await
-            {
-                tracing::warn!(error = %e, key, "Echec Redis set_ex resultat AI");
-            }
-        }
-        Err(e) => {
-            tracing::warn!(error = %e, "Echec connexion Redis pour publier resultat AI");
-        }
+    if let Err(e) = redis.publish::<_, _, ()>(&channel, &serialized).await {
+        tracing::warn!(error = %e, channel, "Echec Redis publish resultat AI");
+    }
+    if let Err(e) = redis
+        .set_ex::<_, _, ()>(&key, &serialized, REDIS_RESULT_TTL_SECS)
+        .await
+    {
+        tracing::warn!(error = %e, key, "Echec Redis set_ex resultat AI");
     }
 }

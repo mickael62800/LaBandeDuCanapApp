@@ -151,11 +151,7 @@ const CATEGORIES: &[Section] = &[
     ("🧹 Nettoyage", &[("cleanup", "🧹 Nettoyage")]),
 ];
 
-pub async fn deploy(
-    ctx: &Context,
-    bot_id: UserId,
-    guild_id: GuildId,
-) -> Result<(), String> {
+pub async fn deploy(ctx: &Context, bot_id: UserId, guild_id: GuildId) -> Result<(), String> {
     let api = {
         let data = ctx.data.read().await;
         match data.get::<ApiClientKey>() {

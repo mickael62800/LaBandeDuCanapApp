@@ -8,10 +8,9 @@
 //! melange a celui-ci alors qu'il concerne autant Nexus et Atrium ; il vit
 //! desormais dans `OpsState` (cf. `bootstrap/state/ops.rs`).
 //!
-//! Ce qui n'est PAS ici non plus : les scalaires de configuration lus par les
-//! middlewares (`api_key`, `guild_id`, `superadmin_user_ids`, `metrics_token`).
-//! Ils restent sur `AppState` parce que les middlewares sont montes avec
-//! `from_fn_with_state(state, ...)` au niveau du routeur, hors de tout domaine.
+//! Les scalaires et clients transverses lus par les middlewares vivent dans
+//! `SharedState`. La liste des superadmins reste ici car elle est aussi une
+//! donnee fonctionnelle exposee par certains handlers systeme.
 
 use std::sync::Arc;
 

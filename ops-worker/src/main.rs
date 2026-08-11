@@ -20,16 +20,12 @@ async fn main() {
     let pool = platform_common_worker::create_pg_pool(&database_url).await;
     let redis_client = platform_common_worker::redis_helpers::open_or_exit(&redis_url);
 
-    let docker_host: Arc<dyn ops_core::ports::outbound::docker_host::DockerHost> =
-        Arc::new(ops_adapters::http_docker_host::HttpDockerHost::new(
-            docker_agent_url,
-            docker_agent_token,
-        ));
+    let docker_host: Arc<dyn ops_core::ports::outbound::docker_host::DockerHost> = Arc::new(
+        ops_adapters::http_docker_host::HttpDockerHost::new(docker_agent_url, docker_agent_token),
+    );
     let server_events: Arc<
         dyn ops_core::ports::outbound::server_event_repository::ServerEventRepository,
-    > = Arc::new(ops_adapters::server_event_repository::PgServerEventRepository::new(
-        pool.clone(),
-    ));
+    > = Arc::new(ops_adapters::server_event_repository::PgServerEventRepository::new(pool.clone()));
 
     let monitor = container_monitor::spawn(docker_host, server_events, redis_client.clone());
     alerts_dispatcher::spawn(pool.clone(), redis_client, Some(monitor));

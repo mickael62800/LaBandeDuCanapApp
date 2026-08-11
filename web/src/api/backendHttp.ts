@@ -1,13 +1,11 @@
 import { getDiscordToken } from "./config";
+import { handleUnauthorizedSession, tryRefreshSession } from "./http";
+import { HttpError, type HttpErrorDetails } from "./httpError";
+import { requestJson } from "./httpTransport";
 
-export class BackendHttpError extends Error {
-  constructor(
-    message: string,
-    public status: number,
-    name = "BackendHttpError",
-  ) {
-    super(message);
-    this.name = name;
+export class BackendHttpError extends HttpError {
+  constructor(message: string, details: HttpErrorDetails, name = "BackendHttpError") {
+    super(message, details, name);
   }
 }
 
@@ -17,64 +15,62 @@ interface BackendClientOptions {
   forbiddenMessage: string;
   unavailableMessage?: string;
   emptyStatuses?: readonly number[];
-  makeError: (message: string, status: number) => Error;
+  makeError: (message: string, details: HttpErrorDetails) => Error;
 }
 
-interface RequestOptions {
+export interface BackendRequestOptions {
   body?: unknown;
   headers?: Record<string, string>;
+  signal?: AbortSignal;
+  timeoutMs?: number;
 }
 
-/** Transport JSON commun aux backends internes servis par la passerelle. */
+/** Adaptateur métier d'un backend, posé sur le transport commun. */
 export function createBackendClient(options: BackendClientOptions) {
   const emptyStatuses = new Set(options.emptyStatuses ?? [204]);
 
   return async function request<T>(
-    method: string,
+    method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
     path: string,
-    requestOptions: RequestOptions = {},
+    requestOptions: BackendRequestOptions = {},
   ): Promise<T> {
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      ...requestOptions.headers,
-    };
-    const token = getDiscordToken();
-    if (token) headers["X-Discord-Token"] = token;
-
-    const response = await fetch(`${options.baseUrl}${path}`, {
+    const { data } = await requestJson<T>({
+      url: `${options.baseUrl}${path}`,
       method,
-      headers,
+      headers: () => {
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+          ...requestOptions.headers,
+        };
+        const token = getDiscordToken();
+        if (token) headers["X-Discord-Token"] = token;
+        return headers;
+      },
       credentials: "include",
-      body:
-        requestOptions.body === undefined
-          ? undefined
-          : JSON.stringify(requestOptions.body),
+      body: requestOptions.body,
+      signal: requestOptions.signal,
+      timeoutMs: requestOptions.timeoutMs,
+      backend: options.errorLabel,
+      emptyStatuses,
+      refreshSession: tryRefreshSession,
+      onUnauthorized: handleUnauthorizedSession,
+      makeError: (message, details) => {
+        let visibleMessage = message;
+        if (details.status === 401) {
+          visibleMessage = "Session expirée — reconnecte-toi.";
+        } else if (details.status === 403) {
+          visibleMessage = options.forbiddenMessage;
+        } else if (
+          options.unavailableMessage &&
+          (details.status === 502 || details.status === 503)
+        ) {
+          visibleMessage = options.unavailableMessage;
+        } else if (message === `Erreur ${details.status}`) {
+          visibleMessage = `Erreur ${options.errorLabel} (${details.status})`;
+        }
+        return options.makeError(visibleMessage, details);
+      },
     });
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        throw options.makeError("Session expirée — reconnecte-toi.", 401);
-      }
-      if (response.status === 403) {
-        throw options.makeError(options.forbiddenMessage, 403);
-      }
-      if (
-        options.unavailableMessage &&
-        (response.status === 502 || response.status === 503)
-      ) {
-        throw options.makeError(options.unavailableMessage, response.status);
-      }
-      const detail = await response
-        .json()
-        .then((body: { error?: string }) => body?.error)
-        .catch(() => null);
-      throw options.makeError(
-        detail ?? `Erreur ${options.errorLabel} (${response.status})`,
-        response.status,
-      );
-    }
-
-    if (emptyStatuses.has(response.status)) return undefined as T;
-    return (await response.json()) as T;
+    return data;
   };
 }

@@ -1,61 +1,66 @@
-// Wrapper fetch qui embarque bearer API key + header X-Discord-Token, comme le fait
-// ApiAdapter cote desktop. L'URL base est lue depuis la config stockee dans localStorage.
-//
-// Persistance "rester connecte" : un cookie httpOnly `ds_session` (pose au
-// callback OAuth) permet de re-emettre un token d'acces via POST /auth/refresh
-// sans re-validation Discord interactive. Sur 401, on tente un refresh
-// transparent puis on rejoue la requete une fois avant de rediriger sur /login.
+// Client Sentinel authentifié. Le transport bas niveau est partagé avec les
+// backends Nexus, Ops et Atrium via httpTransport.ts.
 
-import { getApiConfig, getDiscordToken, clearDiscordToken, setDiscordToken, setDiscordUser } from "./config";
+import {
+  clearDiscordToken,
+  getApiConfig,
+  getDiscordToken,
+  setDiscordToken,
+  setDiscordUser,
+} from "./config";
+import { HttpError, type HttpErrorDetails } from "./httpError";
+import { requestJson, type JsonResponse } from "./httpTransport";
+
+const SESSION_TIMEOUT_MS = 5_000;
+
+export interface HttpRequestOptions {
+  signal?: AbortSignal;
+  timeoutMs?: number;
+}
 
 export function apiBase(): string {
-  // Priorite : config localStorage utilisateur > VITE_API_URL au build > defaut.
-  // En prod, defaut "" -> URLs relatives -> passent par le proxy nginx (origin courant).
-  // En dev, defaut http://localhost:3000 -> hit l'API directement.
-  // SECURITE : la valeur vient de localStorage (modifiable par n'importe quel
-  // code de la page). On n'accepte que http(s) — jamais javascript:, data:,
-  // etc. — pour eviter qu'une config empoisonnee detourne les requetes
-  // (et les tokens qu'elles embarquent) vers un schema/URL arbitraire.
   const cfg = getApiConfig()?.api_url;
   if (cfg) {
     try {
-      const u = new URL(cfg);
-      if (u.protocol === "https:" || u.protocol === "http:") return cfg;
-    } catch { /* URL malformee : ignore, fallback env/defaut */ }
+      const url = new URL(cfg);
+      if (url.protocol === "https:" || url.protocol === "http:") return cfg;
+    } catch { /* URL malformée : fallback sûr. */ }
   }
   const env = import.meta.env.VITE_API_URL;
   if (env) return env;
   return import.meta.env.PROD ? "" : "http://localhost:3000";
 }
 
-function headers(extra?: Record<string, string>): Record<string, string> {
-  const h: Record<string, string> = { "Content-Type": "application/json", ...extra };
+function headers(): Record<string, string> {
+  const result: Record<string, string> = { "Content-Type": "application/json" };
   const cfg = getApiConfig();
-  if (cfg?.api_key) h["Authorization"] = `Bearer ${cfg.api_key}`;
-  const tok = getDiscordToken();
-  if (tok) h["X-Discord-Token"] = tok;
-  return h;
+  if (cfg?.api_key) result.Authorization = `Bearer ${cfg.api_key}`;
+  const token = getDiscordToken();
+  if (token) result["X-Discord-Token"] = token;
+  return result;
 }
 
-// ── Refresh de session (cookie httpOnly) ──
 let refreshInFlight: Promise<boolean> | null = null;
 
-/**
- * Tente de ré-émettre un token d'accès Discord via le cookie de session.
- * Met à jour le token + l'identité en cache. Dédupe les appels concurrents.
- * Retourne true si un nouveau token a été obtenu.
- */
-export async function tryRefreshSession(): Promise<boolean> {
+/** Ré-émet un token via le cookie HttpOnly et déduplique les appels concurrents. */
+export function tryRefreshSession(): Promise<boolean> {
   if (refreshInFlight) return refreshInFlight;
   refreshInFlight = (async () => {
     try {
-      const r = await fetch(`${apiBase()}/auth/refresh`, {
+      const { data } = await requestJson<{
+        token?: string;
+        id: string;
+        username: string;
+        global_name?: string | null;
+        avatar?: string | null;
+        is_superadmin?: boolean;
+      }>({
+        url: `${apiBase()}/auth/refresh`,
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: () => ({ "Content-Type": "application/json" }),
         credentials: "include",
+        timeoutMs: SESSION_TIMEOUT_MS,
       });
-      if (!r.ok) return false;
-      const data = await r.json().catch(() => null);
       if (!data?.token) return false;
       setDiscordToken(data.token);
       setDiscordUser({
@@ -69,186 +74,115 @@ export async function tryRefreshSession(): Promise<boolean> {
     } catch {
       return false;
     }
-  })();
-  const ok = await refreshInFlight;
-  refreshInFlight = null;
-  return ok;
+  })().finally(() => {
+    refreshInFlight = null;
+  });
+  return refreshInFlight;
 }
 
-/** Supprime la session serveur + le cookie (logout propre). */
+/** Supprime la session serveur et son cookie, en best-effort borné. */
 export async function logoutSession(): Promise<void> {
   try {
-    await fetch(`${apiBase()}/auth/logout`, { method: "POST", credentials: "include" });
-  } catch { /* best-effort */ }
+    await requestJson({
+      url: `${apiBase()}/auth/logout`,
+      method: "POST",
+      credentials: "include",
+      timeoutMs: SESSION_TIMEOUT_MS,
+      emptyStatuses: new Set([204]),
+    });
+  } catch { /* La purge locale reste prioritaire. */ }
 }
 
-async function handle<T>(resp: Response): Promise<T> {
-  if (!resp.ok) {
-    if (resp.status === 401) {
-      const path = window.location.pathname;
-      // Cas particulier : si on est sur /auth/callback, NE PAS purger le
-      // token. Une requete zombie partie avant l'OAuth callback pourrait
-      // recevoir son 401 APRES que AuthCallbackPage ait stocke le nouveau
-      // token, et le clear effacerait la session toute fraiche -> boucle
-      // /login?expired=1 garantie. On laisse AuthCallbackPage gerer son
-      // cycle de vie en paix.
-      if (path.startsWith("/auth/")) {
-        throw new Error("Unauthorized: session expired");
-      }
-      // Token invalide/expire ET refresh impossible : on purge la session
-      // locale et on redirige vers /login pour forcer une re-authentification.
-      try {
-        clearDiscordToken();
-        localStorage.removeItem("ds.discord.user");
-      } catch { /* storage quota / cookies disabled : ignore */ }
-      if (path !== "/login") {
-        window.location.href = "/login?expired=1";
-      }
-      throw new Error("Unauthorized: session expired");
-    }
-    const body = await resp.text().catch(() => "");
-    throw new Error(messageErreur(resp.status, body));
-  }
-  const txt = await resp.text();
-  if (!txt) return undefined as unknown as T;
-  try { return JSON.parse(txt) as T; } catch { return txt as unknown as T; }
+/** Réaction commune à une session réellement perdue après tentative de refresh. */
+export function handleUnauthorizedSession(): void {
+  const path = window.location.pathname;
+  // Le callback OAuth possède son propre cycle de vie : une ancienne requête
+  // ne doit jamais effacer le token qu'il vient de recevoir.
+  if (path.startsWith("/auth/")) return;
+
+  clearDiscordToken();
+  setDiscordUser(null);
+  if (path !== "/login") window.location.href = "/login?expired=1";
 }
 
-/**
- * Retry exponentiel sur 503 (rate limit Discord, brefs incidents reseau).
- * Uniquement sur GET (idempotents). 3 tentatives max : 0ms / 500ms / 1500ms.
- */
-async function fetchWithRetry503(url: string, init?: RequestInit): Promise<Response> {
-  const delays = [0, 500, 1500];
-  let last: Response | null = null;
-  for (const d of delays) {
-    if (d > 0) await new Promise((r) => setTimeout(r, d));
-    last = await fetch(url, init);
-    if (last.status !== 503) return last;
-  }
-  return last as Response;
+function makeSentinelError(message: string, details: HttpErrorDetails): HttpError {
+  const visibleMessage = details.status === 401
+    ? "Unauthorized: session expired"
+    : message;
+  return new HttpError(visibleMessage, { ...details, backend: "Sentinel" });
 }
 
-/**
- * Coeur des appels : pose toujours `credentials:'include'` (cookie de session)
- * et, sur 401 hors flux /auth, tente un refresh transparent + rejoue 1 fois.
- */
 async function request<T>(
   path: string,
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
   body?: unknown,
-): Promise<T> {
-  const url = `${apiBase()}${path}`;
-  const isGet = method === "GET";
-  const build = (): RequestInit => ({
+  control: HttpRequestOptions = {},
+): Promise<JsonResponse<T>> {
+  const isAuthRoute = path.startsWith("/auth/");
+  return requestJson<T>({
+    url: `${apiBase()}${path}`,
     method,
-    headers: headers(),
+    headers,
+    body,
     credentials: "include",
-    body: body === undefined ? undefined : JSON.stringify(body),
+    signal: control.signal,
+    timeoutMs: control.timeoutMs,
+    backend: "Sentinel",
+    refreshSession: isAuthRoute ? undefined : tryRefreshSession,
+    onUnauthorized: isAuthRoute ? undefined : handleUnauthorizedSession,
+    makeError: makeSentinelError,
   });
-
-  let r = isGet ? await fetchWithRetry503(url, build()) : await fetch(url, build());
-
-  // 401 : tentative de refresh silencieux (cookie) puis rejoue une fois.
-  if (r.status === 401 && !path.startsWith("/auth/")) {
-    const refreshed = await tryRefreshSession();
-    if (refreshed) {
-      r = isGet ? await fetchWithRetry503(url, build()) : await fetch(url, build());
-    }
-  }
-  return handle<T>(r);
 }
 
-/// Préfixes techniques ajoutés par le typage des erreurs côté serveur. Ils
-/// n'apprennent rien à qui lit le message : « Données invalides : tu as déjà
-/// tiré la Roue aujourd'hui » dit deux fois moins bien la même chose.
-///
-/// Le bot Discord applique déjà ce nettoyage de son côté ; la même liste vaut
-/// ici, pour que les deux surfaces parlent pareil.
-const PREFIXES_TECHNIQUES = [
-  "Données invalides : ",
-  "Données invalides: ",
-  "Donnees invalides : ",
-  "Donnees invalides: ",
-  "Conflit : ",
-  "Conflit: ",
-  "Validation : ",
-  "Validation: ",
-];
-
-/// Transforme une réponse d'erreur en phrase lisible.
-///
-/// L'API répond `{"error": "..."}` avec un message déjà rédigé pour un
-/// humain. On le remonte tel quel plutôt que d'afficher le corps JSON brut
-/// précédé d'un code HTTP, qui obligeait le lecteur à décoder lui-même.
-function messageErreur(status: number, body: string): string {
-  let message = "";
-  try {
-    const json = JSON.parse(body) as { error?: string; message?: string };
-    message = json.error ?? json.message ?? "";
-  } catch {
-    // Corps non JSON (page d'erreur d'un proxy, réponse vide) : on garde le
-    // texte brut, tronqué — une page HTML entière dans un toast est inutile.
-    message = body.slice(0, 200);
-  }
-
-  message = message.trim();
-  for (const p of PREFIXES_TECHNIQUES) {
-    if (message.startsWith(p)) {
-      message = message.slice(p.length);
-      break;
-    }
-  }
-
-  // Sans message exploitable, le code HTTP est tout ce qu'on peut dire.
-  return message || `Erreur ${status}`;
+export async function httpGet<T>(path: string, control?: HttpRequestOptions): Promise<T> {
+  return (await request<T>(path, "GET", undefined, control)).data;
 }
 
-export async function httpGet<T>(path: string): Promise<T> {
-  return request<T>(path, "GET");
-}
-
-/**
- * GET qui expose aussi le total de pagination renvoye par l'API dans
- * l'en-tete `X-Total-Count`. Necessaire pour une pagination serveur reelle
- * (journal d'evenements) : le corps ne contient que la page courante.
- *
- * Reimplemente le fetch plutot que de reutiliser `request` : ce dernier
- * consomme la reponse et ne rend que le JSON parse, les en-tetes sont perdus.
- * On garde le meme comportement d'auth (cookie + refresh silencieux).
- */
-export async function httpGetWithTotal<T>(path: string): Promise<{ data: T; total: number }> {
-  const url = `${apiBase()}${path}`;
-  const build = (): RequestInit => ({
-    method: "GET",
-    headers: headers(),
-    credentials: "include",
-  });
-
-  let r = await fetchWithRetry503(url, build());
-  if (r.status === 401 && !path.startsWith("/auth/")) {
-    if (await tryRefreshSession()) r = await fetchWithRetry503(url, build());
-  }
-
-  const header = r.headers.get("X-Total-Count");
-  const data = await handle<T>(r);
-  const parsed = header === null ? NaN : Number(header);
+export async function httpGetWithTotal<T>(
+  path: string,
+  control?: HttpRequestOptions,
+): Promise<{ data: T; total: number }> {
+  const { data, response } = await request<T>(path, "GET", undefined, control);
+  const rawTotal = response.headers.get("X-Total-Count");
+  const parsedTotal = rawTotal === null ? Number.NaN : Number(rawTotal);
   return {
     data,
-    // Sans en-tete exploitable, on se rabat sur la taille de la page : mieux
-    // vaut une pagination approximative qu'un compteur a zero.
-    total: Number.isFinite(parsed) ? parsed : Array.isArray(data) ? data.length : 0,
+    total: Number.isFinite(parsedTotal)
+      ? parsedTotal
+      : Array.isArray(data) ? data.length : 0,
   };
 }
-export async function httpPost<T>(path: string, body?: unknown): Promise<T> {
-  return request<T>(path, "POST", body);
+
+export async function httpPost<T>(
+  path: string,
+  body?: unknown,
+  control?: HttpRequestOptions,
+): Promise<T> {
+  return (await request<T>(path, "POST", body, control)).data;
 }
-export async function httpPut<T>(path: string, body?: unknown): Promise<T> {
-  return request<T>(path, "PUT", body);
+
+export async function httpPut<T>(
+  path: string,
+  body?: unknown,
+  control?: HttpRequestOptions,
+): Promise<T> {
+  return (await request<T>(path, "PUT", body, control)).data;
 }
-export async function httpPatch<T>(path: string, body?: unknown): Promise<T> {
-  return request<T>(path, "PATCH", body);
+
+export async function httpPatch<T>(
+  path: string,
+  body?: unknown,
+  control?: HttpRequestOptions,
+): Promise<T> {
+  return (await request<T>(path, "PATCH", body, control)).data;
 }
-export async function httpDelete<T>(path: string, body?: unknown): Promise<T> {
-  return request<T>(path, "DELETE", body);
+
+export async function httpDelete<T>(
+  path: string,
+  body?: unknown,
+  control?: HttpRequestOptions,
+): Promise<T> {
+  return (await request<T>(path, "DELETE", body, control)).data;
 }
+
+export { HttpError } from "./httpError";

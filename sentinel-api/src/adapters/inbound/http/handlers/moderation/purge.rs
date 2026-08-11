@@ -4,8 +4,8 @@ use serde::Deserialize;
 use tracing::info;
 
 use crate::adapters::inbound::http::errors::ApiError;
-use crate::adapters::inbound::http::state::AppState;
 use crate::adapters::inbound::http::validation;
+use crate::bootstrap::state::PurgeState;
 use sentinel_core::domain::entities::system::discord_ids::GuildId;
 use sentinel_core::domain::errors::DomainError;
 
@@ -23,7 +23,7 @@ pub struct PurgeLogsDto {
 /// DELETE /api/purge/infractions — purge infractions plus vieilles que X jours
 /// pour une guild. `days = 0` signifie "tout supprimer" (pas de filtre de date).
 pub async fn purge_infractions(
-    State(state): State<AppState>,
+    State(state): State<PurgeState>,
     Json(dto): Json<PurgeByDaysDto>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     validation::validate_discord_id("guild_id", &dto.guild_id).map_err(ApiError)?;
@@ -33,7 +33,6 @@ pub async fn purge_infractions(
     // Phase 7 B — Gate RBAC : owner requis pour une purge massive.
 
     let count = state
-        .moderation
         .infractions_uc
         .delete_older_than_days(&dto.guild_id, dto.days)
         .await?;
@@ -56,7 +55,7 @@ pub async fn purge_infractions(
 
 /// DELETE /api/purge/audit-logs — purge audit logs older than X days for a guild
 pub async fn purge_audit_logs(
-    State(state): State<AppState>,
+    State(state): State<PurgeState>,
     Json(dto): Json<PurgeByDaysDto>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     validation::validate_discord_id("guild_id", &dto.guild_id).map_err(ApiError)?;
@@ -68,7 +67,6 @@ pub async fn purge_audit_logs(
     // Phase 7 B — Gate RBAC : owner requis pour purger l'audit log.
 
     let count = state
-        .audit
         .audit_logs_uc
         .delete_older_than_days(&dto.guild_id, dto.days)
         .await?;
@@ -95,7 +93,7 @@ pub async fn purge_audit_logs(
 /// `SUPERADMIN_USER_IDS` (env var). Les appels bot/internal (pas de
 /// `X-Discord-Token`) restent en pass-through.
 pub async fn purge_logs(
-    State(state): State<AppState>,
+    State(state): State<PurgeState>,
     Json(dto): Json<PurgeLogsDto>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     sentinel_core::domain::entities::moderation::purge::validate_purge_days_strictly_positive(

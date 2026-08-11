@@ -159,10 +159,7 @@ pub fn router(state: AppState) -> Router {
             "/docker/containers/{id}/logs",
             get(handlers::docker::containers::container_logs),
         )
-        .route(
-            "/docker/images",
-            get(handlers::docker::images::list_images),
-        )
+        .route("/docker/images", get(handlers::docker::images::list_images))
         .route(
             "/docker/images/{id}",
             axum::routing::delete(handlers::docker::images::remove_image),
@@ -217,7 +214,10 @@ pub fn router(state: AppState) -> Router {
             "/security/auth-failures",
             get(handlers::security::logs::auth_failures),
         )
-        .route("/security/banned-ips", get(handlers::security::bans::banned_ips))
+        .route(
+            "/security/banned-ips",
+            get(handlers::security::bans::banned_ips),
+        )
         .route(
             "/security/manual-bans",
             get(handlers::security::bans::manual_bans),
@@ -234,13 +234,22 @@ pub fn router(state: AppState) -> Router {
             "/security/ssh-failures",
             get(handlers::security::probes::ssh_failures),
         )
-        .route("/security/open-ports", get(handlers::security::probes::open_ports))
+        .route(
+            "/security/open-ports",
+            get(handlers::security::probes::open_ports),
+        )
         .route(
             "/security/file-integrity",
             get(handlers::security::probes::file_integrity),
         )
-        .route("/security/trivy", get(handlers::security::probes::trivy_vulns))
-        .route("/security/disk-trend", get(handlers::security::probes::disk_trend))
+        .route(
+            "/security/trivy",
+            get(handlers::security::probes::trivy_vulns),
+        )
+        .route(
+            "/security/disk-trend",
+            get(handlers::security::probes::disk_trend),
+        )
         .route(
             "/security/connections",
             get(handlers::security::probes::active_connections),
@@ -254,13 +263,22 @@ pub fn router(state: AppState) -> Router {
             get(handlers::security::probes::nginx_suspicious),
         )
         .route("/security/tls-cert", get(handlers::security::tls::tls_cert))
-        .route("/security/tls-errors", get(handlers::security::tls::tls_errors))
+        .route(
+            "/security/tls-errors",
+            get(handlers::security::tls::tls_errors),
+        )
         .route(
             "/security/traffic-trend",
             get(handlers::security::logs::traffic_trend),
         )
-        .route("/security/geoip", get(handlers::security::geoip::geoip_lookup))
-        .route("/security/audit-logs", get(handlers::security::audit::audit_logs))
+        .route(
+            "/security/geoip",
+            get(handlers::security::geoip::geoip_lookup),
+        )
+        .route(
+            "/security/audit-logs",
+            get(handlers::security::audit::audit_logs),
+        )
         .route(
             "/security/last-logins",
             get(handlers::security::audit::last_successful_logins),

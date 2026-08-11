@@ -28,7 +28,7 @@ use axum::http::{Request, StatusCode};
 use axum::middleware::Next;
 use axum::response::Response;
 
-use crate::adapters::inbound::http::state::AppState;
+use crate::bootstrap::state::SharedState;
 
 /// Refuse toute requete portant un `guild_id` autre que celui configure.
 ///
@@ -37,7 +37,7 @@ use crate::adapters::inbound::http::state::AppState;
 ///   - toutes les requetes si `guild_id` n'est pas configure, pour ne pas
 ///     bloquer une installation qui n'a pas encore renseigne la variable.
 pub async fn single_guild_middleware(
-    State(state): State<AppState>,
+    State(state): State<SharedState>,
     request: Request<Body>,
     next: Next,
 ) -> Result<Response, StatusCode> {
@@ -82,7 +82,7 @@ pub async fn single_guild_middleware(
 /// valeur que si la route declare reellement un `{guild_id}`.
 async fn guild_id_from_route_param(
     parts: &mut axum::http::request::Parts,
-    state: &AppState,
+    state: &SharedState,
 ) -> Option<String> {
     use axum::extract::{FromRequestParts, RawPathParams};
     let params = RawPathParams::from_request_parts(parts, state).await.ok()?;

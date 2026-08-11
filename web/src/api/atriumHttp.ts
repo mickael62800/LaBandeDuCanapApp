@@ -1,11 +1,12 @@
 // Client du backend Atrium, servi en meme origine par nginx.
 import { BackendHttpError, createBackendClient } from "./backendHttp";
+import type { HttpErrorDetails } from "./httpError";
 
 const ATRIUM_BASE = "/atrium-api";
 
 export class AtriumHttpError extends BackendHttpError {
-  constructor(message: string, status: number) {
-    super(message, status, "AtriumHttpError");
+  constructor(message: string, details: HttpErrorDetails) {
+    super(message, details, "AtriumHttpError");
   }
 }
 
@@ -15,7 +16,7 @@ const request = createBackendClient({
   forbiddenMessage: "Accès à Atrium refusé.",
   unavailableMessage:
     "Atrium ne répond pas. Le service est-il démarré (profil Docker « atrium ») ?",
-  makeError: (message, status) => new AtriumHttpError(message, status),
+  makeError: (message, details) => new AtriumHttpError(message, details),
 });
 
 export const atriumGet = <T>(path: string) => request<T>("GET", path);

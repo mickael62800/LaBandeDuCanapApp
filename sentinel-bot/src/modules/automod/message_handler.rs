@@ -39,7 +39,7 @@ pub(super) async fn process(ctx: &Context, msg: &Message) -> bool {
             // ete traite (redelivrance gateway concurrente) -> on sort. Evite
             // un contains_key+insert non atomique qui laissait passer 2 fois.
             if processed.insert(msg.id, now).is_some() {
-        return false;
+                return false;
             }
             if processed.len() > 2000 {
                 processed.retain(|_, ts| now.duration_since(*ts).as_secs() < 300);
@@ -128,7 +128,7 @@ pub(super) async fn process(ctx: &Context, msg: &Message) -> bool {
         let channel_id_str = msg.channel_id.get().to_string();
         let ignored: Vec<&str> = ignored_channels_str.split(',').map(|s| s.trim()).collect();
         if ignored.iter().any(|id| *id == channel_id_str) {
-        return false;
+            return false;
         }
     }
 
@@ -140,7 +140,7 @@ pub(super) async fn process(ctx: &Context, msg: &Message) -> bool {
             for role_id_str in &ignored {
                 if let Ok(role_id) = role_id_str.parse::<u64>() {
                     if member.roles.iter().any(|r| r.get() == role_id) {
-        return false;
+                        return false;
                     }
                 }
             }
@@ -232,7 +232,7 @@ pub(super) async fn process(ctx: &Context, msg: &Message) -> bool {
                 if let Some(base) = &base_opt {
                     base.send_log("warn", &guild_id, &log_msg);
                 }
-        return false;
+                return false;
             }
         }
     }
@@ -420,7 +420,7 @@ pub(super) async fn process(ctx: &Context, msg: &Message) -> bool {
                     .await;
                 });
             }
-        return false;
+            return false;
         }
     }
 

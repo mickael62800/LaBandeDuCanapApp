@@ -24,7 +24,132 @@ Aucun changement fonctionnel n'a ete applique pendant l'audit.
 
 La qualite gate globale n'est donc pas verte au moment de l'audit.
 
-## Priorite 0 - Terminer la migration de la moderation vers `audit_logs`
+## Avancement de l'implementation
+
+Lot 1 applique le 11 aout 2026 :
+
+- [x] retention de `logs` corrigee sur la colonne partitionnee `timestamp` ;
+- [x] compteurs `cleanup_rows_total{table}` et `cleanup_errors_total{table}`
+  ajoutes pour rendre les purges et leurs erreurs observables ;
+- [x] retries d'exports remis en file avec backoff exponentiel de 5 a 300
+  secondes et passage en `dead` uniquement a epuisement de `max_retries` ;
+- [x] migration `029_export_jobs_retry_backoff.sql` ajoutant
+  `next_attempt_at` et l'index d'eligibilite ;
+- [x] tests SQL ajoutes pour la retention, le succes export, l'echec
+  transitoire, l'attente du backoff et l'epuisement des retries.
+
+Validation du lot : `cargo check -p sentinel-worker --all-targets` et
+`cargo clippy -p sentinel-worker --all-targets -- -D warnings` passent. Les
+tests d'integration SQL sont compiles mais n'ont pas ete executes, conformement
+a la consigne du depot de ne pas lancer `cargo test` sans demande explicite.
+
+Lot 2 applique le 11 aout 2026 :
+
+- [x] `ModerationRepository::save` persiste reellement dans `audit_logs` avec
+  l'UUID de l'action comme identifiant canonique ;
+- [x] mapping `event_type = mod_*` et `details` centralise dans
+  `ModerationAction`, sans dual-write ni dependance entre use cases inbound ;
+- [x] compteur recent, classement moderateurs, export, revues et preuves
+  migres vers `audit_logs` ;
+- [x] migration historique `030_moderation_actions_to_audit_logs.sql` ajoutant
+  les FK composites requises par le partitionnement puis supprimant la table
+  `moderation_actions` ;
+- [x] reset membre adapte pour conserver la piste d'audit ;
+- [x] tests SQL ajoutes sur les lectures/ecritures migrees et les deux symboles
+  morts des tests gRPC retires.
+
+Validation du lot : `cargo check -p sentinel-core -p sentinel-api
+--all-targets` et `cargo clippy -p sentinel-core -p sentinel-api --all-targets
+-- -D warnings` passent. Les tests d'integration SQL sont compiles mais restent
+non executes sans demande explicite.
+
+Lot 3 applique le 11 aout 2026 :
+
+- [x] colonne `audit_logs.discord_entry_id` et index unique compatible avec le
+  partitionnement ajoutes par `031_discord_audit_sync_idempotency.sql` ;
+- [x] historique deduplique et `created_at` recalcule depuis le snowflake
+  Discord ;
+- [x] insertion des entrees par lot avec `QueryBuilder` et `ON CONFLICT DO
+  NOTHING` ;
+- [x] lot et progression du curseur regroupes dans une transaction unique ;
+- [x] curseur monotone meme avec plusieurs instances concurrentes ;
+- [x] tests ajoutes pour relecture idempotente, redemarrage, non-regression du
+  curseur, rollback complet sur erreur et conversion snowflake -> date.
+
+Validation du lot : `cargo check -p sentinel-core -p sentinel-worker
+--all-targets` et `cargo clippy -p sentinel-core -p sentinel-worker
+--all-targets -- -D warnings` passent. Les tests SQL sont compiles mais non
+executes sans demande explicite.
+
+Lot 4 applique le 11 aout 2026 :
+
+- [x] les 34 jobs periodiques retournent des handles nommes conserves par le
+  `main`, avec le monitoring, les annonces et le heartbeat ;
+- [x] cadence migree vers `tokio::time::interval` et
+  `MissedTickBehavior::Skip`, avec premier tick immediat pour les jobs
+  standards ;
+- [x] panics des jobs standards capturees, comptees et relancees au tick
+  suivant ;
+- [x] signal d'arret partage par toutes les boucles Sentinel ;
+- [x] attente des ticks en cours avant fermeture des ressources, bornee par
+  `WORKER_SHUTDOWN_TIMEOUT_SECS` (30 secondes par defaut), puis annulation des
+  retardataires ;
+- [x] metriques par job pour le dernier debut, le dernier succes, la derniere
+  duree, les erreurs consecutives, les erreurs/panics cumulees et le statut
+  vivant ;
+- [x] tests ajoutes pour la fin normale, l'annulation d'un job long et la
+  capture d'une panic.
+
+Validation du lot : `cargo check -p platform-common-worker -p
+sentinel-worker` et `cargo clippy -p platform-common-worker -p
+sentinel-worker --all-targets -- -D warnings` passent. Les tests sont compiles
+mais non executes sans demande explicite.
+
+Lot 5 applique le 11 aout 2026 :
+
+- [x] `WorkerContext` cloneable construit une fois apres resolution de la
+  configuration DB ;
+- [x] pool PostgreSQL, configuration, signal d'arret, gestionnaire Redis et
+  clients HTTP transmis ensemble au scheduler ;
+- [x] `ConnectionManager` Redis partage et auto-reconnectant utilise par les
+  19 modules Redis du Worker ;
+- [x] suppression des ouvertures de connexion Redis effectuees a chaque tick ;
+- [x] deux clients HTTP partages avec timeout de connexion de 5 secondes :
+  standard (15 secondes) et traitement long IA (60 secondes) ;
+- [x] annonces, monitoring, Discord Audit, IA et heartbeat raccordes a ces
+  clients au lieu d'en reconstruire ;
+- [x] helper `get_conn` devenu inutile supprime et helpers XADD rendus
+  generiques sur les connexions asynchrones Redis.
+
+Validation du lot : `cargo check -p platform-common-worker -p
+sentinel-worker` et `cargo clippy -p platform-common-worker -p
+sentinel-worker --all-targets -- -D warnings` passent. Les tests sont compiles
+mais non executes sans demande explicite.
+
+Lot 6 applique le 11 aout 2026 :
+
+- [x] tous les handlers HTTP extraient un sous-etat de domaine ou une vue de
+  capacites ; aucune occurrence de `State<AppState>` ne subsiste ;
+- [x] `AppState` ne contient plus le pool SQL ni les copies plates historiques
+  des ports : il assemble les sous-etats de domaine et `SharedState` ;
+- [x] garde-fou d'architecture recursif interdisant `AppState` et le SQL direct
+  dans les handlers ;
+- [x] god files prioritaires decoupes par responsabilite : pipeline IA,
+  ressources Discord, agregats SQL des reviews automod, assemblage de l'etat,
+  handlers reviews/actions/vocaux, configuration et scheduler Worker ;
+- [x] acces `audit_logs` confrontes aux index existants et migration
+  `032_audit_logs_query_indexes.sql` ajoutee pour cible moderée, acteur et
+  timeline de salon ;
+- [x] aucun index JSON `details->>'action_id'` ajoute : ce chemin n'existe plus
+  en production (`id` est canonique). L'identifiant Discord utilise deja la
+  colonne et l'index unique ajoutes par la migration 031.
+
+Validation du lot : `cargo check -p sentinel-core -p sentinel-api -p
+sentinel-worker --all-targets` et `cargo clippy -p sentinel-core -p
+sentinel-api -p sentinel-worker --all-targets -- -D warnings` passent. Les
+tests d'integration SQL restent non executes sans demande explicite.
+
+## Priorite 0 - Terminer la migration de la moderation vers `audit_logs` — corrige
 
 La source de verite des actions de moderation est en cours de migration de
 `moderation_actions` vers `audit_logs` avec des `event_type = 'mod_*'`.
@@ -85,7 +210,7 @@ que le contrat du port et son implementation de production ont diverge.
 Il faut corriger l'architecture et les tests ensemble, pas simplement modifier
 les assertions pour rendre la CI verte.
 
-## Priorite 0 - Corriger la retention de `logs`
+## Priorite 0 - Corriger la retention de `logs` — corrige
 
 Le job de cleanup execute :
 
@@ -110,7 +235,7 @@ echoue a chaque passage et la retention des logs n'est jamais appliquee.
 
 - `sentinel-worker/src/domains/cleanup/cleanup_old_data.rs`
 
-## Priorite 0 - Reparer les retries des exports
+## Priorite 0 - Reparer les retries des exports — corrige
 
 Le Worker ne claim que les jobs avec `status = 'pending'`. Lors d'une erreur,
 il place pourtant le job en `failed` tant que `max_retries` n'est pas atteint.
@@ -131,7 +256,7 @@ Le premier echec transitoire bloque donc definitivement l'export et
 
 - `sentinel-worker/src/domains/export/drain_export_jobs.rs`
 
-## Priorite 0 - Fiabiliser la synchronisation Discord Audit
+## Priorite 0 - Fiabiliser la synchronisation Discord Audit — corrige
 
 La synchronisation Discord Audit annonce une deduplication par
 `details.discord_entry_id`, mais aucune contrainte unique ni requete
@@ -157,7 +282,7 @@ remise a zero du curseur peut creer des doublons.
 
 - `sentinel-worker/src/domains/discord_audit_sync/sync_discord_audit_logs.rs`
 
-## Priorite 1 - Rendre le scheduler reellement supervisable
+## Priorite 1 - Rendre le scheduler reellement supervisable — corrige
 
 `sentinel-worker` orchestre plus de trente jobs dans un seul processus. Cette
 fusion economise des runtimes, pools et conteneurs, mais augmente l'importance
@@ -193,7 +318,7 @@ Le scheduler actuel presente plusieurs limites :
 - `sentinel-worker/src/main.rs`
 - `sentinel-worker/src/scheduler.rs`
 
-## Priorite 2 - Creer un contexte partage pour le Worker
+## Priorite 2 - Creer un contexte partage pour le Worker — corrige
 
 Plusieurs jobs reconstruisent leur propre client HTTP a chaque tick et ouvrent
 une nouvelle connexion Redis a chaque execution ou resultat. Le scheduler ne
@@ -403,7 +528,7 @@ dashboard Sentinel, mais les responsabilites machine ont deja leur API dediee.
 Cette etape simplifiera `OpsState`, `AppState`, les routes systeme et l'image
 Docker de Sentinel.
 
-## Priorite 11 - Terminer le decoupage de `AppState`
+## Priorite 11 - Terminer le decoupage de `AppState` — corrige
 
 Les sous-etats par domaine existent deja, mais `AppState` conserve encore de
 nombreux champs historiques en doublon. Environ 80 occurrences de
@@ -424,7 +549,16 @@ repositories et use cases dans une seule fonction.
   leurs propres fixtures.
 - Ajouter un test d'architecture interdisant le SQL direct dans les handlers.
 
-## Priorite 12 - Decouper les god files restants
+### Resolution
+
+- zero extraction `State<AppState>` dans les handlers et middlewares metier ;
+- racine reduite aux sous-etats de domaine et a `SharedState` ;
+- `pg_pool`, les ports dupliques et les clients inutilises retires de la
+  racine HTTP ;
+- construction IA et assemblage final extraits de la factory principale ;
+- test d'architecture ajoute dans `tests/architecture_state_test.rs`.
+
+## Priorite 12 - Decouper les god files restants — corrige
 
 Fichiers de production a traiter en premier :
 
@@ -454,7 +588,13 @@ Le decoupage doit rester fonctionnel : deplacer les tests avec leur module et
 eviter un simple morcellement en fichiers qui continuent tous de dependre du
 meme god object.
 
-## Priorite 13 - Verifier les index de la nouvelle source de verite
+### Resolution
+
+Les neuf fichiers prioritaires sont maintenant des facades courtes ou des
+orchestrateurs cibles. Les implementations vivent dans des modules nommes par
+responsabilite ; les traits publics, routes et signatures n'ont pas change.
+
+## Priorite 13 - Verifier les index de la nouvelle source de verite — corrige
 
 La migration vers `audit_logs` ajoute des acces frequents sur :
 
@@ -475,6 +615,23 @@ expressions JSONB ni tous les plans de la nouvelle source de verite.
 - Ajouter un index unique pour les identifiants Discord importes.
 - Tenir compte du partitionnement mensuel d'`audit_logs` et attacher les index
   aux partitions.
+
+### Resolution
+
+- les index historiques `(guild_id, created_at)` et
+  `(guild_id, event_type, created_at)` couvrent deja les listes generales ;
+- la cle primaire `(id, created_at)` couvre l'identifiant canonique d'action ;
+- `discord_entry_id` dispose de l'index unique partition-compatible de 031 ;
+- 032 ajoute les index partiels `mod_*` cible/acteur et l'index de timeline
+  `(channel_id, event_type, created_at)` sur la table parente partitionnee ;
+- aucun consommateur de production ne filtre encore
+  `details->>'action_id'` ou `details->>'discord_entry_id'`, donc aucun index
+  d'expression JSON inutile n'a ete cree.
+
+La validation des plans avec `EXPLAIN (ANALYZE, BUFFERS)` reste une etape de
+deploiement : l'environnement de travail ne fournit ni `DATABASE_URL` ni
+client `psql`. Elle doit etre executee sur une copie representative apres
+application de 032, pas sur une base de production a l'aveugle.
 
 ## Nettoyage secondaire
 

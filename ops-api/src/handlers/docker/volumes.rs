@@ -55,7 +55,9 @@ pub async fn remove_volume(
         &actor,
         "volume.remove",
         &name,
-        state.docker_host.remove_volume(&name, q.force.unwrap_or(false)),
+        state
+            .docker_host
+            .remove_volume(&name, q.force.unwrap_or(false)),
     )
     .await?;
     Ok(ok_response())

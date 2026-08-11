@@ -21,7 +21,7 @@ struct DueSursis {
     channel_id: Option<String>,
 }
 
-pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
+pub async fn run(pool: &PgPool, redis: &redis::aio::ConnectionManager) -> Result<(), String> {
     let due = sqlx::query_as::<_, DueSursis>(
         "UPDATE moderation_sursis SET status = 'banni'
          WHERE id IN (
@@ -42,7 +42,7 @@ pub async fn run(pool: &PgPool, redis: &redis::Client) -> Result<(), String> {
         return Ok(());
     }
 
-    let mut conn = platform_common_worker::redis_helpers::get_conn(redis).await?;
+    let mut conn = redis.clone();
 
     for s in &due {
         if !is_worker_enabled(pool, &s.guild_id, "moderation-bot").await {

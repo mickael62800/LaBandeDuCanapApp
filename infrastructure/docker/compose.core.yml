@@ -178,6 +178,8 @@ services:
     environment:
       PGPASSWORD: ${POSTGRES_PASSWORD:-sentinel_secret}
       SENTINEL_DB_PASSWORD: ${SENTINEL_DB_PASSWORD:-sentinel_app_secret}
+    volumes:
+      - ./scripts:/init:ro
     entrypoint:
       - sh
       - -euc
@@ -196,11 +198,11 @@ services:
           $$PSQL -c "CREATE ROLE sentinel_app LOGIN"
         $$PSQL -c "ALTER ROLE sentinel_app WITH LOGIN PASSWORD '$$SENTINEL_DB_PASSWORD'"
 
-        # 3. Il possede la base et tout ce qu'elle contient. REASSIGN OWNED
-        #    transfere les objets existants d'un coup ; sans lui, le role ne
-        #    pourrait ni modifier le schema ni appliquer les migrations.
+        # 3. Il possede la base et les objets applicatifs du schema public.
+        #    Les objets appartenant a une extension restent a leur
+        #    proprietaire systeme.
         $$PSQL -c "ALTER DATABASE discord_sentinel OWNER TO sentinel_app"
-        $$PSQL -c "REASSIGN OWNED BY sentinel TO sentinel_app"
+        $$PSQL -v target_role=sentinel_app -f /init/reassign-public-objects.sql
         $$PSQL -c "ALTER SCHEMA public OWNER TO sentinel_app"
         $$PSQL -c "GRANT CONNECT ON DATABASE discord_sentinel TO sentinel_app"
 

@@ -40,8 +40,7 @@ async fn main() {
             std::process::exit(2);
         });
     let interval_secs = platform_common_worker::env_u64("ATRIUM_SUMMARY_INTERVAL_SECS", 86_400);
-    let retention_secs =
-        platform_common_worker::env_u64("ATRIUM_RETENTION_INTERVAL_SECS", 86_400);
+    let retention_secs = platform_common_worker::env_u64("ATRIUM_RETENTION_INTERVAL_SECS", 86_400);
     let client = HttpJobClient::new(api_url.clone(), api_token, Duration::from_secs(30));
 
     info!(%api_url, %guild_id, interval_secs, "atrium-worker demarre");

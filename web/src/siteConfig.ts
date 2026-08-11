@@ -15,6 +15,8 @@ export interface SiteConfig {
   discordInvite: string;
 }
 
+import { fetchWithTimeout } from "./api/httpTransport";
+
 const VIDE: SiteConfig = { guildId: "", discordInvite: "" };
 
 let config: SiteConfig = VIDE;
@@ -31,7 +33,11 @@ export async function loadSiteConfig(): Promise<SiteConfig> {
     // `cache: no-store` : le fichier est réécrit à chaque démarrage du
     // conteneur, un cache navigateur servirait l'ancienne valeur après une
     // correction de configuration.
-    const res = await fetch("/site-config.json", { cache: "no-store" });
+    const res = await fetchWithTimeout(
+      "/site-config.json",
+      { cache: "no-store" },
+      3_000,
+    );
     if (!res.ok) return config;
 
     const brut = (await res.json()) as { guild_id?: string; discord_invite?: string };

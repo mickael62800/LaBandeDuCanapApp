@@ -88,6 +88,8 @@ services:
     environment:
       PGPASSWORD: ${POSTGRES_PASSWORD:-sentinel_secret}
       NEXUS_DB_PASSWORD: ${NEXUS_DB_PASSWORD:-nexus_secret}
+    volumes:
+      - ./scripts:/init:ro
     entrypoint:
       - sh
       - -euc
@@ -107,11 +109,12 @@ services:
           $$PSQL -c "CREATE DATABASE nexus OWNER nexus"
 
         # 3. Reprise d'une installation ou la base existait deja, creee par
-        #    `sentinel`. Sans ca, le role `nexus` ne pourrait pas ecrire dans
-        #    ses propres tables. REASSIGN OWNED transfere tout d'un coup.
+        #    `sentinel`. Seuls les objets applicatifs de public sont repris ;
+        #    les objets appartenant a une extension sont exclus.
         $$PSQL -c "ALTER DATABASE nexus OWNER TO nexus"
         psql -h postgres -U sentinel -d nexus -v ON_ERROR_STOP=1 \
-          -c "REASSIGN OWNED BY sentinel TO nexus" \
+          -v target_role=nexus \
+          -f /init/reassign-public-objects.sql \
           -c "ALTER SCHEMA public OWNER TO nexus"
 
         # 4. Fermeture croisee. Par defaut PostgreSQL accorde CONNECT a PUBLIC

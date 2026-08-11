@@ -216,7 +216,6 @@ macro_rules! stub_non_exerce {
 stub_non_exerce!(MockCancelUc);
 stub_non_exerce!(MockAssessRiskUc);
 stub_non_exerce!(MockModstatsUc);
-stub_non_exerce!(MockNotesUc);
 stub_non_exerce!(MockEvidenceRepo);
 stub_non_exerce!(MockReviewRepo);
 stub_non_exerce!(MockPendingActionRepo);
@@ -260,41 +259,6 @@ impl sentinel_core::ports::inbound::moderation::read_modstats::ReadModstatsUseCa
         sentinel_core::domain::errors::DomainError,
     > {
         unimplemented!("modstats_trend non exerce par ces tests")
-    }
-}
-
-#[async_trait::async_trait]
-impl sentinel_core::ports::inbound::moderation::manage_notes::ManageNotesUseCase for MockNotesUc {
-    async fn add_note(
-        &self,
-        _cmd: sentinel_core::ports::inbound::moderation::manage_notes::AddNoteCommand,
-    ) -> Result<
-        sentinel_core::domain::entities::moderation::user_note::UserNote,
-        sentinel_core::domain::errors::DomainError,
-    > {
-        unimplemented!("add_note non exerce par ces tests")
-    }
-    async fn get_notes(
-        &self,
-        _guild_id: &str,
-        _user_id: &str,
-    ) -> Result<
-        Vec<sentinel_core::domain::entities::moderation::user_note::UserNote>,
-        sentinel_core::domain::errors::DomainError,
-    > {
-        unimplemented!("get_notes non exerce par ces tests")
-    }
-    async fn delete_note(
-        &self,
-        _note_id: &str,
-    ) -> Result<(), sentinel_core::domain::errors::DomainError> {
-        unimplemented!("delete_note non exerce par ces tests")
-    }
-    async fn note_guild_id(
-        &self,
-        _note_id: &str,
-    ) -> Result<Option<String>, sentinel_core::domain::errors::DomainError> {
-        unimplemented!("note_guild_id non exerce par ces tests")
     }
 }
 
@@ -505,12 +469,6 @@ fn make_log_request(action: &str) -> Request<proto::LogActionRequest> {
         duration: None,
         skip_strike: false,
     })
-}
-
-fn make_log_request_dur(action: &str, duration: Option<u64>) -> Request<proto::LogActionRequest> {
-    let mut r = make_log_request(action);
-    r.get_mut().duration = duration;
-    r
 }
 
 // BUG #8 : seul ban_temp cree un rappel d'expiration ; mute_temp expire seul via

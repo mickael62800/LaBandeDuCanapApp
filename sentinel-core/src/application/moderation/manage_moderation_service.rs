@@ -6,8 +6,6 @@ use uuid::Uuid;
 use crate::domain::entities::moderation::action::applied::ModerationAction;
 use crate::domain::entities::moderation::action::applied::UserModerationHistory;
 use crate::domain::errors::DomainError;
-use crate::ports::inbound::audit::manage_audit_logs::CreateAuditLogCommand;
-use crate::ports::inbound::audit::manage_audit_logs::ManageAuditLogsUseCase;
 use crate::ports::inbound::moderation::manage_moderation::LogModerationCommand;
 use crate::ports::inbound::moderation::manage_moderation::LoggedModerationAction;
 use crate::ports::inbound::moderation::manage_moderation::ManageModerationUseCase;
@@ -26,7 +24,6 @@ pub struct ManageModerationService {
     strike_repo: Arc<dyn StrikeRepository>,
     cache: Arc<dyn CachePort>,
     strikes_uc: Option<Arc<dyn ManageStrikesUseCase>>,
-    audit_logs_uc: Option<Arc<dyn ManageAuditLogsUseCase>>,
 }
 
 impl ManageModerationService {
@@ -40,7 +37,6 @@ impl ManageModerationService {
             strike_repo,
             cache,
             strikes_uc: None,
-            audit_logs_uc: None,
         }
     }
 
@@ -50,13 +46,6 @@ impl ManageModerationService {
     /// appele dans main.rs).
     pub fn with_strikes_uc(mut self, strikes_uc: Arc<dyn ManageStrikesUseCase>) -> Self {
         self.strikes_uc = Some(strikes_uc);
-        self
-    }
-
-    /// Injecte le use case audit logs (Phase 1 dual-write : chaque action de
-    /// moderation est aussi loggee dans audit_logs avec event_type `mod_<action>`).
-    pub fn with_audit_logs_uc(mut self, audit_logs_uc: Arc<dyn ManageAuditLogsUseCase>) -> Self {
-        self.audit_logs_uc = Some(audit_logs_uc);
         self
     }
 }
@@ -84,28 +73,10 @@ impl ManageModerationUseCase for ManageModerationService {
             created_at: chrono::Utc::now(),
         };
 
-        let uc = self.audit_logs_uc.as_ref().ok_or_else(|| {
-            DomainError::Internal("audit_logs_uc non injecte dans ManageModerationService".into())
-        })?;
-        let event_type = format!("mod_{}", action.action_type);
-        let details = serde_json::json!({
-            "reason": action.reason,
-            "gravity": action.gravity.as_ref().map(|g| g.as_str()),
-            "duration_secs": action.duration,
-            "action_id": action.id.to_string(),
-        });
-        let audit_cmd = CreateAuditLogCommand {
-            guild_id: action.guild_id.clone(),
-            event_type,
-            actor_id: Some(action.moderator_id.clone()),
-            actor_name: Some(action.moderator_name.clone()),
-            target_id: Some(action.target_id.clone()),
-            target_name: Some(action.target_name.clone()),
-            channel_id: Some(action.channel_id.clone().into()),
-            channel_name: None,
-            details,
-        };
-        uc.create(audit_cmd).await?;
+        // Le port persiste l'action dans sa source de verite (`audit_logs`).
+        // Production et doubles de test partagent ainsi exactement le meme
+        // contrat, sans dual-write ni appel d'un use case inbound depuis un autre.
+        self.repo.save(&action).await?;
 
         // Invalidate history cache for this user
         let cache_key = format!("modhistory:{}:{}", action.guild_id, action.target_id);

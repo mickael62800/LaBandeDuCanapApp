@@ -11,7 +11,7 @@ use tracing::{info, warn};
 use crate::config::CleanupConfig;
 
 const DELETE_OLD_LOGS_SQL: &str =
-    "DELETE FROM logs WHERE \"timestamp\" < NOW() - make_interval(days => $1)";
+    "DELETE FROM logs WHERE \"timestamp\" < NOW() - make_interval(days => $1::int)";
 
 fn record_cleanup_success(table: &'static str, rows: u64) {
     metrics::counter!("cleanup_rows_total", "table" => table).increment(rows);
@@ -21,7 +21,7 @@ fn record_cleanup_error(table: &'static str) {
     metrics::counter!("cleanup_errors_total", "table" => table).increment(1);
 }
 
-async fn delete_old_logs(pool: &PgPool, days: i64) -> Result<u64, sqlx::Error> {
+async fn delete_old_logs(pool: &PgPool, days: i32) -> Result<u64, sqlx::Error> {
     sqlx::query(DELETE_OLD_LOGS_SQL)
         .bind(days)
         .execute(pool)
@@ -34,45 +34,59 @@ async fn delete_old_logs(pool: &PgPool, days: i64) -> Result<u64, sqlx::Error> {
 /// une valeur negative supprimerait meme les lignes futures). On refuse alors
 /// d'executer le DELETE : mieux vaut conserver les donnees qu'une purge totale
 /// declenchee par une simple case de config erronee.
-fn valid_retention(days: i64, label: &str) -> Option<i64> {
-    let valid = sentinel_core::domain::services::system::scheduling::valid_retention(days);
-    if valid.is_none() {
+fn valid_retention(days: i64, label: &str) -> Option<i32> {
+    let Some(valid) = sentinel_core::domain::services::system::scheduling::valid_retention(days)
+    else {
         warn!(
             days,
             table = label,
             "retention <= 0 -> DELETE ignore (garde anti purge totale)"
         );
+        return None;
+    };
+
+    match i32::try_from(valid) {
+        Ok(days) => Some(days),
+        Err(_) => {
+            warn!(
+                days,
+                table = label,
+                "retention trop grande pour PostgreSQL -> DELETE ignore"
+            );
+            None
+        }
     }
-    valid
 }
 
 pub async fn run(pool: &PgPool, config: &CleanupConfig) -> Result<(), String> {
     let mut errors = Vec::new();
 
     // ── Voice sessions ──
-    let voice_deleted =
-        match valid_retention(config.voice_sessions_retention_days, "voice_sessions") {
-            Some(days) => match sqlx::query(
-                "DELETE FROM voice_sessions WHERE created_at < NOW() - make_interval(days => $1)",
-            )
-            .bind(days)
-            .execute(pool)
-            .await
-            {
-                Ok(r) => {
-                    let rows = r.rows_affected();
-                    record_cleanup_success("voice_sessions", rows);
-                    rows
-                }
-                Err(e) => {
-                    record_cleanup_error("voice_sessions");
-                    warn!(error = %e, "Erreur suppression voice_sessions");
-                    errors.push(format!("voice_sessions: {e}"));
-                    0
-                }
-            },
-            None => 0,
-        };
+    let voice_deleted = match valid_retention(
+        config.voice_sessions_retention_days,
+        "voice_sessions",
+    ) {
+        Some(days) => match sqlx::query(
+            "DELETE FROM voice_sessions WHERE created_at < NOW() - make_interval(days => $1::int)",
+        )
+        .bind(days)
+        .execute(pool)
+        .await
+        {
+            Ok(r) => {
+                let rows = r.rows_affected();
+                record_cleanup_success("voice_sessions", rows);
+                rows
+            }
+            Err(e) => {
+                record_cleanup_error("voice_sessions");
+                warn!(error = %e, "Erreur suppression voice_sessions");
+                errors.push(format!("voice_sessions: {e}"));
+                0
+            }
+        },
+        None => 0,
+    };
 
     // ── Logs / audit_logs / user_activity_log (meme retention) ──
     let logs_days = valid_retention(config.logs_retention_days, "logs/audit/user_activity");
@@ -99,7 +113,7 @@ pub async fn run(pool: &PgPool, config: &CleanupConfig) -> Result<(), String> {
             Some(days) => match sqlx::query(
                 "DELETE FROM ticket_messages WHERE ticket_id IN (
             SELECT id FROM tickets WHERE status = 'closed'
-            AND updated_at < NOW() - make_interval(days => $1)
+            AND updated_at < NOW() - make_interval(days => $1::int)
         )",
             )
             .bind(days)
@@ -124,7 +138,7 @@ pub async fn run(pool: &PgPool, config: &CleanupConfig) -> Result<(), String> {
     // ── Audit logs ──
     let audit_deleted = match logs_days {
         Some(days) => match sqlx::query(
-            "DELETE FROM audit_logs WHERE created_at < NOW() - make_interval(days => $1)",
+            "DELETE FROM audit_logs WHERE created_at < NOW() - make_interval(days => $1::int)",
         )
         .bind(days)
         .execute(pool)
@@ -148,7 +162,7 @@ pub async fn run(pool: &PgPool, config: &CleanupConfig) -> Result<(), String> {
     // ── User activity log ──
     let activity_deleted = match logs_days {
         Some(days) => match sqlx::query(
-            "DELETE FROM user_activity_log WHERE created_at < NOW() - make_interval(days => $1)",
+            "DELETE FROM user_activity_log WHERE created_at < NOW() - make_interval(days => $1::int)",
         )
         .bind(days)
         .execute(pool)

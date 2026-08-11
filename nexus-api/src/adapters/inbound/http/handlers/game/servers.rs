@@ -19,7 +19,7 @@ use crate::adapters::inbound::http::handlers::ApiError;
 use crate::bootstrap::AppState;
 use nexus_core::domain::entities::game::server::CreateGameServerCommand;
 use nexus_core::ports::outbound::events::game_events::{
-    SERVER_DELETED, SERVER_STARTED, SERVER_STOPPED,
+    IP_REVEAL, SERVER_DELETED, SERVER_STARTED, SERVER_STOPPED,
 };
 
 /// POST /api/games/{guild_id}/servers
@@ -72,7 +72,7 @@ pub async fn create_server(
 /// revelation. On le sert aussi a l'administration, mais sans attendre cette
 /// revelation : elle protege l'adresse des JOUEURS, pas des administrateurs,
 /// qui ont besoin de tester la connexion avant d'ouvrir la session.
-async fn hote_public(state: &AppState, guild_id: &str) -> Option<String> {
+pub(super) async fn hote_public(state: &AppState, guild_id: &str) -> Option<String> {
     let cfg = state
         .bot_config_repo
         .get_config(guild_id, super::GAME_PORTAL_BOT)
@@ -184,6 +184,25 @@ pub async fn restart_server(
 ) -> Result<StatusCode, ApiError> {
     let actor = resolve_actor(&state, server_id, q.actor_id.as_deref()).await?;
     state.game_servers_uc.restart(server_id, &actor).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// POST /api/games/servers/{server_id}/reveal-ip
+///
+/// Force la revelation avant `ip_reveal_at`. La passerelle Web reserve cette
+/// route aux administrateurs Nexus ; l'acteur reste journalise dans l'audit.
+pub async fn reveal_ip(
+    State(state): State<AppState>,
+    Path(server_id): Path<Uuid>,
+    Query(q): Query<ActorQuery>,
+) -> Result<StatusCode, ApiError> {
+    let detail = state.game_servers_uc.get(server_id).await?;
+    let actor = q
+        .actor_id
+        .clone()
+        .unwrap_or_else(|| detail.server.owner_user_id.clone());
+    state.game_servers_uc.reveal_ip(server_id, &actor).await?;
+    publish_lifecycle(&state, IP_REVEAL, server_id, &detail.server.guild_id).await;
     Ok(StatusCode::NO_CONTENT)
 }
 

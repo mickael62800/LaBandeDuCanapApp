@@ -282,6 +282,9 @@ impl ManageGameServersUseCase for DummyManageGameServers {
     async fn restart(&self, _: Uuid, _: &str) -> Result<(), DomainError> {
         Ok(())
     }
+    async fn reveal_ip(&self, _: Uuid, _: &str) -> Result<(), DomainError> {
+        Ok(())
+    }
     async fn get_logs(&self, _: Uuid, _: u32) -> Result<Vec<String>, DomainError> {
         Ok(vec!["[Server] Started".into()])
     }

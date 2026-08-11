@@ -16,6 +16,8 @@ pub mod game_events {
     pub const IP_REVEAL: &str = "game_ip_reveal";
     pub const DAILY_PING: &str = "game_daily_ping";
     pub const GAMES_PANEL_DEPLOY: &str = "games_panel_deploy";
+    pub const GAMES_ROLES_ENSURE: &str = "games_roles_ensure";
+    pub const GAME_ROLE_DELETE: &str = "game_role_delete";
 }
 
 #[async_trait]

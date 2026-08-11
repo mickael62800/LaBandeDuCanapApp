@@ -2,12 +2,11 @@
 //!
 //! Differences avec sentinel-api :
 //! - Pas de RBAC (Bearer global uniquement).
-//! - Pas d'adapter Discord API cote nexus-api : la creation automatique du
-//!   role Discord (workflow web) n'est pas portee ; le bot cree le role et
-//!   passe `role_id` dans le payload (workflow bot inchange).
-//! - `upload-emoji` et `panel/deploy` repondent 501 (dependaient de l'API
-//!   Discord / du broadcaster websocket sentinel) — routes conservees pour
-//!   garder la surface d'URL stable.
+//! - Pas d'adapter Discord API cote nexus-api : les roles du workflow Web
+//!   sont crees/supprimes par `nexus-bot` via le stream d'evenements. Le
+//!   workflow slash peut toujours fournir directement son `role_id`.
+//! - Les operations Discord asynchrones, comme `panel/deploy`, sont publiees
+//!   sur le stream Nexus puis executees par `nexus-bot`.
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -131,6 +130,20 @@ pub async fn create_game(
             role_owned.as_deref(),
         )
         .await?;
+
+    // Le Web ne peut pas creer un role Discord directement. Demande au bot
+    // de provisionner les roles manquants, sans attendre le deploiement d'un
+    // panneau. Le workflow slash fournit deja son role_id et ne republie pas.
+    if game.role_id.is_none() {
+        use nexus_core::ports::outbound::events::game_events;
+        state
+            .events
+            .publish(
+                game_events::GAMES_ROLES_ENSURE,
+                json!({ "guild_id": dto.guild_id.as_ref() }),
+            )
+            .await;
+    }
     Ok(Json(game.into()))
 }
 
@@ -195,8 +208,31 @@ pub async fn delete_game(
     State(state): State<AppState>,
     Path((guild_id, game_id)): Path<(String, String)>,
 ) -> Result<StatusCode, ApiError> {
+    let game = state
+        .game_repo
+        .list(&guild_id)
+        .await?
+        .into_iter()
+        .find(|game| game.id == game_id)
+        .ok_or_else(|| ApiError(DomainError::NotFound("Jeu introuvable".into())))?;
+
     if !state.game_repo.delete(&guild_id, &game_id).await? {
         return Err(DomainError::NotFound("Jeu introuvable".into()).into());
+    }
+
+    if let Some(role_id) = game.role_id {
+        use nexus_core::ports::outbound::events::game_events;
+        state
+            .events
+            .publish(
+                game_events::GAME_ROLE_DELETE,
+                json!({
+                    "guild_id": guild_id,
+                    "role_id": role_id,
+                    "game_name": game.game_name,
+                }),
+            )
+            .await;
     }
     Ok(StatusCode::NO_CONTENT)
 }
@@ -315,6 +351,8 @@ pub async fn list_games_by_category(
     Path(guild_id): Path<String>,
     Query(q): Query<CategoryQuery>,
 ) -> Result<Json<Vec<GameDto>>, ApiError> {
+    // `category` absente signifie "tous les jeux". Une valeur cible une
+    // categorie precise sans tenir compte de la casse.
     let cat_owned = normalize_optional_tag(q.category.as_deref());
     let games = state
         .game_repo

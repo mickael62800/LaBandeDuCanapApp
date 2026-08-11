@@ -7,7 +7,6 @@ export interface MentionableGame {
   emoji: string | null;
   category: string | null;
   role_id: string | null;
-  subscriber_count: number;
 }
 
 export interface CreateMentionableGameDto {

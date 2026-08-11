@@ -322,15 +322,35 @@ async fn access(Extension(state): Extension<Arc<AppState>>, headers: HeaderMap) 
         return status.into_response();
     }
 
-    let Some(token) = headers
+    // Les requetes HTTP du SPA portent encore le token Discord dans un
+    // en-tete. Un navigateur ne peut en revanche pas ajouter cet en-tete au
+    // handshake WebSocket : dans ce cas, on resout la session opaque portee
+    // par le cookie HttpOnly et on garde le token strictement cote serveur.
+    let token = headers
         .get(DISCORD_TOKEN_HEADER)
         .and_then(|v| v.to_str().ok())
         .filter(|s| !s.is_empty())
-    else {
-        return StatusCode::UNAUTHORIZED.into_response();
+        .map(str::to_owned);
+    let token = match token {
+        Some(token) => token,
+        None => {
+            let Some(session_id) = cookie_value(&headers, SESSION_COOKIE)
+                .and_then(|value| Uuid::parse_str(&value).ok())
+            else {
+                return StatusCode::UNAUTHORIZED.into_response();
+            };
+            match state.sessions.refresh(session_id).await {
+                Ok(session) => session.access_token,
+                Err(DomainError::Forbidden(_)) => return StatusCode::UNAUTHORIZED.into_response(),
+                Err(error) => {
+                    tracing::warn!(%error, "resolution de session impossible");
+                    return StatusCode::SERVICE_UNAVAILABLE.into_response();
+                }
+            }
+        }
     };
 
-    match state.access.resolve(token).await {
+    match state.access.resolve(&token).await {
         Ok(verdict) if verdict.granted => {
             let mut out = HeaderMap::new();
             if let Ok(v) = header::HeaderValue::from_str(&verdict.discord_user_id) {

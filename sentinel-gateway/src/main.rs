@@ -74,9 +74,13 @@ async fn main() {
         "Demarrage de Sentinel Gateway"
     );
 
-    // Warning securite si SENTINEL_API_KEY vide
+    // La cle Sentinel ne sert plus dans l'URL WebSocket. Elle reste un mode
+    // Bearer standard pour les rares clients internes et pour le logger.
     if config.api_key.is_empty() {
-        warn!("SENTINEL_API_KEY non definie — authentification WebSocket desactivee (mode dev)");
+        warn!("SENTINEL_API_KEY non definie — acces WebSocket interne par Bearer desactive");
+    }
+    if config.auth_api_token.is_empty() {
+        warn!("AUTH_API_TOKEN non defini — authentification WebSocket par session indisponible");
     }
 
     // Le logger reutilise la configuration deja chargee : il ne relit pas une
@@ -115,13 +119,13 @@ async fn main() {
     let ws_state = GatewayState {
         broadcaster: broadcaster.clone(),
         api_key: config.api_key.clone(),
-        api_url: config.api_url.clone(),
+        auth_api_url: config.auth_api_url.clone(),
+        auth_api_token: config.auth_api_token.clone(),
         logger: gw_logger.clone(),
         http_client: reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(5))
             .build()
             .expect("reqwest client"),
-        token_cache: std::sync::Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
     };
 
     let trace_layer = TraceLayer::new_for_http()

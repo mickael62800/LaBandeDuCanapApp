@@ -568,6 +568,11 @@ services:
       # Sans ca, fallback localhost:3000 -> appel vers gateway lui-meme -> WS rejete 401.
       API_URL: http://api:3000
       SENTINEL_API_KEY: ${SENTINEL_API_KEY:-${API_KEY:-}}
+      # Le navigateur ne peut pas ajouter X-Discord-Token au handshake WS.
+      # Le gateway transmet donc uniquement le cookie HttpOnly a auth-api,
+      # qui resout la session sans exposer de credential dans l'URL.
+      AUTH_API_URL: http://auth-api:8096
+      AUTH_API_TOKEN: ${AUTH_API_TOKEN:?AUTH_API_TOKEN est requis}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
       HOST: 0.0.0.0
       PORT: "3001"
@@ -575,6 +580,8 @@ services:
       RUST_LOG: ${RUST_LOG:-info}
     depends_on:
       api:
+        condition: service_healthy
+      auth-api:
         condition: service_healthy
       redis:
         condition: service_healthy

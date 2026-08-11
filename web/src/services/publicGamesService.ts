@@ -19,6 +19,8 @@ export interface PublicGameServer {
   player_count: number;
   /// Renseigné uniquement si l'adresse a été révélée.
   port: number | null;
+  /// Hôte et port complets après révélation, si l'hôte public est configuré.
+  address: string | null;
   address_revealed: boolean;
 }
 

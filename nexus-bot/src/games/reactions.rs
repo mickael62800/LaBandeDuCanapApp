@@ -1,4 +1,5 @@
 use super::*;
+use nexus_core::ports::outbound::events::game_events;
 
 // ── Emoji ──
 
@@ -51,17 +52,37 @@ pub fn spawn_listener(ctx: Context, api: std::sync::Arc<ApiClient>) {
                             value.get("event").and_then(|v| v.as_str()),
                             value.get("data"),
                         ) {
-                            if event == "games_panel_deploy" {
-                                if let (Some(guild_id), Some(channel_id)) = (
-                                    data.get("guild_id").and_then(|v| v.as_str()),
-                                    data.get("channel_id").and_then(|v| v.as_str()),
-                                ) {
-                                    let category = data.get("category").and_then(|v| v.as_str());
-                                    deploy_panel_from_event(
-                                        &ctx_clone, &api_clone, guild_id, channel_id, category,
-                                    )
-                                    .await;
+                            match event {
+                                game_events::GAMES_PANEL_DEPLOY => {
+                                    if let (Some(guild_id), Some(channel_id)) = (
+                                        data.get("guild_id").and_then(|v| v.as_str()),
+                                        data.get("channel_id").and_then(|v| v.as_str()),
+                                    ) {
+                                        let category =
+                                            data.get("category").and_then(|v| v.as_str());
+                                        deploy_panel_from_event(
+                                            &ctx_clone, &api_clone, guild_id, channel_id, category,
+                                        )
+                                        .await;
+                                    }
                                 }
+                                game_events::GAMES_ROLES_ENSURE => {
+                                    if let Some(guild_id) =
+                                        data.get("guild_id").and_then(|v| v.as_str())
+                                    {
+                                        ensure_roles_from_event(&ctx_clone, &api_clone, guild_id)
+                                            .await;
+                                    }
+                                }
+                                game_events::GAME_ROLE_DELETE => {
+                                    if let (Some(guild_id), Some(role_id)) = (
+                                        data.get("guild_id").and_then(|v| v.as_str()),
+                                        data.get("role_id").and_then(|v| v.as_str()),
+                                    ) {
+                                        delete_role_from_event(&ctx_clone, guild_id, role_id).await;
+                                    }
+                                }
+                                _ => {}
                             }
                         }
                     }
@@ -70,6 +91,43 @@ pub fn spawn_listener(ctx: Context, api: std::sync::Arc<ApiClient>) {
         )
         .await;
     });
+}
+
+async fn ensure_roles_from_event(ctx: &Context, api: &ApiClient, guild_id: &str) {
+    let guild_id_obj = match guild_id.parse::<u64>() {
+        Ok(id) => serenity::all::GuildId::new(id),
+        Err(_) => {
+            warn!(
+                guild_id,
+                "Guild ID invalide pour la creation des roles de jeux"
+            );
+            return;
+        }
+    };
+    let mut games = match api.list_games_by_category(guild_id, None).await {
+        Ok(games) => games,
+        Err(error) => {
+            warn!(%error, guild_id, "Impossible de lister les jeux a provisionner");
+            return;
+        }
+    };
+    ensure_game_roles(ctx, guild_id_obj, api, guild_id, &mut games).await;
+}
+
+async fn delete_role_from_event(ctx: &Context, guild_id: &str, role_id: &str) {
+    let (Ok(guild_id), Ok(role_id)) = (guild_id.parse::<u64>(), role_id.parse::<u64>()) else {
+        warn!(
+            guild_id,
+            role_id, "Identifiants invalides pour la suppression du role de jeu"
+        );
+        return;
+    };
+    if let Err(error) = serenity::all::GuildId::new(guild_id)
+        .delete_role(&ctx.http, RoleId::new(role_id))
+        .await
+    {
+        warn!(%error, guild_id, role_id, "Suppression du role de jeu impossible");
+    }
 }
 
 async fn deploy_panel_from_event(

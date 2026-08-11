@@ -219,14 +219,44 @@ async fn handle_event(ctx: &Context, api: &ApiClient, payload_json: &str) {
 // ── Helpers partages ──
 
 /// Resout le role Discord a pinguer pour le template d'un serveur.
-async fn resolve_role(api: &ApiClient, guild_id: &str, slug: &str) -> Option<RoleId> {
-    let settings = api.list_template_settings(guild_id).await.ok()?;
-    settings
+///
+/// Un role configure explicitement pour le template reste prioritaire. A
+/// defaut, on reutilise le role deja cree par le module "Jeux
+/// mentionnables" : d'abord par nom de template, puis par slug/base de slug
+/// (`minecraft-vanilla` retrouve ainsi le jeu `Minecraft`).
+async fn resolve_role(
+    api: &ApiClient,
+    guild_id: &str,
+    slug: &str,
+    game_name: &str,
+) -> Option<RoleId> {
+    let configured = api
+        .list_template_settings(guild_id)
+        .await
+        .unwrap_or_default()
         .into_iter()
         .find(|s| s.template_slug == slug)
         .and_then(|s| s.discord_role_id)
         .and_then(|r| r.parse::<u64>().ok())
-        .map(RoleId::new)
+        .map(RoleId::new);
+    if configured.is_some() {
+        return configured;
+    }
+
+    let slug_base = slug.split(['-', '_']).next().unwrap_or(slug);
+    for candidate in [game_name, slug_base, slug] {
+        if let Ok(Some(game)) = api.get_game_by_name(guild_id, candidate).await {
+            if let Some(role_id) = game
+                .role_id
+                .as_deref()
+                .and_then(|role| role.parse::<u64>().ok())
+                .map(RoleId::new)
+            {
+                return Some(role_id);
+            }
+        }
+    }
+    None
 }
 
 /// Nom lisible du jeu + role a pinguer, depuis le template du serveur.
@@ -237,7 +267,7 @@ async fn game_name_and_role(api: &ApiClient, server: &GameServer) -> (String, Op
         .map(|t| t.name.clone())
         .unwrap_or_else(|| "Jeu".into());
     let role_id = match template.as_ref().map(|t| t.slug.clone()) {
-        Some(slug) => resolve_role(api, &server.guild_id, &slug).await,
+        Some(slug) => resolve_role(api, &server.guild_id, &slug, &game_name).await,
         None => None,
     };
     (game_name, role_id)

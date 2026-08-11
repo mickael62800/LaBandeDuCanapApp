@@ -99,7 +99,7 @@ export const UNIVERSE_ORDER: UniverseKey[] = [
 export const DEFAULT_UNIVERSE: UniverseKey = "sentinel";
 
 export function isUniverseKey(value: unknown): value is UniverseKey {
-  return value === "sentinel" || value === "nexus" || value === "atrium";
+  return value === "sentinel" || value === "nexus" || value === "atrium" || value === "ops";
 }
 
 export function universeDef(key: UniverseKey): UniverseDef {

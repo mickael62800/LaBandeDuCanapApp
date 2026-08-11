@@ -1,8 +1,11 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useAuth } from "@/composables/useAuth";
+import { useConfirm } from "@/composables/useConfirm";
+import { useToast } from "@/composables/useToast";
 import { siteConfig } from "@/siteConfig";
 import { isOngoing, publicEventsService, type PublicEvent } from "@/services/publicEventsService";
 import { publicGamesService, type PublicGameServer } from "@/services/publicGamesService";
+import { nexusGamesService } from "@/services/nexusGamesService";
 import {
   communityActionsService,
   communityLifeService,
@@ -23,6 +26,8 @@ export function useMemberHomePage() {
   const guildId = siteConfig().guildId
     || ((import.meta.env.VITE_PUBLIC_GUILD_ID as string | undefined) ?? "");
   const { user } = useAuth();
+  const { confirm } = useConfirm();
+  const { success, error: showError } = useToast();
   const hasAdminAccess = computed(() => user.value?.is_superadmin === true);
 
   const events = ref<PublicEvent[]>([]);
@@ -41,6 +46,7 @@ export function useMemberHomePage() {
   const busyLfg = ref<string | null>(null);
   const lfgError = ref<string | null>(null);
   const busyVote = ref<string | null>(null);
+  const busyReveal = ref<string | null>(null);
   let presenceTimer: number | undefined;
 
   const allFailed = computed(() => failures.value >= PUBLIC_CALLS);
@@ -152,6 +158,26 @@ export function useMemberHomePage() {
     }
   }
 
+  async function revealServerAddress(server: PublicGameServer): Promise<void> {
+    if (!hasAdminAccess.value || !user.value || !guildId || busyReveal.value) return;
+    const accepted = await confirm({
+      title: "Révéler l'adresse maintenant",
+      message: `Révéler immédiatement l'adresse de « ${server.name} » à tous les membres ? Cette action avance la date prévue et mentionne le rôle du jeu s'il existe.`,
+    });
+    if (!accepted) return;
+
+    busyReveal.value = server.id;
+    try {
+      await nexusGamesService.revealIp(guildId, server.id, user.value.id);
+      servers.value = await publicGamesService.listServers(guildId);
+      success(`Adresse de ${server.name} révélée.`);
+    } catch (error) {
+      showError(error instanceof Error ? error.message : "Révélation impossible.");
+    } finally {
+      busyReveal.value = null;
+    }
+  }
+
   return {
     guildId,
     user,
@@ -172,6 +198,7 @@ export function useMemberHomePage() {
     busyLfg,
     lfgError,
     busyVote,
+    busyReveal,
     playersOnline,
     serversOnline,
     ongoing,
@@ -179,5 +206,6 @@ export function useMemberHomePage() {
     upcoming,
     joinLfg,
     vote,
+    revealServerAddress,
   };
 }

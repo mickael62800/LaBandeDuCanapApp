@@ -31,6 +31,7 @@ const {
   busyLfg,
   lfgError,
   busyVote,
+  busyReveal,
   playersOnline,
   serversOnline,
   ongoing,
@@ -38,6 +39,7 @@ const {
   upcoming,
   joinLfg,
   vote,
+  revealServerAddress,
 } = useMemberHomePage();
 </script>
 
@@ -81,7 +83,13 @@ const {
       :upcoming="upcoming"
       :authenticated="!!user"
     />
-    <MemberGameServersPanel :servers="servers" :loading="loadingServers" />
+    <MemberGameServersPanel
+      :servers="servers"
+      :loading="loadingServers"
+      :can-reveal="hasAdminAccess"
+      :busy-reveal-id="busyReveal"
+      @reveal="revealServerAddress"
+    />
     <MemberLfgPanel
       :posts="lfg"
       :loading="loadingLfg"

@@ -8,6 +8,8 @@ pub struct Config {
     pub allowed_origins: String,
     pub max_connections: usize,
     pub api_url: String,
+    pub auth_api_url: String,
+    pub auth_api_token: String,
     pub broadcast_capacity: usize,
     pub redis_reconnect_delay_secs: u64,
     pub redis_reconnect_max_delay_secs: u64,
@@ -37,6 +39,9 @@ impl Config {
                 .unwrap_or(1000),
             api_url: std::env::var("API_URL")
                 .unwrap_or_else(|_| "http://localhost:3000".to_string()),
+            auth_api_url: std::env::var("AUTH_API_URL")
+                .unwrap_or_else(|_| "http://localhost:8096".to_string()),
+            auth_api_token: std::env::var("AUTH_API_TOKEN").unwrap_or_default(),
             broadcast_capacity: std::env::var("BROADCAST_CHANNEL_CAPACITY")
                 .ok()
                 .and_then(|v| v.parse().ok())

@@ -1,8 +1,15 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import AppButton from "@/components/atoms/AppButton.vue";
 import type { PublicGameServer } from "@/services/publicGamesService";
 
-const props = defineProps<{ servers: PublicGameServer[]; loading: boolean }>();
+const props = defineProps<{
+  servers: PublicGameServer[];
+  loading: boolean;
+  canReveal?: boolean;
+  busyRevealId?: string | null;
+}>();
+defineEmits<{ reveal: [server: PublicGameServer] }>();
 const sortedServers = computed(() =>
   [...props.servers].sort((a, b) => Number(b.online) - Number(a.online)),
 );
@@ -32,8 +39,19 @@ const playersOnline = computed(() =>
             <span class="mb-pip" :class="server.online ? 'on' : 'off'"></span>
             {{ server.online ? server.game : "Hors ligne" }}
           </span>
-          <span v-if="server.online && server.port" class="mb-game-addr">Port {{ server.port }}</span>
+          <span v-if="server.online && server.address" class="mb-game-addr">{{ server.address }}</span>
+          <span v-else-if="server.online && server.port" class="mb-game-addr">Port {{ server.port }}</span>
           <span v-else-if="server.online" class="mb-game-addr muted">Adresse bientôt révélée</span>
+          <AppButton
+            v-if="canReveal && server.online && !server.address_revealed"
+            class="mb-reveal"
+            variant="warning"
+            size="xs"
+            :disabled="busyRevealId === server.id"
+            @click="$emit('reveal', server)"
+          >
+            {{ busyRevealId === server.id ? "Révélation…" : "Révéler maintenant" }}
+          </AppButton>
         </div>
       </li>
     </ul>

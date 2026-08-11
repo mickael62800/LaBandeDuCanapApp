@@ -105,6 +105,10 @@ fn container_lifecycle_routes() -> Router<AppState> {
             post(handlers::game::servers::restart_server),
         )
         .route(
+            "/api/games/servers/{server_id}/reveal-ip",
+            post(handlers::game::servers::reveal_ip),
+        )
+        .route(
             "/api/games/servers/{server_id}/command",
             post(handlers::game::servers::execute_rcon),
         )

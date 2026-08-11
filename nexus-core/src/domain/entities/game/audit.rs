@@ -20,6 +20,7 @@ pub enum GameAuditAction {
     AutoRestart,
     BackupCreate,
     BackupRestore,
+    IpReveal,
 }
 
 impl GameAuditAction {
@@ -37,6 +38,7 @@ impl GameAuditAction {
             Self::AutoRestart => "auto_restart",
             Self::BackupCreate => "backup_create",
             Self::BackupRestore => "backup_restore",
+            Self::IpReveal => "ip_reveal",
         }
     }
 }
@@ -70,5 +72,6 @@ mod tests {
         assert_eq!(GameAuditAction::AutoRestart.as_str(), "auto_restart");
         assert_eq!(GameAuditAction::BackupCreate.as_str(), "backup_create");
         assert_eq!(GameAuditAction::BackupRestore.as_str(), "backup_restore");
+        assert_eq!(GameAuditAction::IpReveal.as_str(), "ip_reveal");
     }
 }

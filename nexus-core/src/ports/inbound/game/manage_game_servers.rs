@@ -29,6 +29,10 @@ pub trait ManageGameServersUseCase: Send + Sync {
     async fn stop(&self, id: Uuid, actor_user_id: &str) -> Result<(), DomainError>;
     async fn restart(&self, id: Uuid, actor_user_id: &str) -> Result<(), DomainError>;
 
+    /// Rend immédiatement l'adresse publique, avant l'échéance programmée.
+    /// Réservé aux appels d'administration par la couche HTTP.
+    async fn reveal_ip(&self, id: Uuid, actor_user_id: &str) -> Result<(), DomainError>;
+
     // ── Observabilite ─────────────────────────────────────────────────
     async fn get_logs(&self, id: Uuid, lines: u32) -> Result<Vec<String>, DomainError>;
     async fn get_stats(&self, id: Uuid) -> Result<ContainerStats, DomainError>;

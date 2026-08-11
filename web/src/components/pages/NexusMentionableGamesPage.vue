@@ -26,10 +26,20 @@ const newGameCategory = ref("");
 
 const deployChannelId = ref("");
 const deployCategory = ref("");
+const deploying = ref(false);
+const creating = ref(false);
+
+const MAX_GAMES_PER_PANEL = 25;
 
 const availableCategories = computed(() => {
   const cats = new Set(games.value.map(g => g.category).filter(c => c !== null && c.trim() !== ""));
   return Array.from(cats) as string[];
+});
+
+const gamesForDeployment = computed(() => {
+  const category = deployCategory.value.trim().toLocaleLowerCase();
+  if (!category) return games.value;
+  return games.value.filter(game => game.category?.trim().toLocaleLowerCase() === category);
 });
 
 async function load() {
@@ -47,25 +57,53 @@ async function load() {
   }
 }
 
+async function refreshUntilRoles(guildId: string, gameIds: Set<string>) {
+  const pending = new Set(gameIds);
+  for (let attempt = 0; pending.size > 0 && attempt < 8; attempt += 1) {
+    await new Promise<void>(resolve => window.setTimeout(resolve, 750));
+    try {
+      const refreshed = await nexusMentionableGamesService.listGames(guildId);
+      if (selectedGuildId.value !== guildId) return;
+      games.value = refreshed;
+      for (const game of refreshed) {
+        if (game.role_id) pending.delete(game.id);
+      }
+    } catch {
+      // La creation Discord est asynchrone : une actualisation intermediaire
+      // ratee ne transforme pas la demande deja acceptee en echec.
+    }
+  }
+}
+
 watch(selectedGuildId, load, { immediate: true });
 
 async function onCreate() {
-  if (!user.value || !selectedGuildId.value) return;
+  if (!user.value || !selectedGuildId.value || creating.value) return;
+  const guildId = selectedGuildId.value;
+  const gameName = newGameName.value.trim();
+  if (!gameName) {
+    showError("Le nom du jeu est requis.");
+    return;
+  }
+  creating.value = true;
   try {
-    await nexusMentionableGamesService.createGame(selectedGuildId.value, {
-      guild_id: selectedGuildId.value,
-      game_name: newGameName.value,
-      emoji: newGameEmoji.value,
-      category: newGameCategory.value,
+    const created = await nexusMentionableGamesService.createGame(guildId, {
+      guild_id: guildId,
+      game_name: gameName,
+      emoji: newGameEmoji.value.trim() || null,
+      category: newGameCategory.value.trim() || null,
       created_by: user.value.id
     });
-    success("Jeu créé !");
+    success("Jeu créé. Son rôle Discord est en cours de création.");
     newGameName.value = "";
     newGameEmoji.value = "";
     newGameCategory.value = "";
     await load();
+    await refreshUntilRoles(guildId, new Set([created.id]));
   } catch (e) {
     showError(e instanceof Error ? e.message : "Erreur création");
+  } finally {
+    creating.value = false;
   }
 }
 
@@ -83,17 +121,56 @@ async function onDelete(game: MentionableGame) {
 }
 
 async function onDeploy() {
-  if (!selectedGuildId.value || !deployChannelId.value) return;
+  const guildId = selectedGuildId.value;
+  const channelId = deployChannelId.value;
+  if (!guildId || !channelId || deploying.value) return;
+
+  const selectedGames = gamesForDeployment.value;
+  if (selectedGames.length === 0) {
+    showError("Aucun jeu ne correspond à ce panneau.");
+    return;
+  }
+  const withoutEmoji = selectedGames.filter(game => !game.emoji?.trim());
+  if (withoutEmoji.length > 0) {
+    showError(`Ajoutez un emoji avant de déployer : ${withoutEmoji.map(game => game.game_name).join(", ")}.`);
+    return;
+  }
+  const emojiOwners = new Map<string, string[]>();
+  for (const game of selectedGames) {
+    const emoji = game.emoji!.trim();
+    emojiOwners.set(emoji, [...(emojiOwners.get(emoji) ?? []), game.game_name]);
+  }
+  const duplicates = Array.from(emojiOwners.values()).filter(names => names.length > 1);
+  if (duplicates.length > 0) {
+    showError(`Chaque jeu doit avoir un emoji différent : ${duplicates.map(names => names.join(" / ")).join(", ")}.`);
+    return;
+  }
+  if (selectedGames.length > MAX_GAMES_PER_PANEL) {
+    showError(`Ce panneau contient ${selectedGames.length} jeux. Limite : ${MAX_GAMES_PER_PANEL}. Utilisez une catégorie.`);
+    return;
+  }
+
+  deploying.value = true;
   try {
-    await nexusMentionableGamesService.deployPanel(selectedGuildId.value, {
-      channel_id: deployChannelId.value,
-      category: deployCategory.value || null,
+    await nexusMentionableGamesService.deployPanel(guildId, {
+      channel_id: channelId,
+      category: deployCategory.value.trim() || null,
     });
-    success("Panel déployé !");
+    success("Demande envoyée au bot. Le panneau et les rôles sont en cours de création.");
     deployChannelId.value = "";
     deployCategory.value = "";
+
+    // Le endpoint repond 202 avant que Discord ait termine. Quelques
+    // rechargements courts rendent visibles les role_id crees par le bot sans
+    // obliger l'administrateur a faire F5.
+    await refreshUntilRoles(
+      guildId,
+      new Set(selectedGames.filter(game => !game.role_id).map(game => game.id)),
+    );
   } catch (e) {
     showError(e instanceof Error ? e.message : "Erreur déploiement");
+  } finally {
+    deploying.value = false;
   }
 }
 
@@ -122,7 +199,9 @@ function getEmojiUrl(emojiStr: string | null): string | null {
             <input v-model="newGameName" placeholder="Nom du jeu" class="input-base" />
             <EmojiSelect v-model="newGameEmoji" :guild-id="selectedGuildId" style="width: 250px" />
             <input v-model="newGameCategory" placeholder="Catégorie (optionnel)" class="input-base" />
-            <button @click="onCreate" class="btn-primary" :disabled="!newGameName">Créer</button>
+            <button @click="onCreate" class="btn-primary" :disabled="!newGameName.trim() || creating">
+              {{ creating ? 'Création…' : 'Créer' }}
+            </button>
           </div>
         </section>
 
@@ -134,9 +213,11 @@ function getEmojiUrl(emojiStr: string | null): string | null {
               <option value="">— Toutes les catégories (optionnel) —</option>
               <option v-for="cat in availableCategories" :key="cat" :value="cat">{{ cat }}</option>
             </select>
-            <button @click="onDeploy" class="btn-primary" :disabled="!deployChannelId">Déployer</button>
+            <button @click="onDeploy" class="btn-primary" :disabled="!deployChannelId || deploying">
+              {{ deploying ? 'Déploiement…' : 'Déployer' }}
+            </button>
           </div>
-          <p class="help-text">Déploie ou rafraîchit le panneau Discord contenant les boutons d'abonnement aux jeux.</p>
+          <p class="help-text">Crée un panneau Discord avec une réaction différente par jeu. Sans catégorie, tous les jeux sont inclus.</p>
         </section>
 
         <section class="list-section">
@@ -147,7 +228,6 @@ function getEmojiUrl(emojiStr: string | null): string | null {
                 <th>Jeu</th>
                 <th>Catégorie</th>
                 <th>Rôle Discord</th>
-                <th>Abonnés</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -160,7 +240,6 @@ function getEmojiUrl(emojiStr: string | null): string | null {
                 </td>
                 <td>{{ g.category || '—' }}</td>
                 <td class="mono">{{ g.role_id || 'Aucun' }}</td>
-                <td>{{ g.subscriber_count }}</td>
                 <td>
                   <button class="btn-danger" @click="onDelete(g)">Supprimer</button>
                 </td>

@@ -125,6 +125,43 @@ impl ManageGameServersUseCase for ManageGameServersService {
         Ok(GameServerDetail { server, config })
     }
 
+    async fn reveal_ip(&self, id: Uuid, actor_user_id: &str) -> Result<(), DomainError> {
+        let server = self
+            .server_repo
+            .find_by_id(id)
+            .await?
+            .ok_or_else(|| DomainError::NotFound(format!("game_server {id} introuvable")))?;
+
+        if server.ip_revealed {
+            return Err(DomainError::Conflict(
+                "l'adresse du serveur est deja revelee".into(),
+            ));
+        }
+        if server.status != GameServerStatus::Running {
+            return Err(DomainError::Conflict(
+                "le serveur doit etre en ligne pour reveler son adresse".into(),
+            ));
+        }
+        let host_port = server.host_port.ok_or_else(|| {
+            DomainError::Conflict("le port public n'est pas encore alloue".into())
+        })?;
+
+        self.server_repo.mark_ip_revealed(id).await?;
+        self.audit(
+            &server.guild_id,
+            Some(id),
+            Some(actor_user_id),
+            GameAuditAction::IpReveal,
+            serde_json::json!({
+                "scheduled_at": server.ip_reveal_at,
+                "host_port": host_port,
+                "forced": true,
+            }),
+        )
+        .await;
+        Ok(())
+    }
+
     async fn delete(&self, id: Uuid, actor_user_id: &str) -> Result<(), DomainError> {
         let server = self
             .server_repo

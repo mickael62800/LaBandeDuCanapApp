@@ -98,9 +98,11 @@ impl GameRepository for PgGameRepository {
                     .map_err(pg_err)?
             }
             None => {
-                let sql = format!(
-                    "SELECT {GAME_COLS} FROM games WHERE guild_id = $1 AND category IS NULL ORDER BY game_name"
-                );
+                // Sans filtre, un panneau regroupe tout le catalogue du
+                // serveur. C'est aussi la semantique exposee par le Web et
+                // par `/game-admin panel` lorsque `category` est omise.
+                let sql =
+                    format!("SELECT {GAME_COLS} FROM games WHERE guild_id = $1 ORDER BY game_name");
                 sqlx::query_as(&sql)
                     .bind(guild_id)
                     .fetch_all(&self.pool)

@@ -48,6 +48,7 @@ const loading = ref(false);
 const errorMessage = ref("");
 const busy = ref(false);
 const savingConfig = ref(false);
+const revealingIp = ref(false);
 const rconCommand = ref("");
 const rconOutput = ref("");
 
@@ -131,6 +132,25 @@ async function remove() {
     router.push("/nexus/servers");
   } catch (e) {
     showError(e instanceof Error ? e.message : "Suppression impossible");
+  }
+}
+
+async function revealIpNow() {
+  if (!selectedGuildId.value || !server.value || revealingIp.value) return;
+  if (!confirm(`Révéler immédiatement l'adresse de « ${server.value.name} » à tous les membres ? Le rôle du jeu sera mentionné s'il existe.`)) return;
+  revealingIp.value = true;
+  try {
+    await nexusGamesService.revealIp(
+      selectedGuildId.value,
+      server.value.id,
+      user.value?.id ?? "",
+    );
+    success("Adresse révélée immédiatement.");
+    await load();
+  } catch (e) {
+    showError(e instanceof Error ? e.message : "Révélation impossible");
+  } finally {
+    revealingIp.value = false;
   }
 }
 
@@ -333,7 +353,19 @@ function fmtDuration(secs: number | null): string {
           <div><dt>Dernière activité</dt><dd>{{ fmtDate(server.last_active_at) }}</dd></div>
           <div>
             <dt>Adresse</dt>
-            <dd>{{ server.ip_revealed ? "révélée" : `masquée jusqu'au ${fmtDate(server.ip_reveal_at)}` }}</dd>
+            <dd>
+              {{ server.ip_revealed ? "révélée" : `masquée jusqu'au ${fmtDate(server.ip_reveal_at)}` }}
+              <AppButton
+                v-if="!server.ip_revealed"
+                variant="warning"
+                size="xs"
+                :disabled="revealingIp || !isRunning || !server.host_port"
+                :title="!isRunning ? 'Le serveur doit être en ligne' : undefined"
+                @click="revealIpNow"
+              >
+                {{ revealingIp ? "Révélation…" : "Révéler maintenant" }}
+              </AppButton>
+            </dd>
           </div>
         </dl>
       </section>

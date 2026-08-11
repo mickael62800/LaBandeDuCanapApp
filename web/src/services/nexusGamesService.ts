@@ -163,6 +163,14 @@ export const nexusGamesService = {
     );
   },
 
+  /** POST /api/games/servers/{id}/reveal-ip — révélation anticipée admin. */
+  revealIp(guildId: string, serverId: string, actorId: string): Promise<void> {
+    return nexusPost<void>(
+      `/api/games/servers/${encodeURIComponent(serverId)}/reveal-ip?actor_id=${encodeURIComponent(actorId)}`,
+      guildId,
+    );
+  },
+
   /** GET /api/games/servers/{id} — detail + configuration effective. */
   getServer(guildId: string, serverId: string): Promise<GameServerDetail> {
     return nexusGet<GameServerDetail>(

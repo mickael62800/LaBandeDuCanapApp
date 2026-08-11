@@ -44,6 +44,9 @@ pub struct PublicGameServerDto {
     pub player_count: i32,
     /// Port public, uniquement si l'adresse a ete revelee.
     pub port: Option<u16>,
+    /// Adresse complete hote:port, uniquement apres revelation et si l'hote
+    /// public est configure pour cette guild.
+    pub address: Option<String>,
     /// Vrai quand l'adresse est publiable (fin du delai de revelation).
     pub address_revealed: bool,
 }
@@ -62,6 +65,7 @@ pub async fn public_servers(
 
     let servers = state.game_servers_uc.list_for_guild(&guild_id).await?;
     let templates = state.game_template_repo.list().await.unwrap_or_default();
+    let public_host = super::servers::hote_public(&state, &guild_id).await;
 
     let out = servers
         .into_iter()
@@ -78,6 +82,14 @@ pub async fn public_servers(
                 online: matches!(s.status, GameServerStatus::Running),
                 player_count: s.last_player_count,
                 port: if s.ip_revealed { s.host_port } else { None },
+                address: if s.ip_revealed {
+                    public_host
+                        .as_deref()
+                        .zip(s.host_port)
+                        .map(|(host, port)| format!("{}:{}", host.trim(), port))
+                } else {
+                    None
+                },
                 address_revealed: s.ip_revealed,
             }
         })

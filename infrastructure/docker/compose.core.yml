@@ -682,6 +682,9 @@ services:
       VOICE_LOG_CHANNEL_ID: ${VOICE_LOG_CHANNEL_ID:-}
       TICKET_CATEGORY_ID: ${TICKET_CATEGORY_ID:-}
       TICKET_CHANNEL_ID: ${TICKET_CHANNEL_ID:-}
+      # Cache RAM borne utilise par l'audit pour afficher le contenu precedent
+      # lors d'une edition/suppression. Limite appliquee par serveur.
+      MESSAGE_CACHE_SIZE: ${MESSAGE_CACHE_SIZE:-10000}
       SHARD_MODE: ${SHARD_MODE:-single}
       RUST_LOG: ${RUST_LOG:-info}
     volumes:

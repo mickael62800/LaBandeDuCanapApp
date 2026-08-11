@@ -33,7 +33,7 @@ use serenity::model::id::{ChannelId, GuildId, MessageId, RoleId};
 use serenity::model::user::User;
 use serenity::model::voice::VoiceState;
 use serenity::prelude::*;
-use tracing::warn;
+use tracing::{info, warn};
 
 use crate::shared::discord_helpers::is_module_enabled;
 use crate::shared::heartbeat::ApiClientKey;
@@ -71,7 +71,8 @@ pub struct AuditConfig {
 impl Default for AuditConfig {
     fn default() -> Self {
         Self {
-            message_cache_size: crate::shared::config::load_env("MESSAGE_CACHE_SIZE", 10_000),
+            message_cache_size: crate::shared::config::load_env("MESSAGE_CACHE_SIZE", 10_000)
+                .clamp(100, 100_000),
             anomaly_window_secs: crate::shared::config::load_env("ANOMALY_WINDOW_SECS", 60),
             anomaly_mass_ban_threshold: crate::shared::config::load_env("ANOMALY_MASS_BAN", 5),
             anomaly_mass_delete_threshold: crate::shared::config::load_env(
@@ -88,6 +89,10 @@ impl Default for AuditConfig {
 /// Insere les TypeMapKeys du module audit.
 pub fn init_typemap(data: &mut serenity::prelude::TypeMap) {
     let audit_config = AuditConfig::default();
+    info!(
+        max_messages_per_guild = audit_config.message_cache_size,
+        "Cache memoire des messages initialise"
+    );
     data.insert::<MessageCacheKey>(message_cache::MessageCache::new(
         audit_config.message_cache_size,
     ));
@@ -385,9 +390,11 @@ pub async fn cache_message(ctx: &Context, msg: &Message) {
         Some(g) => g,
         None => return,
     };
-    if !is_module_enabled(ctx, &guild_id.to_string(), MODULE_BOT_NAME).await {
-        return;
-    }
+
+    // Cache passif et borne : aucune action Discord/DB n'est declenchee ici.
+    // Ne pas le conditionner a une lecture reseau de la config Audit : une
+    // panne transitoire de l'API ferait perdre l'ancien contenu pour toujours,
+    // et empecherait aussi de retrouver un message apres reactivation du module.
     let data = ctx.data.read().await;
     if let Some(cache) = data.get::<MessageCacheKey>() {
         cache.store(

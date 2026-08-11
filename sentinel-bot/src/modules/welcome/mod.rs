@@ -3,6 +3,7 @@
 pub const MODULE_BOT_NAME: &str = "welcome-bot";
 
 pub mod api_client;
+pub mod ghost;
 pub mod handler;
 pub mod template;
 

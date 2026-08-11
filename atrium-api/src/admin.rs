@@ -123,6 +123,10 @@ pub async fn get_usage(
 pub struct ContextConfigResponse {
     pub welcome_context: String,
     pub conflict_context: String,
+    /// Fenetre de depart eclair, en minutes. Renvoyee en chaine comme les
+    /// autres cles brutes : le formulaire edite du texte, et une valeur absente
+    /// doit s'afficher comme le defaut du schema, pas comme 0.
+    pub welcome_ghost_minutes: String,
 }
 
 /// Consignes de ton par serveur, en lecture (préremplissage du formulaire).
@@ -146,6 +150,10 @@ pub async fn get_config(
     Ok(Json(ContextConfigResponse {
         welcome_context: raw.get("welcome_context").cloned().unwrap_or_default(),
         conflict_context: raw.get("conflict_context").cloned().unwrap_or_default(),
+        welcome_ghost_minutes: raw
+            .get("welcome_ghost_minutes")
+            .cloned()
+            .unwrap_or_else(|| "30".to_string()),
     }))
 }
 
@@ -174,18 +182,24 @@ pub async fn set_config(
         .as_ref()
         .ok_or_else(|| ApiError::unavailable("configuration indisponible"))?;
 
-    const ALLOWED: [&str; 6] = [
+    const ALLOWED: [&str; 7] = [
         "enabled",
         "user_daily_limit",
         "user_cooldown_secs",
         "global_daily_limit",
         "welcome_context",
         "conflict_context",
+        "welcome_ghost_minutes",
     ];
     // Clés numériques : bornées, positives. Les autres sont du texte libre
     // (`enabled` est un booléen, `*_context` des consignes de ton) : les passer
     // au parseur entier les rejetterait à tort.
-    const NUMERIC: [&str; 3] = ["user_daily_limit", "user_cooldown_secs", "global_daily_limit"];
+    const NUMERIC: [&str; 4] = [
+        "user_daily_limit",
+        "user_cooldown_secs",
+        "global_daily_limit",
+        "welcome_ghost_minutes",
+    ];
     // Bornes des textes libres, alignées sur la validation du domaine
     // (`WelcomeError`/`CalmingError` : 2 000 caractères).
     const TEXT_MAX_CHARS: usize = 2_000;

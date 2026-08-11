@@ -44,6 +44,20 @@ impl BotControlStore {
         Ok(guild_config::from_map(&raw, self.defaults).enabled)
     }
 
+    /// Reglages bruts du serveur, tels qu'ils sont en base.
+    ///
+    /// Sert le RPC `GetGuildConfig` : atrium-bot n'a pas d'acces base et doit
+    /// pourtant lire quelques cles par serveur. On renvoie la map brute plutot
+    /// qu'un type structure — les defauts appartiennent a l'appelant, et un
+    /// `GuildSettings` ici obligerait a etendre trois signatures a chaque
+    /// nouvelle cle que seul le bot consomme.
+    pub async fn raw_config(
+        &self,
+        guild_id: &str,
+    ) -> Result<std::collections::HashMap<String, String>, sqlx::Error> {
+        guild_config::load(&self.pool, guild_id).await
+    }
+
     pub async fn set_enabled(
         &self,
         guild_id: &str,

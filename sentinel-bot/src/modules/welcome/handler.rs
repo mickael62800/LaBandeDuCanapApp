@@ -309,6 +309,10 @@ pub async fn on_member_add(ctx: &Context, new_member: &Member) {
         return;
     }
 
+    // Depart eclair : on note l'arrivee AVANT tout appel reseau, pour que la
+    // fenetre coure meme si la config ou l'envoi de la card echouent.
+    super::ghost::remember_arrival(guild_id.get(), user_id.get());
+
     let data = ctx.data.read().await;
     let base = match data.get::<ApiClientKey>() {
         Some(b) => Arc::clone(b),
@@ -430,19 +434,28 @@ pub async fn on_member_add(ctx: &Context, new_member: &Member) {
                     embed = embed.image(raw_image.as_str());
                 }
 
-                if let Err(e) = channel
+                match channel
                     .send_message(&ctx.http, CreateMessage::new().embed(embed))
                     .await
                 {
-                    warn!(error = %e, "Echec envoi message bienvenue");
-                } else {
-                    info!(
-                        user = %new_member.user.name,
-                        guild = %guild_name,
-                        rejoin = is_rejoin,
-                        "Message de {} envoye",
-                        if is_rejoin { "retour" } else { "bienvenue" }
-                    );
+                    Err(e) => warn!(error = %e, "Echec envoi message bienvenue"),
+                    Ok(sent) => {
+                        // Retenu pour pouvoir retirer la card si le membre
+                        // repart dans la foulee (cf. `ghost`).
+                        super::ghost::attach_message(
+                            guild_id.get(),
+                            user_id.get(),
+                            channel.get(),
+                            sent.id.get(),
+                        );
+                        info!(
+                            user = %new_member.user.name,
+                            guild = %guild_name,
+                            rejoin = is_rejoin,
+                            "Message de {} envoye",
+                            if is_rejoin { "retour" } else { "bienvenue" }
+                        );
+                    }
                 }
             }
         }
@@ -533,6 +546,55 @@ pub async fn on_member_remove(ctx: &Context, guild_id: GuildId, user: &User) {
     )
     .await;
 
+    // Config guild du module (cles config_schema, distinctes de la config
+    // welcome riche servie par gRPC). Lue une fois : fenetre fantome ci-dessous
+    // et couleur de l'embed de depart plus bas.
+    let guild_cfg = base
+        .get_guild_config_for(
+            &guild_id.to_string(),
+            crate::modules::welcome::MODULE_BOT_NAME,
+        )
+        .await
+        .unwrap_or_default();
+
+    // ── Depart eclair ("fantome") ──
+    // Un membre qui arrive et repart dans les `welcome_ghost_minutes` ne laisse
+    // aucune trace dans le salon : on retire sa card de bienvenue et on
+    // n'annonce pas son depart. Poster puis supprimer la card de depart aurait
+    // produit un clignotement et une entree d'audit Discord pour rien.
+    // 0 = comportement historique (on garde tout).
+    let ghost_arrival = super::ghost::take(guild_id.get(), user.id.get());
+    let ghost_minutes = crate::shared::api_client::BaseApiClient::config_u64(
+        &guild_cfg,
+        "welcome_ghost_minutes",
+        30,
+    );
+    if ghost_minutes > 0 {
+        if let Some(arrival) = ghost_arrival {
+            if arrival.at.elapsed() <= std::time::Duration::from_secs(ghost_minutes * 60) {
+                if let Some((ch, msg)) = arrival.message {
+                    if let Err(e) = ctx
+                        .http
+                        .delete_message(
+                            ChannelId::new(ch),
+                            serenity::model::id::MessageId::new(msg),
+                            Some("Depart du membre dans la fenetre de bienvenue"),
+                        )
+                        .await
+                    {
+                        warn!(error = %e, "Echec suppression card de bienvenue (depart eclair)");
+                    }
+                }
+                info!(
+                    user = %user.name,
+                    minutes = ghost_minutes,
+                    "Depart eclair : card de bienvenue retiree, card de depart supprimee"
+                );
+                return;
+            }
+        }
+    }
+
     if !config.leave_enabled {
         return;
     }
@@ -576,20 +638,11 @@ pub async fn on_member_remove(ctx: &Context, guild_id: GuildId, user: &User) {
     };
     // Couleur de l'embed de depart : reglable par serveur (defaut historique
     // e74c3c). Lue via la config guild welcome-bot, parsee comme welcome_embed_color.
-    let leave_color = {
-        let cfg = base
-            .get_guild_config_for(
-                &guild_id.to_string(),
-                crate::modules::welcome::MODULE_BOT_NAME,
-            )
-            .await
-            .unwrap_or_default();
-        template::parse_color(&crate::shared::api_client::BaseApiClient::config_or(
-            &cfg,
-            "leave_embed_color",
-            "e74c3c",
-        ))
-    };
+    let leave_color = template::parse_color(&crate::shared::api_client::BaseApiClient::config_or(
+        &guild_cfg,
+        "leave_embed_color",
+        "e74c3c",
+    ));
     let mut embed = CreateEmbed::new()
         .title(&leave_title)
         .description(&text)

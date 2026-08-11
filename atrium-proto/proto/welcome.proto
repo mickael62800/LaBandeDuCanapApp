@@ -15,6 +15,11 @@ service RagService {
 service BotControlService {
   rpc GetState(BotStateRequest) returns (BotStateResponse);
   rpc SetState(SetBotStateRequest) returns (BotStateResponse);
+  // Reglages du serveur (bot_guild_config), pour les rares cas ou le bot doit
+  // decider lui-meme : Atrium n'a pas d'acces base. Renvoie les cles brutes ;
+  // c'est a l'appelant d'appliquer son defaut, comme le fait `config_or` chez
+  // Sentinel.
+  rpc GetGuildConfig(BotStateRequest) returns (GuildConfigResponse);
 }
 
 // Rappel apaisant publié dans un salon en tension (« conflit »). Déclenché par
@@ -85,4 +90,8 @@ message SetBotStateRequest {
 
 message BotStateResponse {
   bool enabled = 1;
+}
+
+message GuildConfigResponse {
+  map<string, string> values = 1;
 }

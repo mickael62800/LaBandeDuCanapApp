@@ -17,7 +17,7 @@ use tonic::{Request, Response, Status};
 
 use crate::{
     budget::BudgetGuard, calming_use_case, control::BotControlStore, memory::ConversationMemory,
-    merge_context, read_config_value, rag::RagService, welcome_use_case, AppConfig,
+    merge_context, rag::RagService, read_config_value, welcome_use_case, AppConfig,
 };
 
 use std::pin::Pin;
@@ -403,6 +403,21 @@ impl BotControlService for BotControlGrpc {
             Status::internal("lecture de l'etat impossible")
         })?;
         Ok(Response::new(proto::BotStateResponse { enabled }))
+    }
+
+    async fn get_guild_config(
+        &self,
+        request: Request<proto::BotStateRequest>,
+    ) -> Result<Response<proto::GuildConfigResponse>, Status> {
+        let guild_id = request.into_inner().guild_id;
+        if guild_id.is_empty() {
+            return Err(Status::invalid_argument("guild_id manquant"));
+        }
+        let values = self.control.raw_config(&guild_id).await.map_err(|error| {
+            tracing::error!(%error, "Lecture de la config Atrium impossible");
+            Status::internal("lecture de la config impossible")
+        })?;
+        Ok(Response::new(proto::GuildConfigResponse { values }))
     }
 
     async fn set_state(

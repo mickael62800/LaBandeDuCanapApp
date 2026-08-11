@@ -74,6 +74,37 @@ const dirtyContext = computed(() =>
   ),
 );
 
+// Départ éclair. Bloc à part des deux précédents : ce n'est ni un quota ni une
+// consigne de ton, et un seul « Enregistrer » pour trois natures de réglages
+// obligerait à réécrire des clés que l'admin n'a pas touchées.
+const ghostForm = ref({ welcome_ghost_minutes: "" });
+const savedGhost = ref({ ...ghostForm.value });
+const savingGhost = ref(false);
+const dirtyGhost = computed(
+  () => ghostForm.value.welcome_ghost_minutes !== savedGhost.value.welcome_ghost_minutes,
+);
+
+async function saveGhost() {
+  const guildId = selectedGuildId.value;
+  if (!guildId || !dirtyGhost.value) return;
+  savingGhost.value = true;
+  try {
+    await atriumService.setConfig(guildId, {
+      welcome_ghost_minutes: ghostForm.value.welcome_ghost_minutes.trim(),
+    });
+    savedGhost.value = { ...ghostForm.value };
+    success("Départ éclair enregistré.");
+  } catch (e: unknown) {
+    toastError(errMsg(e));
+  } finally {
+    savingGhost.value = false;
+  }
+}
+
+function resetGhost() {
+  ghostForm.value = { ...savedGhost.value };
+}
+
 async function saveContext() {
   const guildId = selectedGuildId.value;
   if (!guildId) return;
@@ -171,6 +202,8 @@ async function load() {
       conflict_context: context.conflict_context,
     };
     savedContext.value = { ...contextForm.value };
+    ghostForm.value = { welcome_ghost_minutes: context.welcome_ghost_minutes };
+    savedGhost.value = { ...ghostForm.value };
   } catch (e: unknown) {
     loadError.value = errMsg(e);
   } finally {
@@ -306,6 +339,42 @@ onMounted(load);
             Enregistrer
           </AppButton>
           <AppButton variant="secondary" :disabled="!dirty" @click="resetForm">
+            Annuler
+          </AppButton>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Message d'accueil</h2>
+        <p class="at-note">
+          Un membre qui rejoint puis quitte le serveur dans ce délai n'a jamais
+          vraiment été là : son message d'accueil est supprimé du salon général.
+          Passé ce délai, le message reste. <strong>0 désactive</strong> la
+          suppression. Sentinel a son propre réglage équivalent, à aligner
+          depuis la page Bienvenue.
+        </p>
+
+        <div class="at-form">
+          <label class="at-field">
+            <span>Départ éclair : délai (minutes)</span>
+            <AppInput
+              v-model="ghostForm.welcome_ghost_minutes"
+              type="number"
+              :min="0"
+              :max="1440"
+            />
+          </label>
+        </div>
+
+        <div class="at-form-actions">
+          <AppButton
+            variant="primary"
+            :disabled="!dirtyGhost || savingGhost"
+            @click="saveGhost"
+          >
+            Enregistrer
+          </AppButton>
+          <AppButton variant="secondary" :disabled="!dirtyGhost" @click="resetGhost">
             Annuler
           </AppButton>
         </div>

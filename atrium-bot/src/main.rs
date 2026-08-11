@@ -18,7 +18,12 @@ use serenity::{
         Permissions,
     },
     async_trait,
-    model::{channel::Message, gateway::Ready, guild::Member, id::ChannelId},
+    model::{
+        channel::Message,
+        gateway::Ready,
+        guild::Member,
+        id::{ChannelId, MessageId},
+    },
     prelude::*,
 };
 use tonic::transport::Channel;
@@ -30,6 +35,13 @@ const DISCORD_DIRECTORY_MAX_CHARS: usize = 6_000;
 const MEMBERS_PER_ROLE: usize = 30;
 const SENTINEL_EVENTS: EventBus = EventBus::new("sentinel:events");
 const CALMING_COOLDOWN_SECS: u64 = 15 * 60;
+/// Repli du seuil de depart eclair quand la cle `welcome_ghost_minutes` du
+/// serveur est absente (aligne sur le defaut declare dans le `config_schema`).
+const DEFAULT_GHOST_MINUTES: u64 = 30;
+/// Duree au-dela de laquelle une entree du tracker d'accueils ne peut plus
+/// servir : la plus longue fenetre acceptee par le schema (1440 min) tient
+/// largement dedans. Le balayage se fait a l'insertion, sans tache de fond.
+const GHOST_RETENTION: std::time::Duration = std::time::Duration::from_secs(48 * 3600);
 
 #[derive(Deserialize)]
 struct CalmingEvent {
@@ -80,9 +92,47 @@ struct Handler {
     primary_guild: Arc<tokio::sync::RwLock<Option<GuildId>>>,
     calming_consumer_started: Arc<AtomicBool>,
     directory_cache: std::sync::RwLock<Option<(std::time::Instant, String)>>,
+    /// Mots d'accueil postes dans le general, en attente de la fin de la
+    /// fenetre de depart eclair : (guilde, membre) -> (instant, message).
+    /// En memoire volontairement — la donnee ne vit que quelques minutes et
+    /// atrium-bot n'a pas d'acces base. Un redemarrage perd la trace et laisse
+    /// le message, ce qui est le bon sens de l'echec.
+    ///
+    /// On enregistre sans consulter le seuil : le lire a l'arrivee ajouterait
+    /// un aller-retour gRPC sur un chemin chaud pour une decision qui ne se
+    /// prend qu'au depart, lequel n'arrive presque jamais.
+    welcomes:
+        std::sync::Mutex<std::collections::HashMap<(u64, u64), (std::time::Instant, MessageId)>>,
 }
 
 impl Handler {
+    /// Fenetre de depart eclair du serveur, en minutes (0 = desactive).
+    ///
+    /// Le defaut vit ici et pas cote API : `GetGuildConfig` renvoie les cles
+    /// brutes, et c'est l'appelant qui sait ce qu'une cle absente signifie pour
+    /// lui — meme repartition que `config_or` chez sentinel-bot. Une config
+    /// injoignable retombe donc sur 30 : au pire on supprime un message
+    /// d'accueil de trop, jamais un message legitime hors fenetre (le tracker
+    /// borne deja les entrees a `GHOST_RETENTION`).
+    async fn ghost_minutes(&self, guild_id: GuildId) -> u64 {
+        let mut client = BotControlServiceClient::new(self.channel.clone());
+        let request = self.grpc_request(BotStateRequest {
+            guild_id: guild_id.to_string(),
+        });
+        match client.get_guild_config(request).await {
+            Ok(response) => response
+                .into_inner()
+                .values
+                .get("welcome_ghost_minutes")
+                .and_then(|value| value.trim().parse().ok())
+                .unwrap_or(DEFAULT_GHOST_MINUTES),
+            Err(error) => {
+                tracing::warn!(%error, "config depart eclair illisible, repli sur le defaut");
+                DEFAULT_GHOST_MINUTES
+            }
+        }
+    }
+
     fn grpc_request<T>(&self, message: T) -> Request<T> {
         let mut request = Request::new(message);
         let value = format!("Bearer {}", self.config.grpc_token)
@@ -444,14 +494,62 @@ impl EventHandler for Handler {
                 "<@{}> {reply}\n\n**Pour discuter avec moi dans ce salon, mentionne-moi : <@{}>.**",
                 member.user.id, atrium_id
             );
-            if let Err(error) = self
+            match self
                 .config
                 .general_channel_id
                 .say(&ctx.http, mentioned_reply)
                 .await
             {
-                tracing::warn!(%error, "message d'accueil non envoye");
+                Err(error) => tracing::warn!(%error, "message d'accueil non envoye"),
+                Ok(sent) => {
+                    if let Ok(mut map) = self.welcomes.lock() {
+                        map.retain(|_, (at, _)| at.elapsed() < GHOST_RETENTION);
+                        map.insert(
+                            (member.guild_id.get(), member.user.id.get()),
+                            (std::time::Instant::now(), sent.id),
+                        );
+                    }
+                }
             }
+        }
+    }
+
+    /// Depart eclair : le membre accueilli quitte le serveur dans la foulee.
+    /// Le mot d'accueil d'Atrium s'adressait a quelqu'un qui n'est plus la —
+    /// on le retire, comme Sentinel retire sa card de bienvenue.
+    async fn guild_member_removal(
+        &self,
+        ctx: Context,
+        guild_id: GuildId,
+        user: serenity::model::user::User,
+        _member: Option<Member>,
+    ) {
+        let entry = self
+            .welcomes
+            .lock()
+            .ok()
+            .and_then(|mut map| map.remove(&(guild_id.get(), user.id.get())));
+        // Rien de suivi : membre accueilli avant le dernier redemarrage, ou
+        // accueil jamais poste. On ne consulte meme pas la config.
+        let Some((at, message_id)) = entry else {
+            return;
+        };
+        let minutes = self.ghost_minutes(guild_id).await;
+        if minutes == 0 || at.elapsed() > std::time::Duration::from_secs(minutes * 60) {
+            return;
+        }
+        if let Err(error) = ctx
+            .http
+            .delete_message(
+                self.config.general_channel_id,
+                message_id,
+                Some("Depart du membre dans la fenetre d'accueil"),
+            )
+            .await
+        {
+            tracing::warn!(%error, "message d'accueil non supprime (depart eclair)");
+        } else {
+            tracing::info!(user = %user.name, "Depart eclair : mot d'accueil Atrium retire");
         }
     }
 
@@ -515,6 +613,7 @@ async fn main() {
             primary_guild,
             calming_consumer_started: Arc::new(AtomicBool::new(false)),
             directory_cache: std::sync::RwLock::new(None),
+            welcomes: std::sync::Mutex::new(std::collections::HashMap::new()),
         })
         .await
         .expect("creation client Discord");

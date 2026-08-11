@@ -30,6 +30,9 @@ export interface AtriumUsage {
 export interface AtriumContext {
   welcome_context: string;
   conflict_context: string;
+  /// Fenetre de depart eclair, en minutes ("0" = desactive). En chaine comme
+  /// le renvoie l'API : le formulaire edite du texte.
+  welcome_ghost_minutes: string;
 }
 
 export interface AtriumDocument {

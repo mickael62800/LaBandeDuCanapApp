@@ -7,6 +7,7 @@ import {
   serverSecurityService,
   type AuthFailureEntry,
   type BannedIpsResponse,
+  type CleanupTarget,
   type ManualBanEntry,
   type ServerEventDto,
   type SuccessfulLoginEntry,
@@ -22,7 +23,7 @@ import SecurityAttacksTab from "@/components/organisms/SecurityAttacksTab.vue";
 import SecurityNetworkTab from "@/components/organisms/SecurityNetworkTab.vue";
 import SecurityIntegrityTab from "@/components/organisms/SecurityIntegrityTab.vue";
 
-const { success, error: showError } = useToast();
+const { success, warning, error: showError } = useToast();
 const { confirm } = useConfirm();
 // Back-office superadmin-only : le seul utilisateur possible peut tout gerer.
 const canManage = true;
@@ -122,14 +123,26 @@ async function runCleanup() {
     });
     showCleanupModal.value = false;
     await refreshAll();
-    success(
-      `Nettoyage terminé — ` +
-      `Logs API : ${r.deleted_api_logs}, ` +
-      `Audit logs Discord : ${r.deleted_audit_logs}, ` +
-      `Events serveur : ${r.deleted_server_events}, ` +
-      `Logins OAuth : ${r.deleted_successful_logins}, ` +
-      `Bans manuels : ${r.deleted_manual_bans}.`,
-    );
+    const targets: [string, CleanupTarget][] = [
+      ["Logs API", r.api_logs],
+      ["Audit logs Discord", r.audit_logs],
+      ["Events serveur", r.server_events],
+      ["Logins OAuth", r.successful_logins],
+      ["Bans manuels", r.manual_bans],
+    ];
+    // Une cible ignorée (non demandée) n'encombre pas le récapitulatif ;
+    // un échec est signalé explicitement plutôt que masqué en « 0 supprimé ».
+    const summary = targets
+      .filter(([, t]) => t.status !== "skipped")
+      .map(([label, t]) =>
+        t.status === "failed"
+          ? `${label} : échec${t.error ? ` (${t.error})` : ""}`
+          : `${label} : ${t.deleted}`,
+      )
+      .join(", ");
+    const text = `Nettoyage terminé — ${summary || "aucune cible sélectionnée"}.`;
+    if (r.all_succeeded) success(text);
+    else warning(text);
   } catch (e) { showError(`Echec cleanup : ${errMsg(e)}`); }
   finally { cleaning.value = false; }
 }

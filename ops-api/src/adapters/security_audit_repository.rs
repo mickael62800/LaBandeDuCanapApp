@@ -139,50 +139,69 @@ impl SecurityAuditRepository for PgSecurityAuditRepository {
     }
 
     async fn cleanup(&self, options: CleanupOptions) -> Result<CleanupReport, DomainError> {
+        use ops_core::domain::entities::security_audit::CleanupTargetStatus as St;
+
         // 1. Validation en amont : rien n'est supprime avant ce point. Sans
-        //    cible selectionnee, c'est un no-op (on n'ouvre meme pas de
-        //    transaction).
+        //    cible locale selectionnee, on n'ouvre meme pas de transaction.
         let days = options.older_than_days.max(0);
         let touches_local = options.include_api_logs
             || options.include_audit_logs
             || options.include_server_events
             || options.include_manual_bans;
 
-        let mut report = CleanupReport::default();
+        // Cibles locales : `Skipped` par defaut, remplacees par `Deleted(n)` une
+        // fois la transaction commitee. Une erreur pendant la transaction annule
+        // TOUT et fait echouer l'operation (pas de purge partielle silencieuse) :
+        // ces cibles sont donc soit toutes `Deleted`, soit l'appel renvoie `Err`.
+        let mut api_logs = St::Skipped;
+        let mut audit_logs = St::Skipped;
+        let mut server_events = St::Skipped;
+        let mut manual_bans = St::Skipped;
 
-        // 2. Suppressions LOCALES dans une seule transaction : une erreur en
-        //    cours de route annule tout, au lieu de laisser une purge
-        //    partiellement appliquee et un compteur trompeur.
         if touches_local {
             let mut tx = self.pool.begin().await.map_err(pg_err)?;
             if options.include_api_logs {
-                report.deleted_api_logs =
+                api_logs = St::Deleted(
                     purge_in_tx(&mut tx, "ops_logs_v", "timestamp", days, Some("category = 'api'"))
-                        .await?;
+                        .await?,
+                );
             }
             if options.include_audit_logs {
-                report.deleted_audit_logs =
-                    purge_in_tx(&mut tx, "ops_audit_logs_v", "created_at", days, None).await?;
+                audit_logs = St::Deleted(
+                    purge_in_tx(&mut tx, "ops_audit_logs_v", "created_at", days, None).await?,
+                );
             }
             if options.include_server_events {
-                report.deleted_server_events =
-                    purge_in_tx(&mut tx, "server_events", "timestamp", days, None).await?;
+                server_events = St::Deleted(
+                    purge_in_tx(&mut tx, "server_events", "timestamp", days, None).await?,
+                );
             }
             if options.include_manual_bans {
-                report.deleted_manual_bans =
-                    purge_in_tx(&mut tx, "manual_ip_bans", "banned_at", days, None).await?;
+                manual_bans = St::Deleted(
+                    purge_in_tx(&mut tx, "manual_ip_bans", "banned_at", days, None).await?,
+                );
             }
             tx.commit().await.map_err(pg_err)?;
         }
 
-        // 3. Purge DISTANTE (journal des logins, heberge par l'identite) : hors
-        //    transaction locale — elle ne peut pas participer au commit Postgres
-        //    et ne doit surtout pas annuler ce qui vient d'etre valide ici.
-        //    Reste best-effort (cf. `AuthLoginsClient::purge`).
-        if options.include_successful_logins {
-            report.deleted_successful_logins = self.auth.purge(days).await;
-        }
+        // 2. Purge DISTANTE (journal des logins, heberge par l'identite) : hors
+        //    transaction locale (bases distinctes). Son echec est REMONTE
+        //    (`Failed`) au lieu d'annuler ce qui vient d'etre valide ici.
+        let successful_logins = if options.include_successful_logins {
+            match self.auth.purge(days).await {
+                Ok(n) => St::Deleted(n),
+                Err(reason) => St::Failed(reason),
+            }
+        } else {
+            St::Skipped
+        };
 
-        Ok(report)
+        Ok(CleanupReport {
+            api_logs,
+            audit_logs,
+            server_events,
+            successful_logins,
+            manual_bans,
+        })
     }
 }

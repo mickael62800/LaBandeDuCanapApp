@@ -49,12 +49,42 @@ pub struct CleanupOptions {
     pub include_manual_bans: bool,
 }
 
-/// Compte-rendu d'une purge.
-#[derive(Debug, Clone, Default)]
+/// Sort d'une cible de purge, expose tel quel a l'operateur.
+///
+/// Distinguer `Skipped` (non demandee) de `Deleted(0)` (demandee, rien a
+/// supprimer) de `Failed` (demandee, mais echouee) : un compteur nul seul ne
+/// disait pas laquelle des trois s'etait produite.
+#[derive(Debug, Clone)]
+pub enum CleanupTargetStatus {
+    /// Cible non demandee (option a `false`).
+    Skipped,
+    /// Purge appliquee — et commitee, pour les tables locales.
+    Deleted(u64),
+    /// Purge demandee mais echouee (ex. purge distante de l'identite).
+    Failed(String),
+}
+
+impl CleanupTargetStatus {
+    /// Nombre reellement supprime (0 si `Skipped`/`Failed`).
+    pub fn deleted(&self) -> u64 {
+        match self {
+            Self::Deleted(n) => *n,
+            _ => 0,
+        }
+    }
+
+    /// `true` si la cible n'est pas en echec (appliquee ou ignoree).
+    pub fn is_ok(&self) -> bool {
+        !matches!(self, Self::Failed(_))
+    }
+}
+
+/// Compte-rendu d'une purge, cible par cible.
+#[derive(Debug, Clone)]
 pub struct CleanupReport {
-    pub deleted_api_logs: u64,
-    pub deleted_audit_logs: u64,
-    pub deleted_server_events: u64,
-    pub deleted_successful_logins: u64,
-    pub deleted_manual_bans: u64,
+    pub api_logs: CleanupTargetStatus,
+    pub audit_logs: CleanupTargetStatus,
+    pub server_events: CleanupTargetStatus,
+    pub successful_logins: CleanupTargetStatus,
+    pub manual_bans: CleanupTargetStatus,
 }

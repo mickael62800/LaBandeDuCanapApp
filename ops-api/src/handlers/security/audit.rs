@@ -117,13 +117,47 @@ pub struct CleanupQuery {
     pub include_manual_bans: Option<bool>,
 }
 
+/// Sort d'une cible : `status` = "deleted" | "skipped" | "failed".
+#[derive(Debug, Serialize)]
+pub struct CleanupTargetDto {
+    pub status: &'static str,
+    pub deleted: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+impl From<&ops_core::domain::entities::security_audit::CleanupTargetStatus> for CleanupTargetDto {
+    fn from(status: &ops_core::domain::entities::security_audit::CleanupTargetStatus) -> Self {
+        use ops_core::domain::entities::security_audit::CleanupTargetStatus as St;
+        match status {
+            St::Deleted(n) => Self {
+                status: "deleted",
+                deleted: *n,
+                error: None,
+            },
+            St::Skipped => Self {
+                status: "skipped",
+                deleted: 0,
+                error: None,
+            },
+            St::Failed(reason) => Self {
+                status: "failed",
+                deleted: 0,
+                error: Some(reason.clone()),
+            },
+        }
+    }
+}
+
 #[derive(Debug, Serialize)]
 pub struct CleanupResponse {
-    pub deleted_api_logs: i64,
-    pub deleted_audit_logs: i64,
-    pub deleted_server_events: i64,
-    pub deleted_successful_logins: i64,
-    pub deleted_manual_bans: i64,
+    pub api_logs: CleanupTargetDto,
+    pub audit_logs: CleanupTargetDto,
+    pub server_events: CleanupTargetDto,
+    pub successful_logins: CleanupTargetDto,
+    pub manual_bans: CleanupTargetDto,
+    /// `false` si au moins une cible demandee a echoue.
+    pub all_succeeded: bool,
     pub message: String,
 }
 
@@ -151,15 +185,22 @@ pub async fn cleanup_security_logs(
 
     let report = state.security_audit_uc.cleanup(options.clone()).await?;
 
+    let all_succeeded = report.api_logs.is_ok()
+        && report.audit_logs.is_ok()
+        && report.server_events.is_ok()
+        && report.successful_logins.is_ok()
+        && report.manual_bans.is_ok();
+
     let actor = actor_from(&headers);
     tracing::info!(
         target: "audit::security",
         actor = actor,
-        api_logs = report.deleted_api_logs,
-        audit_logs = report.deleted_audit_logs,
-        server_events = report.deleted_server_events,
-        successful_logins = report.deleted_successful_logins,
-        manual_bans = report.deleted_manual_bans,
+        api_logs = report.api_logs.deleted(),
+        audit_logs = report.audit_logs.deleted(),
+        server_events = report.server_events.deleted(),
+        successful_logins = report.successful_logins.deleted(),
+        manual_bans = report.manual_bans.deleted(),
+        all_succeeded,
         days_kept = options.older_than_days,
         "security cleanup executed"
     );
@@ -169,35 +210,39 @@ pub async fn cleanup_security_logs(
         None,
         "security.cleanup",
         Some(&format!("days={}", options.older_than_days)),
-        if options.include_audit_logs {
+        if !all_succeeded || options.include_audit_logs {
             "warn"
         } else {
             "info"
         },
         serde_json::json!({
-            "deleted_api_logs": report.deleted_api_logs,
-            "deleted_audit_logs": report.deleted_audit_logs,
-            "deleted_server_events": report.deleted_server_events,
-            "deleted_successful_logins": report.deleted_successful_logins,
-            "deleted_manual_bans": report.deleted_manual_bans,
+            "deleted_api_logs": report.api_logs.deleted(),
+            "deleted_audit_logs": report.audit_logs.deleted(),
+            "deleted_server_events": report.server_events.deleted(),
+            "deleted_successful_logins": report.successful_logins.deleted(),
+            "deleted_manual_bans": report.manual_bans.deleted(),
+            "all_succeeded": all_succeeded,
             "days_kept": options.older_than_days,
         }),
     )
     .await;
 
+    let message = format!(
+        "{} logs API, {} audit, {} events, {} logins, {} bans manuels supprimes",
+        report.api_logs.deleted(),
+        report.audit_logs.deleted(),
+        report.server_events.deleted(),
+        report.successful_logins.deleted(),
+        report.manual_bans.deleted()
+    );
+
     Ok(Json(CleanupResponse {
-        deleted_api_logs: report.deleted_api_logs as i64,
-        deleted_audit_logs: report.deleted_audit_logs as i64,
-        deleted_server_events: report.deleted_server_events as i64,
-        deleted_successful_logins: report.deleted_successful_logins as i64,
-        deleted_manual_bans: report.deleted_manual_bans as i64,
-        message: format!(
-            "{} logs API, {} audit, {} events, {} logins, {} bans manuels supprimes",
-            report.deleted_api_logs,
-            report.deleted_audit_logs,
-            report.deleted_server_events,
-            report.deleted_successful_logins,
-            report.deleted_manual_bans
-        ),
+        api_logs: (&report.api_logs).into(),
+        audit_logs: (&report.audit_logs).into(),
+        server_events: (&report.server_events).into(),
+        successful_logins: (&report.successful_logins).into(),
+        manual_bans: (&report.manual_bans).into(),
+        all_succeeded,
+        message,
     }))
 }

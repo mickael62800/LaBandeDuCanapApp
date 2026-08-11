@@ -259,12 +259,21 @@ export interface ManualBanEntry {
   reason: string | null;
 }
 
+/** Sort d'une cible de purge : appliquée, ignorée (non demandée) ou en échec. */
+export interface CleanupTarget {
+  status: "deleted" | "skipped" | "failed";
+  deleted: number;
+  error?: string;
+}
+
 export interface CleanupResponse {
-  deleted_api_logs: number;
-  deleted_audit_logs: number;
-  deleted_server_events: number;
-  deleted_successful_logins: number;
-  deleted_manual_bans: number;
+  api_logs: CleanupTarget;
+  audit_logs: CleanupTarget;
+  server_events: CleanupTarget;
+  successful_logins: CleanupTarget;
+  manual_bans: CleanupTarget;
+  /** false si au moins une cible demandée a échoué. */
+  all_succeeded: boolean;
   message: string;
 }
 

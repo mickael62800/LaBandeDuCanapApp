@@ -85,9 +85,11 @@ impl AuthLoginsClient {
             .collect())
     }
 
-    /// Purge best-effort, alignee sur le reste de `cleanup` : une panne de
-    /// l'identite ne doit pas faire echouer le nettoyage des autres tables.
-    pub async fn purge(&self, days: i64) -> u64 {
+    /// Purge distante du journal des logins. Renvoie le nombre supprime, ou une
+    /// raison d'echec : la purge de l'identite est hors de la transaction locale
+    /// (bases distinctes) et ne doit pas faire echouer le nettoyage des autres
+    /// tables, mais son echec doit etre VISIBLE (et non masque en 0).
+    pub async fn purge(&self, days: i64) -> Result<u64, String> {
         let response = self
             .client
             .post(self.url("/security/purge-logins"))
@@ -102,16 +104,22 @@ impl AuthLoginsClient {
         }
 
         match response {
-            Ok(r) if r.status().is_success() => {
-                r.json::<Purged>().await.map(|p| p.deleted).unwrap_or(0)
-            }
+            Ok(r) if r.status().is_success() => r
+                .json::<Purged>()
+                .await
+                .map(|p| p.deleted)
+                .map_err(|error| {
+                    tracing::warn!(%error, "reponse de purge auth-api illisible");
+                    "reponse auth-api illisible".to_owned()
+                }),
             Ok(r) => {
-                tracing::warn!(status = %r.status(), "purge des logins refusee par auth-api");
-                0
+                let status = r.status();
+                tracing::warn!(%status, "purge des logins refusee par auth-api");
+                Err(format!("auth-api a refuse la purge ({status})"))
             }
             Err(error) => {
                 tracing::warn!(%error, "purge des logins impossible");
-                0
+                Err("auth-api injoignable".to_owned())
             }
         }
     }

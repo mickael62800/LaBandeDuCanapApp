@@ -79,7 +79,7 @@ async fn deploy_panel_from_event(
     channel_id: &str,
     category: Option<&str>,
 ) {
-    let games = match api.list_games_by_category(guild_id, category).await {
+    let mut games = match api.list_games_by_category(guild_id, category).await {
         Ok(g) => g,
         Err(e) => {
             warn!(error = %e, "Impossible de lister les jeux pour le panel web");
@@ -91,6 +91,21 @@ async fn deploy_panel_from_event(
         warn!("Aucun jeu dans cette categorie. Panel non deploye.");
         return;
     }
+
+    let guild_id_obj = match guild_id.parse::<u64>() {
+        Ok(id) => serenity::all::GuildId::new(id),
+        Err(_) => {
+            warn!(
+                guild_id,
+                "Guild ID invalide pour le deploiement du panel web"
+            );
+            return;
+        }
+    };
+
+    // Parite avec `/game-admin panel` : un deploiement demande depuis le Web
+    // doit lui aussi creer/reparer les roles Discord avant de rendre le panel.
+    ensure_game_roles(ctx, guild_id_obj, api, guild_id, &mut games).await;
 
     let games_slice: Vec<&Game> = games.iter().take(MAX_BUTTONS_PER_PANEL).collect();
     let embed = build_panel_embed(category, &games_slice);
@@ -122,10 +137,6 @@ async fn deploy_panel_from_event(
         }
     };
 
-    let _guild_id_obj = match guild_id.parse::<u64>() {
-        Ok(id) => serenity::all::GuildId::new(id),
-        Err(_) => return,
-    };
     // Ajoute les reactions
     for game in &games_slice {
         if let Some(emoji_str) = &game.emoji {
@@ -213,12 +224,26 @@ pub async fn handle_reaction(
 
     let member = match guild_id.member(&ctx.http, user_id).await {
         Ok(m) => m,
-        Err(_) => return,
+        Err(error) => {
+            warn!(%error, %guild_id, %user_id, "Impossible de charger le membre pour la reaction de jeu");
+            return;
+        }
     };
 
-    if is_add {
-        let _ = member.add_role(&ctx.http, role_id).await;
+    let result = if is_add {
+        member.add_role(&ctx.http, role_id).await
     } else {
-        let _ = member.remove_role(&ctx.http, role_id).await;
+        member.remove_role(&ctx.http, role_id).await
+    };
+    if let Err(error) = result {
+        warn!(
+            %error,
+            %guild_id,
+            %user_id,
+            game = %game.game_name,
+            %role_id,
+            action = if is_add { "add" } else { "remove" },
+            "Modification du role de jeu impossible"
+        );
     }
 }

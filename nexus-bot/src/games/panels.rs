@@ -292,21 +292,46 @@ pub(crate) fn build_panel_embed(category: Option<&str>, games: &[&Game]) -> Crea
 /// Best-effort : un jeu dont le rôle n'a pas pu être créé/persisté est laissé
 /// tel quel (son bouton dira « pas de rôle »), on réessaiera au prochain
 /// déploiement. Nécessite la permission Discord **Gérer les rôles** pour le bot.
-async fn ensure_game_roles(
+pub(crate) async fn ensure_game_roles(
     ctx: &Context,
     guild: GuildId,
     api: &ApiClient,
     guild_id: &str,
     games: &mut [Game],
 ) {
+    // Une liaison non vide peut pointer vers un role supprime manuellement.
+    // Charger les roles une fois permet de reparer ces liaisons sans faire un
+    // appel Discord par jeu. Si Discord est indisponible, on fait confiance a
+    // la DB pour ne pas creer de doublons a l'aveugle.
+    let mut guild_roles = match guild.roles(&ctx.http).await {
+        Ok(roles) => Some(roles),
+        Err(e) => {
+            warn!(error = %e, guild = %guild_id, "Verification des roles de jeux impossible");
+            None
+        }
+    };
+
     for game in games.iter_mut() {
-        let has_role = game
+        let stored_role = game
             .role_id
             .as_deref()
-            .is_some_and(|s| !s.trim().is_empty());
-        if has_role {
+            .and_then(|value| value.trim().parse::<u64>().ok())
+            .map(RoleId::new);
+        let role_is_valid = match (&guild_roles, stored_role) {
+            (Some(roles), Some(role_id)) => roles.contains_key(&role_id),
+            (None, Some(_)) => true,
+            _ => false,
+        };
+        if role_is_valid {
             continue;
         }
+        if let Some(role_id) = stored_role {
+            warn!(game = %game.game_name, role = %role_id, "Role de jeu obsolete, recreation");
+        }
+        // Ne jamais rendre le panneau avec une mention vers un role supprime
+        // ou un identifiant invalide si la recreation echoue ensuite.
+        game.role_id = None;
+
         let role = match guild
             .create_role(
                 &ctx.http,
@@ -328,6 +353,9 @@ async fn ensure_game_roles(
         match api.set_game_role(guild_id, &game.id, &role_id_str).await {
             Ok(updated) => {
                 game.role_id = updated.role_id.or(Some(role_id_str));
+                if let Some(roles) = &mut guild_roles {
+                    roles.insert(role.id, role);
+                }
                 info!(game = %game.game_name, role = ?game.role_id, "Role de jeu cree et associe");
             }
             Err(e) => {

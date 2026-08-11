@@ -468,7 +468,7 @@ mod panels;
 mod reactions;
 
 pub(crate) use interactions::{handles_component, on_component};
-pub(crate) use panels::build_panel_embed;
+pub(crate) use panels::{build_panel_embed, ensure_game_roles};
 use panels::{handle_panel, handle_refresh};
 pub(crate) use reactions::{handle_reaction, parse_reaction_type, spawn_listener};
 

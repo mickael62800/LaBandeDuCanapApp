@@ -37,7 +37,8 @@ impl ManageStatsService {
             infraction_repo,
             cache,
         }
-    }}
+    }
+}
 
 #[async_trait]
 impl ManageStatsUseCase for ManageStatsService {

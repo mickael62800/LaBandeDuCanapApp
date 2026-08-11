@@ -1,5 +1,6 @@
 pub mod alert_rule_repository;
 pub mod docker_host;
+pub mod game_runtime;
 pub mod geoip_lookup;
 pub mod host_ban_queue;
 pub mod host_probe_reader;

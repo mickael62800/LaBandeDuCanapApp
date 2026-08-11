@@ -37,11 +37,15 @@ async fn purge_table(pool: &PgPool, table: &str, ts_col: &str, days: i64) -> u64
 
 pub struct PgSecurityAuditRepository {
     pool: PgPool,
+    /// Le journal des logins n'est plus dans cette base : il appartient a
+    /// l'identite. Ce repository reste « Pg » pour l'audit et la purge des
+    /// autres tables, et delegue pour celle-la.
+    auth: crate::adapters::auth_logins::AuthLoginsClient,
 }
 
 impl PgSecurityAuditRepository {
-    pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+    pub fn new(pool: PgPool, auth: crate::adapters::auth_logins::AuthLoginsClient) -> Self {
+        Self { pool, auth }
     }
 }
 
@@ -123,36 +127,7 @@ impl SecurityAuditRepository for PgSecurityAuditRepository {
     }
 
     async fn list_recent_logins(&self, limit: i64) -> Result<Vec<SuccessfulLogin>, DomainError> {
-        let rows = sqlx::query_as::<
-            _,
-            (
-                DateTime<Utc>,
-                String,
-                Option<String>,
-                Option<String>,
-                Option<String>,
-            ),
-        >(
-            "SELECT logged_at, discord_user_id, username, client_ip, user_agent \
-             FROM successful_logins ORDER BY logged_at DESC LIMIT $1",
-        )
-        .bind(limit)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(pg_err)?;
-
-        Ok(rows
-            .into_iter()
-            .map(
-                |(timestamp, discord_user_id, username, client_ip, user_agent)| SuccessfulLogin {
-                    timestamp,
-                    discord_user_id,
-                    username,
-                    client_ip,
-                    user_agent,
-                },
-            )
-            .collect())
+        self.auth.recent(limit).await
     }
 
     async fn cleanup(&self, options: CleanupOptions) -> Result<CleanupReport, DomainError> {
@@ -182,8 +157,8 @@ impl SecurityAuditRepository for PgSecurityAuditRepository {
                 purge_table(&self.pool, "server_events", "timestamp", days).await;
         }
         if options.include_successful_logins {
-            report.deleted_successful_logins =
-                purge_table(&self.pool, "successful_logins", "logged_at", days).await;
+            // Table hebergee par l'identite : la purge passe par son API.
+            report.deleted_successful_logins = self.auth.purge(days).await;
         }
         if options.include_manual_bans {
             report.deleted_manual_bans =

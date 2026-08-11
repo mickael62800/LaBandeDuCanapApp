@@ -52,13 +52,13 @@ use crate::adapters::inbound::grpc::ai::images::ImagesGrpc;
 use crate::adapters::inbound::grpc::audit::action_messages::DiscordActionMessagesGrpc;
 use crate::adapters::inbound::grpc::audit::journal::AuditGrpc;
 use crate::adapters::inbound::grpc::audit::security::SecurityGrpc;
-use crate::adapters::inbound::grpc::community::progression::ProgressionGrpc;
 use crate::adapters::inbound::grpc::audit::stats::StatsGrpc;
 use crate::adapters::inbound::grpc::community::age_gate::AgeGateGrpc;
 use crate::adapters::inbound::grpc::community::announcements::AnnouncementsGrpc;
 use crate::adapters::inbound::grpc::community::confessions::ConfessionsGrpc;
 use crate::adapters::inbound::grpc::community::embeds::EmbedsGrpc;
 use crate::adapters::inbound::grpc::community::ideas::IdeasGrpc;
+use crate::adapters::inbound::grpc::community::progression::ProgressionGrpc;
 use crate::adapters::inbound::grpc::community::sponsorships::CommunityGrpc;
 use crate::adapters::inbound::grpc::guild_backup::snapshots::GuildBackupGrpc;
 use crate::adapters::inbound::grpc::moderation::actions::ModerationGrpc;
@@ -75,7 +75,7 @@ use crate::adapters::inbound::http::state::AppState;
 pub async fn serve_grpc(state: AppState, bind: SocketAddr) {
     let api_key = state.api_key.clone();
 
-        let progression = ProgressionGrpc {
+    let progression = ProgressionGrpc {
         levels_uc: state.community.levels_uc.clone(),
         broadcaster: state.broadcaster.clone(),
     };
@@ -97,7 +97,7 @@ pub async fn serve_grpc(state: AppState, bind: SocketAddr) {
         infractions_uc: state.moderation.infractions_uc.clone(),
         manage_reminders_uc: state.moderation.manage_reminders_uc.clone(),
     };
-        let welcome = WelcomeGrpc {
+    let welcome = WelcomeGrpc {
         uc: state.community.welcome_config_uc.clone(),
     };
     let audit = AuditGrpc {
@@ -128,7 +128,7 @@ pub async fn serve_grpc(state: AppState, bind: SocketAddr) {
         eligibility_uc: state.community.eligibility_uc.clone(),
         monthly_ranking_uc: state.community.monthly_ranking_uc.clone(),
     };
-        let security = SecurityGrpc {
+    let security = SecurityGrpc {
         uc: state.audit.security_uc.clone(),
     };
     let security_state = SecurityStateGrpc {
@@ -167,7 +167,7 @@ pub async fn serve_grpc(state: AppState, bind: SocketAddr) {
         broadcaster: state.broadcaster.clone(),
         adaptive_slowmode_repo: state.moderation.automod_adaptive_slowmode_repo.clone(),
     };
-        let images = ImagesGrpc {
+    let images = ImagesGrpc {
         uc: state.ai.analyze_image_uc.clone(),
     };
     let ai_dataset = AiDatasetGrpc {
@@ -185,7 +185,7 @@ pub async fn serve_grpc(state: AppState, bind: SocketAddr) {
             InterceptedService::new(inner, build_auth_interceptor(api_key.clone()))
         }};
     }
-let progression_svc = svc!(ProgressionServiceServer, progression);
+    let progression_svc = svc!(ProgressionServiceServer, progression);
     let stats_svc = svc!(StatsServiceServer, stats);
     let tickets_svc = svc!(TicketsServiceServer, tickets);
     let moderation_svc = svc!(ModerationServiceServer, moderation);
@@ -214,7 +214,7 @@ let progression_svc = svc!(ProgressionServiceServer, progression);
     // comme SERVING. Permet `grpc_health_probe -addr=:50051` dans le healthcheck.
     let (health_reporter, health_service) = tonic_health::server::health_reporter();
     health_reporter
-.set_serving::<ProgressionServiceServer<ProgressionGrpc>>()
+        .set_serving::<ProgressionServiceServer<ProgressionGrpc>>()
         .await;
     health_reporter
         .set_serving::<StatsServiceServer<StatsGrpc>>()
@@ -317,7 +317,7 @@ let progression_svc = svc!(ProgressionServiceServer, progression);
 
     if let Err(e) = server_builder
         .add_service(health_service)
-.add_service(progression_svc)
+        .add_service(progression_svc)
         .add_service(stats_svc)
         .add_service(tickets_svc)
         .add_service(moderation_svc)
@@ -385,12 +385,3 @@ fn build_auth_interceptor(
 #[cfg(test)]
 #[path = "tests/server.rs"]
 mod tests;
-
-
-
-
-
-
-
-
-

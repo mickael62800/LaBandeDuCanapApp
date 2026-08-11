@@ -34,7 +34,7 @@ x-rust-base: &rust-base
 # via merge ou redefinition. METRICS_PORT est utilise par worker-common pour
 # exposer /metrics (utilise par les healthchecks).
 x-worker-env: &worker-env
-  DATABASE_URL: postgres://sentinel:${POSTGRES_PASSWORD:-sentinel_secret}@pgbouncer:5432/discord_sentinel
+  DATABASE_URL: postgres://sentinel_app:${SENTINEL_DB_PASSWORD:-sentinel_app_secret}@pgbouncer:5432/discord_sentinel
   REDIS_URL: redis://:${REDIS_PASSWORD:-sentinel_redis}@redis:6379
   API_URL: http://api:3000
   SENTINEL_API_KEY: ${SENTINEL_API_KEY:-}
@@ -159,13 +159,70 @@ services:
   # PgBouncer en transaction pooling devant Postgres (pas de healthcheck CMD :
   # edoburu/pgbouncer n'a ni nc ni pg_isready ; il demarre en ~1s apres postgres
   # healthy donc `condition: service_started` cote consommateur suffit).
+  # One-shot : role applicatif NON-SUPERUSER pour la base de Sentinel.
+  #
+  # SECURITE — `POSTGRES_USER: sentinel` est le superuser du cluster, et un
+  # superuser IGNORE tous les GRANT. Tant que sentinel-api, sentinel-worker et
+  # ops-api s'y connectaient, leurs identifiants ouvraient AUSSI les bases
+  # `nexus`, `atrium` et surtout `auth` — celle qui contient les access et
+  # refresh tokens Discord des administrateurs. Le cloisonnement des trois
+  # autres plateformes ne servait donc qu'a moitie.
+  #
+  # `sentinel_app` possede `discord_sentinel` et rien d'autre.
+  sentinel-db-init:
+    image: postgres:16-alpine
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-sentinel_secret}
+      SENTINEL_DB_PASSWORD: ${SENTINEL_DB_PASSWORD:-sentinel_app_secret}
+    entrypoint:
+      - sh
+      - -euc
+      - |
+        PSQL="psql -h postgres -U sentinel -d discord_sentinel -v ON_ERROR_STOP=1"
+
+        # 1. Extension exigeant le superuser, posee ICI une fois pour toutes.
+        #    La migration 001 la demande en `CREATE EXTENSION IF NOT EXISTS` :
+        #    une fois presente, cet ordre devient un no-op et passe donc sous
+        #    un role ordinaire. C'est ce qui rend la bascule possible sans
+        #    toucher aux migrations.
+        $$PSQL -c "CREATE EXTENSION IF NOT EXISTS pg_stat_statements"
+
+        # 2. Role applicatif.
+        $$PSQL -tc "SELECT 1 FROM pg_roles WHERE rolname = 'sentinel_app'" | grep -q 1 ||
+          $$PSQL -c "CREATE ROLE sentinel_app LOGIN"
+        $$PSQL -c "ALTER ROLE sentinel_app WITH LOGIN PASSWORD '$$SENTINEL_DB_PASSWORD'"
+
+        # 3. Il possede la base et tout ce qu'elle contient. REASSIGN OWNED
+        #    transfere les objets existants d'un coup ; sans lui, le role ne
+        #    pourrait ni modifier le schema ni appliquer les migrations.
+        $$PSQL -c "ALTER DATABASE discord_sentinel OWNER TO sentinel_app"
+        $$PSQL -c "REASSIGN OWNED BY sentinel TO sentinel_app"
+        $$PSQL -c "ALTER SCHEMA public OWNER TO sentinel_app"
+        $$PSQL -c "GRANT CONNECT ON DATABASE discord_sentinel TO sentinel_app"
+
+        # 4. Fermeture croisee. Par defaut PostgreSQL accorde CONNECT a PUBLIC
+        #    sur toute base : sans ces REVOKE, `sentinel_app` pourrait ouvrir
+        #    une session sur `auth`, `nexus` et `atrium`. Il n'y lirait rien
+        #    (aucune table n'est accordee a PUBLIC), mais une session ouverte
+        #    est deja une surface. Les proprietaires et le superuser ne sont
+        #    pas concernes. `|| true` : les bases des profils inactifs
+        #    n'existent pas, et leur absence n'est pas une erreur.
+        for DB in auth nexus atrium; do
+          $$PSQL -c "REVOKE CONNECT ON DATABASE $$DB FROM PUBLIC" || true
+        done
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - data
+
   pgbouncer:
     image: edoburu/pgbouncer:latest
     container_name: sentinel-pgbouncer
     restart: unless-stopped
     logging: *default-logging
     environment:
-      DATABASE_URL: postgres://sentinel:${POSTGRES_PASSWORD:-sentinel_secret}@postgres:5432/discord_sentinel
+      DATABASE_URL: postgres://sentinel_app:${SENTINEL_DB_PASSWORD:-sentinel_app_secret}@postgres:5432/discord_sentinel
       POOL_MODE: transaction
       MAX_CLIENT_CONN: 1000
       DEFAULT_POOL_SIZE: 25
@@ -173,13 +230,13 @@ services:
       RESERVE_POOL_TIMEOUT: 3
       MAX_PREPARED_STATEMENTS: 100
       SERVER_RESET_QUERY: DISCARD ALL
-      ADMIN_USERS: sentinel
+      ADMIN_USERS: sentinel_app
       AUTH_TYPE: scram-sha-256
     ports:
       - "127.0.0.1:6432:5432"
     depends_on:
-      postgres:
-        condition: service_healthy
+      sentinel-db-init:
+        condition: service_completed_successfully
     # SECURITE — pgbouncer est bi-network : il joint postgres via "data"
     # (isole) et expose le pool aux clients via "internal" (no-internet).
     networks:
@@ -206,6 +263,50 @@ services:
       timeout: 5s
       retries: 5
     # SECURITE — Redis n'a PAS besoin d'internet, isole sur "internal".
+    networks:
+      - internal
+
+  # Redis DEDIE a l'identite.
+  #
+  # SECURITE — pourquoi ne pas reutiliser le Redis commun.
+  #
+  # auth-api y stocke deux choses : les `state` CSRF du flux OAuth
+  # (`oauth:web:state:*`) et le cache « jeton -> identite » (`user_id:*`).
+  # Sur l'instance partagee, tout service porteur de REDIS_URL — les trois
+  # bots, les trois workers, la gateway — pouvait les lire. C'est-a-dire
+  # resoudre l'identite derriere n'importe quel jeton, et forger un callback
+  # OAuth avec un `state` valide. Separer la base de l'identite sans separer
+  # son Redis ne protegeait que la moitie du chemin.
+  #
+  # Deux differences de reglage avec le Redis commun, toutes deux voulues :
+  #
+  #   - AUCUNE persistance (`--save ""`, `--appendonly no`, pas de volume).
+  #     Ces cles derivent de secrets et expirent en 10 min ; les ecrire sur
+  #     disque serait un risque sans contrepartie. Un redemarrage coute au pire
+  #     les logins en cours de route et un cache froid.
+  #   - `noeviction` au lieu de `allkeys-lru`. Sous LRU, Redis peut evincer un
+  #     `state` CSRF encore valide : le login echoue alors avec « state
+  #     invalide », sans rien dans les logs qui l'explique. Le jeu de donnees
+  #     tient en quelques centaines de cles auto-expirantes — la memoire n'est
+  #     pas la ressource contrainte ici.
+  auth-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    logging: *default-logging
+    command: >-
+      redis-server
+      --requirepass ${AUTH_REDIS_PASSWORD:-auth_redis_secret}
+      --save ""
+      --appendonly no
+      --maxmemory 128mb
+      --maxmemory-policy noeviction
+    # PAS de `ports:` et pas de volume : joignable seulement par auth-api,
+    # et rien ne touche le disque.
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${AUTH_REDIS_PASSWORD:-auth_redis_secret}", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     networks:
       - internal
 
@@ -266,10 +367,14 @@ services:
       # Les API refusent tout autre guild_id ; les bots quittent toute
       # autre guilde. Vide = verrou desactive.
       PUBLIC_GUILD_ID: ${PUBLIC_GUILD_ID:-}
-      DATABASE_URL: postgres://sentinel:${POSTGRES_PASSWORD:-sentinel_secret}@pgbouncer:5432/discord_sentinel
+      DATABASE_URL: postgres://sentinel_app:${SENTINEL_DB_PASSWORD:-sentinel_app_secret}@pgbouncer:5432/discord_sentinel
       REDIS_URL: redis://:${REDIS_PASSWORD:-sentinel_redis}@redis:6379
       SENTINEL_API_KEY: ${SENTINEL_API_KEY:-}
       SENTINEL_REQUIRE_API_KEY: ${SENTINEL_REQUIRE_API_KEY:-true}
+      # Consommateur de l'identite : le gate superadmin ne resout plus
+      # l'identite lui-meme, il demande son verdict a auth-api.
+      AUTH_API_URL: http://auth-api:8096
+      AUTH_API_TOKEN: ${AUTH_API_TOKEN:?AUTH_API_TOKEN est requis}
       # Gate RBAC global fail-closed par route (defaut false). Mettre a "true"
       # active la deuxieme couche de defense en profondeur devant les gardes par
       # handler. Surchargeable via la var RBAC_GLOBAL_GATE du .env docker.
@@ -278,10 +383,9 @@ services:
       # Optionnel : protege /metrics par un Bearer token. Vide = ouvert (scrape
       # interne sans auth). Si defini, configurer aussi le job Prometheus.
       METRICS_TOKEN: ${METRICS_TOKEN:-}
-      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID:-}
-      DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:-}
-      DISCORD_REDIRECT_URI: ${DISCORD_REDIRECT_URI:-}
-      WEB_FRONT_URL: ${WEB_FRONT_URL:-}
+      # NI DISCORD_CLIENT_SECRET NI WEB_FRONT_URL ici : le flux OAuth appartient
+      # a auth-api. Deux processus porteurs du meme client_secret, c'est deux
+      # endroits ou il peut fuiter — et un seul des deux le sert vraiment.
       SUPERADMIN_USER_IDS: ${SUPERADMIN_USER_IDS:-}
       # La source publique du .env est SENTINEL_BOT_TOKEN. Le nom injecte
       # reste SENTINEL_DISCORD_TOKEN, celui lu par les binaires Rust.
@@ -359,10 +463,16 @@ services:
     environment:
       RUST_LOG: ${RUST_LOG:-info}
       DOCKER_AGENT_BIND_ADDR: 0.0.0.0:8095
-      # Requis : l'agent REFUSE de demarrer sans jeton d'au moins 16
-      # caracteres. Mieux vaut un service arrete qu'un socket ouvert a tout
-      # le reseau interne.
+      # Requis : l'agent REFUSE de demarrer sans ses DEUX jetons (16 caracteres
+      # minimum, et differents l'un de l'autre). Mieux vaut un service arrete
+      # qu'un socket ouvert a tout le reseau interne.
+      #
+      # Un jeton par surface : `DOCKER_AGENT_TOKEN` administre l'hote (ops-api),
+      # `DOCKER_AGENT_GAME_TOKEN` pilote les serveurs de jeu (nexus-api). Avec
+      # un jeton unique, nexus-api pouvait arreter ou purger n'importe quel
+      # conteneur, `postgres` et `auth-api` compris.
       DOCKER_AGENT_TOKEN: ${DOCKER_AGENT_TOKEN:?DOCKER_AGENT_TOKEN est requis}
+      DOCKER_AGENT_GAME_TOKEN: ${DOCKER_AGENT_GAME_TOKEN:?DOCKER_AGENT_GAME_TOKEN est requis}
     # GID du groupe `docker` de l'host, proprietaire du socket. Sans lui, le
     # user non-root du conteneur ne peut pas l'ouvrir.
     # Override : DOCKER_GID=$(stat -c '%g' /var/run/docker.sock) dans .env.
@@ -401,10 +511,15 @@ services:
     environment:
       RUST_LOG: ${RUST_LOG:-info}
       OPS_API_BIND_ADDR: 0.0.0.0:3200
-      OPS_DATABASE_URL: postgres://sentinel:${POSTGRES_PASSWORD:-sentinel_secret}@pgbouncer:5432/discord_sentinel
+      OPS_DATABASE_URL: postgres://sentinel_app:${SENTINEL_DB_PASSWORD:-sentinel_app_secret}@pgbouncer:5432/discord_sentinel
       # Requis : l'API refuse de demarrer sans jeton d'au moins 16 caracteres.
       OPS_API_TOKEN: ${OPS_API_TOKEN:?OPS_API_TOKEN est requis}
       OPS_METRICS_TOKEN: ${OPS_METRICS_TOKEN:-}
+      # Journal des logins reussis : la table appartient a la base de
+      # l'identite, l'ecran « Securite de l'hote » la lit par HTTP. Meme
+      # relation qu'avec docker-agent pour le daemon Docker.
+      AUTH_API_URL: http://auth-api:8096
+      AUTH_API_TOKEN: ${AUTH_API_TOKEN:?AUTH_API_TOKEN est requis}
       DOCKER_AGENT_URL: http://docker-agent:8095
       DOCKER_AGENT_TOKEN: ${DOCKER_AGENT_TOKEN:?DOCKER_AGENT_TOKEN est requis}
       WEB_DOMAIN: ${WEB_DOMAIN:-localhost}
@@ -611,7 +726,7 @@ services:
       ATRIUM_USER_DAILY_LIMIT: ${ATRIUM_USER_DAILY_LIMIT:-30}
       ATRIUM_GLOBAL_DAILY_LIMIT: ${ATRIUM_GLOBAL_DAILY_LIMIT:-500}
       # Base logique Atrium, isolee derriere son pool dedie.
-      ATRIUM_RAG_DATABASE_URL: ${ATRIUM_RAG_DATABASE_URL:-postgres://sentinel:${POSTGRES_PASSWORD:-sentinel_secret}@atrium-pgbouncer:5432/atrium}
+      ATRIUM_RAG_DATABASE_URL: ${ATRIUM_RAG_DATABASE_URL:-postgres://atrium:${ATRIUM_DB_PASSWORD:-atrium_secret}@atrium-pgbouncer:5432/atrium}
       ATRIUM_EMBEDDINGS_BASE_URL: ${ATRIUM_EMBEDDINGS_BASE_URL:-http://atrium-ollama:11434/v1}
       ATRIUM_EMBEDDINGS_API_KEY: ${ATRIUM_EMBEDDINGS_API_KEY:-}
       ATRIUM_EMBEDDINGS_MODEL: ${ATRIUM_EMBEDDINGS_MODEL:-nomic-embed-text}
@@ -749,6 +864,11 @@ services:
       ATRIUM_API_TOKEN: ${ATRIUM_API_TOKEN:-}
       # Injecté cote serveur dans le proxy /ops-api/ par /docker-entrypoint.d/32-ops-key.sh
       OPS_API_TOKEN: ${OPS_API_TOKEN:-}
+      # Injecte par /docker-entrypoint.d/33-auth-key.sh dans les sous-requetes
+      # d'autorisation des TROIS passerelles. C'est le jeton le plus critique
+      # du conteneur web : sans lui, auth-api repond 401 et aucune passerelle
+      # ne laisse passer.
+      AUTH_API_TOKEN: ${AUTH_API_TOKEN:-}
       # Configuration PUBLIQUE du site, ecrite dans site-config.json au
       # demarrage. Sans PUBLIC_GUILD_ID, l'espace membre n'affiche aucune
       # section : il ne sait pas de quel serveur parler.
@@ -951,17 +1071,40 @@ services:
 
   # One-shot idempotent : Atrium a sa base logique, dans l'unique conteneur
   # PostgreSQL de la plateforme.
+  # One-shot : role `atrium` non-superuser, sa base, et l'extension pgvector.
+  #
+  # pgvector n'est PAS une extension « trusted » : son installation exige le
+  # superuser. C'etait le blocage qui laissait atrium-api connecte en
+  # `sentinel`, donc capable de lire les bases des autres plateformes. La levee
+  # tient en un ordre : on cree l'extension ICI, sous le compte qui en a le
+  # droit ; le `CREATE EXTENSION IF NOT EXISTS vector` de la migration 001
+  # devient alors un no-op et passe sous un role ordinaire.
   atrium-db-init:
     image: postgres:16-alpine
     environment:
       PGPASSWORD: ${POSTGRES_PASSWORD:-sentinel_secret}
+      ATRIUM_DB_PASSWORD: ${ATRIUM_DB_PASSWORD:-atrium_secret}
     entrypoint:
       - sh
-      - -c
-      - >-
-        psql -h postgres -U sentinel -d discord_sentinel -tc
-        "SELECT 1 FROM pg_database WHERE datname = 'atrium'" | grep -q 1 ||
-        psql -h postgres -U sentinel -d discord_sentinel -c "CREATE DATABASE atrium"
+      - -euc
+      - |
+        PSQL="psql -h postgres -U sentinel -d discord_sentinel -v ON_ERROR_STOP=1"
+
+        $$PSQL -tc "SELECT 1 FROM pg_roles WHERE rolname = 'atrium'" | grep -q 1 ||
+          $$PSQL -c "CREATE ROLE atrium LOGIN"
+        $$PSQL -c "ALTER ROLE atrium WITH LOGIN PASSWORD '$$ATRIUM_DB_PASSWORD'"
+
+        $$PSQL -tc "SELECT 1 FROM pg_database WHERE datname = 'atrium'" | grep -q 1 ||
+          $$PSQL -c "CREATE DATABASE atrium OWNER atrium"
+
+        $$PSQL -c "ALTER DATABASE atrium OWNER TO atrium"
+        psql -h postgres -U sentinel -d atrium -v ON_ERROR_STOP=1 \
+          -c "CREATE EXTENSION IF NOT EXISTS vector" \
+          -c "REASSIGN OWNED BY sentinel TO atrium" \
+          -c "ALTER SCHEMA public OWNER TO atrium"
+
+        $$PSQL -c "GRANT CONNECT ON DATABASE atrium TO atrium"
+        $$PSQL -c "REVOKE CONNECT ON DATABASE discord_sentinel FROM PUBLIC"
     depends_on:
       postgres:
         condition: service_healthy
@@ -978,12 +1121,12 @@ services:
     restart: unless-stopped
     logging: *default-logging
     environment:
-      DATABASE_URL: postgres://sentinel:${POSTGRES_PASSWORD:-sentinel_secret}@postgres:5432/atrium
+      DATABASE_URL: postgres://atrium:${ATRIUM_DB_PASSWORD:-atrium_secret}@postgres:5432/atrium
       POOL_MODE: transaction
       MAX_CLIENT_CONN: 100
       DEFAULT_POOL_SIZE: 10
       RESERVE_POOL_SIZE: 2
-      ADMIN_USERS: sentinel
+      ADMIN_USERS: atrium
       AUTH_TYPE: scram-sha-256
     depends_on:
       atrium-db-init:
@@ -995,23 +1138,274 @@ services:
       - atrium
       - full
 
-  # One-shot : cree la base `nexus` si absente (idempotent).
-  nexus-db-init:
+  # ── Identite (auth-api) ─────────────────────────────────────────────────
+  #
+  # Source de verite unique de « qui est connecte », pour les TROIS plateformes
+  # et pour l'exploitation. Extraite de sentinel-api, qui en etait le
+  # proprietaire de fait : Nexus et Atrium n'avaient aucun moyen de savoir qui
+  # appelle, et la passerelle nginx devait demander son avis a sentinel-api
+  # avant de les servir. Meme geste que l'extraction de `ops`.
+  #
+  # Role `auth` dedie : cette base contient les access/refresh tokens Discord
+  # des administrateurs. C'est la base la plus sensible du deploiement, et la
+  # seule raison suffisante a elle seule d'avoir un compte par plateforme.
+  auth-db-init:
     image: postgres:16-alpine
     environment:
       PGPASSWORD: ${POSTGRES_PASSWORD:-sentinel_secret}
+      AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD:-auth_secret}
     entrypoint:
       - sh
-      - -c
-      - >-
-        psql -h postgres -U sentinel -d discord_sentinel -tc
-        "SELECT 1 FROM pg_database WHERE datname = 'nexus'" | grep -q 1 ||
-        psql -h postgres -U sentinel -d discord_sentinel -c "CREATE DATABASE nexus"
+      - -euc
+      - |
+        PSQL="psql -h postgres -U sentinel -d discord_sentinel -v ON_ERROR_STOP=1"
+
+        $$PSQL -tc "SELECT 1 FROM pg_roles WHERE rolname = 'auth'" | grep -q 1 ||
+          $$PSQL -c "CREATE ROLE auth LOGIN"
+        $$PSQL -c "ALTER ROLE auth WITH LOGIN PASSWORD '$$AUTH_DB_PASSWORD'"
+
+        $$PSQL -tc "SELECT 1 FROM pg_database WHERE datname = 'auth'" | grep -q 1 ||
+          $$PSQL -c "CREATE DATABASE auth OWNER auth"
+
+        # Reprise d'une installation ou la base existait deja.
+        $$PSQL -c "ALTER DATABASE auth OWNER TO auth"
+        psql -h postgres -U sentinel -d auth -v ON_ERROR_STOP=1 \
+          -c "REASSIGN OWNED BY sentinel TO auth" \
+          -c "ALTER SCHEMA public OWNER TO auth"
+
+        $$PSQL -c "GRANT CONNECT ON DATABASE auth TO auth"
     depends_on:
       postgres:
         condition: service_healthy
     networks:
       - data
+
+  auth-pgbouncer:
+    image: edoburu/pgbouncer:latest
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      DATABASE_URL: postgres://auth:${AUTH_DB_PASSWORD:-auth_secret}@postgres:5432/auth
+      # SESSION : auth-api applique ses migrations au boot (verrou d'avis de
+      # session). Meme raison que pour nexus-pgbouncer.
+      POOL_MODE: session
+      MAX_CLIENT_CONN: 100
+      DEFAULT_POOL_SIZE: 10
+      RESERVE_POOL_SIZE: 2
+      ADMIN_USERS: auth
+      AUTH_TYPE: scram-sha-256
+    depends_on:
+      auth-db-init:
+        condition: service_completed_successfully
+    networks:
+      - data
+      - internal
+
+  auth-api:
+    <<: *rust-base
+    build:
+      <<: *build-alpine
+      args:
+        BIN_NAME: auth-api
+    # PAS de `ports:` — joignable par la passerelle nginx et par les services
+    # internes uniquement.
+    environment:
+      AUTH_DATABASE_URL: postgres://auth:${AUTH_DB_PASSWORD:-auth_secret}@auth-pgbouncer:5432/auth
+      AUTH_API_BIND_ADDR: 0.0.0.0:8096
+      # Jeton des appelants de service (nginx auth_request, sentinel-api,
+      # ops-api). Requis : sans lui, /access et /security/* seraient ouverts a
+      # tout le reseau interne.
+      AUTH_API_TOKEN: ${AUTH_API_TOKEN:?AUTH_API_TOKEN est requis}
+      # Instance DEDIEE (cf. le commentaire du service `auth-redis`) : les
+      # `state` CSRF et le cache d'identite ne doivent pas etre lisibles par
+      # les bots, les workers et la gateway.
+      REDIS_URL: redis://:${AUTH_REDIS_PASSWORD:-auth_redis_secret}@auth-redis:6379
+      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID:-}
+      DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:-}
+      DISCORD_REDIRECT_URI: ${DISCORD_REDIRECT_URI:-}
+      WEB_FRONT_URL: ${WEB_FRONT_URL:-}
+      SUPERADMIN_USER_IDS: ${SUPERADMIN_USER_IDS:-}
+      RUST_LOG: ${RUST_LOG:-info}
+    depends_on:
+      auth-pgbouncer:
+        condition: service_started
+      auth-redis:
+        condition: service_healthy
+    # `default` en plus d'`internal` : le flux OAuth appelle Discord.
+    networks:
+      - internal
+      - default
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:8096/health || exit 1"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 15s
+
+  # One-shot : recopie les sessions et le journal de login depuis
+  # discord_sentinel vers la base de l'identite. Tourne APRES auth-api, qui
+  # cree les tables par ses migrations.
+  #
+  # `ON CONFLICT DO NOTHING` : rejouable sans doublon. Les lignes ne sont PAS
+  # supprimees de discord_sentinel — tant que la bascule n'est pas validee,
+  # l'ancien chemin doit continuer de fonctionner.
+  auth-data-import:
+    image: postgres:16-alpine
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-sentinel_secret}
+    entrypoint:
+      - sh
+      - -euc
+      - |
+        for T in web_oauth_sessions successful_logins; do
+          echo "Reprise de $$T..."
+          psql -h postgres -U sentinel -d discord_sentinel -v ON_ERROR_STOP=1 \
+            -c "\copy (SELECT * FROM $$T) TO STDOUT" \
+          | psql -h postgres -U sentinel -d auth -v ON_ERROR_STOP=1 \
+            -c "CREATE TEMP TABLE tmp_$$T (LIKE $$T INCLUDING DEFAULTS);
+                \copy tmp_$$T FROM STDIN;
+                INSERT INTO $$T SELECT * FROM tmp_$$T ON CONFLICT (id) DO NOTHING;"
+        done
+        echo "Reprise terminee."
+    depends_on:
+      auth-api:
+        condition: service_healthy
+    networks:
+      - data
+
+  # Redis DEDIE a la plateforme jeux.
+  #
+  # Nexus est le seul des trois a pouvoir etre separe proprement : ses deux
+  # usages sont internes — la stream `nexus:events` (nexus-api publie,
+  # nexus-bot consomme) et l'allocation atomique des ports de jeu. Atrium, lui,
+  # CONSOMME `sentinel:events` (les demandes d'apaisement publiees par l'AutoMod
+  # de Sentinel) : le separer lui imposerait deux connexions Redis pour une
+  # cle de cooldown sans valeur. Il reste donc sur l'instance commune.
+  #
+  # Deux reglages different du Redis commun, et ce sont des CORRECTIONS :
+  #
+  #   - `noeviction` au lieu de `allkeys-lru`. Les reservations de port
+  #     (`game:port:*`, TTL 7 j) sont le garde-fou anti-collision : sous LRU,
+  #     Redis peut en evincer une encore active, et deux serveurs de jeu se
+  #     voient alors attribuer le meme port. Le symptome apparait au demarrage
+  #     du second, tres loin de la cause.
+  #   - Persistance activee (`appendonly`). Un redemarrage de l'instance
+  #     commune perdait ces reservations, avec le meme risque.
+  nexus-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    logging: *default-logging
+    command: >-
+      redis-server
+      --requirepass ${NEXUS_REDIS_PASSWORD:-nexus_redis_secret}
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy noeviction
+    # PAS de `ports:` : joignable seulement par nexus-api et nexus-bot.
+    volumes:
+      - nexus_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${NEXUS_REDIS_PASSWORD:-nexus_redis_secret}", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+    profiles:
+      - nexus
+      - full
+
+  # One-shot : cree le ROLE `nexus` et la base `nexus` qu'il possede
+  # (idempotent, rejouable sur une installation existante).
+  #
+  # SECURITE — pourquoi un role dedie. `POSTGRES_USER: sentinel` est le
+  # superuser du cluster : un superuser IGNORE tous les GRANT. Tant que
+  # nexus-api se connectait avec ce compte, la separation en trois bases
+  # logiques etait purement decorative — ses identifiants ouvraient
+  # discord_sentinel et atrium. Le role `nexus` est un role ordinaire : il ne
+  # possede que sa base, et les GRANT s'appliquent vraiment a lui.
+  #
+  # La reciproque n'est PAS fermee : sentinel-api et atrium-api se connectent
+  # encore en superuser et peuvent donc lire la base nexus. Les basculer
+  # demande de traiter leurs `CREATE EXTENSION` (pgvector cote Atrium n'est pas
+  # une extension « trusted », elle exige le superuser) — chantier distinct.
+  nexus-db-init:
+    image: postgres:16-alpine
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-sentinel_secret}
+      NEXUS_DB_PASSWORD: ${NEXUS_DB_PASSWORD:-nexus_secret}
+    entrypoint:
+      - sh
+      - -euc
+      - |
+        PSQL="psql -h postgres -U sentinel -d discord_sentinel -v ON_ERROR_STOP=1"
+
+        # 1. Role dedie. `ALTER` inconditionnel ensuite : une rotation de
+        #    NEXUS_DB_PASSWORD dans le .env doit prendre effet au redemarrage,
+        #    sinon l'API se retrouve avec un mot de passe que la base ignore.
+        $$PSQL -tc "SELECT 1 FROM pg_roles WHERE rolname = 'nexus'" | grep -q 1 ||
+          $$PSQL -c "CREATE ROLE nexus LOGIN"
+        $$PSQL -c "ALTER ROLE nexus WITH LOGIN PASSWORD '$$NEXUS_DB_PASSWORD'"
+
+        # 2. Base possedee par ce role. CREATE DATABASE ne peut pas tourner
+        #    dans un bloc transactionnel -> commande separee.
+        $$PSQL -tc "SELECT 1 FROM pg_database WHERE datname = 'nexus'" | grep -q 1 ||
+          $$PSQL -c "CREATE DATABASE nexus OWNER nexus"
+
+        # 3. Reprise d'une installation ou la base existait deja, creee par
+        #    `sentinel`. Sans ca, le role `nexus` ne pourrait pas ecrire dans
+        #    ses propres tables. REASSIGN OWNED transfere tout d'un coup.
+        $$PSQL -c "ALTER DATABASE nexus OWNER TO nexus"
+        psql -h postgres -U sentinel -d nexus -v ON_ERROR_STOP=1 \
+          -c "REASSIGN OWNED BY sentinel TO nexus" \
+          -c "ALTER SCHEMA public OWNER TO nexus"
+
+        # 4. Fermeture croisee. Par defaut PostgreSQL accorde CONNECT a PUBLIC
+        #    sur toute base : sans ce REVOKE, le role `nexus` pourrait ouvrir
+        #    une session sur discord_sentinel. Il n'y lirait rien (aucune table
+        #    n'est accordee a PUBLIC), mais une session ouverte est deja une
+        #    surface. Le proprietaire et les superusers ne sont pas concernes.
+        $$PSQL -c "REVOKE CONNECT ON DATABASE discord_sentinel FROM PUBLIC"
+        $$PSQL -c "GRANT CONNECT ON DATABASE nexus TO nexus"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - data
+    profiles:
+      - nexus
+      - full
+
+  # Pool dedie, symetrique d'atrium-pgbouncer : nexus-api reste sur le reseau
+  # interne et ne joint jamais PostgreSQL directement. Avant, il etait bi-network
+  # (data + internal) faute de pool pour la base `nexus` — ce qui contredisait
+  # l'invariant documente en bas de ce fichier (« seul pgbouncer est
+  # bi-network ») et donnait a l'API des jeux une route directe vers l'instance
+  # qui heberge aussi discord_sentinel.
+  nexus-pgbouncer:
+    image: edoburu/pgbouncer:latest
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      DATABASE_URL: postgres://nexus:${NEXUS_DB_PASSWORD:-nexus_secret}@postgres:5432/nexus
+      # SESSION, pas TRANSACTION : nexus-api applique ses migrations au boot
+      # (`sqlx::migrate!`), qui prend un verrou d'avis de SESSION. En pooling
+      # transactionnel ce verrou est rendu au retour de chaque transaction et
+      # ne protege plus rien — deux instances qui demarrent ensemble peuvent
+      # appliquer la meme migration. Ce pool n'est pas ici pour le debit (le
+      # volume jeux est faible) mais pour tenir nexus-api hors du reseau `data`.
+      POOL_MODE: session
+      MAX_CLIENT_CONN: 100
+      DEFAULT_POOL_SIZE: 10
+      RESERVE_POOL_SIZE: 2
+      ADMIN_USERS: nexus
+      AUTH_TYPE: scram-sha-256
+    depends_on:
+      nexus-db-init:
+        condition: service_completed_successfully
+    networks:
+      - data
+      - internal
     profiles:
       - nexus
       - full
@@ -1038,9 +1432,10 @@ services:
       # Les API refusent tout autre guild_id ; les bots quittent toute
       # autre guilde. Vide = verrou desactive.
       PUBLIC_GUILD_ID: ${PUBLIC_GUILD_ID:-}
-      # Connexion DIRECTE a postgres (base nexus) : pgbouncer ne route que
-      # discord_sentinel. Volume faible (jeux) -> pas besoin de pooler.
-      NEXUS_DATABASE_URL: postgres://sentinel:${POSTGRES_PASSWORD:-sentinel_secret}@postgres:5432/nexus
+      # Via nexus-pgbouncer (le pgbouncer principal ne route que
+      # discord_sentinel). L'API ne touche jamais postgres directement, et se
+      # connecte avec le role `nexus` — pas le superuser du cluster.
+      NEXUS_DATABASE_URL: postgres://nexus:${NEXUS_DB_PASSWORD:-nexus_secret}@nexus-pgbouncer:5432/nexus
       NEXUS_API_KEY: ${NEXUS_API_KEY:-}
       NEXUS_API_PORT: "3100"
       NEXUS_GRPC_PORT: "3101"
@@ -1063,38 +1458,39 @@ services:
       # Nombre de proxies de confiance devant l'API (nginx du service web).
       # Sert a lire la bonne IP dans X-Forwarded-For sans se faire spoofer.
       TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
-      # Redis : allocation atomique des ports de jeu ET bus d'evenements
-      # game-portal (stream nexus:events consomme par nexus-bot). Sans lui,
-      # l'API bascule sur un publieur inerte et les salons de session ne sont
-      # jamais crees.
-      REDIS_URL: redis://:${REDIS_PASSWORD:-sentinel_redis}@redis:6379
+      # Redis DEDIE (cf. le service `nexus-redis`) : allocation atomique des
+      # ports de jeu ET bus d'evenements game-portal (stream nexus:events
+      # consomme par nexus-bot). Sans lui, l'API bascule sur un publieur inerte
+      # et les salons de session ne sont jamais crees.
+      REDIS_URL: redis://:${NEXUS_REDIS_PASSWORD:-nexus_redis_secret}@nexus-redis:6379
       # Runtime des serveurs de jeu : docker | noop. `noop` par defaut (aucun
       # container reel) : passer a `docker` quand la flotte doit tourner.
+      #
+      # `docker` ne veut plus dire « socket local » : les operations passent par
+      # `docker-agent`, seul processus du depot a monter /var/run/docker.sock.
       NEXUS_GAME_RUNTIME: ${NEXUS_GAME_RUNTIME:-noop}
+      DOCKER_AGENT_URL: http://docker-agent:8095
+      # Jeton de la surface `/game/*` SEULEMENT. Ne pas y mettre
+      # DOCKER_AGENT_TOKEN : il ouvre l'arret et la purge de tous les
+      # conteneurs de l'hote.
+      DOCKER_AGENT_GAME_TOKEN: ${DOCKER_AGENT_GAME_TOKEN:?DOCKER_AGENT_GAME_TOKEN est requis}
       RUST_LOG: ${RUST_LOG:-info}
-    # GID du groupe `docker` de l'host, proprietaire du socket. Sans lui, le
-    # user non-root du conteneur ne peut pas ouvrir /var/run/docker.sock.
-    # Override : DOCKER_GID=$(stat -c '%g' /var/run/docker.sock) dans .env.
-    group_add:
-      - "${DOCKER_GID:-988}"
+    # NI `group_add: docker` NI montage du socket : ce service n'a plus rien a
+    # faire avec le daemon Docker. Le socket equivaut a un acces root sur
+    # l'hote, et nexus-api sert aussi la vitrine publique du portail.
+    # Ne PAS les remettre : c'est l'etat dont on sort.
     security_opt:
       - no-new-privileges:true
-    volumes:
-      # SECURITE — socket Docker en RW : c'est ce qui permet a game-portal de
-      # creer/demarrer/supprimer les containers de serveurs de jeu. Equivaut a
-      # un acces root sur l'host, donc l'API reste bindee sur 127.0.0.1 et
-      # protegee par NEXUS_API_KEY. Sans NEXUS_GAME_RUNTIME=docker, le socket
-      # est monte mais jamais sollicite.
-      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
-      postgres:
+      docker-agent:
         condition: service_healthy
+      nexus-pgbouncer:
+        condition: service_started
       nexus-db-init:
         condition: service_completed_successfully
-      redis:
+      nexus-redis:
         condition: service_healthy
     networks:
-      - data
       - internal
     profiles:
       - nexus
@@ -1117,13 +1513,15 @@ services:
       NEXUS_API_URL: http://nexus-api:3100
       NEXUS_API_KEY: ${NEXUS_API_KEY:-}
       # Consomme la stream nexus:events (creation/suppression des salons de
-      # session game-portal). Meme Redis que l'API, sinon aucun event recu.
-      REDIS_URL: redis://:${REDIS_PASSWORD:-sentinel_redis}@redis:6379
+      # session game-portal). MEME instance que nexus-api : un bus dont le
+      # producteur et le consommateur sont sur deux Redis differents ne
+      # transporte rien, et l'echec est silencieux.
+      REDIS_URL: redis://:${NEXUS_REDIS_PASSWORD:-nexus_redis_secret}@nexus-redis:6379
       RUST_LOG: ${RUST_LOG:-info}
     depends_on:
       nexus-api:
         condition: service_healthy
-      redis:
+      nexus-redis:
         condition: service_healthy
     # Connexion Discord Gateway -> internet + interne (nexus-api, redis).
     networks:
@@ -1167,6 +1565,11 @@ volumes:
   postgres_data:
   atrium_ollama_data:
   redis_data:
+  # Reservations de ports de jeu + stream nexus:events. Persiste : perdre les
+  # reservations au redemarrage rouvrirait la porte aux collisions de port.
+  # (auth-redis n'a volontairement PAS de volume : ses cles derivent de secrets
+  # et expirent en 10 min.)
+  nexus_redis_data:
   prometheus_data:
   grafana_data:
   letsencrypt_etc:
@@ -1188,8 +1591,13 @@ volumes:
 #     inter-services (Redis, gRPC, healthchecks, etc.). Tous les services
 #     y sont sauf postgres (sur "data").
 #
-#   - data : reseau isole pour postgres uniquement. Seul pgbouncer est
-#     bi-network (data + internal) pour faire le pont.
+#   - data : reseau isole pour postgres uniquement. Seuls les pgbouncer sont
+#     bi-network (data + internal) pour faire le pont — un par base logique :
+#     `pgbouncer` (discord_sentinel), `atrium-pgbouncer`, `nexus-pgbouncer`.
+#     Les `*-db-init` y passent aussi, mais ce sont des one-shot qui se
+#     terminent avant que l'API correspondante ne demarre.
+#     AUCUNE API n'est sur `data` : c'est ce qui garantit qu'une API
+#     compromise ne peut parler qu'a la base de sa propre plateforme.
 #
 # Resultat : un worker compromis sur "internal" seulement ne peut ni
 # atteindre postgres directement, ni exfiltrer des donnees vers internet.

@@ -552,7 +552,7 @@ impl AnalyzeMessageUseCase for AnalyzeMessageService {
                     // Cache court par guilde + contenu + contexte : evite les
                     // appels DeepSeek repetes sans reutiliser une analyse dans
                     // une autre conversation ou un autre serveur.
-                    use sha2::{Sha256, Digest};
+                    use sha2::{Digest, Sha256};
                     let mut hasher = Sha256::new();
                     hasher.update(cmd.guild_id.as_bytes());
                     hasher.update(cmd.content.as_bytes());
@@ -561,7 +561,7 @@ impl AnalyzeMessageUseCase for AnalyzeMessageService {
                     }
                     let hash_bytes = hasher.finalize();
                     let cache_key = format!("ai:deepseek:v1:{:x}", hash_bytes);
-                    
+
                     let cached = self
                         .cache
                         .get_json(&cache_key)

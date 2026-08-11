@@ -81,9 +81,9 @@ impl GrandSalonRepository for PgGrandSalonRepository {
         sqlx::query("INSERT INTO grand_salon_habitues (id,guild_id,user_id,display_name,rayonnement,jetons,reputation,bons_plans,reseau,joined_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)").bind(h.id).bind(&h.guild_id).bind(&h.user_id).bind(&h.display_name).bind(h.ressources.rayonnement).bind(h.ressources.jetons).bind(h.ressources.reputation).bind(h.ressources.bons_plans).bind(h.ressources.reseau).bind(h.joined_at).execute(&self.pool).await.map_err(pg_err)?;
         Ok(())
     }
-    async fn claim_daily(&self,habitue_id:Uuid)->Result<bool,DomainError>{
+    async fn claim_daily(&self, habitue_id: Uuid) -> Result<bool, DomainError> {
         let changed=sqlx::query("WITH claimed AS (INSERT INTO grand_salon_daily_claims (habitue_id) VALUES ($1) ON CONFLICT DO NOTHING RETURNING habitue_id) UPDATE grand_salon_habitues h SET rayonnement=h.rayonnement+10,jetons=h.jetons+50,reputation=h.reputation+2,bons_plans=h.bons_plans+3,reseau=h.reseau+2 FROM claimed WHERE h.id=claimed.habitue_id").bind(habitue_id).execute(&self.pool).await.map_err(pg_err)?.rows_affected();
-        Ok(changed==1)
+        Ok(changed == 1)
     }
     async fn create_cercle(&self, c: &Cercle) -> Result<(), DomainError> {
         let mut tx = self.pool.begin().await.map_err(pg_err)?;

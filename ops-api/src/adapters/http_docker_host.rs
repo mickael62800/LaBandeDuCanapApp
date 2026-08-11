@@ -17,13 +17,13 @@
 //! bollard -> domaine dans le depot.
 
 use async_trait::async_trait;
-use reqwest::Client;
 use ops_core::domain::entities::docker_host::{
     ContainerSummary, DiskUsage, DockerVersionInfo, ImageSummary, NetworkSummary, PruneOutcome,
     VolumeSummary,
 };
 use ops_core::domain::errors::DomainError;
 use ops_core::ports::outbound::docker_host::DockerHost;
+use reqwest::Client;
 use serde::de::DeserializeOwned;
 
 pub struct HttpDockerHost {
@@ -175,7 +175,10 @@ impl DockerHost for HttpDockerHost {
         let response = self
             .client
             .get(self.url(&format!("/containers/{id}/logs")))
-            .query(&[("tail", tail.to_string()), ("timestamps", timestamps.to_string())])
+            .query(&[
+                ("tail", tail.to_string()),
+                ("timestamps", timestamps.to_string()),
+            ])
             .bearer_auth(&self.token)
             .send()
             .await

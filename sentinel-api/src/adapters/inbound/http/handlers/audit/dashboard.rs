@@ -64,7 +64,6 @@ pub async fn get_dashboard_stats(
     Ok(Json(DashboardStatsDto::compose(stats, health)))
 }
 
-
 /// POST /api/logs — écrire un log (utilisé par les bots/workers).
 ///
 /// Strategie de stockage :

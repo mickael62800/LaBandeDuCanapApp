@@ -320,6 +320,3 @@ pub fn routes() -> Router<AppState> {
         .nest("/api/confessions", confession_inner())
         .nest("/api/age-bans", age_ban_inner())
 }
-
-
-

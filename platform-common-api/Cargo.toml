@@ -11,6 +11,8 @@ tower-http = { version = "0.6", features = ["cors", "set-header"] }
 tracing = { workspace = true }
 serde_json = { workspace = true }
 platform-common = { path = "../platform-common" }
+# Client de l'API d'identite (auth_client).
+reqwest = { workspace = true }
 
 # Observabilite
 metrics = "0.24"

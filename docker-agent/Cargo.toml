@@ -17,9 +17,15 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 dotenvy = { workspace = true }
 async-trait = { workspace = true }
+# Comparaison des jetons en temps constant (anti timing attack), comme
+# `auth_middleware` cote sentinel-api.
+subtle = "2"
 # Le seul crate du depot a parler au socket Docker.
 bollard = "0.18"
 futures-util = { workspace = true }
+# Archives tar en memoire pour `upload_file_to_container` : l'API Docker
+# n'accepte que du tar pour poser un fichier dans un conteneur.
+tar = { workspace = true }
 # Uniquement pour les types de domaine (`DockerHost`, `ContainerSummary`, ...) :
 # l'agent et son appelant partagent le meme vocabulaire, sans DTO miroir.
 ops-core = { workspace = true }

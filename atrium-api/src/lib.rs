@@ -15,13 +15,13 @@ use atrium_core::{
         outbound::{AiProviderError, WelcomeAiGateway},
     },
 };
+use axum::response::IntoResponse;
 use axum::{
     extract::Extension,
     http::{header::AUTHORIZATION, HeaderMap, StatusCode},
     routing::{get, post},
     Json, Router,
 };
-use axum::response::IntoResponse;
 use platform_common_api::{rate_limit_middleware, RateLimiter};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};

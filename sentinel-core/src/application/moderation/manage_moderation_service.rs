@@ -84,7 +84,6 @@ impl ManageModerationUseCase for ManageModerationService {
             created_at: chrono::Utc::now(),
         };
 
-
         let uc = self.audit_logs_uc.as_ref().ok_or_else(|| {
             DomainError::Internal("audit_logs_uc non injecte dans ManageModerationService".into())
         })?;

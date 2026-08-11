@@ -102,8 +102,8 @@ fn protected_domain_routes() -> Router<AppState> {
         // Bot persistence (fire-and-forget)
         .merge(routes::bot_persistence::routes())
         // Members + guild direct API
-.merge(routes::guild_backup::routes())
-.merge(routes::guilds::routes())
+        .merge(routes::guild_backup::routes())
+        .merge(routes::guilds::routes())
         .merge(routes::members::routes())
         .merge(routes::role_panels::routes())
         .merge(routes::voice_channels::routes())
@@ -132,20 +132,11 @@ fn protected_domain_routes() -> Router<AppState> {
 fn public_routes() -> Router<AppState> {
     Router::new()
         .route("/health", get(handlers::system::health::health))
-        // OAuth Discord web : publiques car pas de token prealable.
-        // Le state CSRF + l'echange code cote serveur protegent le flux.
-        .route(
-            "/auth/discord/authorize",
-            get(handlers::system::oauth::authorize),
-        )
-        .route(
-            "/auth/discord/callback",
-            get(handlers::system::oauth::callback),
-        )
-        // Refresh/logout de session web (cookie httpOnly) : publiques car
-        // l'auth se fait via le cookie de session, pas le X-Discord-Token.
-        .route("/auth/refresh", post(handlers::system::oauth::refresh))
-        .route("/auth/logout", post(handlers::system::oauth::logout))
+        // Le flux OAuth Discord (`/auth/discord/*`, `/auth/refresh`,
+        // `/auth/logout`) a ete EXTRAIT dans `auth-api`. Ces chemins existent
+        // toujours pour le navigateur : nginx les route vers l'identite, pas
+        // ici. Ne pas les recreer — deux implementations du meme flux, dont une
+        // seule est cablee, est une invitation a debugger la mauvaise.
         // ── Site communautaire ──
         .route(
             "/api/public/guilds/{guild_id}",
@@ -402,6 +393,3 @@ pub fn build(
         .layer(build_cors(allowed_origins))
         .with_state(state)
 }
-
-
-

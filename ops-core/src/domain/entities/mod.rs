@@ -1,6 +1,7 @@
 pub mod alert_rule;
 pub mod container_monitor;
 pub mod docker_host;
+pub mod game_runtime;
 pub mod geoip;
 pub mod host_probe;
 pub mod ip_ban;

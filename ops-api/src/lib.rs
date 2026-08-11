@@ -37,8 +37,8 @@ use platform_common_api::{rate_limit_middleware, RateLimiter};
 
 pub mod adapters;
 pub mod alerts_dispatcher;
-pub mod container_monitor;
 pub mod config;
+pub mod container_monitor;
 pub mod handlers;
 
 pub use config::AppConfig;
@@ -53,24 +53,29 @@ pub struct AppState {
     /// jamais le socket : il passe par l'agent, seul a le porter.
     pub docker_host: Arc<dyn ops_core::ports::outbound::docker_host::DockerHost>,
     /// Journal des evenements de la machine (qui a arrete quoi).
-    pub server_events: Arc<dyn ops_core::ports::outbound::server_event_repository::ServerEventRepository>,
+    pub server_events:
+        Arc<dyn ops_core::ports::outbound::server_event_repository::ServerEventRepository>,
     /// Instantane des conteneurs, alimente par `container_monitor`. Partage en
     /// memoire avec la boucle : le processus qui produit la donnee est celui
     /// qui la sert.
     pub container_monitor: container_monitor::SharedMonitorState,
 
     // -- Logs systeme --
-    pub system_logs_uc: Arc<dyn ops_core::ports::inbound::manage_system_logs::ManageSystemLogsUseCase>,
+    pub system_logs_uc:
+        Arc<dyn ops_core::ports::inbound::manage_system_logs::ManageSystemLogsUseCase>,
     pub redis_client: redis::Client,
 
     // ── Securite de l'hote ──
-    pub security_logs_uc: Arc<dyn ops_core::ports::inbound::read_security_logs::ReadSecurityLogsUseCase>,
-    pub security_audit_uc: Arc<dyn ops_core::ports::inbound::manage_security_audit::ManageSecurityAuditUseCase>,
+    pub security_logs_uc:
+        Arc<dyn ops_core::ports::inbound::read_security_logs::ReadSecurityLogsUseCase>,
+    pub security_audit_uc:
+        Arc<dyn ops_core::ports::inbound::manage_security_audit::ManageSecurityAuditUseCase>,
     pub host_probe_uc: Arc<dyn ops_core::ports::inbound::read_host_probe::ReadHostProbeUseCase>,
     pub tls_cert_uc: Arc<dyn ops_core::ports::inbound::read_tls_cert::ReadTlsCertUseCase>,
     pub ip_bans_uc: Arc<dyn ops_core::ports::inbound::manage_ip_bans::ManageIpBansUseCase>,
     pub geoip_uc: Arc<dyn ops_core::ports::inbound::lookup_geoip::LookupGeoIpUseCase>,
-    pub server_events_uc: Arc<dyn ops_core::ports::inbound::manage_server_events::ManageServerEventsUseCase>,
+    pub server_events_uc:
+        Arc<dyn ops_core::ports::inbound::manage_server_events::ManageServerEventsUseCase>,
 }
 
 impl FromRef<AppState> for Arc<AppConfig> {
@@ -143,46 +148,127 @@ pub fn router(state: AppState) -> Router {
         // ── Conteneurs de l'hote ──
         .route("/docker/overview", get(handlers::docker::get_overview))
         .route("/docker/containers", get(handlers::docker::list_containers))
-        .route("/docker/containers/{id}/start", axum::routing::post(handlers::docker::start_container))
-        .route("/docker/containers/{id}/stop", axum::routing::post(handlers::docker::stop_container))
-        .route("/docker/containers/{id}/restart", axum::routing::post(handlers::docker::restart_container))
-        .route("/docker/containers/{id}", axum::routing::delete(handlers::docker::remove_container))
-        .route("/docker/containers/{id}/logs", get(handlers::docker::container_logs))
+        .route(
+            "/docker/containers/{id}/start",
+            axum::routing::post(handlers::docker::start_container),
+        )
+        .route(
+            "/docker/containers/{id}/stop",
+            axum::routing::post(handlers::docker::stop_container),
+        )
+        .route(
+            "/docker/containers/{id}/restart",
+            axum::routing::post(handlers::docker::restart_container),
+        )
+        .route(
+            "/docker/containers/{id}",
+            axum::routing::delete(handlers::docker::remove_container),
+        )
+        .route(
+            "/docker/containers/{id}/logs",
+            get(handlers::docker::container_logs),
+        )
         .route("/docker/images", get(handlers::docker::list_images))
-        .route("/docker/images/{id}", axum::routing::delete(handlers::docker::remove_image))
+        .route(
+            "/docker/images/{id}",
+            axum::routing::delete(handlers::docker::remove_image),
+        )
         .route("/docker/volumes", get(handlers::docker::list_volumes))
-        .route("/docker/volumes/{name}", axum::routing::delete(handlers::docker::remove_volume))
+        .route(
+            "/docker/volumes/{name}",
+            axum::routing::delete(handlers::docker::remove_volume),
+        )
         .route("/docker/networks", get(handlers::docker::list_networks))
-        .route("/docker/prune/containers", axum::routing::post(handlers::docker::prune_containers))
-        .route("/docker/prune/images", axum::routing::post(handlers::docker::prune_images))
-        .route("/docker/prune/volumes", axum::routing::post(handlers::docker::prune_volumes))
-        .route("/docker/prune/networks", axum::routing::post(handlers::docker::prune_networks))
-        .route("/docker/prune/system", axum::routing::post(handlers::docker::prune_system))
-        .route("/docker/prune/build-cache", axum::routing::post(handlers::docker::prune_build_cache))
-        .route("/containers/changes", get(handlers::docker::container_changes))
+        .route(
+            "/docker/prune/containers",
+            axum::routing::post(handlers::docker::prune_containers),
+        )
+        .route(
+            "/docker/prune/images",
+            axum::routing::post(handlers::docker::prune_images),
+        )
+        .route(
+            "/docker/prune/volumes",
+            axum::routing::post(handlers::docker::prune_volumes),
+        )
+        .route(
+            "/docker/prune/networks",
+            axum::routing::post(handlers::docker::prune_networks),
+        )
+        .route(
+            "/docker/prune/system",
+            axum::routing::post(handlers::docker::prune_system),
+        )
+        .route(
+            "/docker/prune/build-cache",
+            axum::routing::post(handlers::docker::prune_build_cache),
+        )
+        .route(
+            "/containers/changes",
+            get(handlers::docker::container_changes),
+        )
         // ── Securite de l'hote ──
-        .route("/security/server-events", get(handlers::server_events::list_server_events))
+        .route(
+            "/security/server-events",
+            get(handlers::server_events::list_server_events),
+        )
         .route("/security/top-ips", get(handlers::security::top_ips))
-        .route("/security/auth-failures", get(handlers::security::auth_failures))
+        .route(
+            "/security/auth-failures",
+            get(handlers::security::auth_failures),
+        )
         .route("/security/banned-ips", get(handlers::security::banned_ips))
-        .route("/security/manual-bans", get(handlers::security::manual_bans))
-        .route("/security/ban-ip", axum::routing::post(handlers::security::ban_ip))
-        .route("/security/unban-ip", axum::routing::post(handlers::security::unban_ip))
-        .route("/security/ssh-failures", get(handlers::security::ssh_failures))
+        .route(
+            "/security/manual-bans",
+            get(handlers::security::manual_bans),
+        )
+        .route(
+            "/security/ban-ip",
+            axum::routing::post(handlers::security::ban_ip),
+        )
+        .route(
+            "/security/unban-ip",
+            axum::routing::post(handlers::security::unban_ip),
+        )
+        .route(
+            "/security/ssh-failures",
+            get(handlers::security::ssh_failures),
+        )
         .route("/security/open-ports", get(handlers::security::open_ports))
-        .route("/security/file-integrity", get(handlers::security::file_integrity))
+        .route(
+            "/security/file-integrity",
+            get(handlers::security::file_integrity),
+        )
         .route("/security/trivy", get(handlers::security::trivy_vulns))
         .route("/security/disk-trend", get(handlers::security::disk_trend))
-        .route("/security/connections", get(handlers::security::active_connections))
-        .route("/security/outbound", get(handlers::security::outbound_connections))
-        .route("/security/nginx-suspicious", get(handlers::security::nginx_suspicious))
+        .route(
+            "/security/connections",
+            get(handlers::security::active_connections),
+        )
+        .route(
+            "/security/outbound",
+            get(handlers::security::outbound_connections),
+        )
+        .route(
+            "/security/nginx-suspicious",
+            get(handlers::security::nginx_suspicious),
+        )
         .route("/security/tls-cert", get(handlers::security::tls_cert))
         .route("/security/tls-errors", get(handlers::security::tls_errors))
-        .route("/security/traffic-trend", get(handlers::security::traffic_trend))
+        .route(
+            "/security/traffic-trend",
+            get(handlers::security::traffic_trend),
+        )
         .route("/security/geoip", get(handlers::security::geoip_lookup))
         .route("/security/audit-logs", get(handlers::security::audit_logs))
-        .route("/security/last-logins", get(handlers::security::last_successful_logins))
-        .route("/security/cleanup", axum::routing::delete(handlers::security::cleanup_security_logs))
+        .route(
+            "/security/last-logins",
+            get(handlers::security::last_successful_logins),
+        )
+        .route(
+            "/security/cleanup",
+            axum::routing::delete(handlers::security::cleanup_security_logs),
+        )
         .route(
             "/alert-rules/{id}",
             axum::routing::patch(handlers::alert_rules::update),

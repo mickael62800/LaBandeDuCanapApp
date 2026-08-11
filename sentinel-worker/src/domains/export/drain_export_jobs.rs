@@ -158,9 +158,9 @@ async fn call_export_api(
 ) -> Result<(String, usize), String> {
     let api_key = std::env::var("API_KEY").unwrap_or_default();
 
-    // Delegue a platform_common_worker::grpc::connect() pour beneficier
-    // du mTLS optionnel (GRPC_TLS_DIR) en coherence avec les autres callers.
-    let channel = platform_common_worker::grpc::connect().await?;
+    // Delegue a crate::grpc::connect() pour beneficier du mTLS optionnel
+    // (GRPC_TLS_DIR) en coherence avec les autres callers.
+    let channel = crate::grpc::connect().await?;
 
     let mut client = ExportServiceClient::new(channel);
     let mut req = Request::new(ExecuteExportRequest {

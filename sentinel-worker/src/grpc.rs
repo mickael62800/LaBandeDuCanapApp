@@ -6,6 +6,15 @@
 //!
 //! Lit `GRPC_API_URL` (default `http://127.0.0.1:50051`) et `API_KEY`
 //! depuis l'environnement.
+//!
+//! # Pourquoi ici et plus dans `platform-common-worker`
+//!
+//! Ce module s'appuie sur `sentinel_proto::tls` (certificats mTLS de la
+//! plateforme Sentinel) et n'a jamais eu qu'un appelant :
+//! `domains/export/drain_export_jobs.rs`. Le loger dans le socle des trois
+//! workers y faisait entrer `sentinel-proto`, que `nexus-worker` et
+//! `atrium-worker` compilaient sans jamais l'utiliser. Un crate socle se
+//! definit par sa surface de dependances, pas par la commodite de rangement.
 
 use std::time::Duration;
 

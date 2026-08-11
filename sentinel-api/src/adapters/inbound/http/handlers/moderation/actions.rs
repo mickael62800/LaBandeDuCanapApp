@@ -126,7 +126,6 @@ pub async fn log_action(
     // Auto-create reminder for temporary sanctions (regle metier : voir
     // `ModerationActionType::is_temporary` dans domain/value_objects).
 
-
     Ok(Json(dto))
 }
 
@@ -325,8 +324,6 @@ pub async fn execute_unban(
         .moderation_uc
         .delete_bans_for_user(&guild_id, &target_id)
         .await?;
-
-
 
     state.moderation_uc.log_action(command).await?;
 
@@ -765,5 +762,3 @@ pub async fn mod_action_count(
 #[cfg(test)]
 #[path = "tests/actions.rs"]
 mod tests;
-
-

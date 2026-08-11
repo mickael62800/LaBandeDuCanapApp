@@ -5,8 +5,8 @@
 //! Helper `record_server_event` : ecriture best-effort (log l'erreur sans bloquer
 //! l'action principale de l'appelant).
 
-use axum::http::HeaderMap;
 use crate::authorize;
+use axum::http::HeaderMap;
 use std::sync::Arc;
 
 use axum::extract::Query;

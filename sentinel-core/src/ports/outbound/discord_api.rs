@@ -15,7 +15,9 @@ pub trait DiscordApi: Send + Sync {
     async fn list_all_channels(&self, guild_id: &str) -> Result<Vec<DiscordChannel>, DomainError>;
     /// Liste les emojis custom du serveur.
     async fn list_emojis(&self, _guild_id: &str) -> Result<Vec<DiscordEmoji>, DomainError> {
-        Err(DomainError::Internal("Liste des emojis non supportee".into()))
+        Err(DomainError::Internal(
+            "Liste des emojis non supportee".into(),
+        ))
     }
     /// Cree un salon (ou une categorie) et renvoie son ID Discord.
     ///

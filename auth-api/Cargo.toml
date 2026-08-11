@@ -1,0 +1,33 @@
+[package]
+name = "auth-api"
+version.workspace = true
+edition.workspace = true
+description = "API d'identite : OAuth2 Discord, sessions web, gate superadmin. Source de verite unique pour les trois plateformes."
+
+[[bin]]
+name = "auth-api"
+path = "src/main.rs"
+
+[dependencies]
+axum = "0.8"
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sqlx = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+dotenvy = { workspace = true }
+async-trait = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
+platform-common-api = { workspace = true }
+auth-core = { workspace = true }
+# Echange de jetons et /users/@me chez Discord.
+reqwest = { workspace = true }
+# `state` CSRF (GETDEL atomique) et cache token -> identite.
+redis = { workspace = true }
+# Derivation de la cle de cache depuis l'access token (SHA-256 tronque).
+sha2 = "0.10"
+
+[lints]
+workspace = true

@@ -7,8 +7,8 @@ use sentinel_core::ports::inbound::moderation::assess_target_risk::AssessTargetR
 use sentinel_core::ports::inbound::moderation::cancel_action::CancelModerationActionUseCase;
 use sentinel_core::ports::inbound::moderation::manage_automod_reviews::ManageAutomodReviewsUseCase;
 use sentinel_core::ports::inbound::moderation::manage_infractions::ManageInfractionsUseCase;
-use sentinel_core::ports::inbound::moderation::manage_notes::ManageNotesUseCase;
 use sentinel_core::ports::inbound::moderation::manage_moderation::ManageModerationUseCase;
+use sentinel_core::ports::inbound::moderation::manage_notes::ManageNotesUseCase;
 use sentinel_core::ports::inbound::moderation::manage_rules::ManageRulesUseCase;
 use sentinel_core::ports::inbound::moderation::manage_strikes::ManageStrikesUseCase;
 use sentinel_core::ports::inbound::moderation::manage_sursis::ManageSursisUseCase;
@@ -59,7 +59,9 @@ pub struct ModerationState {
     pub review_repo: Arc<dyn ReviewRepository>,
     pub pending_action_repo: Arc<dyn PendingActionRepository>,
     pub modstats_repo: Arc<dyn ModstatsRepository>,
-    pub manage_reminders_uc: Arc<dyn sentinel_core::ports::inbound::moderation::manage_reminders::ManageRemindersUseCase>,
+    pub manage_reminders_uc: Arc<
+        dyn sentinel_core::ports::inbound::moderation::manage_reminders::ManageRemindersUseCase,
+    >,
 
     // ── Dependances transverses du domaine ──
     pub broadcaster: Arc<EventBroadcaster>,
@@ -94,4 +96,3 @@ impl FromRef<AppState> for ModerationState {
         state.moderation.clone()
     }
 }
-

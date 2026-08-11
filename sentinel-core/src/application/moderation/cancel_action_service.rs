@@ -71,7 +71,7 @@ impl CancelModerationActionUseCase for CancelModerationActionService {
                 // Le ban annule peut porter un rappel d'auto-unban encore
                 // `pending`. Sans cette annulation, le worker rejouerait un
                 // unban tardif sur un membre potentiellement re-banni depuis.
-                            }
+            }
             ReversalEffect::RemoveTimeout => {
                 match self
                     .discord_api
@@ -102,6 +102,3 @@ impl CancelModerationActionUseCase for CancelModerationActionService {
         }
     }
 }
-
-
-

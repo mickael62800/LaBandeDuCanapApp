@@ -1,15 +1,16 @@
 //! Adaptateurs sortants (Postgres).
 
 pub mod alert_rule_repository;
-pub mod security_log_repository;
-pub mod security_audit_repository;
-pub mod ip_ban_repository;
-pub mod host_security;
+pub mod auth_logins;
 pub mod geoip;
+pub mod host_security;
 pub mod http_docker_host;
-pub mod server_event_repository;
-pub mod redis_log_stream;
+pub mod ip_ban_repository;
 pub mod log_repository;
+pub mod redis_log_stream;
+pub mod security_audit_repository;
+pub mod security_log_repository;
+pub mod server_event_repository;
 
 use ops_core::domain::errors::DomainError;
 

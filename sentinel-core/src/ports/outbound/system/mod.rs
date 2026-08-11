@@ -8,7 +8,6 @@ pub mod export_repository;
 pub mod guild_repository;
 pub mod guild_reset_repository;
 pub mod lockdown_repository;
-pub mod oauth_session_repository;
 pub mod quarantine_repository;
 pub mod slowmode_repository;
 pub mod ticket_repository;

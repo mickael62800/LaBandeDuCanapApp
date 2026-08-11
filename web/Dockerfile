@@ -56,6 +56,13 @@ COPY web/docker-entrypoint-ops.sh /docker-entrypoint.d/32-ops-key.sh
 RUN sed -i 's/\r$//' /docker-entrypoint.d/32-ops-key.sh \
     && chmod +x /docker-entrypoint.d/32-ops-key.sh
 
+# Jeton de l'API d'identite. Il alimente les sous-requetes d'autorisation des
+# TROIS passerelles (/nexus-api/, /ops-api/, /atrium-api/) : sans lui, aucune
+# ne laisse passer.
+COPY web/docker-entrypoint-auth.sh /docker-entrypoint.d/33-auth-key.sh
+RUN sed -i 's/\r$//' /docker-entrypoint.d/33-auth-key.sh \
+    && chmod +x /docker-entrypoint.d/33-auth-key.sh
+
 # Assets statiques
 COPY --from=builder /app/dist /usr/share/nginx/html
 

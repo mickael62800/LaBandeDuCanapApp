@@ -12,13 +12,12 @@
 // helper mort se maintient indéfiniment.
 
 pub mod api;
-pub mod grpc;
 pub mod metrics;
 pub mod redis_helpers;
 
 use std::time::Duration;
 
-pub use sentinel_core::domain::entities::system::config_parsers::parse_bool_str;
+use platform_common::config_flags::parse_bool_str;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
 use tokio::signal;
@@ -86,8 +85,13 @@ pub async fn create_pg_pool(database_url: &str) -> PgPool {
 // ── Lifecycle Logging ──
 
 /// Envoie un log de cycle de vie a l'API.
+///
+/// Meme route et meme garde que `send_worker_log` : sans collecteur declare par
+/// la plateforme, on ne poste pas.
 pub async fn send_lifecycle_log(api_url: &str, worker_name: &str, level: &str, message: &str) {
-    let api_key = std::env::var("SENTINEL_API_KEY").unwrap_or_default();
+    let Some(api_key) = LOG_API_KEY.get().and_then(|k| k.as_deref()) else {
+        return;
+    };
     let mut req = reqwest::Client::new()
         .post(format!("{}/api/logs", api_url))
         .json(&serde_json::json!({
@@ -98,7 +102,7 @@ pub async fn send_lifecycle_log(api_url: &str, worker_name: &str, level: &str, m
             "category": "worker",
         }));
     if !api_key.is_empty() {
-        req = req.bearer_auth(&api_key);
+        req = req.bearer_auth(api_key);
     }
     if let Err(e) = req.send().await {
         warn!(error = %e, worker = worker_name, "Erreur envoi log lifecycle");
@@ -201,7 +205,7 @@ pub async fn is_worker_enabled(pool: &PgPool, guild_id: &str, worker_name: &str)
     .await
     .unwrap_or(None);
 
-    sentinel_core::domain::entities::system::config_parsers::parse_enabled_flag(result.as_deref())
+    platform_common::config_flags::parse_enabled_flag(result.as_deref())
 }
 
 /// Verifie si le worker est active pour au moins une guild.
@@ -362,8 +366,31 @@ pub fn load_env_bool(key: &str, default: bool) -> bool {
 
 // ── Periodic Scheduler ──
 
+/// Cle d'API du push HTTP des logs de jobs, posee une fois au demarrage.
+///
+/// Non initialisee = la plateforme n'expose pas de collecteur : `send_worker_log`
+/// s'en tient alors au log local. Avant, la cle etait lue en dur dans
+/// `SENTINEL_API_KEY` : `nexus-worker` et `atrium-worker`, qui ne l'ont pas dans
+/// leur environnement, POSTaient donc sans authentification sur une route
+/// (`/api/logs`) que leur API n'expose meme pas. Une requete par tick, un 404,
+/// et l'echec avale en `debug!` — invisible.
+static LOG_API_KEY: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+
+/// Active le push HTTP des logs de jobs vers l'API de la plateforme.
+///
+/// A appeler dans le `main` du worker, avant `spawn_periodic`. Une plateforme
+/// dont l'API n'a pas de route `POST /api/logs` ne l'appelle pas : ses jobs
+/// restent traces localement (stdout, donc Docker/Grafana), sans requete
+/// perdue.
+pub fn enable_worker_log_push(api_key: impl Into<String>) {
+    let _ = LOG_API_KEY.set(Some(api_key.into()));
+}
+
 /// Envoie un log structure d'execution de tache vers l'API (categorie "worker").
 /// Helper public reutilisable pour loguer du contexte applicatif depuis un job.
+///
+/// Le log local est toujours emis ; le POST vers l'API n'a lieu que si la
+/// plateforme l'a active via `enable_worker_log_push`.
 pub async fn send_worker_log(
     api_url: &str,
     worker_name: &str,
@@ -377,7 +404,11 @@ pub async fn send_worker_log(
         "warn" => tracing::warn!(worker = worker_name, job = job_name, ?details, "{message}"),
         _ => tracing::info!(worker = worker_name, job = job_name, ?details, "{message}"),
     }
-    let api_key = std::env::var("SENTINEL_API_KEY").unwrap_or_default();
+    // Pas de collecteur configure pour cette plateforme : le log local
+    // ci-dessus est tout ce qui est attendu, on ne fabrique pas de requete.
+    let Some(api_key) = LOG_API_KEY.get().and_then(|k| k.as_deref()) else {
+        return;
+    };
     let client = reqwest::Client::new();
     // Merge job dans les details pour retrouver facilement
     let mut details_obj = match details {
@@ -403,7 +434,7 @@ pub async fn send_worker_log(
             "details": serde_json::Value::Object(details_obj),
         }));
     if !api_key.is_empty() {
-        req = req.bearer_auth(&api_key);
+        req = req.bearer_auth(api_key);
     }
     if let Err(e) = req.send().await {
         tracing::debug!(error = %e, worker = worker_name, "send_worker_log echec");

@@ -26,6 +26,7 @@ static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
 mod config;
 mod domains;
+mod grpc;
 mod scheduler;
 
 use tokio::sync::watch;
@@ -39,6 +40,14 @@ const WORKER_NAME: &str = "sentinel-worker";
 async fn main() {
     platform_common_worker::init_tracing("sentinel_worker=info");
     platform_common_worker::metrics::init_observability(WORKER_NAME);
+
+    // Sentinel est la seule plateforme dont l'API expose `POST /api/logs` :
+    // c'est donc la seule a activer le push des logs de jobs. Sans cet appel,
+    // le socle s'en tient au log local — ce que font nexus-worker et
+    // atrium-worker, dont l'API n'a pas cette route.
+    platform_common_worker::enable_worker_log_push(
+        std::env::var("SENTINEL_API_KEY").unwrap_or_default(),
+    );
 
     let mut config = WorkerConfig::from_env();
     info!("Demarrage de Sentinel Worker (orchestrateur unifie)");

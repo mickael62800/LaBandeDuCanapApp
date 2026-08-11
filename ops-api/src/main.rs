@@ -40,15 +40,17 @@ async fn main() {
     let alert_rules_repo = Arc::new(
         ops_api::adapters::alert_rule_repository::PgAlertRuleRepository::new(pool.clone()),
     );
-    let server_events: Arc<dyn ops_core::ports::outbound::server_event_repository::ServerEventRepository> =
-        Arc::new(ops_api::adapters::server_event_repository::PgServerEventRepository::new(pool.clone()));
+    let server_events: Arc<
+        dyn ops_core::ports::outbound::server_event_repository::ServerEventRepository,
+    > = Arc::new(
+        ops_api::adapters::server_event_repository::PgServerEventRepository::new(pool.clone()),
+    );
     // Docker passe par l'agent : ce processus ne monte jamais le socket.
-    let docker_host: Arc<dyn ops_core::ports::outbound::docker_host::DockerHost> = Arc::new(
-        ops_api::adapters::http_docker_host::HttpDockerHost::new(
+    let docker_host: Arc<dyn ops_core::ports::outbound::docker_host::DockerHost> =
+        Arc::new(ops_api::adapters::http_docker_host::HttpDockerHost::new(
             config.docker_agent_url.clone(),
             config.docker_agent_token.clone(),
-        ),
-    );
+        ));
 
     // ── Cas d'usage ──
     let alert_rules_uc = Arc::new(
@@ -65,70 +67,94 @@ async fn main() {
 
     let redis_client = redis::Client::open(config.redis_url.as_str())
         .expect("Redis est requis pour l'API ops (deduplication d'alertes et logs)");
-    
+
     ops_api::alerts_dispatcher::spawn(
         pool.clone(),
         redis_client.clone(),
         Some(container_monitor.clone()),
     );
 
-    let log_repo = Arc::new(ops_api::adapters::log_repository::PgLogRepository::new(pool.clone()));
-    let system_logs_uc: Arc<dyn ops_core::ports::inbound::manage_system_logs::ManageSystemLogsUseCase> =
-        Arc::new(ops_core::application::manage_system_logs_service::ManageSystemLogsService::new(
-            log_repo,
-        ));
+    let log_repo = Arc::new(ops_api::adapters::log_repository::PgLogRepository::new(
+        pool.clone(),
+    ));
+    let system_logs_uc: Arc<
+        dyn ops_core::ports::inbound::manage_system_logs::ManageSystemLogsUseCase,
+    > = Arc::new(
+        ops_core::application::manage_system_logs_service::ManageSystemLogsService::new(log_repo),
+    );
 
     // ── Securite de l'hote ──
-    let ip_ban_repo = Arc::new(
-        ops_api::adapters::ip_ban_repository::PgIpBanRepository::new(pool.clone()),
-    );
+    let ip_ban_repo =
+        Arc::new(ops_api::adapters::ip_ban_repository::PgIpBanRepository::new(pool.clone()));
     let host_ban_queue = Arc::new(ops_api::adapters::host_security::ban_queue::FileBanQueue::new());
-    let fail2ban_reader = Arc::new(ops_api::adapters::host_security::fail2ban::Fail2banFileReader::new());
+    let fail2ban_reader =
+        Arc::new(ops_api::adapters::host_security::fail2ban::Fail2banFileReader::new());
     let ip_bans_uc: Arc<dyn ops_core::ports::inbound::manage_ip_bans::ManageIpBansUseCase> =
-        Arc::new(ops_core::application::manage_ip_bans_service::ManageIpBansService::new(
-            ip_ban_repo,
-            host_ban_queue,
-            fail2ban_reader,
-        ));
+        Arc::new(
+            ops_core::application::manage_ip_bans_service::ManageIpBansService::new(
+                ip_ban_repo,
+                host_ban_queue,
+                fail2ban_reader,
+            ),
+        );
 
-    let host_probe_reader = Arc::new(
-        ops_api::adapters::host_security::probe_reader::FileHostProbeReader::new(),
-    );
+    let host_probe_reader =
+        Arc::new(ops_api::adapters::host_security::probe_reader::FileHostProbeReader::new());
     let host_probe_uc: Arc<dyn ops_core::ports::inbound::read_host_probe::ReadHostProbeUseCase> =
-        Arc::new(ops_core::application::read_host_probe_service::ReadHostProbeService::new(
-            host_probe_reader,
-        ));
+        Arc::new(
+            ops_core::application::read_host_probe_service::ReadHostProbeService::new(
+                host_probe_reader,
+            ),
+        );
 
     let security_log_repo = Arc::new(
         ops_api::adapters::security_log_repository::PgSecurityLogRepository::new(pool.clone()),
     );
-    let security_logs_uc: Arc<dyn ops_core::ports::inbound::read_security_logs::ReadSecurityLogsUseCase> =
-        Arc::new(ops_core::application::read_security_logs_service::ReadSecurityLogsService::new(
+    let security_logs_uc: Arc<
+        dyn ops_core::ports::inbound::read_security_logs::ReadSecurityLogsUseCase,
+    > = Arc::new(
+        ops_core::application::read_security_logs_service::ReadSecurityLogsService::new(
             security_log_repo,
-        ));
+        ),
+    );
 
     let security_audit_repo = Arc::new(
-        ops_api::adapters::security_audit_repository::PgSecurityAuditRepository::new(pool.clone()),
+        ops_api::adapters::security_audit_repository::PgSecurityAuditRepository::new(
+            pool.clone(),
+            ops_api::adapters::auth_logins::AuthLoginsClient::new(
+                std::env::var("AUTH_API_URL").unwrap_or_else(|_| "http://auth-api:8096".into()),
+                std::env::var("AUTH_API_TOKEN").unwrap_or_default(),
+            ),
+        ),
     );
-    let security_audit_uc: Arc<dyn ops_core::ports::inbound::manage_security_audit::ManageSecurityAuditUseCase> =
-        Arc::new(ops_core::application::manage_security_audit_service::ManageSecurityAuditService::new(
+    let security_audit_uc: Arc<
+        dyn ops_core::ports::inbound::manage_security_audit::ManageSecurityAuditUseCase,
+    > = Arc::new(
+        ops_core::application::manage_security_audit_service::ManageSecurityAuditService::new(
             security_audit_repo,
-        ));
+        ),
+    );
 
     let tls_cert_uc: Arc<dyn ops_core::ports::inbound::read_tls_cert::ReadTlsCertUseCase> =
-        Arc::new(ops_core::application::read_tls_cert_service::ReadTlsCertService::new(
-            Arc::new(ops_api::adapters::host_security::tls_cert::FileTlsCertReader::new()),
-        ));
+        Arc::new(
+            ops_core::application::read_tls_cert_service::ReadTlsCertService::new(Arc::new(
+                ops_api::adapters::host_security::tls_cert::FileTlsCertReader::new(),
+            )),
+        );
 
-    let geoip_uc: Arc<dyn ops_core::ports::inbound::lookup_geoip::LookupGeoIpUseCase> =
-        Arc::new(ops_core::application::lookup_geoip_service::LookupGeoIpService::new(
-            Arc::new(ops_api::adapters::geoip::IpApiGeoIpLookup::new()),
-        ));
+    let geoip_uc: Arc<dyn ops_core::ports::inbound::lookup_geoip::LookupGeoIpUseCase> = Arc::new(
+        ops_core::application::lookup_geoip_service::LookupGeoIpService::new(Arc::new(
+            ops_api::adapters::geoip::IpApiGeoIpLookup::new(),
+        )),
+    );
 
-    let server_events_uc: Arc<dyn ops_core::ports::inbound::manage_server_events::ManageServerEventsUseCase> =
-        Arc::new(ops_core::application::manage_server_events_service::ManageServerEventsService::new(
+    let server_events_uc: Arc<
+        dyn ops_core::ports::inbound::manage_server_events::ManageServerEventsUseCase,
+    > = Arc::new(
+        ops_core::application::manage_server_events_service::ManageServerEventsService::new(
             server_events.clone(),
-        ));
+        ),
+    );
 
     let bind = config.bind_addr;
     let state = AppState {
@@ -152,7 +178,10 @@ async fn main() {
         .await
         .expect("bind impossible");
     tracing::info!(%bind, "ops-api demarre");
-    axum::serve(listener, router(state).into_make_service_with_connect_info::<std::net::SocketAddr>())
-        .await
-        .expect("serveur arrete");
+    axum::serve(
+        listener,
+        router(state).into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .await
+    .expect("serveur arrete");
 }

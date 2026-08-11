@@ -222,7 +222,10 @@ async fn collect_metrics(
     if let Some(cs) = container_state {
         let s = cs.read().await;
         for c in &s.recent_changes {
-            if matches!(c.kind, ContainerChangeKind::Removed | ContainerChangeKind::ImageChanged) {
+            if matches!(
+                c.kind,
+                ContainerChangeKind::Removed | ContainerChangeKind::ImageChanged
+            ) {
                 container_changes.push((
                     c.container.name.clone(),
                     c.kind.as_action().to_owned(),

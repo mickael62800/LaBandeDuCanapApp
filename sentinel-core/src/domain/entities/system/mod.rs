@@ -8,7 +8,6 @@ pub mod discord_ids;
 pub mod discord_role;
 pub mod guild;
 pub mod job_whitelists;
-pub mod oauth;
 pub mod quarantine;
 pub mod rule;
 pub mod ticket;

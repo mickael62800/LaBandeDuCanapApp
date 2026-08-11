@@ -11,16 +11,15 @@
 
 use std::collections::HashMap;
 
-use axum::http::HeaderMap;
 use axum::extract::Path;
 use axum::extract::Query;
 use axum::extract::State;
+use axum::http::HeaderMap;
 use axum::Json;
 use serde::Deserialize;
 use serde::Serialize;
 
 use crate::ApiError;
-
 
 use crate::AppState;
 use ops_core::domain::entities::docker_host::compute_overview;
@@ -56,7 +55,14 @@ fn audit_docker(state: &AppState, actor: &str, action: &str, target: &str) {
     // faire echouer une action Docker qui, elle, a bien eu lieu.
     tokio::spawn(async move {
         if let Err(error) = repo
-            .record(&actor, None, &action_qualifiee, Some(&cible), severite, serde_json::json!({}))
+            .record(
+                &actor,
+                None,
+                &action_qualifiee,
+                Some(&cible),
+                severite,
+                serde_json::json!({}),
+            )
             .await
         {
             tracing::warn!(%error, "journalisation de l'action Docker impossible");
@@ -447,9 +453,7 @@ pub async fn list_networks(
 
 // ── Prune ─────────────────────────────────────────────────────────────────
 
-fn prune_dto(
-    o: ops_core::domain::entities::docker_host::PruneOutcome,
-) -> PruneResultDto {
+fn prune_dto(o: ops_core::domain::entities::docker_host::PruneOutcome) -> PruneResultDto {
     PruneResultDto {
         deleted: o.deleted,
         space_reclaimed_bytes: o.space_reclaimed_bytes,

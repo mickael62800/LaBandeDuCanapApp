@@ -8,7 +8,6 @@ pub mod info;
 pub mod lockdown;
 pub mod models_status;
 pub mod nexus_access;
-pub mod oauth;
 pub mod public_site;
 pub mod quarantine;
 pub mod slowmode;

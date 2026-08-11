@@ -59,8 +59,8 @@ use crate::adapters::outbound::discord_api::DiscordApi;
 use crate::adapters::outbound::job_client::JobClient;
 use crate::adapters::outbound::redis_cache::RedisCache;
 use crate::adapters::outbound::ws::broadcaster::EventBroadcaster;
-use sentinel_core::ports::outbound::system::bot_config_repository::BotConfigRepository;
 use ops_core::ports::outbound::log_repository::LogRepository;
+use sentinel_core::ports::outbound::system::bot_config_repository::BotConfigRepository;
 #[derive(Clone)]
 pub struct AppState {
     // ─────────────────────────────────────────────────────────────────────
@@ -100,6 +100,11 @@ pub struct AppState {
     /// Phase 7 B — Liste des Discord user_ids superadmin (env SUPERADMIN_USER_IDS).
     /// Utilisee pour gater les endpoints globaux non scoped par guild (ex: /purge/logs).
     pub superadmin_user_ids: Arc<Vec<String>>,
+    /// Client de l'API d'identite. C'est elle qui tranche « qui appelle, et
+    /// a-t-il le droit d'entrer ? » — plus ce processus. `superadmin_user_ids`
+    /// ci-dessus ne sert donc plus a l'AUTORISATION (cf. `superadmin_middleware`),
+    /// seulement aux quelques handlers qui affichent la liste.
+    pub auth: Arc<platform_common_api::auth_client::AuthClient>,
 
     // ─────────────────────────────────────────────────────────────────────
     // NE PAS utiliser depuis les handlers — passer par un repository

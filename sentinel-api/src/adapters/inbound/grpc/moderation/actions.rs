@@ -43,7 +43,9 @@ pub struct ModerationGrpc {
     pub review_repo: Arc<dyn ReviewRepository>,
     pub pending_action_repo: Arc<dyn PendingActionRepository>,
     pub infractions_uc: Arc<dyn ManageInfractionsUseCase>,
-    pub manage_reminders_uc: Arc<dyn sentinel_core::ports::inbound::moderation::manage_reminders::ManageRemindersUseCase>,
+    pub manage_reminders_uc: Arc<
+        dyn sentinel_core::ports::inbound::moderation::manage_reminders::ManageRemindersUseCase,
+    >,
 }
 
 #[tonic::async_trait]
@@ -191,7 +193,6 @@ impl ModerationService for ModerationGrpc {
             count: count.max(0) as u32,
         }))
     }
-
 
     // ── Preuves ──
 
@@ -404,11 +405,6 @@ fn user_history_to_proto(h: UserModerationHistory) -> proto::UserHistory {
     }
 }
 
-
-
 #[cfg(test)]
 #[path = "tests/actions.rs"]
 mod tests;
-
-
-

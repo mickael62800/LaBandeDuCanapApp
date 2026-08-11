@@ -39,8 +39,7 @@ impl AppConfig {
                 .map_err(|_| "OPS_DATABASE_URL manquante".to_owned())?,
             api_token,
             metrics_token: std::env::var("OPS_METRICS_TOKEN").unwrap_or_default(),
-            redis_url: std::env::var("REDIS_URL")
-                .unwrap_or_else(|_| "redis://redis:6379".into()),
+            redis_url: std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://redis:6379".into()),
             docker_agent_url: std::env::var("DOCKER_AGENT_URL")
                 .unwrap_or_else(|_| "http://docker-agent:8095".into()),
             docker_agent_token: std::env::var("DOCKER_AGENT_TOKEN").unwrap_or_default(),

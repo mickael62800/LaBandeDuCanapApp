@@ -22,6 +22,10 @@ members = [
     "atrium-worker", "platform-common-bot", "platform-common-worker",
     "ops-core",
     "ops-api",
+    # Identite : OAuth2 Discord, sessions web, gate superadmin. Extraite de
+    # sentinel-api pour que les trois plateformes la consomment a egalite.
+    "auth-core",
+    "auth-api",
     # Agent Docker : seul crate a parler au socket de l'hote.
     "docker-agent",
 ]
@@ -88,6 +92,8 @@ sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio",
 sentinel-proto = { path = "sentinel-proto" }
 ops-core = { path = "ops-core" }
 ops-api = { path = "ops-api" }
+auth-core = { path = "auth-core" }
+auth-api = { path = "auth-api" }
 sentinel-core = { path = "sentinel-core" }
 # Socle partage par les deux plateformes. `platform-common` n'a aucune
 # dependance framework (Redis pur) ; `platform-common-api` tire axum/tower-http

@@ -10,6 +10,16 @@ Chaque plateforme suit le même découpage : `-core` (métier), `-api`, `-bot`, 
 
 Atrium est la plus jeune et la plus petite (≈30 fichiers) : elle n'a ni gateway ni sous-états d'API. Ne pas la prendre comme modèle de structure — la référence reste `sentinel-*`.
 
+**L'identité est une plateforme, pas une fonction de Sentinel.** `auth-core` + `auth-api` servent l'OAuth2 Discord, les sessions web et le gate superadmin, avec leur propre base (`auth`) et leur rôle Postgres dédié — c'est celle qui contient les access/refresh tokens des administrateurs. Les trois passerelles nginx (`/nexus-api/`, `/ops-api/`, `/atrium-api/`) interrogent `auth-api:8096/access`, et `sentinel-api` est un **consommateur comme les autres** via `platform_common_api::auth_client`. Avant, l'identité vivait dans `sentinel-api` : Nexus et Atrium ne savaient pas qui appelle, et Sentinel était la dépendance d'exécution qui, en tombant, fermait tout le back-office. Ne pas réintroduire de résolution d'identité locale — c'est le point où deux implémentations de la même règle divergent.
+
+`AccessOutcome::Unavailable` (→ **503**) est distinct de `Denied` (→ **403**) : confondre les deux fait passer une panne réseau pour une révocation de droits.
+
+**Trois instances Redis, pas une.** `redis` (commun), `auth-redis`, `nexus-redis`. Le découpage suit le **périmètre du bus**, pas l'organigramme : Nexus est séparable parce que `nexus:events` et l'allocation de ports sont internes à la plateforme. Atrium **reste sur l'instance commune** parce qu'il *consomme* `sentinel:events` (les demandes d'apaisement publiées par l'AutoMod) — un bus dont le producteur et le consommateur sont sur deux Redis différents ne transporte rien, et l'échec est silencieux. C'est le critère à appliquer avant toute nouvelle séparation.
+
+`nexus-redis` est en `noeviction` **et** persistant : les réservations de port (`game:port:*`) sont le garde-fou anti-collision, et sous `allkeys-lru` — le réglage de l'instance commune — Redis peut en évincer une encore active. Deux serveurs de jeu se voient alors attribuer le même port, et le symptôme apparaît au démarrage du second, très loin de la cause.
+
+L'identité a aussi **son propre Redis** (`auth-redis`), sans persistance et en `noeviction`. Sur l'instance commune, tout porteur de `REDIS_URL` — les trois bots, les trois workers, la gateway — pouvait lire les `state` CSRF (`oauth:web:state:*`) et le cache `token → identité` (`user_id:*`), donc résoudre n'importe quel jeton et forger un callback OAuth valide. `noeviction` et non `allkeys-lru` : sous LRU, Redis peut évincer un `state` encore valide, et le login échoue alors avec « state invalide » sans rien qui l'explique dans les logs.
+
 ## Règles d'or
 
 1. **Le métier va dans `sentinel-core` / `nexus-core` / `atrium-core`.** `*-api`, `*-bot`, `*-worker`, `*-gateway` ne sont que des adaptateurs. Si tu écris une règle de décision dans un handler HTTP ou dans un module du bot, c'est au mauvais endroit.
@@ -65,7 +75,26 @@ cd web && npm run lint && npm run build   # build = vue-tsc --noEmit + vite buil
 
 Domaines de `sentinel-core/src/application/` : `ai`, `audit`, `community`, `guild_backup`, `moderation`, `system` (le métier `ops` vit désormais dans le crate `ops-core`, cf. plus bas).
 
-**Le socket Docker n'est monté que par `docker-agent`.** `/var/run/docker.sock` équivaut à un accès root sur l'hôte ; il n'a rien à faire dans l'API qui sert aussi l'OAuth et la modération. `docker-agent` est un crate minimal — pas de base, pas de session, pas de route nginx, joignable seulement sur le réseau `internal` avec `DOCKER_AGENT_TOKEN` — et il n'expose que les opérations du port `DockerHost`, jamais un passe-plat vers l'API Docker. Côté `sentinel-api`, c'est un simple adaptateur (`HttpDockerHost`) : les handlers ignorent que Docker est passé de l'autre côté d'un appel réseau. **Ne pas remonter le socket ailleurs**, et ne pas ajouter `bollard` à un autre crate : le mapping bollard → domaine n'existe qu'une fois, dans `docker-agent/src/bollard_host.rs`.
+**Le socket Docker n'est monté que par `docker-agent`.** `/var/run/docker.sock` équivaut à un accès root sur l'hôte ; il n'a rien à faire dans une API qui sert aussi l'OAuth, la modération ou la vitrine publique du portail de jeux. `docker-agent` est un crate minimal — pas de base, pas de session, pas de route nginx, joignable seulement sur le réseau `internal` avec `DOCKER_AGENT_TOKEN`.
+
+Il expose **deux surfaces**, toutes deux en liste blanche stricte, jamais un passe-plat vers l'API Docker :
+
+| Surface | Port | Implémentation | Client |
+|---|---|---|---|
+| `/version`, `/containers`, `/prune/*`… | `ops_core::DockerHost` | `bollard_host.rs` | `ops-api` → `HttpDockerHost` |
+| `/game/*` (cycle de vie des serveurs de jeu) | `ops_core::GameContainerRuntime` | `bollard_game.rs` | `nexus-api` → `HttpGameRuntime` |
+
+Les deux clients sont de simples adaptateurs : les handlers et les use cases ignorent que Docker est passé de l'autre côté d'un appel réseau. C'est tout l'intérêt d'avoir eu un port plutôt qu'un client bollard appelé directement.
+
+**Un jeton par surface**, et l'agent refuse de démarrer s'ils sont identiques : `DOCKER_AGENT_TOKEN` (hôte, porté par `ops-api`) et `DOCKER_AGENT_GAME_TOKEN` (`/game/*`, porté par `nexus-api`). Avec un jeton unique, les identifiants de `nexus-api` ouvraient l'arrêt et la purge de **tous** les conteneurs de l'hôte, `postgres` et `auth-api` compris — on lui avait retiré l'accès direct au socket pour lui confier la clé du processus qui l'a. La séparation est stricte dans les deux sens, et les macros `guarded!` / `guarded_game!` rendent le choix visible à la relecture.
+
+**Ne pas remonter le socket ailleurs**, et ne pas ajouter `bollard` (ni `tar`, qui ne sert qu'à `upload_file_to_container`) à un autre crate : le mapping bollard → domaine n'existe qu'une fois, dans `docker-agent/`. `cargo tree -e normal -i bollard` doit toujours ne montrer qu'un seul dépendant. Nexus a longtemps été la contre-épreuve — il portait `bollard`, montait le socket, et dupliquait un second mapping de 537 lignes.
+
+Corollaire de rangement : le port du cycle de vie vit dans `ops-core` (domaine neutre de la machine hôte), pas dans `nexus-core` — c'est une opération sur le daemon de l'hôte, pas une règle du portail. `nexus-core` le ré-exporte sous le nom court `ContainerRuntime`.
+
+**Le nommage `sentinel.*` de Nexus : ce qui a bougé et ce qui ne bougera pas.** Les **labels** sont passés à `nexus.*` — écrits dans les deux générations, lus dans les deux (`list_managed_containers` fait deux passes, Docker combinant les filtres `label` en ET et non en OU). La sortie de transition se fait quand `docker ps -a --filter label=sentinel.managed=game-portal` ne renvoie plus rien.
+
+Les **noms** restent : `sentinel-game-{id}` (persisté en base, comparé par le reconciler), `sentinel-game-vol-{id}` (Docker ne renomme pas un volume — changer la formule monterait un volume neuf et vide, le monde de jeu paraîtrait effacé), `sentinel-games` et `/var/lib/sentinel/games` (défauts décrivant l'installation en place). Ce sont des identifiants portant des données, pas des étiquettes. Les renommer demande une migration explicite, jamais une édition de ligne.
 
 **`ops` vs `system`** — la frontière est « est-ce que ça parle de Discord ? ». `ops` couvre la **machine hôte** : sondes système, conteneurs Docker, logs techniques des services, sécurité de l'hôte (TLS, IP bannies, journal d'administration), règles d'alerte. Cette machine héberge aussi Nexus et Atrium : ces écrans ne sont pas « du Sentinel », ils sont transverses. `system` garde le métier de la plateforme : tickets, OAuth, reset de guilde, lockdown, slowmode, quarantaine, exports. Le métier `ops` **a été extrait en plateforme autonome** — `ops-core` (domaine + ports, aucune dépendance de plateforme) et `ops-api` (adapters + gateway nginx, façon nexus/atrium). `sentinel-api` n'en garde qu'un **consommateur** : le sous-état `OpsState` (`bootstrap/state/ops.rs`) branché sur les ports `ops-core` (sondes santé, registre des services, logs). Il n'y a plus de `application/ops/`, `ports/ops/` ni `domain/entities/ops/` dans `sentinel-core`. L'univers « Exploitation » du back-office est la contrepartie web.
 Domaines de `sentinel-worker/src/domains/` (16) : `ai`, `analytics`, `announcements`, `appeal_sla`, `audit_cache`, `automod`, `cache`, `cleanup`, `discord_audit_sync`, `export`, `guild_backup`, `moderation`, `monitoring`, `security`, `temp_roles`, `tickets`.
@@ -108,10 +137,14 @@ Quatre crates socles, séparés par **surface de dépendances** — un bot n'a a
 
 | Crate | Contenu | Consommé par | Dépendances |
 |---|---|---|---|
-| `platform-common` | Bus d'événements Redis Streams (`EventBus`, paramétré par la clé de stream), erreurs communes | les trois `-core` et les trois `-bot` | redis, tokio — aucun framework |
+| `platform-common` | Bus d'événements Redis Streams (`EventBus`, paramétré par la clé de stream), erreurs communes, `config_flags` (sémantique de référence de `enabled`) | les trois `-core`, les trois `-bot`, `platform-common-worker` | redis, tokio — aucun framework |
 | `platform-common-api` | Rate limit par IP, métriques Prometheus, CORS, en-têtes de sécurité, mapping d'erreurs HTTP | les trois `-api` | axum, tower-http, metrics |
 | `platform-common-bot` | Embeds normalisés (`embeds.rs`) et helpers d'interaction Discord (`discord_helpers.rs` : `defer_ephemeral`, `option_str`, …) | les trois `-bot` | serenity |
-| `platform-common-worker` | Boucle de scheduler, client API, client gRPC, helpers Redis, métriques | les trois `-worker` | tokio, reqwest, tonic |
+| `platform-common-worker` | Boucle de scheduler, client API, helpers Redis, métriques | les trois `-worker` | tokio, reqwest, sqlx — **aucune dépendance de plateforme** |
+
+**Le suffixe est un contrat, pas une étiquette.** `platform-common-worker` a longtemps dépendu de `sentinel-core` et `sentinel-proto` — pour deux parsers et un helper mTLS. `nexus-worker` et `atrium-worker` compilaient donc tout le domaine de Sentinel sans jamais l'appeler, et une modif du domaine pouvait casser leur build. Les parsers sont remontés dans `platform-common::config_flags` (leur place : ils doivent être identiques partout), le helper mTLS est redescendu dans `sentinel-worker/src/grpc.rs`, son unique appelant. **Aucun crate socle ne dépend d'une plateforme** ; si c'est tentant, c'est que le code n'appartient pas au socle.
+
+Corollaire côté logs : `send_worker_log` / `send_lifecycle_log` ne postent sur `POST /api/logs` que si la plateforme l'a déclaré via `enable_worker_log_push` (seul `sentinel-worker` le fait — c'est la seule API qui expose la route). Sans ça, le socle lisait `SENTINEL_API_KEY` en dur : les workers Nexus et Atrium POSTaient sans clé, à chaque tick, sur une route inexistante, l'échec avalé en `debug!`.
 
 **Le critère d'entrée est la preuve, pas l'intuition** : on ne mutualise que du code mesuré identique. L'event bus l'était à 352 lignes sur 353. À l'inverse, les `api_client.rs` des bots ne partagent que 118 lignes sur 517 : ils restent dupliqués, parce qu'une abstraction inventée pour deux besoins différents coûte plus cher que la duplication qu'elle supprime.
 
@@ -141,6 +174,14 @@ La gateway lit la même stream en `XREAD $` (live-tail, sans group) pour le rela
 - Sentinel : `sentinel-api/migrations/` — `001_init.sql` (base vierge) + migrations incrémentales numérotées. Historique pré-refonte archivé dans `migrations_legacy/`.
 - Nexus : `nexus-api/migrations/`.
 - Atrium : `atrium-api/migrations/`.
+
+**Une base logique, un rôle, un pgbouncer.** La séparation en bases ne vaut que si chacune a son propre compte : `POSTGRES_USER: sentinel` est le **superuser** du cluster, et un superuser ignore tous les `GRANT`. Quatre rôles ordinaires, un par base, chacun propriétaire de la sienne et créé par son `*-db-init` : `sentinel_app` (`discord_sentinel`, partagée par sentinel-api, sentinel-worker et ops-api), `nexus`, `atrium`, `auth`. Aucune API n'est sur le réseau `data`, chacune passe par son pgbouncer. Le compte superuser ne sert plus qu'aux `*-db-init` et à pgadmin.
+
+Deux extensions exigeaient le superuser et bloquaient la bascule — `pg_stat_statements` côté Sentinel, `pgvector` côté Atrium. Elles sont créées par le `db-init` **avant** les migrations : le `CREATE EXTENSION IF NOT EXISTS` de la migration devient alors un no-op et passe sous un rôle ordinaire. C'est le motif à réutiliser pour toute extension future, plutôt que de rendre le superuser à un service.
+
+Les `db-init` révoquent aussi le `CONNECT` de `PUBLIC` sur les autres bases : sans ça, un rôle applicatif peut encore ouvrir une session ailleurs (sans rien y lire, mais c'est une surface).
+
+Ne pas rebrancher une API sur le réseau `data` ni sur le compte `sentinel`. Et ne pas réintroduire de rôle « restreint » par service au sein d'une même base : `sentinel_ops` (migration 024) a été abandonné en 028 — jamais utilisé, droits incomplets, il donnait l'illusion d'un cloisonnement inexistant.
 
 **Chaque plateforme a sa propre base logique**, donc ses propres tables `bot_definitions` / `bot_guild_config` : `nexus-api/migrations/007_game_portal.sql` et `atrium-api/migrations/007_config_par_serveur.sql` les répliquent. Un `-api` ne lit jamais la base d'une autre plateforme. Un nouveau réglage se déclare donc dans le `config_schema` **de sa plateforme**.
 - Numéroter à la suite, nom en français descriptif, une préoccupation par fichier.

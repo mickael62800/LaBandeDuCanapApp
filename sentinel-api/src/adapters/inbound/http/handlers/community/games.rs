@@ -299,5 +299,3 @@ pub async fn spin_wheel(
         is_memorable: r.is_memorable,
     }))
 }
-
-

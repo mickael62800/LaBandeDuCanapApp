@@ -29,8 +29,10 @@ uuid = { workspace = true }
 dotenvy = { workspace = true }
 redis = { workspace = true }
 futures-util = { workspace = true }
-bollard = { workspace = true }
-tar = { workspace = true }
+# NI `bollard` NI `tar` ici : ce crate ne parle plus au socket Docker, il
+# appelle `docker-agent` en HTTP (adapters/outbound/game_runtime/http_runtime.rs).
+# Les rajouter reintroduirait un second mapping bollard -> domaine, et surtout
+# la tentation de remonter /var/run/docker.sock dans ce processus.
 reqwest = { workspace = true, features = ["json", "multipart"] }
 base64 = "0.23.1"
 

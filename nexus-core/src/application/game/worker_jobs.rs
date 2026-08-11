@@ -260,12 +260,19 @@ pub async fn run_reconciler(ctx: &JobContext) -> Result<JobReport, DomainError> 
     let mut errors = 0usize;
     let now = chrono::Utc::now();
 
-    // Index containers par sentinel.server_id label.
+    // Index des conteneurs par identifiant de serveur.
+    //
+    // Les deux generations de label sont acceptees : `nexus.server_id` est le
+    // nom canonique, `sentinel.server_id` celui que porte la flotte creee
+    // avant le renommage. Ne lire que le nouveau ferait passer tous les
+    // serveurs deja en service pour des orphelins — et le reconciler les
+    // arreterait.
     let docker_by_id: std::collections::HashMap<String, &_> = docker_containers
         .iter()
         .filter_map(|c| {
             c.labels
-                .get("sentinel.server_id")
+                .get("nexus.server_id")
+                .or_else(|| c.labels.get("sentinel.server_id"))
                 .map(|sid| (sid.clone(), c))
         })
         .collect();

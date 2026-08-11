@@ -645,8 +645,146 @@ impl DiscordApiRepository for DummyDiscordApi {
     }
 }
 
+/// Depot du Grand Salon non exerce par ces tests : aucune des routes couvertes
+/// ici ne l'atteint. Chaque methode panique donc plutot que de mentir avec une
+/// valeur vide — si un test futur touche le Grand Salon, il doit le voir tout
+/// de suite et brancher un vrai double.
+struct DummyGrandSalonRepo;
+
+#[async_trait::async_trait]
+impl nexus_core::ports::outbound::grand_salon_repository::GrandSalonRepository
+    for DummyGrandSalonRepo
+{
+    async fn find_habitue(
+        &self,
+        _: &str,
+        _: &str,
+    ) -> Result<
+        Option<nexus_core::domain::entities::grand_salon::Habitué>,
+        nexus_core::domain::errors::DomainError,
+    > {
+        unimplemented!("Grand Salon non exerce par ces tests")
+    }
+    async fn save_habitue(
+        &self,
+        _: &nexus_core::domain::entities::grand_salon::Habitué,
+    ) -> Result<(), nexus_core::domain::errors::DomainError> {
+        unimplemented!("Grand Salon non exerce par ces tests")
+    }
+    async fn claim_daily(
+        &self,
+        _: uuid::Uuid,
+    ) -> Result<bool, nexus_core::domain::errors::DomainError> {
+        unimplemented!("Grand Salon non exerce par ces tests")
+    }
+    async fn create_cercle(
+        &self,
+        _: &nexus_core::domain::entities::grand_salon::Cercle,
+    ) -> Result<(), nexus_core::domain::errors::DomainError> {
+        unimplemented!("Grand Salon non exerce par ces tests")
+    }
+    async fn list_cercles(
+        &self,
+        _: &str,
+    ) -> Result<
+        Vec<nexus_core::domain::entities::grand_salon::Cercle>,
+        nexus_core::domain::errors::DomainError,
+    > {
+        unimplemented!("Grand Salon non exerce par ces tests")
+    }
+    async fn create_motion(
+        &self,
+        _: &nexus_core::domain::entities::grand_salon::MotionDuSalon,
+    ) -> Result<(), nexus_core::domain::errors::DomainError> {
+        unimplemented!("Grand Salon non exerce par ces tests")
+    }
+    async fn list_motions(
+        &self,
+        _: &str,
+    ) -> Result<
+        Vec<nexus_core::domain::entities::grand_salon::MotionDuSalon>,
+        nexus_core::domain::errors::DomainError,
+    > {
+        unimplemented!("Grand Salon non exerce par ces tests")
+    }
+    async fn cast_vote(
+        &self,
+        _: uuid::Uuid,
+        _: uuid::Uuid,
+        _: bool,
+        _: i64,
+    ) -> Result<(), nexus_core::domain::errors::DomainError> {
+        unimplemented!("Grand Salon non exerce par ces tests")
+    }
+    async fn vote_totals(
+        &self,
+        _: uuid::Uuid,
+    ) -> Result<(i64, i64), nexus_core::domain::errors::DomainError> {
+        unimplemented!("Grand Salon non exerce par ces tests")
+    }
+    async fn due_motions(
+        &self,
+    ) -> Result<
+        Vec<nexus_core::domain::entities::grand_salon::MotionDuSalon>,
+        nexus_core::domain::errors::DomainError,
+    > {
+        unimplemented!("Grand Salon non exerce par ces tests")
+    }
+    async fn close_motion(
+        &self,
+        _: uuid::Uuid,
+        _: bool,
+    ) -> Result<(), nexus_core::domain::errors::DomainError> {
+        unimplemented!("Grand Salon non exerce par ces tests")
+    }
+    async fn publish_gazette(
+        &self,
+        _: &nexus_core::domain::entities::grand_salon::GazetteArticle,
+    ) -> Result<(), nexus_core::domain::errors::DomainError> {
+        unimplemented!("Grand Salon non exerce par ces tests")
+    }
+    async fn list_gazette(
+        &self,
+        _: &str,
+    ) -> Result<
+        Vec<nexus_core::domain::entities::grand_salon::GazetteArticle>,
+        nexus_core::domain::errors::DomainError,
+    > {
+        unimplemented!("Grand Salon non exerce par ces tests")
+    }
+    async fn create_dossier(
+        &self,
+        _: &nexus_core::domain::entities::grand_salon::Dossier,
+    ) -> Result<(), nexus_core::domain::errors::DomainError> {
+        unimplemented!("Grand Salon non exerce par ces tests")
+    }
+    async fn list_dossiers(
+        &self,
+        _: &str,
+        _: uuid::Uuid,
+    ) -> Result<
+        Vec<nexus_core::domain::entities::grand_salon::Dossier>,
+        nexus_core::domain::errors::DomainError,
+    > {
+        unimplemented!("Grand Salon non exerce par ces tests")
+    }
+    async fn reveal_dossier(
+        &self,
+        _: uuid::Uuid,
+        _: uuid::Uuid,
+    ) -> Result<(), nexus_core::domain::errors::DomainError> {
+        unimplemented!("Grand Salon non exerce par ces tests")
+    }
+}
+
 fn create_test_app_state(api_key: Option<String>) -> AppState {
     AppState {
+        grand_salon: Arc::new(
+            nexus_core::application::grand_salon_service::GrandSalonService::new(
+                Arc::new(DummyGrandSalonRepo),
+                1_000,
+            ),
+        ),
         play_wheel: Arc::new(DummyPlayWheel),
         wheel_cases: Arc::new(DummyWheelCases),
         get_wallet: Arc::new(DummyWalletUseCase),

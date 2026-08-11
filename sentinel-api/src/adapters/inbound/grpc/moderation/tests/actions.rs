@@ -198,11 +198,6 @@ impl ManageModerationUseCase for MockModerationUc {
     }
 }
 
-
-
-
-
-
 /// Doubles des ports du dossier de moderation (preuves, relecture, notes,
 /// statistiques, apprenti).
 ///
@@ -450,8 +445,16 @@ fn grpc(uc: Arc<MockModerationUc>) -> ModerationGrpc {
 
 struct MockManageRemindersUc;
 #[tonic::async_trait]
-impl sentinel_core::ports::inbound::moderation::manage_reminders::ManageRemindersUseCase for MockManageRemindersUc {
-    async fn create_reminder(&self, cmd: sentinel_core::ports::inbound::moderation::manage_reminders::CreateReminderCommand) -> Result<sentinel_core::domain::entities::moderation::action::sanction_reminder::SanctionReminder, sentinel_core::domain::errors::DomainError> {
+impl sentinel_core::ports::inbound::moderation::manage_reminders::ManageRemindersUseCase
+    for MockManageRemindersUc
+{
+    async fn create_reminder(
+        &self,
+        cmd: sentinel_core::ports::inbound::moderation::manage_reminders::CreateReminderCommand,
+    ) -> Result<
+        sentinel_core::domain::entities::moderation::action::sanction_reminder::SanctionReminder,
+        sentinel_core::domain::errors::DomainError,
+    > {
         Ok(sentinel_core::domain::entities::moderation::action::sanction_reminder::SanctionReminder {
             id: uuid::Uuid::new_v4(),
             guild_id: cmd.guild_id,
@@ -468,20 +471,25 @@ impl sentinel_core::ports::inbound::moderation::manage_reminders::ManageReminder
             created_at: chrono::Utc::now(),
         })
     }
-    async fn get_pending_reminders(&self) -> Result<Vec<sentinel_core::domain::entities::moderation::action::sanction_reminder::SanctionReminder>, sentinel_core::domain::errors::DomainError> {
+    async fn get_pending_reminders(&self) -> Result<Vec<sentinel_core::domain::entities::moderation::action::sanction_reminder::SanctionReminder>, sentinel_core::domain::errors::DomainError>{
         unimplemented!()
     }
-    async fn mark_sent(&self, _reminder_id: uuid::Uuid) -> Result<(), sentinel_core::domain::errors::DomainError> {
+    async fn mark_sent(
+        &self,
+        _reminder_id: uuid::Uuid,
+    ) -> Result<(), sentinel_core::domain::errors::DomainError> {
         unimplemented!()
     }
-    async fn cancel_for_action(&self, _action_id: uuid::Uuid) -> Result<(), sentinel_core::domain::errors::DomainError> {
+    async fn cancel_for_action(
+        &self,
+        _action_id: uuid::Uuid,
+    ) -> Result<(), sentinel_core::domain::errors::DomainError> {
         unimplemented!()
     }
-    async fn list_by_guild(&self, _guild_id: &str) -> Result<Vec<sentinel_core::domain::entities::moderation::action::sanction_reminder::SanctionReminder>, sentinel_core::domain::errors::DomainError> {
+    async fn list_by_guild(&self, _guild_id: &str) -> Result<Vec<sentinel_core::domain::entities::moderation::action::sanction_reminder::SanctionReminder>, sentinel_core::domain::errors::DomainError>{
         unimplemented!()
     }
 }
-
 
 fn make_log_request(action: &str) -> Request<proto::LogActionRequest> {
     Request::new(proto::LogActionRequest {
@@ -508,10 +516,8 @@ fn make_log_request_dur(action: &str, duration: Option<u64>) -> Request<proto::L
 // BUG #8 : seul ban_temp cree un rappel d'expiration ; mute_temp expire seul via
 // le timeout Discord et ne doit PAS generer de rappel.
 
-
 // BUG #1 : un unban annule les rappels d'auto-unban pour la cible ; un ban ne
 // declenche aucune annulation.
-
 
 #[tokio::test]
 async fn log_action_delegates_to_uc() {
@@ -570,7 +576,6 @@ async fn get_history_returns_full_user_data() {
     assert_eq!(h.total_warns, 5);
     assert_eq!(h.actions.len(), 1);
 }
-
 
 #[tokio::test]
 async fn get_history_clean_user_has_zero_counters() {

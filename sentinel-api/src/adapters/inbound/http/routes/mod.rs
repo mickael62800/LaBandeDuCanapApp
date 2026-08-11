@@ -16,14 +16,12 @@ pub mod idea;
 pub mod members;
 pub mod moderation;
 pub mod role_panels;
-pub mod voice_channels;
 pub mod security;
 pub mod stats;
 pub mod system;
 pub mod ticket;
-
+pub mod voice_channels;
 
 pub mod guilds;
 
 pub mod progression;
-

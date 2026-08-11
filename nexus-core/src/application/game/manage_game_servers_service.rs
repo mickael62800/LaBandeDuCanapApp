@@ -273,11 +273,18 @@ impl ManageGameServersService {
             vec![]
         };
 
+        // Labels de tracabilite, dans les DEUX generations : `nexus.*`
+        // (canonique — les jeux ont quitte Sentinel au portage) et `sentinel.*`
+        // (la flotte deja en service ne porte que celui-la, et le reconciler
+        // s'en sert pour retrouver ses conteneurs). Voir `LEGACY_*` dans
+        // `docker-agent/src/bollard_game.rs` pour la sortie de transition.
         let mut labels = HashMap::new();
-        labels.insert("sentinel.server_id".to_string(), server.id.to_string());
-        labels.insert("sentinel.guild_id".to_string(), server.guild_id.clone());
-        labels.insert("sentinel.template_slug".to_string(), template.slug.clone());
-        labels.insert("sentinel.owner".to_string(), server.owner_user_id.clone());
+        for prefix in ["nexus", "sentinel"] {
+            labels.insert(format!("{prefix}.server_id"), server.id.to_string());
+            labels.insert(format!("{prefix}.guild_id"), server.guild_id.clone());
+            labels.insert(format!("{prefix}.template_slug"), template.slug.clone());
+            labels.insert(format!("{prefix}.owner"), server.owner_user_id.clone());
+        }
 
         // Command (templated) : si le template definit un override CMD, on
         // substitue les {{KEY}} par les env effectives (defaults + overrides

@@ -5,8 +5,8 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use ops_core::domain::entities::log_entry::LogEntry;
-use sentinel_core::domain::errors::DomainError;
 use ops_core::ports::outbound::log_repository::LogRepository;
+use sentinel_core::domain::errors::DomainError;
 
 pub struct PgLogRepository {
     pool: PgPool,

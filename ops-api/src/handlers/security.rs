@@ -7,10 +7,10 @@
 //!   - cert TLS : lecture du fichier /etc/letsencrypt/live/{domain}/cert.pem
 //!   - fail2ban : non implemente (necessite installation host)
 
-use axum::http::HeaderMap;
 use crate::authorize;
 use axum::extract::Query;
 use axum::extract::State;
+use axum::http::HeaderMap;
 use axum::Json;
 use serde::Deserialize;
 use serde::Serialize;
@@ -21,7 +21,6 @@ use crate::AppState;
 use ops_core::domain::entities::host_probe::HostProbe;
 use ops_core::domain::entities::security_audit::{AuditLogFilter, CleanupOptions};
 use ops_core::domain::entities::security_log::LogWindow;
-
 
 // ── 1. Top IPs par requetes ─────────────────────────────────────────────
 
@@ -49,10 +48,7 @@ pub async fn top_ips(
     let window = LogWindow::parse(q.window.as_deref().unwrap_or("1h"));
     let limit = crate::handlers::normalize_in(q.limit, 20, 1, 100);
 
-    let rows = state
-        .security_logs_uc
-        .top_ips(window, limit)
-        .await?;
+    let rows = state.security_logs_uc.top_ips(window, limit).await?;
     Ok(Json(
         rows.into_iter()
             .map(|r| TopIpEntry {
@@ -86,10 +82,7 @@ pub async fn auth_failures(
     let window = LogWindow::parse(q.window.as_deref().unwrap_or("24h"));
     let limit = crate::handlers::normalize_in(q.limit, 100, 1, 500);
 
-    let rows = state
-        .security_logs_uc
-        .auth_failures(window, limit)
-        .await?;
+    let rows = state.security_logs_uc.auth_failures(window, limit).await?;
     Ok(Json(
         rows.into_iter()
             .map(|r| AuthFailureEntry {
@@ -190,10 +183,7 @@ pub async fn audit_logs(
         event_type_prefix: q.event_type_prefix,
         limit: crate::handlers::normalize_in(q.limit, 100, 1, 500),
     };
-    let rows = state
-        .security_audit_uc
-        .audit_logs(filter)
-        .await?;
+    let rows = state.security_audit_uc.audit_logs(filter).await?;
     Ok(Json(
         rows.into_iter()
             .map(|e| AuditEntry {
@@ -311,10 +301,10 @@ async fn read_probe<T: for<'de> serde::Deserialize<'de>>(
 ) -> Result<T, ApiError> {
     let value = state.host_probe_uc.read(probe).await?;
     serde_json::from_value(value).map_err(|e| {
-        ApiError(axum::http::StatusCode::INTERNAL_SERVER_ERROR, format!(
-            "parse {}: {e}",
-            probe.feature()
-        ))
+        ApiError(
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            format!("parse {}: {e}", probe.feature()),
+        )
     })
 }
 
@@ -516,7 +506,6 @@ pub struct ContainerChangesResponse {
     pub changes_24h: Vec<ContainerChangeEntry>,
 }
 
-
 // Nginx suspicious patterns
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SuspiciousEntry {
@@ -584,10 +573,7 @@ pub async fn manual_bans(
     headers: HeaderMap,
 ) -> Result<Json<Vec<ManualBanEntry>>, ApiError> {
     authorize(&headers, &state.config)?;
-    let bans = state
-        .ip_bans_uc
-        .list_manual_bans()
-        .await?;
+    let bans = state.ip_bans_uc.list_manual_bans().await?;
     Ok(Json(
         bans.into_iter()
             .map(|b| ManualBanEntry {
@@ -692,10 +678,7 @@ pub async fn last_successful_logins(
 ) -> Result<Json<Vec<SuccessfulLoginEntry>>, ApiError> {
     authorize(&headers, &state.config)?;
     let limit = crate::handlers::normalize_in(q.limit, 20, 1, 200);
-    let rows = state
-        .security_audit_uc
-        .recent_logins(limit)
-        .await?;
+    let rows = state.security_audit_uc.recent_logins(limit).await?;
     Ok(Json(
         rows.into_iter()
             .map(|l| SuccessfulLoginEntry {
@@ -743,8 +726,7 @@ pub async fn traffic_trend(
 ) -> Result<Json<TrafficTrendResponse>, ApiError> {
     authorize(&headers, &state.config)?;
     let window = LogWindow::parse(q.window.as_deref().unwrap_or("24h"));
-    let bucket_min =
-        crate::handlers::normalize_in(q.bucket_minutes.map(i64::from), 5, 1, 60);
+    let bucket_min = crate::handlers::normalize_in(q.bucket_minutes.map(i64::from), 5, 1, 60);
 
     let trend = state
         .security_logs_uc
@@ -828,10 +810,7 @@ pub async fn cleanup_security_logs(
         include_manual_bans: q.include_manual_bans.unwrap_or(false),
     };
 
-    let report = state
-        .security_audit_uc
-        .cleanup(options.clone())
-        .await?;
+    let report = state.security_audit_uc.cleanup(options.clone()).await?;
 
     let actor = actor_from(&headers);
     tracing::info!(
@@ -922,7 +901,9 @@ pub async fn tls_cert(
 /// que sa trace n'a pas pu s'ecrire : on prefere perdre la ligne de journal
 /// que faire croire a l'operateur que le bannissement n'a pas eu lieu.
 async fn record_event(
-    repo: &std::sync::Arc<dyn ops_core::ports::outbound::server_event_repository::ServerEventRepository>,
+    repo: &std::sync::Arc<
+        dyn ops_core::ports::outbound::server_event_repository::ServerEventRepository,
+    >,
     actor: &str,
     actor_name: Option<&str>,
     action: &str,

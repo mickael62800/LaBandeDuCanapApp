@@ -17,8 +17,9 @@
 //! Les middlewares HTTP vivent dans `platform-common-api` : les y separer
 //! evite qu'un bot compile axum et tower-http pour rien.
 
-pub mod event_bus;
+pub mod config_flags;
 pub mod errors;
+pub mod event_bus;
 
 pub use event_bus::default_consumer_name;
 pub use event_bus::EventBus;

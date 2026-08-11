@@ -256,6 +256,42 @@ dependencies = [
 ]
 
 [[package]]
+name = "auth-api"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "auth-core",
+ "axum",
+ "chrono",
+ "dotenvy",
+ "platform-common-api",
+ "redis",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sqlx",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
+name = "auth-core"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "platform-common",
+ "serde",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "autocfg"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -882,6 +918,8 @@ dependencies = [
  "ops-core",
  "serde",
  "serde_json",
+ "subtle",
+ "tar",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -2135,7 +2173,6 @@ dependencies = [
  "async-trait",
  "axum",
  "base64 0.23.1",
- "bollard",
  "chrono",
  "dotenvy",
  "futures-util",
@@ -2147,7 +2184,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sqlx",
- "tar",
  "tokio",
  "tokio-stream",
  "tonic",
@@ -2185,6 +2221,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "chrono",
+ "ops-core",
  "platform-common",
  "rand 0.8.6",
  "regex",
@@ -2602,6 +2639,7 @@ dependencies = [
  "metrics",
  "metrics-exporter-prometheus",
  "platform-common",
+ "reqwest",
  "serde_json",
  "subtle",
  "tokio",
@@ -2632,16 +2670,14 @@ dependencies = [
  "dotenvy",
  "metrics",
  "metrics-exporter-prometheus",
+ "platform-common",
  "redis",
  "reqwest",
- "sentinel-core",
- "sentinel-proto",
  "serde",
  "serde_json",
  "sqlx",
  "tokio",
  "tokio-metrics",
- "tonic",
  "tracing",
  "tracing-subscriber",
  "uuid",

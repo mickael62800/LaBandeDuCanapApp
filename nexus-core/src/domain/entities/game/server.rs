@@ -178,11 +178,34 @@ pub fn should_auto_restart(
 impl GameServer {
     /// Nom Docker normalise pour ce serveur.
     /// Doit matcher container_name persiste en DB (cohérence reconciler).
+    ///
+    /// # Le prefixe `sentinel-` ne se renomme PAS
+    ///
+    /// Les jeux ont quitte Sentinel au portage, et les LABELS ont ete
+    /// renommes en `nexus.*` (avec lecture des deux generations). Ce nom-ci,
+    /// non : il est persiste en base a la creation, et le reconciler compare
+    /// la valeur stockee a celle recalculee ici. Changer la formule ferait
+    /// diverger les deux pour toute la flotte existante.
+    ///
+    /// Le renommer supposerait une migration qui recree chaque conteneur —
+    /// c'est-a-dire une interruption de tous les serveurs de jeu, pour un gain
+    /// purement cosmetique.
     pub fn docker_container_name(id: Uuid) -> String {
         format!("sentinel-game-{}", id.simple())
     }
 
     /// Nom du volume Docker nomme pour ce serveur.
+    ///
+    /// # Celui-ci encore moins que l'autre
+    ///
+    /// Docker ne sait pas renommer un volume. Changer cette formule ne
+    /// renommerait rien : au prochain demarrage, le conteneur monterait un
+    /// volume NEUF et VIDE, et le monde de jeu apparaitrait efface. L'ancien
+    /// volume resterait sur le disque, orphelin.
+    ///
+    /// Si ce nom doit changer un jour, c'est par une migration de donnees
+    /// explicite (creation du nouveau volume, copie, bascule, suppression de
+    /// l'ancien), jamais par une edition de cette ligne.
     pub fn docker_volume_name(id: Uuid) -> String {
         format!("sentinel-game-vol-{}", id.simple())
     }

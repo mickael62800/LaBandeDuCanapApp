@@ -50,9 +50,7 @@ use sqlx::postgres::PgPoolOptions;
 
 use crate::adapters::outbound::events::noop_publisher::NoopEventPublisher;
 use crate::adapters::outbound::events::redis_publisher::RedisEventPublisher;
-use crate::adapters::outbound::game_runtime::docker_runtime::{
-    make_docker_client, DockerContainerRuntime,
-};
+use crate::adapters::outbound::game_runtime::http_runtime::HttpGameRuntime;
 use crate::adapters::outbound::game_runtime::noop_runtime::NoopContainerRuntime;
 use crate::adapters::outbound::game_runtime::rcon_pooled::PooledRconClient;
 use crate::adapters::outbound::game_runtime::redis_port_allocator::RedisPortAllocator;
@@ -231,19 +229,28 @@ pub async fn build_state() -> Result<AppState, Box<dyn std::error::Error>> {
     let game_repo: Arc<dyn GameRepository> = Arc::new(PgGameRepository::new(pool.clone()));
 
     // ── Game Portal : runtime container (docker | noop) ──
-    // NEXUS_GAME_RUNTIME=docker tente le socket Docker ; tout autre valeur
-    // (ou l'absence de la variable, ou un socket indisponible) => noop, qui
-    // repond Internal sur les operations lifecycle mais laisse le listing
-    // et la config fonctionner.
+    // NEXUS_GAME_RUNTIME=docker passe par `docker-agent` ; toute autre valeur
+    // (ou l'absence de la variable, ou un agent injoignable) => operations de
+    // cycle de vie refusees, mais le listing et la config continuent de
+    // fonctionner.
+    //
+    // « docker » designe desormais l'agent, plus le socket local : ce processus
+    // ne monte plus `/var/run/docker.sock`. La valeur de la variable est
+    // conservee telle quelle pour ne pas casser les .env existants.
     let runtime_mode = std::env::var("NEXUS_GAME_RUNTIME").unwrap_or_else(|_| "noop".into());
     let container_runtime: Arc<dyn ContainerRuntime> = if runtime_mode == "docker" {
-        match make_docker_client() {
-            Ok(d) => Arc::new(DockerContainerRuntime::new(d)),
-            Err(e) => {
-                tracing::warn!(error = %e, "Docker socket indisponible — Game Portal lifecycle inactif (noop)");
-                Arc::new(NoopContainerRuntime)
-            }
+        let agent_url =
+            std::env::var("DOCKER_AGENT_URL").unwrap_or_else(|_| "http://docker-agent:8095".into());
+        // Jeton de la surface `/game/*` UNIQUEMENT. Ce processus ne doit pas
+        // porter `DOCKER_AGENT_TOKEN`, qui ouvre l'administration de l'hote
+        // (arret et purge de n'importe quel conteneur).
+        let agent_token = std::env::var("DOCKER_AGENT_GAME_TOKEN").unwrap_or_default();
+        if agent_token.trim().is_empty() {
+            tracing::warn!(
+                "DOCKER_AGENT_GAME_TOKEN absent — Game Portal lifecycle inactif (l'agent refusera tout)"
+            );
         }
+        Arc::new(HttpGameRuntime::connect(agent_url, agent_token).await)
     } else if runtime_mode == "mock" {
         tracing::info!("NEXUS_GAME_RUNTIME=mock — runtime container simule en memoire");
         Arc::new(nexus_core::ports::outbound::game::container_runtime::MockContainerRuntime::new())

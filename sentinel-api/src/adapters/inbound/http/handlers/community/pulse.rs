@@ -49,9 +49,7 @@ pub struct PulseDto {
 }
 
 /// GET /api/public/pulse/{guild_id}
-pub async fn public_pulse(
-    Path(guild_id): Path<String>,
-) -> Result<Json<PulseDto>, ApiError> {
+pub async fn public_pulse(Path(guild_id): Path<String>) -> Result<Json<PulseDto>, ApiError> {
     ensure_guild_id(&guild_id)?;
 
     Ok(Json(PulseDto {
@@ -59,4 +57,3 @@ pub async fn public_pulse(
         newcomers: vec![],
     }))
 }
-

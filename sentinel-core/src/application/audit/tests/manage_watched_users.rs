@@ -310,12 +310,8 @@ impl ManageSecurityUseCase for RichSec {
 async fn get_user_dossier_filters_security_events_by_user_id() {
     let r = Arc::new(MockRepo::default());
     r.users.lock().unwrap().push(sample_watched("u1"));
-    let svc = ManageWatchedUsersService::new(
-        r,
-        Arc::new(StubInf),
-        Arc::new(StubMod),
-        Arc::new(RichSec),
-    );
+    let svc =
+        ManageWatchedUsersService::new(r, Arc::new(StubInf), Arc::new(StubMod), Arc::new(RichSec));
     let d = svc.get_user_dossier("g", "u1").await.unwrap();
     // Seul l'evenement qui contient "u1" dans user_ids doit etre retenu.
     assert_eq!(d.security_events.len(), 1);

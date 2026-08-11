@@ -20,6 +20,8 @@
 
 use std::collections::HashMap;
 
+use sentinel_core::domain::entities::system::config_parsers::parse_bool_str;
+
 use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use tracing::{debug, info, warn};
@@ -136,7 +138,7 @@ async fn load_configs(pool: &PgPool) -> HashMap<String, GuildAuto> {
             interval_hours: DEFAULT_INTERVAL_HOURS,
         });
         match key.as_str() {
-            "auto_backup_enabled" => entry.enabled = platform_common_worker::parse_bool_str(&value),
+            "auto_backup_enabled" => entry.enabled = parse_bool_str(&value),
             "auto_backup_interval_hours" => {
                 if let Ok(h) = value.parse::<i64>() {
                     entry.interval_hours = h;

@@ -15,12 +15,12 @@ use tracing::info;
 
 use crate::adapters::inbound::grpc::errors::domain_to_status;
 use crate::adapters::outbound::ws::broadcaster::EventBroadcaster;
+use ops_core::ports::outbound::log_repository::LogRepository;
 use sentinel_core::domain::entities::moderation::purge::{
     validate_purge_days_allow_zero, validate_purge_days_strictly_positive,
 };
 use sentinel_core::ports::inbound::audit::manage_audit_logs::ManageAuditLogsUseCase;
 use sentinel_core::ports::inbound::moderation::manage_infractions::ManageInfractionsUseCase;
-use ops_core::ports::outbound::log_repository::LogRepository;
 
 pub struct PurgeGrpc {
     pub infractions_uc: Arc<dyn ManageInfractionsUseCase>,

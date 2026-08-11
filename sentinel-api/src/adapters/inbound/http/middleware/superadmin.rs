@@ -32,12 +32,11 @@ use axum::{
     middleware::Next,
     response::Response,
 };
-use redis::AsyncCommands;
+use platform_common_api::auth_client::AccessOutcome;
 
 use crate::adapters::inbound::http::middleware::auth::AuthKind;
 use crate::adapters::inbound::http::state::AppState;
 
-const USER_ID_CACHE_TTL_SECS: u64 = 600;
 const DISCORD_TOKEN_HEADER: &str = "x-discord-token";
 
 /// Identite Discord du caller web, injectee en extension de requete.
@@ -75,23 +74,27 @@ pub async fn superadmin_middleware(
         _ => return Err(StatusCode::UNAUTHORIZED),
     };
 
-    let user_id = match resolve_discord_user_id(&state, &discord_token).await {
-        Ok(id) => id,
-        Err(e) => {
-            // Discord injoignable : on refuse plutot que de laisser passer.
-            tracing::warn!(error = %e, "superadmin: resolution identite Discord impossible");
+    // La decision appartient a `auth-api`. Ce processus ne resout plus
+    // l'identite lui-meme et ne consulte plus SUPERADMIN_USER_IDS : deux
+    // implementations de la meme regle finiraient par diverger, et c'est
+    // exactement ce qui rendait Sentinel indispensable aux autres plateformes.
+    let user_id = match state.auth.resolve(&discord_token).await {
+        AccessOutcome::Granted(id) => id,
+        AccessOutcome::Denied => {
+            tracing::warn!(
+                path = %parts.uri.path(),
+                "superadmin: acces refuse par l'identite"
+            );
+            return Err(StatusCode::FORBIDDEN);
+        }
+        AccessOutcome::Unauthenticated => return Err(StatusCode::UNAUTHORIZED),
+        // Identite injoignable : 503, PAS 403. Un refus ferait croire a
+        // l'administrateur qu'il a perdu ses droits alors que c'est une panne.
+        AccessOutcome::Unavailable => {
+            tracing::warn!("superadmin: identite indisponible");
             return Err(StatusCode::SERVICE_UNAVAILABLE);
         }
     };
-
-    if !state.superadmin_user_ids.iter().any(|id| id == &user_id) {
-        tracing::warn!(
-            user_id = %user_id,
-            path = %parts.uri.path(),
-            "superadmin: acces refuse (absent de SUPERADMIN_USER_IDS)"
-        );
-        return Err(StatusCode::FORBIDDEN);
-    }
 
     parts.extensions.insert(WebUser {
         discord_user_id: user_id,
@@ -100,46 +103,8 @@ pub async fn superadmin_middleware(
     Ok(next.run(Request::from_parts(parts, body)).await)
 }
 
-/// Resout le `discord_user_id` d'un access_token (cache Redis + fallback
-/// `GET /users/@me`).
-async fn resolve_discord_user_id(state: &AppState, access_token: &str) -> Result<String, String> {
-    let cache_key = format!("user_id:{}", token_cache_key(access_token));
-
-    if let Ok(mut conn) = state.redis_client.get_multiplexed_async_connection().await {
-        if let Ok(cached) = conn.get::<_, String>(&cache_key).await {
-            if !cached.is_empty() {
-                return Ok(cached);
-            }
-        }
-    }
-
-    let user = state
-        .discord_api
-        .get_user_me(access_token)
-        .await
-        .map_err(|e| format!("Discord API: {e}"))?;
-
-    // Cache best-effort : une panne Redis ne doit pas bloquer l'acces.
-    if let Ok(mut conn) = state.redis_client.get_multiplexed_async_connection().await {
-        let _: Result<(), _> = conn
-            .set_ex(&cache_key, &user.id, USER_ID_CACHE_TTL_SECS)
-            .await;
-    }
-
-    Ok(user.id)
-}
-
-/// Derive une cle de cache opaque a partir d'un access_token (jamais stocke en
-/// clair). SHA-256 tronque a 128 bits : contrairement a un hash non
-/// cryptographique, une collision choisie n'est pas calculable, ce qui ecarte
-/// l'usurpation d'identite par collision de cle de cache (resolution du token
-/// A vers le user_id de B).
-fn token_cache_key(input: &str) -> String {
-    use sha2::{Digest, Sha256};
-    let digest = Sha256::digest(input.as_bytes());
-    digest[..16].iter().map(|b| format!("{b:02x}")).collect()
-}
-
-#[cfg(test)]
-#[path = "tests/superadmin.rs"]
-mod tests;
+// La resolution d'identite (cache Redis + `GET /users/@me`) et la derivation
+// SHA-256 de la cle de cache ont ete DEPLACEES dans `auth-core` /
+// `auth-api/src/adapters/redis_stores.rs`, avec leurs tests. Elles ne sont pas
+// dupliquees ici : deux implementations de la meme regle finissent toujours par
+// diverger, et c'est justement ce que l'extraction de l'identite supprime.

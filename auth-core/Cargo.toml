@@ -1,0 +1,20 @@
+[package]
+name = "auth-core"
+version.workspace = true
+edition.workspace = true
+description = "Coeur hexagonal de l'identite : OAuth2 Discord, sessions web, gate superadmin. Aucune dependance infra."
+
+[dependencies]
+platform-common = { workspace = true }
+async-trait = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+
+[lints]
+workspace = true

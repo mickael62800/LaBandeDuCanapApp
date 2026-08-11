@@ -6,4 +6,3 @@ pub mod ideas;
 pub mod sponsorships;
 
 pub mod progression;
-

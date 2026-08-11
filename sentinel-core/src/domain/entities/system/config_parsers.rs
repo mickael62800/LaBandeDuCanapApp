@@ -7,25 +7,12 @@
 
 use std::collections::HashMap;
 
-/// Parse un flag booleen stringifie. Accepte (insensible a la casse) :
-/// `"true"`, `"1"`, `"yes"`. Tout le reste = false. Semantique de reference
-/// du repo — bot, API et worker doivent tous passer par ici.
-pub fn parse_bool_str(v: &str) -> bool {
-    matches!(v.to_ascii_lowercase().as_str(), "true" | "1" | "yes")
-}
-
-/// Flag d'activation d'un module : ABSENT = DÉSACTIVÉ, présent =
-/// `parse_bool_str`. Sémantique unique pour tous les gardes `enabled`
-/// per-guild (bot, API, worker) et miroir de `parseBoolConfig` côté web.
-///
-/// Fail-closed : un module n'agit sur un serveur que si quelqu'un l'a
-/// explicitement activé. Avant, l'absence de ligne valait « actif », ce qui
-/// faisait tourner des modules que le dashboard présentait comme inactifs.
-/// Conséquence assumée : après ce changement, chaque module doit être activé
-/// depuis la page Composants pour reprendre du service.
-pub fn parse_enabled_flag(value: Option<&str>) -> bool {
-    value.map(parse_bool_str).unwrap_or(false)
-}
+/// Les deux flags `enabled` sont la sémantique de référence du dépôt, donc
+/// hébergés par le socle : `platform-common/src/config_flags.rs`. Les laisser
+/// ici obligeait `platform-common-worker` — et par ricochet les workers Nexus
+/// et Atrium — à dépendre du domaine de Sentinel. Ce chemin d'import reste la
+/// porte d'entrée pour tout Sentinel ; seule leur adresse a changé.
+pub use platform_common::config_flags::{parse_bool_str, parse_enabled_flag};
 
 /// Parse un flag booleen depuis un map de config. Accepte (insensible a
 /// la casse) : `"true"`, `"1"`, `"yes"`. Tout le reste = false.

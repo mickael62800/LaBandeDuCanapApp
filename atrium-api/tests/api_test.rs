@@ -49,6 +49,10 @@ fn setup_test_app(should_fail: bool) -> axum::Router {
     let config = AppConfig::dummy();
     let mock_use_case = Arc::new(MockWelcomeUseCase::new(should_fail));
     let state = Arc::new(AppState {
+        // Le service d'apaisement n'est pas exerce par ces tests, mais il est
+        // obligatoire dans l'etat : on prend le vrai, qui ne joint le modele
+        // qu'a l'appel. Aucun de ces tests ne l'appelle.
+        calming: atrium_api::calming_use_case(&config),
         config,
         welcome: mock_use_case,
         rag: None,

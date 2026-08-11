@@ -22,10 +22,6 @@ fn cfg(host: &str, port: u16, grpc_port: u16) -> AppConfig {
         docker_agent_url: String::new(),
         discord_bot_token: String::new(),
         superadmin_user_ids: vec![],
-        discord_oauth_client_id: String::new(),
-        discord_oauth_client_secret: String::new(),
-        discord_oauth_redirect_uri: String::new(),
-        web_front_url: String::new(),
     }
 }
 

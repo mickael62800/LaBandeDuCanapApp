@@ -19,7 +19,6 @@ use axum::extract::FromRef;
 use sentinel_core::ports::inbound::system::manage_bot_persistence::ManageBotPersistenceUseCase;
 use sentinel_core::ports::inbound::system::manage_export_jobs::ManageExportJobsUseCase;
 use sentinel_core::ports::inbound::system::manage_lockdown::ManageLockdownUseCase;
-use sentinel_core::ports::inbound::system::manage_oauth::ManageOAuthUseCase;
 use sentinel_core::ports::inbound::system::manage_quarantine::ManageQuarantineUseCase;
 use sentinel_core::ports::inbound::system::manage_slowmode::ManageSlowmodeUseCase;
 use sentinel_core::ports::inbound::system::manage_tickets::ManageTicketsUseCase;
@@ -39,8 +38,7 @@ pub struct SystemState {
     pub reset_guild_uc: Arc<dyn ResetGuildUseCase>,
     pub bot_persistence_uc: Arc<dyn ManageBotPersistenceUseCase>,
 
-    // ── Acces et mesures de crise sur le serveur Discord ──
-    pub oauth_uc: Arc<dyn ManageOAuthUseCase>,
+    // ── Mesures de crise sur le serveur Discord ──
     pub quarantine_uc: Arc<dyn ManageQuarantineUseCase>,
     pub lockdown_uc: Arc<dyn ManageLockdownUseCase>,
     pub slowmode_uc: Arc<dyn ManageSlowmodeUseCase>,
@@ -57,13 +55,12 @@ pub struct SystemState {
     pub bot_config_repo: Arc<dyn BotConfigRepository>,
     pub redis_client: redis::Client,
 
-    // ── Configuration OAuth (jamais exposee au front) ──
-    pub discord_oauth_client_id: String,
-    pub discord_oauth_client_secret: String,
-    pub discord_oauth_redirect_uri: String,
-    pub web_front_url: String,
-    /// Discord user_ids superadmin. Duplique depuis `AppState` : le flux OAuth
-    /// en a besoin pour decider quoi renvoyer au front.
+    // La configuration OAuth (`DISCORD_CLIENT_ID/SECRET/REDIRECT_URI`,
+    // `WEB_FRONT_URL`) a suivi le flux dans `auth-api`. Elle n'a plus de
+    // lecteur ici.
+    /// Discord user_ids superadmin. Duplique depuis `AppState`. N'est PLUS une
+    /// regle d'autorisation — c'est `auth-api` qui tranche ; ne subsiste que
+    /// pour les handlers qui affichent la liste.
     pub superadmin_user_ids: Arc<Vec<String>>,
     /// Secret HMAC partage bot <-> API, PAS un jeton d'authentification ici.
     /// `guild_reset` signe son event Redis avec : sans cette signature, publier

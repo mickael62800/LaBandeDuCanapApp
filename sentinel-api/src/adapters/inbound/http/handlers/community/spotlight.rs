@@ -134,4 +134,3 @@ pub async fn public_spotlight(
         reason: s.reason,
     })))
 }
-

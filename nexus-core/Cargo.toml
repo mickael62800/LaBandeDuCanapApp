@@ -9,6 +9,10 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
 platform-common = { path = "../platform-common" }
+# Domaine neutre de la machine hote : Nexus lui emprunte le port du cycle de
+# vie des conteneurs (cf. ports/outbound/game/container_runtime.rs). Dependance
+# vers un crate socle, jamais vers une autre plateforme.
+ops-core = { workspace = true }
 thiserror = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }

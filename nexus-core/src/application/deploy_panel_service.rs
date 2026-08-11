@@ -10,7 +10,9 @@ impl DeployGamesPanelUseCase {
         Self { events }
     }
 
-    /// Publie l'evenement GAMES_PANEL_DEPLOY pour que le bot Sentinel deploie le panneau.
+    /// Publie GAMES_PANEL_DEPLOY sur `nexus:events` ; c'est `nexus-bot` qui
+    /// deploie le panneau. (Le panneau venait de sentinel-bot avant le portage
+    /// des jeux ; plus aucun composant Sentinel n'est implique.)
     pub async fn execute(&self, guild_id: &str, channel_id: &str, category: Option<&str>) {
         let payload = serde_json::json!({
             "guild_id": guild_id,

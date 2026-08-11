@@ -55,7 +55,7 @@ fn moderation_inner() -> Router<AppState> {
             "/history/{guild_id}/{user_id}",
             get(handlers::moderation::actions::get_history),
         )
-                .route(
+        .route(
             "/{guild_id}/assess-target-risk",
             post(handlers::moderation::target_risk::assess_target_risk),
         )
@@ -117,7 +117,10 @@ fn notes_inner() -> Router<AppState> {
 fn reminders_inner() -> Router<AppState> {
     Router::new()
         .route("/", post(handlers::moderation::reminders::create_reminder))
-        .route("/pending", get(handlers::moderation::reminders::get_pending))
+        .route(
+            "/pending",
+            get(handlers::moderation::reminders::get_pending),
+        )
         .route(
             "/{guild_id}",
             get(handlers::moderation::reminders::list_by_guild),
@@ -145,5 +148,3 @@ mod tests {
         let _ = routes();
     }
 }
-
-

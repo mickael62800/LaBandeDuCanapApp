@@ -176,6 +176,13 @@ pub async fn load_game_portal_config(
             "minecraft-vanilla,valheim,terraria,factorio,palworld,ark,7dtd",
         ),
         default_idle_shutdown_days: parse_i32(find(&entries, "default_idle_shutdown_days"), 7),
+        // Ces deux defauts gardent leur prefixe `sentinel` alors que les jeux
+        // ont quitte Sentinel — volontairement. Ce sont des DEFAUTS appliques
+        // aux serveurs qui n'ont pas surcharge la cle : les changer mettrait
+        // les nouveaux conteneurs sur un autre reseau que les existants
+        // (donc injoignables entre eux), et ferait chercher les donnees dans
+        // un repertoire vide. Un serveur qui veut un autre nom le declare dans
+        // sa config ; le defaut, lui, decrit l'installation en place.
         docker_network_name: parse_string(find(&entries, "docker_network_name"), "sentinel-games"),
         container_user: parse_string(find(&entries, "container_user"), "1000:1000"),
         host_data_dir: parse_string(find(&entries, "host_data_dir"), "/var/lib/sentinel/games"),

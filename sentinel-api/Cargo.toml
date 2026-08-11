@@ -115,14 +115,12 @@ workspace = true
 # ── Unit tests (use cases avec mocks in-memory, pas de DB) ──
 
 # ── Integration par section metier (HTTP/DB selon fichier) ──
-
-# audit
-[[test]]
-name = "e2e_grpc_live"
-path = "tests/e2e/grpc/live.rs"
-[[test]]
-name = "e2e_grpc_services"
-path = "tests/e2e/grpc/services.rs"
+#
+# Les deux cibles `e2e_grpc_live` / `e2e_grpc_services` pointaient sur des
+# fichiers supprimes : `cargo clippy --workspace --all-targets` — la commande de
+# verification du depot — echouait donc sur « couldn't read ... ». Une cible de
+# test declaree sans fichier ne teste rien et casse la verification de tout le
+# monde ; si ces scenarios reviennent, redeclarer la cible AVEC son fichier.
 
 
 

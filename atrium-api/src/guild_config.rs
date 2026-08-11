@@ -41,7 +41,10 @@ pub struct GuildSettings {
 /// Meme semantique que `parse_bool_str` cote Sentinel, qui reste la reference
 /// du depot.
 fn parse_bool(value: &str) -> bool {
-    matches!(value.trim().to_ascii_lowercase().as_str(), "true" | "1" | "yes")
+    matches!(
+        value.trim().to_ascii_lowercase().as_str(),
+        "true" | "1" | "yes"
+    )
 }
 
 /// Charge toutes les cles configurees pour un serveur.
@@ -57,7 +60,10 @@ pub async fn load(pool: &PgPool, guild_id: &str) -> Result<HashMap<String, Strin
 
     let mut map = HashMap::with_capacity(rows.len());
     for row in rows {
-        map.insert(row.try_get::<String, _>("config_key")?, row.try_get::<String, _>("config_value")?);
+        map.insert(
+            row.try_get::<String, _>("config_key")?,
+            row.try_get::<String, _>("config_value")?,
+        );
     }
     Ok(map)
 }
@@ -104,12 +110,7 @@ pub fn from_map(raw: &HashMap<String, String>, defaults: ConfigDefaults) -> Guil
 }
 
 /// Ecrit (ou remplace) une cle de config pour un serveur.
-pub async fn set(
-    pool: &PgPool,
-    guild_id: &str,
-    key: &str,
-    value: &str,
-) -> Result<(), sqlx::Error> {
+pub async fn set(pool: &PgPool, guild_id: &str, key: &str, value: &str) -> Result<(), sqlx::Error> {
     sqlx::query(
         "INSERT INTO bot_guild_config (guild_id, bot_name, config_key, config_value) \
          VALUES ($1, $2, $3, $4) \

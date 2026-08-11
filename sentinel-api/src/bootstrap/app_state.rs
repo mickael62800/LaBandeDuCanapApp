@@ -16,6 +16,7 @@ use crate::adapters::outbound::postgres::audit::user_activity_repository::PgUser
 use crate::adapters::outbound::postgres::audit::watched_user_repository::PgWatchedUserRepository;
 use crate::adapters::outbound::postgres::community::daily_activity_repository::PgDailyActivityRepository;
 use crate::adapters::outbound::postgres::community::discord_role_repository::PgDiscordRoleRepository;
+use crate::adapters::outbound::postgres::community::level_repository::PgLevelRepository;
 use crate::adapters::outbound::postgres::community::sponsorship_repository::PgSponsorshipRepository;
 use crate::adapters::outbound::postgres::community::temp_role_repository::PgTempRoleRepository;
 use crate::adapters::outbound::postgres::community::welcome_config_repository::PgWelcomeConfigRepository;
@@ -38,7 +39,6 @@ use sentinel_core::application::audit::manage_security_service::ManageSecuritySe
 use sentinel_core::application::audit::manage_stats_service::ManageStatsService;
 use sentinel_core::application::audit::manage_watched_users_service::ManageWatchedUsersService;
 use sentinel_core::application::community::manage_levels_service::ManageLevelsService;
-use crate::adapters::outbound::postgres::community::level_repository::PgLevelRepository;
 use sentinel_core::application::moderation::manage_infractions_service::ManageInfractionsService;
 use sentinel_core::application::moderation::manage_moderation_service::ManageModerationService;
 use sentinel_core::application::moderation::manage_rules_service::ManageRulesService;
@@ -315,23 +315,25 @@ pub async fn build_app_state(
     );
     // Note : la creation de moderation_uc est differee plus bas pour pouvoir
     // injecter strikes_uc via with_strikes_uc (log_action_with_strike).
-    let service_registry: Arc<
-        dyn ops_core::ports::outbound::service_registry::ServiceRegistry,
-    > = Arc::new(
-        crate::adapters::outbound::redis_service_registry::RedisServiceRegistry::new(
-            redis_client.clone(),
-        ),
-    );
+    let service_registry: Arc<dyn ops_core::ports::outbound::service_registry::ServiceRegistry> =
+        Arc::new(
+            crate::adapters::outbound::redis_service_registry::RedisServiceRegistry::new(
+                redis_client.clone(),
+            ),
+        );
     let stats_uc = Arc::new(ManageStatsService::new(
         stats_repo.clone(),
         infraction_repo.clone(),
         cache.clone(),
     ));
-        let analytics_repo = Arc::new(PgAnalyticsRepository::new(pg_pool.clone()));
-let level_repo = Arc::new(PgLevelRepository::new(pg_pool.clone()));
-    let manage_levels_usecase = Arc::new(ManageLevelsService::new(level_repo.clone(), bot_config_repo.clone()));
+    let analytics_repo = Arc::new(PgAnalyticsRepository::new(pg_pool.clone()));
+    let level_repo = Arc::new(PgLevelRepository::new(pg_pool.clone()));
+    let manage_levels_usecase = Arc::new(ManageLevelsService::new(
+        level_repo.clone(),
+        bot_config_repo.clone(),
+    ));
     let daily_activity_repo = Arc::new(PgDailyActivityRepository::new(pg_pool.clone()));
-        let announcement_repo = Arc::new(crate::adapters::outbound::postgres::community::announcement_repository::PgAnnouncementRepository::new(pg_pool.clone()));
+    let announcement_repo = Arc::new(crate::adapters::outbound::postgres::community::announcement_repository::PgAnnouncementRepository::new(pg_pool.clone()));
     let announcements_uc: Arc<dyn sentinel_core::ports::inbound::community::manage_announcements::ManageAnnouncementsUseCase> = Arc::new(sentinel_core::application::community::manage_announcements_service::ManageAnnouncementsService::new(announcement_repo, bot_config_repo.clone()));
     let embed_repo = Arc::new(
         crate::adapters::outbound::postgres::community::embed_repository::PgEmbedRepository::new(
@@ -378,9 +380,9 @@ let level_repo = Arc::new(PgLevelRepository::new(pg_pool.clone()));
     let moderation_uc = Arc::new(
         ManageModerationService::new(moderation_repo.clone(), strike_repo.clone(), cache.clone())
             .with_audit_logs_uc(audit_logs_uc.clone()
-                as Arc<
-                    dyn sentinel_core::ports::inbound::audit::manage_audit_logs::ManageAuditLogsUseCase,
-                >),
+            as Arc<
+                dyn sentinel_core::ports::inbound::audit::manage_audit_logs::ManageAuditLogsUseCase,
+            >),
     );
     let discord_role_repo = Arc::new(PgDiscordRoleRepository::new(pg_pool.clone()));
 
@@ -457,17 +459,9 @@ let level_repo = Arc::new(PgLevelRepository::new(pg_pool.clone()));
             ),
         );
 
-    // OAuth Discord web : repo Postgres (sessions + logins) + use case. Le SQL
-    // vit dans l'adapter ; l'echange HTTP avec Discord + CSRF/cookies restent
-    // au handler (concern HTTP).
-    let oauth_session_repo: Arc<dyn sentinel_core::ports::outbound::system::oauth_session_repository::OAuthSessionRepository> =
-        Arc::new(crate::adapters::outbound::postgres::system::oauth_session_repository::PgOAuthSessionRepository::new(pg_pool.clone()));
-    let oauth_uc: Arc<dyn sentinel_core::ports::inbound::system::manage_oauth::ManageOAuthUseCase> =
-        Arc::new(
-            sentinel_core::application::system::manage_oauth_service::ManageOAuthService::new(
-                oauth_session_repo,
-            ),
-        );
+    // L'OAuth Discord web (sessions, journal de login, echange de jetons) a ete
+    // extrait dans la plateforme `auth-*`. Ce processus n'en garde qu'un
+    // consommateur : `AppState.auth`, cf. `middleware/superadmin.rs`.
 
     // Quarantaine de securite : repo Postgres (SQL security_quarantine_pending) +
     // use case (calcul du delai avant kick). Le handler ne fait que parse/RBAC/map.
@@ -553,7 +547,6 @@ let level_repo = Arc::new(PgLevelRepository::new(pg_pool.clone()));
         security_uc.clone(),
     ));
 
-    
     // ── Discord API service : instance deja creee plus haut.
     // On re-declare ici pour garder la variable accessible dans la suite du
     // bootstrap (AppState.discord_api).
@@ -663,7 +656,6 @@ let level_repo = Arc::new(PgLevelRepository::new(pg_pool.clone()));
         tickets_uc: tickets_uc.clone(),
         reset_guild_uc: reset_guild_uc.clone(),
         bot_persistence_uc: bot_persistence_uc.clone(),
-        oauth_uc: oauth_uc.clone(),
         quarantine_uc: quarantine_uc.clone(),
         lockdown_uc: lockdown_uc.clone(),
         slowmode_uc: slowmode_uc.clone(),
@@ -686,10 +678,6 @@ let level_repo = Arc::new(PgLevelRepository::new(pg_pool.clone()));
         discord_api: discord_api.clone(),
         bot_config_repo: bot_config_repo.clone(),
         redis_client: redis_client.clone(),
-        discord_oauth_client_id: config.discord_oauth_client_id.clone(),
-        discord_oauth_client_secret: config.discord_oauth_client_secret.clone(),
-        discord_oauth_redirect_uri: config.discord_oauth_redirect_uri.clone(),
-        web_front_url: config.web_front_url.clone(),
         superadmin_user_ids: Arc::new(config.superadmin_user_ids.clone()),
         api_key: config.api_key.clone(),
     };
@@ -816,9 +804,9 @@ let level_repo = Arc::new(PgLevelRepository::new(pg_pool.clone()));
         redis_client: redis_client.clone(),
         cache: Some(cache.clone()),
         superadmin_user_ids: Arc::new(config.superadmin_user_ids.clone()),
+        auth: Arc::new(platform_common_api::auth_client::AuthClient::new(
+            std::env::var("AUTH_API_URL").unwrap_or_else(|_| "http://auth-api:8096".into()),
+            std::env::var("AUTH_API_TOKEN").unwrap_or_default(),
+        )),
     }
 }
-
-
-
-

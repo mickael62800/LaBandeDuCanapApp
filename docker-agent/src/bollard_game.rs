@@ -1,4 +1,10 @@
-//! Implementation `ContainerRuntime` via bollard (Docker socket).
+//! Implementation `GameContainerRuntime` via bollard (Docker socket).
+//!
+//! Deplace depuis `nexus-api/src/adapters/outbound/game_runtime/docker_runtime.rs`
+//! sans changement de comportement : seuls les imports bougent. Le but du
+//! deplacement est que le mapping bollard -> domaine n'existe qu'ICI, dans le
+//! seul processus qui voit `/var/run/docker.sock`. `nexus-api` en garde un
+//! client HTTP, comme `sentinel-api` avec `HttpDockerHost`.
 //!
 //! Securite par construction :
 //!  - Pas de cmd ni d'entrypoint custom passe au caller (l'image decide).
@@ -29,14 +35,28 @@ use futures_util::StreamExt;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use nexus_core::domain::errors::DomainError;
-use nexus_core::ports::outbound::game::container_runtime::{
-    ContainerRuntime, ContainerSpec, ContainerState, ContainerStats, ContainerStatus,
-    ManagedContainer, PortProtocol, RestartPolicy,
+use ops_core::domain::entities::game_runtime::{
+    ContainerSpec, ContainerState, ContainerStats, ContainerStatus, ManagedContainer, PortProtocol,
+    RestartPolicy,
 };
+use ops_core::domain::errors::DomainError;
+use ops_core::ports::outbound::game_runtime::GameContainerRuntime;
 
-const SENTINEL_LABEL_KEY: &str = "sentinel.managed";
-const SENTINEL_LABEL_VALUE: &str = "game-portal";
+/// Label canonique du portail de jeux. `nexus.*` et plus `sentinel.*` : les
+/// serveurs de jeu ont quitte Sentinel au portage, le prefixe historique ne
+/// designait plus rien.
+const MANAGED_LABEL_KEY: &str = "nexus.managed";
+/// Label de la generation precedente, ECRIT ET LU en plus du nouveau.
+///
+/// La flotte deja en service ne porte que celui-la. Le reconciler retrouve ses
+/// conteneurs par label : basculer d'un coup les aurait tous fait passer pour
+/// des orphelins — donc arreter et supprimer par le job de reconciliation. On
+/// ecrit les deux et on lit les deux ; le jour ou plus aucun conteneur ne porte
+/// l'ancien (verifiable par
+/// `docker ps -a --filter label=sentinel.managed=game-portal`), cette constante
+/// et les deux boucles qui la lisent disparaissent.
+const LEGACY_MANAGED_LABEL_KEY: &str = "sentinel.managed";
+const MANAGED_LABEL_VALUE: &str = "game-portal";
 
 /// Plafond CPU par defaut : 2 vCPU (en nano-CPUs, unite Docker). Utilise
 /// quand le serveur n'en definit pas. Empeche un container de monopoliser
@@ -120,7 +140,7 @@ fn compute_cpu_percent(s: &BollardStats) -> f64 {
 }
 
 #[async_trait]
-impl ContainerRuntime for DockerContainerRuntime {
+impl GameContainerRuntime for DockerContainerRuntime {
     async fn ensure_network(&self, name: &str) -> Result<(), DomainError> {
         let existing = self
             .docker
@@ -147,7 +167,8 @@ impl ContainerRuntime for DockerContainerRuntime {
     async fn ensure_volume(&self, name: &str) -> Result<(), DomainError> {
         // create_volume idempotent si meme nom (Docker retourne le volume existant).
         let mut labels: HashMap<&str, &str> = HashMap::new();
-        labels.insert(SENTINEL_LABEL_KEY, SENTINEL_LABEL_VALUE);
+        labels.insert(MANAGED_LABEL_KEY, MANAGED_LABEL_VALUE);
+        labels.insert(LEGACY_MANAGED_LABEL_KEY, MANAGED_LABEL_VALUE);
         self.docker
             .create_volume(CreateVolumeOptions {
                 name,
@@ -219,11 +240,18 @@ impl ContainerRuntime for DockerContainerRuntime {
             })
             .collect();
 
-        // ── Labels (ajoute sentinel.managed pour le reconciler) ────────
+        // ── Labels (marque le conteneur pour le reconciler) ────────────
+        // Les DEUX generations sont posees : un conteneur cree aujourd'hui
+        // doit rester visible d'un agent qui n'aurait pas encore ete mis a
+        // jour, et inversement.
         let mut labels = spec.labels.clone();
         labels.insert(
-            SENTINEL_LABEL_KEY.to_string(),
-            SENTINEL_LABEL_VALUE.to_string(),
+            MANAGED_LABEL_KEY.to_string(),
+            MANAGED_LABEL_VALUE.to_string(),
+        );
+        labels.insert(
+            LEGACY_MANAGED_LABEL_KEY.to_string(),
+            MANAGED_LABEL_VALUE.to_string(),
         );
 
         // ── Env vars ──────────────────────────────────────────────────
@@ -542,33 +570,49 @@ impl ContainerRuntime for DockerContainerRuntime {
     }
 
     async fn list_managed_containers(&self) -> Result<Vec<ManagedContainer>, DomainError> {
-        let mut filters = HashMap::new();
-        filters.insert(
-            "label".to_string(),
-            vec![format!("{SENTINEL_LABEL_KEY}={SENTINEL_LABEL_VALUE}")],
-        );
-        let containers = self
-            .docker
-            .list_containers(Some(ListContainersOptions {
-                all: true,
-                filters,
-                ..Default::default()
-            }))
-            .await
-            .map_err(|e| DomainError::Internal(format!("list managed: {e}")))?;
-        Ok(containers
-            .into_iter()
-            .map(|c| ManagedContainer {
-                container_id: c.id.unwrap_or_default(),
-                name: c
-                    .names
-                    .and_then(|n| n.into_iter().next())
-                    .unwrap_or_default()
-                    .trim_start_matches('/')
-                    .to_string(),
-                state: map_state(c.state.as_deref()),
-                labels: c.labels.unwrap_or_default(),
-            })
-            .collect())
+        // DEUX passes, une par generation de label. Docker combine les filtres
+        // `label` en ET, pas en OU : une seule requete portant les deux ne
+        // renverrait que les conteneurs qui ont les DEUX — c'est-a-dire aucun
+        // de ceux deja en service. On interroge donc separement et on
+        // deduplique par identifiant.
+        let mut seen: HashMap<String, ManagedContainer> = HashMap::new();
+
+        for key in [MANAGED_LABEL_KEY, LEGACY_MANAGED_LABEL_KEY] {
+            let mut filters = HashMap::new();
+            filters.insert(
+                "label".to_string(),
+                vec![format!("{key}={MANAGED_LABEL_VALUE}")],
+            );
+            let containers = self
+                .docker
+                .list_containers(Some(ListContainersOptions {
+                    all: true,
+                    filters,
+                    ..Default::default()
+                }))
+                .await
+                .map_err(|e| DomainError::Internal(format!("list managed: {e}")))?;
+
+            for c in containers {
+                let container_id = c.id.unwrap_or_default();
+                if container_id.is_empty() {
+                    continue;
+                }
+                seen.entry(container_id.clone())
+                    .or_insert_with(|| ManagedContainer {
+                        container_id,
+                        name: c
+                            .names
+                            .and_then(|n| n.into_iter().next())
+                            .unwrap_or_default()
+                            .trim_start_matches('/')
+                            .to_string(),
+                        state: map_state(c.state.as_deref()),
+                        labels: c.labels.unwrap_or_default(),
+                    });
+            }
+        }
+
+        Ok(seen.into_values().collect())
     }
 }

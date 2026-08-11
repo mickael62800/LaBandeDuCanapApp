@@ -244,6 +244,43 @@ pub struct PruneBuildCacheQuery {
     pub all: Option<bool>,
 }
 
+#[cfg(test)]
+mod tests {
+    use super::{prune_step, prune_step_skipped};
+    use ops_core::domain::entities::docker_host::PruneOutcome;
+    use ops_core::domain::errors::DomainError;
+
+    #[test]
+    fn prune_step_ok_porte_le_resultat() {
+        let step = prune_step(Ok(PruneOutcome {
+            deleted: vec!["a".into(), "b".into()],
+            space_reclaimed_bytes: 42,
+        }));
+        assert!(step.ok);
+        assert_eq!(step.deleted.len(), 2);
+        assert_eq!(step.space_reclaimed_bytes, 42);
+        assert!(step.error.is_none());
+    }
+
+    #[test]
+    fn prune_step_err_expose_l_echec_sans_espace_recupere() {
+        let step = prune_step(Err(DomainError::Internal("boom".into())));
+        assert!(!step.ok);
+        assert!(step.deleted.is_empty());
+        assert_eq!(step.space_reclaimed_bytes, 0);
+        assert!(step.error.is_some());
+    }
+
+    #[test]
+    fn prune_step_skipped_est_un_succes_neutre() {
+        let step = prune_step_skipped();
+        assert!(step.ok);
+        assert!(step.deleted.is_empty());
+        assert_eq!(step.space_reclaimed_bytes, 0);
+        assert!(step.error.is_none());
+    }
+}
+
 /// POST /api/docker/prune/build-cache — purge le build cache Docker (buildkit).
 pub async fn prune_build_cache(
     State(state): State<AppState>,

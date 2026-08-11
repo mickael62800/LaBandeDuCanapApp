@@ -431,3 +431,35 @@ impl axum::response::IntoResponse for ApiError {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::merge_context;
+
+    #[test]
+    fn merge_context_trims_and_joins() {
+        assert_eq!(
+            merge_context("  consigne  ", "\nsavoir\n"),
+            "consigne\n\nsavoir"
+        );
+    }
+
+    #[test]
+    fn merge_context_borne_a_12000_caracteres() {
+        let long = "a".repeat(20_000);
+        let merged = merge_context(&long, "ignore");
+        // La borne compte des caracteres, pas des octets : on la verifie ainsi.
+        assert_eq!(merged.chars().count(), 12_000);
+    }
+
+    #[test]
+    fn merge_context_tronque_sans_couper_un_caractere_multioctet() {
+        // 12_000 caracteres accentues : la troncature `chars().take()` ne doit
+        // jamais produire d'octet UTF-8 invalide (ce que ferait une coupe sur
+        // les octets). Le simple fait de construire la String le garantit.
+        let accents = "é".repeat(13_000);
+        let merged = merge_context(&accents, "");
+        assert_eq!(merged.chars().count(), 12_000);
+        assert!(merged.chars().all(|c| c == 'é'));
+    }
+}
+

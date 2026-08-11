@@ -191,6 +191,24 @@ mod tests {
     }
 
     #[test]
+    fn enabled_libre_suit_la_semantique_fail_closed() {
+        // Cle absente = desactive.
+        assert!(!enabled(&map(&[])));
+        // Meme table de verite que `from_map(...).enabled`, sans defaults.
+        for v in ["true", "1", "yes", "TRUE", " Yes "] {
+            assert!(enabled(&map(&[("enabled", v)])), "{v}");
+        }
+        for v in ["false", "0", "no", "n'importe quoi"] {
+            assert!(!enabled(&map(&[("enabled", v)])), "{v}");
+        }
+        // Coherence stricte avec le champ derive par `from_map`.
+        for pairs in [vec![], vec![("enabled", "true")], vec![("enabled", "x")]] {
+            let m = map(&pairs);
+            assert_eq!(enabled(&m), from_map(&m, DEFAULTS).enabled);
+        }
+    }
+
+    #[test]
     fn semantique_booleenne_de_reference() {
         for v in ["true", "1", "yes", "TRUE", " Yes "] {
             assert!(from_map(&map(&[("enabled", v)]), DEFAULTS).enabled, "{v}");

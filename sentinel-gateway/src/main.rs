@@ -74,13 +74,14 @@ async fn main() {
         "Demarrage de Sentinel Gateway"
     );
 
-    // Warning securite si API_KEY vide
+    // Warning securite si SENTINEL_API_KEY vide
     if config.api_key.is_empty() {
-        warn!("API_KEY non definie — authentification WebSocket desactivee (mode dev)");
+        warn!("SENTINEL_API_KEY non definie — authentification WebSocket desactivee (mode dev)");
     }
 
-    // Logger
-    let gw_logger = GatewayLogger::new(config.api_url.clone());
+    // Le logger reutilise la configuration deja chargee : il ne relit pas une
+    // variable d'environnement potentiellement differente.
+    let gw_logger = GatewayLogger::new(config.api_url.clone(), config.api_key.clone());
 
     // Broadcaster local (capacite configurable)
     let broadcaster = Arc::new(EventBroadcaster::new(

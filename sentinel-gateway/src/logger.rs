@@ -9,11 +9,14 @@ pub struct GatewayLogger {
 }
 
 impl GatewayLogger {
-    pub fn new(api_url: String) -> Arc<Self> {
+    pub fn new(api_url: String, api_key: String) -> Arc<Self> {
         Arc::new(Self {
-            client: Client::new(),
+            client: Client::builder()
+                .user_agent(concat!("sentinel-gateway/", env!("CARGO_PKG_VERSION")))
+                .build()
+                .expect("creation client HTTP gateway impossible"),
             api_url,
-            api_key: std::env::var("SENTINEL_API_KEY").unwrap_or_default(),
+            api_key,
         })
     }
 
@@ -32,8 +35,17 @@ impl GatewayLogger {
             req = req.bearer_auth(&self.api_key);
         }
         tokio::spawn(async move {
-            if let Err(e) = req.send().await {
-                tracing::debug!(error = %e, "Failed to send gateway log to API");
+            match req.send().await {
+                Ok(response) if !response.status().is_success() => {
+                    tracing::warn!(
+                        status = %response.status(),
+                        "Echec envoi log gateway vers l'API"
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "Echec envoi log gateway vers l'API");
+                }
+                Ok(_) => {}
             }
         });
     }

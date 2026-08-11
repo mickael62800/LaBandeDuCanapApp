@@ -25,7 +25,9 @@ impl Config {
                 .unwrap_or(3001),
             redis_url: std::env::var("REDIS_URL")
                 .unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string()),
-            api_key: std::env::var("SENTINEL_API_KEY").unwrap_or_default(),
+            api_key: std::env::var("SENTINEL_API_KEY")
+                .or_else(|_| std::env::var("API_KEY"))
+                .unwrap_or_default(),
             redis_channel: std::env::var("REDIS_CHANNEL")
                 .unwrap_or_else(|_| "sentinel:events".to_string()),
             allowed_origins: std::env::var("ALLOWED_ORIGINS").unwrap_or_default(),

@@ -18,6 +18,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       WEB_DOMAIN: ${WEB_DOMAIN:-}
+      WEB_DOMAIN_ALIASES: ${WEB_DOMAIN_ALIASES:-}
       LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL:-}
       LETSENCRYPT_STAGING: ${LETSENCRYPT_STAGING:-}
     entrypoint: /bin/sh
@@ -35,6 +36,19 @@ services:
           STAGING_FLAG="--staging"
           echo "[certbot] STAGING mode actif (certs non trustables, pour tests)"
         fi
+        DOMAIN_ARGS="-d $$WEB_DOMAIN"
+        for DOMAIN_ALIAS in $$(printf '%s' "$${WEB_DOMAIN_ALIASES:-}" | tr ',' ' '); do
+          case "$$DOMAIN_ALIAS" in
+            *[!A-Za-z0-9.-]*|'')
+              echo "[certbot] domaine alternatif invalide : $$DOMAIN_ALIAS"
+              exit 1
+              ;;
+          esac
+          if [ "$$DOMAIN_ALIAS" != "$$WEB_DOMAIN" ]; then
+            DOMAIN_ARGS="$$DOMAIN_ARGS -d $$DOMAIN_ALIAS"
+          fi
+        done
+        echo "[certbot] domaines demandes : $$DOMAIN_ARGS"
         # On RESTART le conteneur web (et non un simple HUP nginx) : le symlink
         # /etc/nginx/certs -> cert actif est pose par l'entrypoint AU DEMARRAGE
         # uniquement, et il pointe sur le self-signed tant que le conteneur n'a
@@ -46,7 +60,8 @@ services:
         certbot certonly --webroot -w /var/www/certbot \
           --non-interactive --agree-tos --email "$$LETSENCRYPT_EMAIL" \
           $$STAGING_FLAG --keep-until-expiring \
-          -d "$$WEB_DOMAIN" || echo "[certbot] premiere obtention echouee, retry au prochain cycle"
+          --cert-name "$$WEB_DOMAIN" --expand \
+          $$DOMAIN_ARGS || echo "[certbot] premiere obtention echouee, retry au prochain cycle"
         docker restart $$(docker ps -q -f label=com.docker.compose.service=web) 2>/dev/null || true
         trap exit TERM
         while :; do

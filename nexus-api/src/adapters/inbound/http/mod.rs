@@ -144,6 +144,10 @@ pub fn build_router_with(state: AppState, config: HttpConfig) -> Router {
 
     let api = Router::new()
         .route(
+            "/api/grand-salon/{guild_id}/membership/{user_id}",
+            get(handlers::grand_salon::membership),
+        )
+        .route(
             "/api/grand-salon/{guild_id}/habitues/{user_id}",
             get(handlers::grand_salon::profile).post(handlers::grand_salon::join),
         )

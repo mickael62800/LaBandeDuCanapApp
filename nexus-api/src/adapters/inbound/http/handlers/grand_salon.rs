@@ -6,6 +6,7 @@ use chrono::{Duration, Utc};
 use nexus_core::domain::entities::grand_salon::{
     Cercle, CercleKind, Dossier, GazetteArticle, Habitué, MotionDuSalon, MotionStatus,
 };
+use nexus_core::domain::errors::DomainError;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -150,6 +151,20 @@ pub async fn profile(
 ) -> Result<Json<HabitueDto>, ApiError> {
     Ok(Json(s.grand_salon.profile(&g, &u).await?.into()))
 }
+
+/// Etat d'adhesion destine aux interfaces : ne pas etre encore habitue est un
+/// etat normal, represente par `200 null` plutot que par une erreur HTTP 404.
+pub async fn membership(
+    State(s): State<AppState>,
+    Path((g, u)): Path<(String, String)>,
+) -> Result<Json<Option<HabitueDto>>, ApiError> {
+    match s.grand_salon.profile(&g, &u).await {
+        Ok(profile) => Ok(Json(Some(profile.into()))),
+        Err(DomainError::NotFound(_)) => Ok(Json(None)),
+        Err(error) => Err(error.into()),
+    }
+}
+
 pub async fn motions(
     State(s): State<AppState>,
     Path(g): Path<String>,

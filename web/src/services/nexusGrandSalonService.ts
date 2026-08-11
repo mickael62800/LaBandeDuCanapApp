@@ -8,6 +8,7 @@ export interface GrandSalonDossier { id:string; subject:string; verified:boolean
 
 const root = (guildId:string) => `/api/grand-salon/${encodeURIComponent(guildId)}`;
 export const nexusGrandSalonService = {
+  membership: (g:string,u:string) => nexusGet<GrandSalonProfile|null>(`${root(g)}/membership/${encodeURIComponent(u)}`,g),
   profile: (g:string,u:string) => nexusGet<GrandSalonProfile>(`${root(g)}/habitues/${encodeURIComponent(u)}`,g),
   join: (g:string,u:string,name:string) => nexusPost<GrandSalonProfile>(`${root(g)}/habitues/${encodeURIComponent(u)}`,g,{display_name:name}),
   daily: (g:string,u:string) => nexusPost<GrandSalonProfile>(`${root(g)}/habitues/${encodeURIComponent(u)}/daily`,g),

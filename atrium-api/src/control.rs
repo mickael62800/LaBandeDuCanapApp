@@ -23,15 +23,15 @@ pub struct BotControlStore {
 }
 
 impl BotControlStore {
-    pub fn new(config: &AppConfig) -> Result<Self, sqlx::Error> {
-        Ok(Self {
-            pool: PgPool::connect_lazy(&config.rag_database_url)?,
+    pub fn new(pool: PgPool, config: &AppConfig) -> Self {
+        Self {
+            pool,
             defaults: ConfigDefaults {
                 user_cooldown_secs: config.user_cooldown_secs.min(i64::MAX as u64) as i64,
                 user_daily_limit: config.user_daily_limit.min(i32::MAX as u32) as i32,
                 global_daily_limit: config.global_daily_limit.min(i32::MAX as u32) as i32,
             },
-        })
+        }
     }
 
     /// Cle absente = DESACTIVE (fail-closed), comme partout dans le depot.

@@ -4,13 +4,13 @@ pub mod alert_rule_repository;
 pub mod auth_logins;
 pub mod geoip;
 pub mod host_security;
-pub mod http_docker_host;
 pub mod ip_ban_repository;
 pub mod log_repository;
 pub mod redis_log_stream;
 pub mod security_audit_repository;
 pub mod security_log_repository;
-pub mod server_event_repository;
+// `http_docker_host` et `server_event_repository` vivent desormais dans la crate
+// `ops-adapters`, partagee avec `ops-worker` (cf. son en-tete de module).
 
 use ops_core::domain::errors::DomainError;
 

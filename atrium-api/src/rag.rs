@@ -167,52 +167,80 @@ impl RagService {
     }
 
     pub async fn index_knowledge(&self) -> Result<(), String> {
+        // Etat de tous les documents embarques en une seule requete, plutot
+        // qu'un aller-retour par document : on en deduit immediatement ceux qui
+        // sont inchanges et qu'il est inutile de re-vectoriser.
+        let sources: Vec<String> = KNOWLEDGE.iter().map(|d| d.source.to_owned()).collect();
+        let existing_rows = sqlx::query_as::<_, ExistingDocument>(
+            "SELECT d.source_url, d.id, d.content_hash, COUNT(c.id)::bigint AS chunk_count \
+             FROM atrium_knowledge_documents d \
+             LEFT JOIN atrium_knowledge_chunks c ON c.document_id = d.id \
+             WHERE d.source_url = ANY($1) GROUP BY d.id",
+        )
+        .bind(&sources)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|error| error.to_string())?;
+        let existing: std::collections::HashMap<String, ExistingDocument> = existing_rows
+            .into_iter()
+            .filter_map(|row| row.source_url.clone().map(|src| (src, row)))
+            .collect();
+
         for document in KNOWLEDGE {
             let hash = content_hash(document.content);
-            let existing = sqlx::query_as::<_, ExistingDocument>(
-                "SELECT d.id, d.content_hash, COUNT(c.id)::bigint AS chunk_count \
-                 FROM atrium_knowledge_documents d LEFT JOIN atrium_knowledge_chunks c ON c.document_id = d.id \
-                 WHERE d.source_url = $1 GROUP BY d.id, d.content_hash LIMIT 1",
-            )
-            .bind(document.source)
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(|error| error.to_string())?;
-
-            if existing
-                .as_ref()
-                .is_some_and(|item| item.content_hash == hash && item.chunk_count > 0)
-            {
+            let previous = existing.get(document.source);
+            if previous.is_some_and(|item| item.content_hash == hash && item.chunk_count > 0) {
                 continue;
             }
-            let id = existing
-                .as_ref()
-                .map(|item| item.id)
-                .unwrap_or_else(Uuid::new_v4);
+            let id = previous.map(|item| item.id).unwrap_or_else(Uuid::new_v4);
             let chunks = split_chunks(document.content);
             let vectors = self.embeddings.embed_many(&chunks).await?;
             if vectors.len() != chunks.len() {
                 return Err("nombre d'embeddings invalide".into());
             }
 
+            // Upsert du document, purge de ses anciens fragments et insertion des
+            // nouveaux dans UNE transaction : une interruption ne peut plus
+            // laisser un document sans fragments (donc muet dans les reponses).
+            let mut tx = self.pool.begin().await.map_err(|error| error.to_string())?;
             sqlx::query(
                 "INSERT INTO atrium_knowledge_documents (id, guild_id, title, source_url, content_hash) \
                  VALUES ($1, '*', $2, $3, $4) \
                  ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, source_url = EXCLUDED.source_url, \
                  content_hash = EXCLUDED.content_hash, enabled = TRUE, updated_at = now()",
             )
-            .bind(id).bind(document.title).bind(document.source).bind(&hash).execute(&self.pool).await
-            .map_err(|error| error.to_string())?;
+            .bind(id).bind(document.title).bind(document.source).bind(&hash)
+            .execute(&mut *tx).await.map_err(|error| error.to_string())?;
             sqlx::query("DELETE FROM atrium_knowledge_chunks WHERE document_id = $1")
                 .bind(id)
-                .execute(&self.pool)
+                .execute(&mut *tx)
                 .await
                 .map_err(|error| error.to_string())?;
-            for (ordinal, (content, embedding)) in chunks.iter().zip(vectors.iter()).enumerate() {
-                sqlx::query("INSERT INTO atrium_knowledge_chunks (id, document_id, ordinal, content, embedding) VALUES ($1, $2, $3, $4, $5::vector)")
-                    .bind(Uuid::new_v4()).bind(id).bind(ordinal as i32).bind(content).bind(vector_literal(embedding))
-                    .execute(&self.pool).await.map_err(|error| error.to_string())?;
+            if !chunks.is_empty() {
+                // Insertion par lot : un seul aller-retour au lieu d'un INSERT
+                // par fragment. L'embedding est lie en texte puis converti par
+                // `::vector`, comme dans le chemin unitaire d'origine.
+                let mut builder = sqlx::QueryBuilder::new(
+                    "INSERT INTO atrium_knowledge_chunks (id, document_id, ordinal, content, embedding) ",
+                );
+                builder.push_values(
+                    chunks.iter().zip(vectors.iter()).enumerate(),
+                    |mut row, (ordinal, (content, embedding))| {
+                        row.push_bind(Uuid::new_v4())
+                            .push_bind(id)
+                            .push_bind(ordinal as i32)
+                            .push_bind(content)
+                            .push_bind(vector_literal(embedding))
+                            .push_unseparated("::vector");
+                    },
+                );
+                builder
+                    .build()
+                    .execute(&mut *tx)
+                    .await
+                    .map_err(|error| error.to_string())?;
             }
+            tx.commit().await.map_err(|error| error.to_string())?;
             tracing::info!(
                 source = document.source,
                 chunks = chunks.len(),
@@ -286,15 +314,13 @@ impl RagService {
     }
 }
 
-pub fn service(config: &AppConfig) -> Result<Arc<RagService>, sqlx::Error> {
-    Ok(Arc::new(RagService::new(
-        PgPool::connect_lazy(&config.rag_database_url)?,
-        config,
-    )))
+pub fn service(pool: PgPool, config: &AppConfig) -> Arc<RagService> {
+    Arc::new(RagService::new(pool, config))
 }
 
 #[derive(FromRow)]
 struct ExistingDocument {
+    source_url: Option<String>,
     id: Uuid,
     content_hash: String,
     chunk_count: i64,
@@ -329,8 +355,19 @@ struct EmbeddingData {
 }
 impl EmbeddingsClient {
     fn new(config: &AppConfig) -> Self {
+        // Ollama peut etre lent au premier appel (chargement du modele) mais ne
+        // doit jamais immobiliser une requete indefiniment : sans timeout, une
+        // connexion bloquee gele l'accueil, et l'indexation gelait le demarrage
+        // de l'API. Timeout de connexion court, timeout total plus large pour
+        // absorber un batch d'embeddings.
+        let client = Client::builder()
+            .connect_timeout(std::time::Duration::from_secs(5))
+            .timeout(std::time::Duration::from_secs(30))
+            .pool_max_idle_per_host(4)
+            .build()
+            .unwrap_or_default();
         Self {
-            client: Client::new(),
+            client,
             url: format!(
                 "{}/embeddings",
                 config.embeddings_base_url.trim_end_matches('/')

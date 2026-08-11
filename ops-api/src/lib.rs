@@ -17,19 +17,23 @@
 //!
 //! # Base de donnees
 //!
-//! Ce service se connecte a la base de Sentinel — et non a une base dediee.
-//! Postgres ne sait pas requeter entre bases logiques, or l'exploitation doit
-//! LIRE `logs` et `audit_logs`, qui sont ecrites par Sentinel et ses bots sur
-//! le chemin chaud. La separation passe donc par un ROLE Postgres restreint :
-//! lecture-ecriture sur les tables que l'exploitation possede (`alert_rules`,
-//! `ip_bans`, `server_events`), lecture seule sur les vues `ops_logs_v` et
-//! `ops_audit_logs_v`. La regle de propriete est ainsi verifiee par la base,
-//! pas tenue par convention.
+//! Ce service se connecte a la base de Sentinel (`discord_sentinel`) — et non a
+//! une base dediee. Postgres ne sait pas requeter entre bases logiques, or
+//! l'exploitation doit LIRE `logs` et `audit_logs`, ecrites par Sentinel et ses
+//! bots sur le chemin chaud. Il partage donc le role applicatif `sentinel_app`
+//! avec `sentinel-api` et `sentinel-worker`, et lit les logs via les vues
+//! `ops_logs_v` / `ops_audit_logs_v`.
+//!
+//! Un role Postgres restreint par service (`sentinel_ops`, migration 024) avait
+//! ete tente puis ABANDONNE en migration 028 : jamais utilise, droits
+//! incomplets, il donnait l'illusion d'un cloisonnement inexistant. Ne pas le
+//! reintroduire (cf. CLAUDE.md).
 
 use std::sync::Arc;
 
-use axum::extract::FromRef;
+use axum::extract::{FromRef, State};
 use axum::http::StatusCode;
+use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::{Json, Router};
 use ops_core::ports::inbound::manage_alert_rules::ManageAlertRulesUseCase;
@@ -70,6 +74,9 @@ pub struct AppState {
     pub geoip_uc: Arc<dyn ops_core::ports::inbound::lookup_geoip::LookupGeoIpUseCase>,
     pub server_events_uc:
         Arc<dyn ops_core::ports::inbound::manage_server_events::ManageServerEventsUseCase>,
+    /// Pool Postgres brut, uniquement pour la sonde de readiness (`SELECT 1`).
+    /// Le metier passe par les ports ; ceci n'est qu'un ping d'infrastructure.
+    pub pg_pool: sqlx::PgPool,
 }
 
 impl FromRef<AppState> for Arc<AppConfig> {
@@ -121,128 +128,143 @@ pub fn router(state: AppState) -> Router {
     let protected = Router::new()
         .route("/alert-rules", get(handlers::alert_rules::list))
         // ── Conteneurs de l'hote ──
-        .route("/docker/overview", get(handlers::docker::get_overview))
-        .route("/docker/containers", get(handlers::docker::list_containers))
+        .route(
+            "/docker/overview",
+            get(handlers::docker::overview::get_overview),
+        )
+        .route(
+            "/docker/containers",
+            get(handlers::docker::containers::list_containers),
+        )
         .route(
             "/docker/containers/{id}/start",
-            axum::routing::post(handlers::docker::start_container),
+            axum::routing::post(handlers::docker::containers::start_container),
         )
         .route(
             "/docker/containers/{id}/stop",
-            axum::routing::post(handlers::docker::stop_container),
+            axum::routing::post(handlers::docker::containers::stop_container),
         )
         .route(
             "/docker/containers/{id}/restart",
-            axum::routing::post(handlers::docker::restart_container),
+            axum::routing::post(handlers::docker::containers::restart_container),
         )
         .route(
             "/docker/containers/{id}",
-            axum::routing::delete(handlers::docker::remove_container),
+            axum::routing::delete(handlers::docker::containers::remove_container),
         )
         .route(
             "/docker/containers/{id}/logs",
-            get(handlers::docker::container_logs),
+            get(handlers::docker::containers::container_logs),
         )
-        .route("/docker/images", get(handlers::docker::list_images))
+        .route(
+            "/docker/images",
+            get(handlers::docker::images::list_images),
+        )
         .route(
             "/docker/images/{id}",
-            axum::routing::delete(handlers::docker::remove_image),
+            axum::routing::delete(handlers::docker::images::remove_image),
         )
-        .route("/docker/volumes", get(handlers::docker::list_volumes))
+        .route(
+            "/docker/volumes",
+            get(handlers::docker::volumes::list_volumes),
+        )
         .route(
             "/docker/volumes/{name}",
-            axum::routing::delete(handlers::docker::remove_volume),
+            axum::routing::delete(handlers::docker::volumes::remove_volume),
         )
-        .route("/docker/networks", get(handlers::docker::list_networks))
+        .route(
+            "/docker/networks",
+            get(handlers::docker::networks::list_networks),
+        )
         .route(
             "/docker/prune/containers",
-            axum::routing::post(handlers::docker::prune_containers),
+            axum::routing::post(handlers::docker::prune::prune_containers),
         )
         .route(
             "/docker/prune/images",
-            axum::routing::post(handlers::docker::prune_images),
+            axum::routing::post(handlers::docker::prune::prune_images),
         )
         .route(
             "/docker/prune/volumes",
-            axum::routing::post(handlers::docker::prune_volumes),
+            axum::routing::post(handlers::docker::prune::prune_volumes),
         )
         .route(
             "/docker/prune/networks",
-            axum::routing::post(handlers::docker::prune_networks),
+            axum::routing::post(handlers::docker::prune::prune_networks),
         )
         .route(
             "/docker/prune/system",
-            axum::routing::post(handlers::docker::prune_system),
+            axum::routing::post(handlers::docker::prune::prune_system),
         )
         .route(
             "/docker/prune/build-cache",
-            axum::routing::post(handlers::docker::prune_build_cache),
+            axum::routing::post(handlers::docker::prune::prune_build_cache),
         )
         .route(
             "/containers/changes",
-            get(handlers::docker::container_changes),
+            get(handlers::docker::changes::container_changes),
         )
         // ── Securite de l'hote ──
         .route(
             "/security/server-events",
             get(handlers::server_events::list_server_events),
         )
-        .route("/security/top-ips", get(handlers::security::top_ips))
+        .route("/security/top-ips", get(handlers::security::logs::top_ips))
         .route(
             "/security/auth-failures",
-            get(handlers::security::auth_failures),
+            get(handlers::security::logs::auth_failures),
         )
-        .route("/security/banned-ips", get(handlers::security::banned_ips))
+        .route("/security/banned-ips", get(handlers::security::bans::banned_ips))
         .route(
             "/security/manual-bans",
-            get(handlers::security::manual_bans),
+            get(handlers::security::bans::manual_bans),
         )
         .route(
             "/security/ban-ip",
-            axum::routing::post(handlers::security::ban_ip),
+            axum::routing::post(handlers::security::bans::ban_ip),
         )
         .route(
             "/security/unban-ip",
-            axum::routing::post(handlers::security::unban_ip),
+            axum::routing::post(handlers::security::bans::unban_ip),
         )
         .route(
             "/security/ssh-failures",
-            get(handlers::security::ssh_failures),
+            get(handlers::security::probes::ssh_failures),
         )
-        .route("/security/open-ports", get(handlers::security::open_ports))
+        .route("/security/open-ports", get(handlers::security::probes::open_ports))
         .route(
             "/security/file-integrity",
-            get(handlers::security::file_integrity),
+            get(handlers::security::probes::file_integrity),
         )
-        .route("/security/trivy", get(handlers::security::trivy_vulns))
-        .route("/security/disk-trend", get(handlers::security::disk_trend))
+        .route("/security/trivy", get(handlers::security::probes::trivy_vulns))
+        .route("/security/disk-trend", get(handlers::security::probes::disk_trend))
         .route(
             "/security/connections",
-            get(handlers::security::active_connections),
+            get(handlers::security::probes::active_connections),
         )
         .route(
             "/security/outbound",
-            get(handlers::security::outbound_connections),
+            get(handlers::security::probes::outbound_connections),
         )
         .route(
             "/security/nginx-suspicious",
-            get(handlers::security::nginx_suspicious),
+            get(handlers::security::probes::nginx_suspicious),
         )
-        .route("/security/tls-cert", get(handlers::security::tls_cert))
-        .route("/security/tls-errors", get(handlers::security::tls_errors))
+        .route("/security/tls-cert", get(handlers::security::tls::tls_cert))
+        .route("/security/tls-errors", get(handlers::security::tls::tls_errors))
         .route(
             "/security/traffic-trend",
-            get(handlers::security::traffic_trend),
+            get(handlers::security::logs::traffic_trend),
         )
-        .route("/security/geoip", get(handlers::security::geoip_lookup))
-        .route("/security/audit-logs", get(handlers::security::audit_logs))
+        .route("/security/geoip", get(handlers::security::geoip::geoip_lookup))
+        .route("/security/audit-logs", get(handlers::security::audit::audit_logs))
         .route(
             "/security/last-logins",
-            get(handlers::security::last_successful_logins),
+            get(handlers::security::audit::last_successful_logins),
         )
         .route(
             "/security/cleanup",
-            axum::routing::delete(handlers::security::cleanup_security_logs),
+            axum::routing::delete(handlers::security::audit::cleanup_security_logs),
         )
         .route(
             "/alert-rules/{id}",
@@ -255,6 +277,7 @@ pub fn router(state: AppState) -> Router {
 
     let router = Router::new()
         .route("/health", get(health))
+        .route("/ready", get(ready))
         .route("/metrics", get(handlers::metrics::metrics))
         .merge(protected)
         .with_state(state)
@@ -269,6 +292,59 @@ pub fn router(state: AppState) -> Router {
     platform_common_api::http::security_headers(router).with_state(rate_limiter)
 }
 
+/// Liveness : le processus tourne. Volontairement sans dependance externe — une
+/// panne de Postgres ou Redis ne doit PAS declencher un redemarrage du conteneur
+/// (ca n'y changerait rien et couperait le back-office pendant l'incident).
 async fn health() -> Json<serde_json::Value> {
     Json(serde_json::json!({ "status": "ok" }))
+}
+
+/// Readiness : l'API peut-elle reellement servir ? Verifie Postgres et Redis EN
+/// PARALLELE. Le Docker Agent est une dependance DEGRADEE : son indisponibilite
+/// n'empeche pas de servir logs, securite et audit, donc elle n'echoue pas la
+/// readiness — elle est seulement rapportee.
+async fn ready(State(state): State<AppState>) -> axum::response::Response {
+    let (postgres, redis, docker) = tokio::join!(
+        check_postgres(&state.pg_pool),
+        check_redis(&state.redis_client),
+        check_docker(&state.docker_host),
+    );
+
+    // Seules Postgres et Redis conditionnent la readiness.
+    let ready = postgres && redis;
+    let status = if ready {
+        StatusCode::OK
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
+    };
+    let body = Json(serde_json::json!({
+        "status": if ready { "ready" } else { "not_ready" },
+        "postgres": postgres,
+        "redis": redis,
+        "docker_agent": docker, // dependance degradee, informative
+    }));
+    (status, body).into_response()
+}
+
+async fn check_postgres(pool: &sqlx::PgPool) -> bool {
+    sqlx::query_scalar::<_, i32>("SELECT 1")
+        .fetch_one(pool)
+        .await
+        .is_ok()
+}
+
+async fn check_redis(client: &redis::Client) -> bool {
+    let Ok(mut conn) = client.get_multiplexed_async_connection().await else {
+        return false;
+    };
+    redis::cmd("PING")
+        .query_async::<String>(&mut conn)
+        .await
+        .is_ok()
+}
+
+async fn check_docker(
+    docker: &Arc<dyn ops_core::ports::outbound::docker_host::DockerHost>,
+) -> bool {
+    docker.version_info().await.is_ok()
 }

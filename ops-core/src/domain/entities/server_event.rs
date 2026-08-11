@@ -16,6 +16,18 @@ pub struct ServerEvent {
     pub details: serde_json::Value,
 }
 
+/// Un event serveur a inserer (avant persistance : pas d'`id` ni de
+/// `timestamp`, generes par la base). Sert l'insertion par lot du monitor.
+#[derive(Debug, Clone)]
+pub struct NewServerEvent {
+    pub actor: String,
+    pub actor_name: Option<String>,
+    pub action: String,
+    pub target: Option<String>,
+    pub severity: String,
+    pub details: serde_json::Value,
+}
+
 /// Filtres de lecture des events serveur.
 #[derive(Debug, Clone)]
 pub struct ServerEventFilter {

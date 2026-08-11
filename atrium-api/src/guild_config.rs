@@ -68,6 +68,15 @@ pub async fn load(pool: &PgPool, guild_id: &str) -> Result<HashMap<String, Strin
     Ok(map)
 }
 
+/// Etat d'activation deduit d'un instantane brut deja charge.
+///
+/// L'activation ne depend pas des replis d'environnement (cle absente =
+/// DESACTIVE, fail-closed) : cette forme evite de transporter des `defaults`
+/// inutiles quand on ne veut que l'etat on/off.
+pub fn enabled(raw: &HashMap<String, String>) -> bool {
+    raw.get("enabled").map(|v| parse_bool(v)).unwrap_or(false)
+}
+
 /// Reglages effectifs, replis appliques.
 pub async fn settings(
     pool: &PgPool,
@@ -100,7 +109,7 @@ pub fn from_map(raw: &HashMap<String, String>, defaults: ConfigDefaults) -> Guil
     }
 
     GuildSettings {
-        enabled: raw.get("enabled").map(|v| parse_bool(v)).unwrap_or(false),
+        enabled: enabled(raw),
         user_daily_limit: number(raw, "user_daily_limit").unwrap_or(defaults.user_daily_limit),
         user_cooldown_secs: number(raw, "user_cooldown_secs")
             .unwrap_or(defaults.user_cooldown_secs),

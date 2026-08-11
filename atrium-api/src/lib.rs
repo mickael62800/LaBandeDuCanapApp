@@ -9,7 +9,7 @@ use std::{net::SocketAddr, sync::Arc};
 use async_trait::async_trait;
 use atrium_core::{
     application::{CalmingService, ServerSummaryService, WelcomeService},
-    domain::{ConversationScope, WelcomeError, WelcomePrompt, WelcomeRequest},
+    domain::{WelcomeError, WelcomePrompt},
     ports::{
         inbound::{
             GenerateCalmingReplyUseCase, GenerateServerSummaryUseCase, GenerateWelcomeReplyUseCase,
@@ -27,6 +27,7 @@ use axum::{
 use platform_common_api::{rate_limit_middleware, RateLimiter};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
 
 pub mod admin;
@@ -122,19 +123,39 @@ impl AppConfig {
     }
 }
 
+/// Construit l'unique `PgPool` d'Atrium, partage par tous les stores.
+///
+/// Auparavant chaque store (`RagService`, `BudgetGuard`, `BotControlStore`,
+/// `ConversationMemory`, la config HTTP et gRPC) ouvrait son propre pool vers la
+/// meme base : autant de plafonds de connexions independants, impossibles a
+/// regler d'un seul endroit. Un pool unique, aux limites explicites, remplace le
+/// tout — chaque store en recoit un clone (le clone partage le meme jeu de
+/// connexions).
+pub fn connect_pool(config: &AppConfig) -> Result<PgPool, sqlx::Error> {
+    PgPoolOptions::new()
+        .max_connections(
+            std::env::var("ATRIUM_DB_MAX_CONNECTIONS")
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(10),
+        )
+        .acquire_timeout(std::time::Duration::from_secs(10))
+        .connect_lazy(&config.rag_database_url)
+}
+
 /// Applique les migrations Atrium avant de rendre l'API disponible.
 ///
 /// La base doit etre dediee a Atrium : SQLx partage sa table
 /// `_sqlx_migrations` par base et Sentinel possede deja une migration `001`.
-pub async fn run_migrations(config: &AppConfig) -> Result<(), sqlx::Error> {
-    let pool = PgPool::connect(&config.rag_database_url).await?;
-    sqlx::migrate!("./migrations").run(&pool).await?;
+pub async fn run_migrations(pool: &PgPool) -> Result<(), sqlx::Error> {
+    sqlx::migrate!("./migrations").run(pool).await?;
     tracing::info!("Migrations Atrium appliquees");
     Ok(())
 }
 
 pub fn router(
     config: AppConfig,
+    pool: PgPool,
     rag: Arc<rag::RagService>,
     budget: Arc<budget::BudgetGuard>,
     control: Arc<control::BotControlStore>,
@@ -148,7 +169,7 @@ pub fn router(
         budget: Some(budget),
         control: Some(control),
         memory: Some(memory),
-        config_pool: PgPool::connect_lazy(&config.rag_database_url).ok(),
+        config_pool: Some(pool),
         config,
     });
     router_with_state(state)
@@ -178,7 +199,6 @@ pub fn router_with_state(state: Arc<AppState>) -> Router {
     let bearer =
         platform_common_api::bearer_auth::RequiredBearerToken::new(state.config.api_token.clone());
     let protected = Router::new()
-        .route("/v1/welcome/reply", post(welcome_reply))
         .route(
             "/admin/guilds/{guild_id}/state",
             get(admin::get_state).put(admin::set_state),
@@ -196,6 +216,7 @@ pub fn router_with_state(state: Arc<AppState>) -> Router {
             "/admin/guilds/{guild_id}/jobs/summary",
             post(admin::job_generate_summary),
         )
+        .route("/admin/jobs/retention", post(admin::job_retention))
         .route_layer(axum::middleware::from_fn_with_state(
             bearer,
             platform_common_api::bearer_auth::require,
@@ -273,167 +294,11 @@ struct HealthResponse {
     status: &'static str,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct WelcomeReplyRequest {
-    pub guild_id: String,
-    pub member: NewMember,
-    pub channel: WelcomeChannel,
-    /// Message facultatif du nouveau membre. Il est borne avant envoi au modele.
-    #[serde(default)]
-    pub message: String,
-    /// Contexte configure par les administrateurs : regles, salons, FAQ.
-    #[serde(default)]
-    pub server_context: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct NewMember {
-    pub id: String,
-    pub display_name: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct WelcomeChannel {
-    pub id: String,
-    pub kind: ChannelKind,
-}
-
-#[derive(Debug, Deserialize, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum ChannelKind {
-    General,
-    Direct,
-}
-
-#[derive(Serialize)]
-pub struct WelcomeReplyResponse {
-    pub reply: String,
-    pub model: String,
-    pub generated_by_ai: bool,
-}
-
-async fn welcome_reply(
-    Extension(state): Extension<Arc<AppState>>,
-    Json(request): Json<WelcomeReplyRequest>,
-) -> Result<Json<WelcomeReplyResponse>, ApiError> {
-    if let Some(control) = &state.control {
-        if !control
-            .is_enabled(&request.guild_id)
-            .await
-            .map_err(|_| ApiError::bad_request("verification de l'etat Atrium indisponible"))?
-        {
-            return Ok(Json(WelcomeReplyResponse {
-                reply: "Atrium est actuellement desactive sur ce serveur.".into(),
-                model: state.config.model.clone(),
-                generated_by_ai: false,
-            }));
-        }
-    }
-    if let Some(budget) = &state.budget {
-        let interactive = !request.message.trim().is_empty();
-        if let Some(message) = budget
-            .check_and_record(&request.guild_id, &request.member.id, interactive)
-            .await
-            .map_err(|error| {
-                tracing::error!(%error, "Verification du budget DeepSeek impossible");
-                ApiError::bad_request("verification du quota indisponible")
-            })?
-        {
-            return Ok(Json(WelcomeReplyResponse {
-                reply: message,
-                model: state.config.model.clone(),
-                generated_by_ai: false,
-            }));
-        }
-    }
-    let retrieved = match &state.rag {
-        Some(rag) => rag
-            .context_for(&request.guild_id, &request.message)
-            .await
-            .map_err(|error| {
-                tracing::warn!(%error, "Recherche RAG indisponible");
-                ApiError::bad_request("recherche de connaissances indisponible")
-            })?,
-        None => String::new(),
-    };
-    let history = match &state.memory {
-        Some(memory) => memory
-            .history(&request.guild_id, &request.member.id)
-            .await
-            .map_err(|_| ApiError::bad_request("lecture de la memoire indisponible"))?,
-        None => String::new(),
-    };
-    let mut final_context = request.server_context.clone();
-    if let Some(memory) = &state.memory {
-        if let Ok(Some(summary)) = memory.get_latest_summary(&request.guild_id).await {
-            final_context.push_str("\n\nRésumé de l'activité du serveur (récent) :\n");
-            final_context.push_str(&summary);
-        }
-    }
-    let guild_id = request.guild_id.clone();
-    let member_id = request.member.id.clone();
-    let member_message = request.message.clone();
-    let admin_context = read_config_value(&state.config_pool, &guild_id, "welcome_context").await;
-    let reply = state
-        .welcome
-        .reply(WelcomeRequest {
-            guild_id: guild_id.clone(),
-            member_id: member_id.clone(),
-            member_display_name: request.member.display_name,
-            channel_id: request.channel.id,
-            scope: request.channel.kind.into(),
-            member_message: member_message.clone(),
-            conversation_history: history,
-            server_context: merge_context(&final_context, &retrieved),
-            admin_context,
-        })
-        .await
-        .map_err(ApiError::from)?;
-    if let Some(memory) = &state.memory {
-        if let Err(error) = memory
-            .remember_exchange(&guild_id, &member_id, &member_message, &reply.content)
-            .await
-        {
-            tracing::warn!(%error, "Sauvegarde de la memoire Atrium impossible");
-        }
-    }
-    Ok(Json(WelcomeReplyResponse {
-        reply: reply.content,
-        model: state.config.model.clone(),
-        generated_by_ai: reply.generated_by_ai,
-    }))
-}
-
-/// Lit une clé de config par serveur (`bot_guild_config`), vide si absente ou
-/// si la base est indisponible — un ton personnalisé ne doit jamais bloquer une
-/// réponse. Partagé par les chemins HTTP et gRPC.
-pub async fn read_config_value(pool: &Option<PgPool>, guild_id: &str, key: &str) -> String {
-    let Some(pool) = pool else {
-        return String::new();
-    };
-    match guild_config::load(pool, guild_id).await {
-        Ok(map) => map.get(key).cloned().unwrap_or_default(),
-        Err(error) => {
-            tracing::warn!(%error, key, "Lecture de la config Atrium impossible");
-            String::new()
-        }
-    }
-}
-
 pub fn merge_context(admin_context: &str, retrieved: &str) -> String {
     format!("{}\n\n{}", admin_context.trim(), retrieved.trim())
         .chars()
         .take(12_000)
         .collect()
-}
-
-impl From<ChannelKind> for ConversationScope {
-    fn from(value: ChannelKind) -> Self {
-        match value {
-            ChannelKind::General => Self::General,
-            ChannelKind::Direct => Self::Direct,
-        }
-    }
 }
 
 #[derive(Serialize)]
@@ -566,18 +431,3 @@ impl axum::response::IntoResponse for ApiError {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn maps_channel_kinds_to_business_scopes() {
-        assert_eq!(
-            ConversationScope::from(ChannelKind::General),
-            ConversationScope::General
-        );
-        assert_eq!(
-            ConversationScope::from(ChannelKind::Direct),
-            ConversationScope::Direct
-        );
-    }
-}

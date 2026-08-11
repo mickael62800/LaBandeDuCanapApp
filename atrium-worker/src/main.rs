@@ -12,6 +12,11 @@ struct SummaryJobResponse {
     generated_by_ai: bool,
 }
 
+#[derive(Debug, Deserialize)]
+struct RetentionJobResponse {
+    ok: bool,
+}
+
 #[tokio::main]
 async fn main() {
     platform_common_worker::init_tracing("atrium_worker=info");
@@ -35,11 +40,14 @@ async fn main() {
             std::process::exit(2);
         });
     let interval_secs = platform_common_worker::env_u64("ATRIUM_SUMMARY_INTERVAL_SECS", 86_400);
+    let retention_secs =
+        platform_common_worker::env_u64("ATRIUM_RETENTION_INTERVAL_SECS", 86_400);
     let client = HttpJobClient::new(api_url.clone(), api_token, Duration::from_secs(30));
 
     info!(%api_url, %guild_id, interval_secs, "atrium-worker demarre");
+    let summary_client = client.clone();
     platform_common_worker::spawn_interval("server-summary", interval_secs, move || {
-        let client = client.clone();
+        let client = summary_client.clone();
         let path = format!("/admin/guilds/{guild_id}/jobs/summary");
         async move {
             let response: SummaryJobResponse = client.post_json(&path).await?;
@@ -48,6 +56,17 @@ async fn main() {
                 taille = response.summary.len(),
                 "Resume meteo genere via Atrium API"
             );
+            Ok(())
+        }
+    });
+
+    // Purge quotidienne des compteurs de quota, sortie du chemin critique du
+    // budget (cf. `BudgetGuard::purge_old`). Sans guilde : maintenance globale.
+    platform_common_worker::spawn_interval("budget-retention", retention_secs, move || {
+        let client = client.clone();
+        async move {
+            let response: RetentionJobResponse = client.post_json("/admin/jobs/retention").await?;
+            info!(ok = response.ok, "Purge des quotas Atrium effectuee");
             Ok(())
         }
     });

@@ -17,22 +17,30 @@ fn pg_err(e: sqlx::Error) -> DomainError {
     pg_err_ctx(TBL, e)
 }
 
-/// DELETE avec ou sans filtre temporel sur la colonne donnee. Best-effort :
-/// logge et renvoie 0 si la requete echoue (la purge globale continue).
-async fn purge_table(pool: &PgPool, table: &str, ts_col: &str, days: i64) -> u64 {
-    let sql = if days == 0 {
-        format!("DELETE FROM {table}")
-    } else {
-        format!("DELETE FROM {table} WHERE {ts_col} < NOW() - INTERVAL '{days} days'")
-    };
+/// DELETE (filtre temporel + condition optionnelle) DANS une transaction.
+///
+/// Contrairement a l'ancienne version best-effort qui renvoyait 0 en cas
+/// d'erreur — rendant une panne indistinguable d'une table vide — l'erreur est
+/// propagee : la transaction appelante annule alors toutes les suppressions.
+async fn purge_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    table: &str,
+    ts_col: &str,
+    days: i64,
+    extra_where: Option<&str>,
+) -> Result<u64, DomainError> {
+    let mut sql = format!("DELETE FROM {table} WHERE 1=1");
+    if let Some(cond) = extra_where {
+        sql.push_str(&format!(" AND {cond}"));
+    }
+    if days > 0 {
+        sql.push_str(&format!(" AND {ts_col} < NOW() - INTERVAL '{days} days'"));
+    }
     sqlx::query(&sql)
-        .execute(pool)
+        .execute(&mut **tx)
         .await
         .map(|r| r.rows_affected())
-        .unwrap_or_else(|e| {
-            tracing::warn!(error = %e, table = table, "purge table");
-            0
-        })
+        .map_err(pg_err)
 }
 
 pub struct PgSecurityAuditRepository {
@@ -131,38 +139,48 @@ impl SecurityAuditRepository for PgSecurityAuditRepository {
     }
 
     async fn cleanup(&self, options: CleanupOptions) -> Result<CleanupReport, DomainError> {
+        // 1. Validation en amont : rien n'est supprime avant ce point. Sans
+        //    cible selectionnee, c'est un no-op (on n'ouvre meme pas de
+        //    transaction).
         let days = options.older_than_days.max(0);
+        let touches_local = options.include_api_logs
+            || options.include_audit_logs
+            || options.include_server_events
+            || options.include_manual_bans;
+
         let mut report = CleanupReport::default();
 
-        if options.include_api_logs {
-            let sql = if days == 0 {
-                "DELETE FROM ops_logs_v WHERE category = 'api'".to_string()
-            } else {
-                format!(
-                    "DELETE FROM ops_logs_v WHERE category = 'api' AND timestamp < NOW() - INTERVAL '{days} days'"
-                )
-            };
-            report.deleted_api_logs = sqlx::query(&sql)
-                .execute(&self.pool)
-                .await
-                .map_err(pg_err)?
-                .rows_affected();
+        // 2. Suppressions LOCALES dans une seule transaction : une erreur en
+        //    cours de route annule tout, au lieu de laisser une purge
+        //    partiellement appliquee et un compteur trompeur.
+        if touches_local {
+            let mut tx = self.pool.begin().await.map_err(pg_err)?;
+            if options.include_api_logs {
+                report.deleted_api_logs =
+                    purge_in_tx(&mut tx, "ops_logs_v", "timestamp", days, Some("category = 'api'"))
+                        .await?;
+            }
+            if options.include_audit_logs {
+                report.deleted_audit_logs =
+                    purge_in_tx(&mut tx, "ops_audit_logs_v", "created_at", days, None).await?;
+            }
+            if options.include_server_events {
+                report.deleted_server_events =
+                    purge_in_tx(&mut tx, "server_events", "timestamp", days, None).await?;
+            }
+            if options.include_manual_bans {
+                report.deleted_manual_bans =
+                    purge_in_tx(&mut tx, "manual_ip_bans", "banned_at", days, None).await?;
+            }
+            tx.commit().await.map_err(pg_err)?;
         }
-        if options.include_audit_logs {
-            report.deleted_audit_logs =
-                purge_table(&self.pool, "ops_audit_logs_v", "created_at", days).await;
-        }
-        if options.include_server_events {
-            report.deleted_server_events =
-                purge_table(&self.pool, "server_events", "timestamp", days).await;
-        }
+
+        // 3. Purge DISTANTE (journal des logins, heberge par l'identite) : hors
+        //    transaction locale — elle ne peut pas participer au commit Postgres
+        //    et ne doit surtout pas annuler ce qui vient d'etre valide ici.
+        //    Reste best-effort (cf. `AuthLoginsClient::purge`).
         if options.include_successful_logins {
-            // Table hebergee par l'identite : la purge passe par son API.
             report.deleted_successful_logins = self.auth.purge(days).await;
-        }
-        if options.include_manual_bans {
-            report.deleted_manual_bans =
-                purge_table(&self.pool, "manual_ip_bans", "banned_at", days).await;
         }
 
         Ok(report)

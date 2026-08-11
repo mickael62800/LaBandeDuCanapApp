@@ -1,9 +1,10 @@
 //! Surveillance periodique des conteneurs de l'hote par `ops-worker`.
 //!
 //! Interroge Docker chaque minute, compare avec le relevé precedent et
-//! journalise chaque changement dans `server_events`. Garde en memoire
-//! l'instantane courant et les derniers changements, servis par
-//! `/containers/changes`.
+//! journalise chaque changement dans `server_events`. L'instantane courant et
+//! les derniers changements sont PUBLIES dans Redis (`REDIS_STATE_KEY`) ;
+//! `ops-api` les sert sur `/containers/changes` en LISANT cette cle — les deux
+//! processus ne partagent pas de memoire.
 //!
 //! # Ce qui a ete corrige en chemin
 //!
@@ -14,12 +15,12 @@
 //! `ops_core::domain::entities::container_monitor::detect_changes`, ou elle est
 //! testee sans Docker ni base.
 //!
-//! # Pourquoi dans l'API et non dans un worker
+//! # Pourquoi un worker et non l'API
 //!
-//! L'instantane est partage EN MEMOIRE avec le handler qui le sert. Un worker
-//! separe imposerait de le faire transiter par Redis ou Postgres, pour un etat
-//! ephemere que personne ne relit apres coup. Le processus qui produit la
-//! donnee est celui qui la sert : c'est le montage le plus simple qui marche.
+//! La surveillance est un travail de fond periodique, sans requete entrante : sa
+//! place est dans le worker, pas dans l'API. L'etat ephemere transite par Redis
+//! (une cle a TTL), ce qui decouple le producteur (worker) du consommateur
+//! (API) sans base ni memoire partagee.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -28,6 +29,7 @@ use std::time::Duration;
 use ops_core::domain::entities::container_monitor::{
     detect_changes, ContainerMonitorState, ContainerSnapshot, REDIS_STATE_KEY,
 };
+use ops_core::domain::entities::server_event::NewServerEvent;
 use ops_core::ports::outbound::docker_host::DockerHost;
 use ops_core::ports::outbound::server_event_repository::ServerEventRepository;
 use tokio::sync::RwLock;
@@ -52,8 +54,15 @@ pub fn spawn(
         // deja en place seraient rapportes comme « ajoutes » au demarrage.
         let mut first_run = true;
 
+        // `interval` : le premier `tick()` est immediat, donc la reference se
+        // construit des le demarrage (et non apres une minute), sans produire
+        // d'evenements `Added`. `Skip` evite d'accumuler les ticks si un relevé
+        // Docker deborde l'intervalle.
+        let mut ticker = tokio::time::interval(POLL_INTERVAL);
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
         loop {
-            tokio::time::sleep(POLL_INTERVAL).await;
+            ticker.tick().await;
 
             // `all = true` : un conteneur arrete reste a surveiller — c'est
             // meme le cas qui interesse le plus (crash, arret imprevu).
@@ -99,27 +108,32 @@ pub fn spawn(
                 detect_changes(&previous, &current, &now)
             };
             first_run = false;
-            previous = current.clone();
 
-            for change in &changes {
-                let target = format!(
-                    "{} ({})",
-                    change.container.name,
-                    &change.container.id[..12.min(change.container.id.len())]
-                );
-                let details = serde_json::to_value(change).unwrap_or(serde_json::Value::Null);
-                if let Err(error) = server_events
-                    .record(
-                        "system:container_monitor",
-                        None,
-                        change.kind.as_action(),
-                        Some(&target),
-                        change.kind.severity(),
-                        details,
-                    )
-                    .await
-                {
-                    tracing::warn!(%error, "journalisation d'un changement impossible");
+            // Audit : tous les changements du relevé en UN insert groupe, au lieu
+            // d'un aller-retour SQL par changement (couteux lors d'une recreation
+            // massive de conteneurs).
+            if !changes.is_empty() {
+                let events: Vec<NewServerEvent> = changes
+                    .iter()
+                    .map(|change| {
+                        let target = format!(
+                            "{} ({})",
+                            change.container.name,
+                            &change.container.id[..12.min(change.container.id.len())]
+                        );
+                        NewServerEvent {
+                            actor: "system:container_monitor".to_owned(),
+                            actor_name: None,
+                            action: change.kind.as_action().to_owned(),
+                            target: Some(target),
+                            severity: change.kind.severity().to_owned(),
+                            details: serde_json::to_value(change)
+                                .unwrap_or(serde_json::Value::Null),
+                        }
+                    })
+                    .collect();
+                if let Err(error) = server_events.record_batch(&events).await {
+                    tracing::warn!(%error, "journalisation des changements impossible");
                 }
             }
 
@@ -127,11 +141,15 @@ pub fn spawn(
             // Ordre stable : sans tri, l'ordre d'un `HashMap` varie a chaque
             // relevé et la liste du back-office sautille sans raison.
             snapshot.sort_by(|a, b| a.name.cmp(&b.name));
+            // Deplacement plutot que clone complet : `current` n'est plus relu
+            // apres ce point, il devient directement la reference du prochain tour.
+            previous = current;
 
-            shared.write().await.apply(now, snapshot, changes);
-
+            // Un seul verrou en ecriture : on applique puis on serialise l'etat
+            // tant qu'on le tient, au lieu d'un write suivi d'un read.
             let encoded = {
-                let state = shared.read().await;
+                let mut state = shared.write().await;
+                state.apply(now, snapshot, changes);
                 serde_json::to_string(&*state)
             };
             match encoded {

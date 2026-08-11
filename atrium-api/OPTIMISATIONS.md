@@ -1,6 +1,22 @@
 # Audit d'optimisation Atrium
 
 Date de l'audit : 11 aout 2026
+Mise a jour : 11 aout 2026 — toutes les priorites implementees.
+
+## Etat d'avancement
+
+| Priorite | Statut |
+|---|---|
+| 1. Pool PostgreSQL partage | ✅ Fait (`connect_pool`, injecte dans tous les stores) |
+| 2. Config chargee une fois par requete | ✅ Fait (instantane unique en gRPC `generate_reply` et `generate_calming`) |
+| 3. Retention hors chemin critique + quota par serveur | ✅ Fait (migration 010, job worker `budget-retention`, compteur par guild) |
+| 4. Indexation RAG transactionnelle et groupee | ✅ Fait (hashes en une requete, tx par document, insert par lot, demarrage non bloquant) |
+| 5. Mutualiser HTTP et gRPC | ✅ Fait — par SUPPRESSION : le HTTP `/v1/welcome/reply` et le gRPC `stream_reply` n'avaient aucun consommateur (atrium-bot est tout gRPC). Ne reste que `generate_reply`. |
+| Secondaire — insertions memoire groupees | ✅ Fait (`remember_exchange` : un seul INSERT multi-lignes) |
+| Secondaire — faux streaming gRPC | ✅ Regle par la suppression de `stream_reply` (P5) |
+| Secondaire — worker multi-guild | ⏭️ Ecarte : Atrium est **mono-serveur par conception**, ne pas rendre multi-guild |
+
+Le detail d'origine de chaque priorite est conserve ci-dessous pour reference.
 
 ## Etat initial
 
@@ -193,11 +209,11 @@ decoupe en mots. Il n'ameliore donc pas le temps jusqu'au premier token.
 - Soit brancher le vrai streaming du fournisseur IA.
 - Soit conserver une reponse unaire et supprimer le faux streaming.
 
-### Worker multi-guild
+### Worker multi-guild — ECARTE
 
 `atrium-worker` genere le resume d'une seule guild configuree par variable
-d'environnement. Si Atrium devient reellement multi-guild, le Worker devra
-lister les guilds actives et les traiter avec une concurrence bornee.
+d'environnement. **Atrium est mono-serveur par conception** : ce point est
+ecarte, on ne rend pas le Worker multi-guild.
 
 ## Ordre d'implementation recommande
 

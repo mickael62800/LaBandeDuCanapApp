@@ -15,25 +15,25 @@ use atrium_proto::welcome::v1::{
 use sqlx::PgPool;
 use tonic::{Request, Response, Status};
 
-use crate::{
-    budget::BudgetGuard, calming_use_case, control::BotControlStore, memory::ConversationMemory,
-    merge_context, rag::RagService, read_config_value, welcome_use_case, AppConfig,
-};
+use std::collections::HashMap;
 
-use std::pin::Pin;
-use tokio_stream::Stream;
+use crate::{
+    budget::BudgetGuard, calming_use_case, control::BotControlStore, guild_config,
+    memory::ConversationMemory, merge_context, rag::RagService, welcome_use_case, AppConfig,
+};
 
 pub async fn serve(
     config: AppConfig,
+    pool: PgPool,
     rag: Arc<RagService>,
     budget: Arc<BudgetGuard>,
     control: Arc<BotControlStore>,
     memory: Arc<ConversationMemory>,
 ) {
     let addr = config.grpc_addr;
-    // Même pool paresseux que la surface HTTP : sert à lire les consignes de ton
+    // Même pool partagé que la surface HTTP : sert à lire les consignes de ton
     // par serveur (`welcome_context` / `conflict_context`) au fil des appels.
-    let config_pool = PgPool::connect_lazy(&config.rag_database_url).ok();
+    let config_pool = Some(pool);
     let welcome_service = WelcomeGrpc {
         welcome: welcome_use_case(&config),
         rag: Some(rag.clone()),
@@ -113,32 +113,44 @@ impl WelcomeGrpc {
         }
     }
 
-    async fn ensure_enabled(&self, guild_id: &str) -> Result<(), Status> {
-        let Some(control) = &self.control else {
-            return Ok(());
-        };
-        match control.is_enabled(guild_id).await {
-            Ok(true) => Ok(()),
-            Ok(false) => Err(Status::failed_precondition("Atrium est desactive")),
-            Err(error) => {
-                tracing::error!(%error, "Verification de l'etat Atrium impossible");
-                Err(Status::unavailable("verification de l'etat indisponible"))
-            }
+    /// Instantane de la config du serveur, lu UNE fois par requete (P2).
+    ///
+    /// Auparavant, une reponse d'accueil relisait `bot_guild_config` trois fois
+    /// (activation, quotas, `welcome_context`). On charge desormais une seule
+    /// photographie et on en deduit tout. Vide si aucune base n'est branchee
+    /// (tests) ; une erreur de lecture est remontee en 503 comme avant.
+    async fn config_snapshot(&self, guild_id: &str) -> Result<HashMap<String, String>, Status> {
+        match &self.config_pool {
+            Some(pool) => guild_config::load(pool, guild_id).await.map_err(|error| {
+                tracing::error!(%error, "Lecture de la config Atrium impossible");
+                Status::unavailable("verification de l'etat indisponible")
+            }),
+            None => Ok(HashMap::new()),
         }
+    }
+
+    fn ensure_enabled(&self, config: &HashMap<String, String>) -> Result<(), Status> {
+        if self.control.is_some() && !guild_config::enabled(config) {
+            return Err(Status::failed_precondition("Atrium est desactive"));
+        }
+        Ok(())
     }
 
     async fn budget_message(
         &self,
         input: &proto::GenerateReplyRequest,
+        config: &HashMap<String, String>,
     ) -> Result<Option<String>, Status> {
         let Some(budget) = &self.budget else {
             return Ok(None);
         };
+        let limits = budget.settings_from_map(config);
         budget
             .check_and_record(
                 &input.guild_id,
                 &input.member_id,
                 !input.member_message.trim().is_empty(),
+                &limits,
             )
             .await
             .map_err(|error| {
@@ -167,11 +179,6 @@ impl WelcomeGrpc {
             }
         }
     }
-
-    /// Consigne de ton d'accueil (`welcome_context`) configurée pour ce serveur.
-    async fn admin_context(&self, guild_id: &str) -> String {
-        read_config_value(&self.config_pool, guild_id, "welcome_context").await
-    }
 }
 
 pub struct RagGrpc {
@@ -180,16 +187,15 @@ pub struct RagGrpc {
 
 #[tonic::async_trait]
 impl WelcomeService for WelcomeGrpc {
-    type StreamReplyStream =
-        Pin<Box<dyn Stream<Item = Result<proto::ReplyChunk, Status>> + Send + 'static>>;
-
     async fn generate_reply(
         &self,
         request: Request<proto::GenerateReplyRequest>,
     ) -> Result<Response<proto::GenerateReplyResponse>, Status> {
         let input = request.into_inner();
-        self.ensure_enabled(&input.guild_id).await?;
-        if let Some(message) = self.budget_message(&input).await? {
+        // Une seule lecture de la config du serveur pour toute la requete (P2).
+        let config = self.config_snapshot(&input.guild_id).await?;
+        self.ensure_enabled(&config)?;
+        if let Some(message) = self.budget_message(&input, &config).await? {
             return Ok(Response::new(proto::GenerateReplyResponse {
                 reply: message,
                 generated_by_ai: false,
@@ -222,7 +228,7 @@ impl WelcomeService for WelcomeGrpc {
                 final_context.push_str(&summary);
             }
         }
-        let admin_context = self.admin_context(&guild_id).await;
+        let admin_context = config.get("welcome_context").cloned().unwrap_or_default();
         let reply = self
             .welcome
             .reply(WelcomeRequest {
@@ -245,85 +251,6 @@ impl WelcomeService for WelcomeGrpc {
             generated_by_ai: reply.generated_by_ai,
         }))
     }
-
-    async fn stream_reply(
-        &self,
-        request: Request<proto::GenerateReplyRequest>,
-    ) -> Result<Response<Self::StreamReplyStream>, Status> {
-        let input = request.into_inner();
-        self.ensure_enabled(&input.guild_id).await?;
-        if let Some(message) = self.budget_message(&input).await? {
-            let output_stream = async_stream::try_stream! {
-                yield proto::ReplyChunk {
-                    delta: message,
-                    is_final: true,
-                };
-            };
-            return Ok(Response::new(Box::pin(output_stream)));
-        }
-        let history = self.history(&input.guild_id, &input.member_id).await?;
-        let guild_id = input.guild_id.clone();
-        let member_id = input.member_id.clone();
-        let member_message = input.member_message.clone();
-        let scope = match proto::ConversationScope::try_from(input.scope)
-            .unwrap_or(proto::ConversationScope::General)
-        {
-            proto::ConversationScope::General => ConversationScope::General,
-            proto::ConversationScope::Direct => ConversationScope::Direct,
-        };
-        let retrieved = match &self.rag {
-            Some(rag) => rag
-                .context_for(&input.guild_id, &input.member_message)
-                .await
-                .map_err(|error| {
-                    tracing::warn!(%error, "Recherche RAG gRPC indisponible");
-                    Status::unavailable("recherche de connaissances indisponible")
-                })?,
-            None => String::new(),
-        };
-        let mut final_context = input.server_context.clone();
-        if let Some(memory) = &self.memory {
-            if let Ok(Some(summary)) = memory.get_latest_summary(&input.guild_id).await {
-                final_context.push_str("\n\nRésumé de l'activité du serveur (récent) :\n");
-                final_context.push_str(&summary);
-            }
-        }
-        let admin_context = self.admin_context(&guild_id).await;
-        let reply = self
-            .welcome
-            .reply(WelcomeRequest {
-                guild_id: input.guild_id,
-                member_id: input.member_id,
-                member_display_name: input.member_display_name,
-                channel_id: input.channel_id,
-                scope,
-                member_message: input.member_message,
-                conversation_history: history,
-                server_context: merge_context(&final_context, &retrieved),
-                admin_context,
-            })
-            .await
-            .map_err(|error| Status::invalid_argument(error.to_string()))?;
-        self.remember(&guild_id, &member_id, &member_message, &reply.content)
-            .await;
-
-        // Simuler ou découper la réponse en tokens pour le streaming gRPC
-        let content = reply.content;
-        let output_stream = async_stream::try_stream! {
-            let words: Vec<&str> = content.split_whitespace().collect();
-            for (idx, word) in words.iter().enumerate() {
-                let space = if idx > 0 { " " } else { "" };
-                let delta = format!("{space}{word}");
-                let is_final = idx == words.len() - 1;
-                yield proto::ReplyChunk {
-                    delta,
-                    is_final,
-                };
-            }
-        };
-
-        Ok(Response::new(Box::pin(output_stream)))
-    }
 }
 
 /// Apaisement (« conflit ») : génère le rappel à publier dans un salon en tension.
@@ -345,28 +272,30 @@ impl CalmingService for CalmingGrpc {
         }
         let kind = ConflictKind::parse(&input.kind);
 
+        // Une seule lecture de la config du serveur pour toute la requete (P2) :
+        // l'activation et la consigne `conflict_context` en sont deduites.
+        let config = match &self.config_pool {
+            Some(pool) => guild_config::load(pool, &input.guild_id)
+                .await
+                .map_err(|error| {
+                    tracing::error!(%error, "Verification de l'etat Atrium impossible");
+                    Status::unavailable("verification de l'etat indisponible")
+                })?,
+            None => HashMap::new(),
+        };
+
         // Atrium désactivé sur ce serveur : on ne consomme pas le modèle, mais
         // on publie quand même le rappel STATIQUE — l'apaisement est une consigne
         // de modération, pas une réponse à un membre. C'est le comportement
         // historique (messages figés), simplement conservé quand l'IA est coupée.
-        if let Some(control) = &self.control {
-            match control.is_enabled(&input.guild_id).await {
-                Ok(true) => {}
-                Ok(false) => {
-                    return Ok(Response::new(proto::GenerateCalmingResponse {
-                        reply: kind.fallback_message().to_string(),
-                        generated_by_ai: false,
-                    }));
-                }
-                Err(error) => {
-                    tracing::error!(%error, "Verification de l'etat Atrium impossible");
-                    return Err(Status::unavailable("verification de l'etat indisponible"));
-                }
-            }
+        if self.control.is_some() && !guild_config::enabled(&config) {
+            return Ok(Response::new(proto::GenerateCalmingResponse {
+                reply: kind.fallback_message().to_string(),
+                generated_by_ai: false,
+            }));
         }
 
-        let admin_context =
-            read_config_value(&self.config_pool, &input.guild_id, "conflict_context").await;
+        let admin_context = config.get("conflict_context").cloned().unwrap_or_default();
         let reply = self
             .calming
             .reply(CalmingRequest {

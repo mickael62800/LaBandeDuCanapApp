@@ -3,8 +3,6 @@ package atrium.welcome.v1;
 
 service WelcomeService {
   rpc GenerateReply(GenerateReplyRequest) returns (GenerateReplyResponse);
-  // Stream la réponse token par token au fur et à mesure de la génération LLM
-  rpc StreamReply(GenerateReplyRequest) returns (stream ReplyChunk);
 }
 
 service RagService {
@@ -55,11 +53,6 @@ message GenerateReplyRequest {
 message GenerateReplyResponse {
   string reply = 1;
   bool generated_by_ai = 2;
-}
-
-message ReplyChunk {
-  string delta = 1;
-  bool is_final = 2;
 }
 
 message SearchKnowledgeRequest {

@@ -1,10 +1,8 @@
 //! Memoire conversationnelle persistante et bornee par membre.
 
 use chrono::Utc;
-use sqlx::{PgPool, Row};
+use sqlx::{PgPool, QueryBuilder, Row};
 use uuid::Uuid;
-
-use crate::AppConfig;
 
 const HISTORY_MESSAGES: i64 = 10;
 const STORED_MESSAGES: i64 = 20;
@@ -16,10 +14,8 @@ pub struct ConversationMemory {
 }
 
 impl ConversationMemory {
-    pub fn new(config: &AppConfig) -> Result<Self, sqlx::Error> {
-        Ok(Self {
-            pool: PgPool::connect_lazy(&config.rag_database_url)?,
-        })
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
     }
 
     pub async fn history(&self, guild_id: &str, member_id: &str) -> Result<String, sqlx::Error> {
@@ -61,28 +57,26 @@ impl ConversationMemory {
         member_message: &str,
         reply: &str,
     ) -> Result<(), sqlx::Error> {
-        let mut tx = self.pool.begin().await?;
+        // Les deux lignes d'un echange (message du membre + reponse d'Atrium)
+        // sont inserees en une seule requete. Le message du membre est omis
+        // s'il est vide (accueil sans question).
+        let mut rows: Vec<(&str, &str)> = Vec::with_capacity(2);
         if !member_message.trim().is_empty() {
-            sqlx::query(
-                "INSERT INTO atrium_conversation_messages (guild_id, member_id, role, content) \
-                 VALUES ($1, $2, $3, $4)",
-            )
-            .bind(guild_id)
-            .bind(member_id)
-            .bind("member")
-            .bind(member_message)
-            .execute(&mut *tx)
-            .await?;
+            rows.push(("member", member_message));
         }
-        sqlx::query(
-            "INSERT INTO atrium_conversation_messages (guild_id, member_id, role, content) \
-             VALUES ($1, $2, 'atrium', $3)",
-        )
-        .bind(guild_id)
-        .bind(member_id)
-        .bind(reply)
-        .execute(&mut *tx)
-        .await?;
+        rows.push(("atrium", reply));
+
+        let mut tx = self.pool.begin().await?;
+        let mut builder = QueryBuilder::new(
+            "INSERT INTO atrium_conversation_messages (guild_id, member_id, role, content) ",
+        );
+        builder.push_values(rows, |mut row, (role, content)| {
+            row.push_bind(guild_id)
+                .push_bind(member_id)
+                .push_bind(role)
+                .push_bind(content);
+        });
+        builder.build().execute(&mut *tx).await?;
         sqlx::query(
             "DELETE FROM atrium_conversation_messages WHERE guild_id = $1 AND member_id = $2 \
              AND id NOT IN (SELECT id FROM atrium_conversation_messages \

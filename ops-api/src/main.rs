@@ -42,12 +42,12 @@ async fn main() {
     );
     let server_events: Arc<
         dyn ops_core::ports::outbound::server_event_repository::ServerEventRepository,
-    > = Arc::new(
-        ops_api::adapters::server_event_repository::PgServerEventRepository::new(pool.clone()),
-    );
+    > = Arc::new(ops_adapters::server_event_repository::PgServerEventRepository::new(
+        pool.clone(),
+    ));
     // Docker passe par l'agent : ce processus ne monte jamais le socket.
     let docker_host: Arc<dyn ops_core::ports::outbound::docker_host::DockerHost> =
-        Arc::new(ops_api::adapters::http_docker_host::HttpDockerHost::new(
+        Arc::new(ops_adapters::http_docker_host::HttpDockerHost::new(
             config.docker_agent_url.clone(),
             config.docker_agent_token.clone(),
         ));
@@ -159,6 +159,7 @@ async fn main() {
         server_events_uc,
         system_logs_uc,
         redis_client,
+        pg_pool: pool.clone(),
     };
 
     let listener = tokio::net::TcpListener::bind(bind)

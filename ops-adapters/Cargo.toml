@@ -1,0 +1,19 @@
+[package]
+name = "ops-adapters"
+version.workspace = true
+edition.workspace = true
+description = "Adaptateurs sortants partages par ops-api et ops-worker (client docker-agent, repo server_events)"
+
+[dependencies]
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sqlx = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+reqwest = { workspace = true }
+platform-common-api = { workspace = true }
+ops-core = { workspace = true }
+
+[lints]
+workspace = true

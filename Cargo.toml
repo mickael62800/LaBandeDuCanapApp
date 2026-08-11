@@ -21,6 +21,7 @@ members = [
     "atrium-bot",
     "atrium-worker", "platform-common-bot", "platform-common-worker",
     "ops-core",
+    "ops-adapters",
     "ops-api",
     "ops-worker",
     # Identite : OAuth2 Discord, sessions web, gate superadmin. Extraite de
@@ -92,6 +93,7 @@ sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio",
 # Internes (paths)
 sentinel-proto = { path = "sentinel-proto" }
 ops-core = { path = "ops-core" }
+ops-adapters = { path = "ops-adapters" }
 ops-api = { path = "ops-api" }
 auth-core = { path = "auth-core" }
 auth-api = { path = "auth-api" }

@@ -12,7 +12,7 @@ use atrium_proto::welcome::v1::{
 };
 use axum::{
     body::Body,
-    http::{header::AUTHORIZATION, Request, StatusCode},
+    http::{Request, StatusCode},
 };
 use serde_json::Value;
 use tonic::Request as TonicRequest;
@@ -96,81 +96,6 @@ async fn test_health_endpoint() {
 }
 
 #[tokio::test]
-async fn test_welcome_reply_unauthorized() {
-    let app = setup_test_app(false);
-
-    let payload = serde_json::json!({
-        "guild_id": "12345",
-        "member": { "id": "u1", "display_name": "Alice" },
-        "channel": { "id": "c1", "kind": "general" },
-        "message": "Bonjour",
-        "server_context": "Règles du serveur"
-    });
-
-    let mut req = create_request("POST", "/v1/welcome/reply", Body::from(payload.to_string()));
-    req.headers_mut()
-        .insert("Content-Type", "application/json".parse().unwrap());
-
-    let response = app.oneshot(req).await.unwrap();
-
-    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-}
-
-#[tokio::test]
-async fn test_welcome_reply_success() {
-    let app = setup_test_app(false);
-
-    let payload = serde_json::json!({
-        "guild_id": "12345",
-        "member": { "id": "u1", "display_name": "Alice" },
-        "channel": { "id": "c1", "kind": "general" },
-        "message": "Bonjour à tous",
-        "server_context": "Règles du serveur"
-    });
-
-    let mut req = create_request("POST", "/v1/welcome/reply", Body::from(payload.to_string()));
-    req.headers_mut()
-        .insert("Content-Type", "application/json".parse().unwrap());
-    req.headers_mut()
-        .insert(AUTHORIZATION, "Bearer test-token".parse().unwrap());
-
-    let response = app.oneshot(req).await.unwrap();
-
-    assert_eq!(response.status(), StatusCode::OK);
-
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let json: Value = serde_json::from_slice(&body).unwrap();
-    assert_eq!(json["reply"], "Bienvenue Alice sur le serveur 12345 !");
-    assert_eq!(json["generated_by_ai"], true);
-    assert_eq!(json["model"], "deepseek-v4-flash");
-}
-
-#[tokio::test]
-async fn test_welcome_reply_business_error() {
-    let app = setup_test_app(true);
-
-    let payload = serde_json::json!({
-        "guild_id": "12345",
-        "member": { "id": "u1", "display_name": "Alice" },
-        "channel": { "id": "c1", "kind": "general" },
-        "message": "Bonjour",
-        "server_context": "Règles"
-    });
-
-    let mut req = create_request("POST", "/v1/welcome/reply", Body::from(payload.to_string()));
-    req.headers_mut()
-        .insert("Content-Type", "application/json".parse().unwrap());
-    req.headers_mut()
-        .insert(AUTHORIZATION, "Bearer test-token".parse().unwrap());
-
-    let response = app.oneshot(req).await.unwrap();
-
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-}
-
-#[tokio::test]
 async fn test_grpc_generate_reply_success() {
     let mock_use_case = Arc::new(MockWelcomeUseCase::new(false));
     let grpc_service = WelcomeGrpc::new(mock_use_case);
@@ -211,33 +136,4 @@ async fn test_grpc_generate_reply_error() {
     assert!(res.is_err());
     let status = res.unwrap_err();
     assert_eq!(status.code(), tonic::Code::InvalidArgument);
-}
-
-#[tokio::test]
-async fn test_grpc_stream_reply_success() {
-    use tokio_stream::StreamExt;
-
-    let mock_use_case = Arc::new(MockWelcomeUseCase::new(false));
-    let grpc_service = WelcomeGrpc::new(mock_use_case);
-
-    let req = TonicRequest::new(GenerateReplyRequest {
-        guild_id: "12345".into(),
-        member_id: "u1".into(),
-        member_display_name: "Bob".into(),
-        channel_id: "c1".into(),
-        scope: ProtoScope::General.into(),
-        member_message: "Salut".into(),
-        server_context: "Bienvenue sur le serveur".into(),
-    });
-
-    let res = grpc_service.stream_reply(req).await.unwrap();
-    let mut stream = res.into_inner();
-
-    let mut full_text = String::new();
-    while let Some(chunk_res) = stream.next().await {
-        let chunk = chunk_res.unwrap();
-        full_text.push_str(&chunk.delta);
-    }
-
-    assert_eq!(full_text.trim(), "Bienvenue Bob sur le serveur 12345 !");
 }

@@ -59,7 +59,7 @@ fn evaluate_service_offline_one_alert_per_service() {
         cpu_percent: 0.0,
         mem_percent: 0.0,
         disk_percent: 0.0,
-        auth_failures_1h: 0.0,
+        auth_failures_1h: Some(0.0),
         tls_expiry_days: None,
         offline_services: vec!["automod-bot".into(), "audit-worker".into()],
         container_changes: vec![],
@@ -71,6 +71,35 @@ fn evaluate_service_offline_one_alert_per_service() {
     assert_eq!(alerts[1].0, "audit-worker");
 }
 
+fn metrics_with_auth(auth_failures_1h: Option<f64>) -> Metrics {
+    Metrics {
+        cpu_percent: 0.0,
+        mem_percent: 0.0,
+        disk_percent: 0.0,
+        auth_failures_1h,
+        tls_expiry_days: None,
+        offline_services: vec![],
+        container_changes: vec![],
+    }
+}
+
+#[test]
+fn evaluate_auth_failures_alerts_when_above_threshold() {
+    let mut r = rule("gt", Some(10.0));
+    r.metric = "auth_failures_1h".into();
+    assert_eq!(evaluate(&r, &metrics_with_auth(Some(42.0))).len(), 1);
+    assert!(evaluate(&r, &metrics_with_auth(Some(5.0))).is_empty());
+}
+
+#[test]
+fn evaluate_auth_failures_silent_when_metric_unavailable() {
+    // Comptage indisponible (erreur SQL) : ne jamais alerter, et surtout ne pas
+    // traiter l'absence comme un zero — c'est le bug d'origine.
+    let mut r = rule("gt", Some(10.0));
+    r.metric = "auth_failures_1h".into();
+    assert!(evaluate(&r, &metrics_with_auth(None)).is_empty());
+}
+
 #[test]
 fn evaluate_cpu_below_threshold_no_alert() {
     let r = rule("gt", Some(90.0));
@@ -78,7 +107,7 @@ fn evaluate_cpu_below_threshold_no_alert() {
         cpu_percent: 50.0,
         mem_percent: 0.0,
         disk_percent: 0.0,
-        auth_failures_1h: 0.0,
+        auth_failures_1h: Some(0.0),
         tls_expiry_days: None,
         offline_services: vec![],
         container_changes: vec![],

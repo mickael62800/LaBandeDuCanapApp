@@ -179,7 +179,6 @@ checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 name = "atrium-api"
 version = "0.1.0"
 dependencies = [
- "async-stream",
  "async-trait",
  "atrium-core",
  "atrium-proto",
@@ -192,7 +191,6 @@ dependencies = [
  "serde_json",
  "sqlx",
  "tokio",
- "tokio-stream",
  "tonic",
  "tower",
  "tracing",
@@ -2415,6 +2413,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "ops-adapters"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "ops-core",
+ "platform-common-api",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tracing",
+]
+
+[[package]]
 name = "ops-api"
 version = "0.1.0"
 dependencies = [
@@ -2422,6 +2435,7 @@ dependencies = [
  "axum",
  "chrono",
  "dotenvy",
+ "ops-adapters",
  "ops-core",
  "platform-common-api",
  "redis",
@@ -2454,7 +2468,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "dotenvy",
- "ops-api",
+ "ops-adapters",
  "ops-core",
  "platform-common-worker",
  "redis",

@@ -502,7 +502,11 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:3200/health || exit 1"]
+      # /ready (readiness) et non /health (liveness) : un dependant en
+      # `condition: service_healthy` doit attendre que l'API puisse REELLEMENT
+      # servir (Postgres + Redis joignables), pas seulement que le process tourne.
+      # /health reste disponible pour une sonde de liveness pure.
+      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:3200/ready || exit 1"]
       interval: 30s
       timeout: 3s
       retries: 3

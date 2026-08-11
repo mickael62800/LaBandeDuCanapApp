@@ -19,7 +19,7 @@ dotenvy = { workspace = true }
 chrono = { workspace = true }
 reqwest = { workspace = true }
 sysinfo = { version = "0.33", default-features = false, features = ["system", "disk"] }
-ops-api = { workspace = true }
+ops-adapters = { workspace = true }
 ops-core = { workspace = true }
 platform-common-worker = { path = "../platform-common-worker" }
 

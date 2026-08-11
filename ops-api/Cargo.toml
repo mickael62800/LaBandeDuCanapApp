@@ -21,6 +21,7 @@ async-trait = { workspace = true }
 chrono = { workspace = true }
 platform-common-api = { workspace = true }
 ops-core = { workspace = true }
+ops-adapters = { workspace = true }
 # Client du docker-agent + webhook Discord des alertes.
 reqwest = { workspace = true }
 # Deduplication des alertes (cle a TTL = cooldown de la regle).

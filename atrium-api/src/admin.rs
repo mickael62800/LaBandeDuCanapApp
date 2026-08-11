@@ -294,3 +294,28 @@ pub async fn job_generate_summary(
         generated_by_ai: reply.generated_by_ai,
     }))
 }
+
+#[derive(Serialize)]
+pub struct JobRetentionResponse {
+    pub ok: bool,
+}
+
+/// Endpoint interne declenche quotidiennement par atrium-worker pour purger les
+/// vieux compteurs de quota. La purge a ete sortie du chemin critique de
+/// `check_and_record` : elle n'a plus a rallonger la transaction verrouillant
+/// les compteurs a chaque appel IA. Sans guilde : c'est une operation de
+/// maintenance sur toutes les lignes expirees.
+pub async fn job_retention(
+    Extension(state): Extension<Arc<AppState>>,
+) -> Result<Json<JobRetentionResponse>, ApiError> {
+    let budget = state
+        .budget
+        .as_ref()
+        .ok_or_else(|| ApiError::unavailable("quotas indisponibles"))?;
+    budget.purge_old().await.map_err(|error| {
+        tracing::error!(%error, "Purge des quotas Atrium impossible");
+        ApiError::unavailable("purge des quotas impossible")
+    })?;
+    tracing::info!("Purge des compteurs de quota Atrium effectuee");
+    Ok(Json(JobRetentionResponse { ok: true }))
+}

@@ -4,9 +4,13 @@
 use async_trait::async_trait;
 use sqlx::PgPool;
 
-use crate::adapters::pg_err;
-use ops_core::domain::entities::server_event::{ServerEvent, ServerEventFilter};
+use crate::pg_err;
+use ops_core::domain::entities::server_event::{NewServerEvent, ServerEvent, ServerEventFilter};
 use ops_core::domain::errors::DomainError;
+
+/// Taille max d'un lot d'insertion. Au-dela (recreation massive de conteneurs),
+/// on decoupe pour ne pas construire une requete demesuree.
+const BATCH_CHUNK: usize = 500;
 use ops_core::ports::outbound::server_event_repository::ServerEventRepository;
 
 pub struct PgServerEventRepository {
@@ -43,6 +47,27 @@ impl ServerEventRepository for PgServerEventRepository {
         .execute(&self.pool)
         .await
         .map_err(pg_err)?;
+        Ok(())
+    }
+
+    async fn record_batch(&self, events: &[NewServerEvent]) -> Result<(), DomainError> {
+        if events.is_empty() {
+            return Ok(());
+        }
+        for chunk in events.chunks(BATCH_CHUNK) {
+            let mut builder = sqlx::QueryBuilder::new(
+                "INSERT INTO server_events (actor, actor_name, action, target, severity, details) ",
+            );
+            builder.push_values(chunk, |mut row, event| {
+                row.push_bind(&event.actor)
+                    .push_bind(&event.actor_name)
+                    .push_bind(&event.action)
+                    .push_bind(&event.target)
+                    .push_bind(&event.severity)
+                    .push_bind(&event.details);
+            });
+            builder.build().execute(&self.pool).await.map_err(pg_err)?;
+        }
         Ok(())
     }
 

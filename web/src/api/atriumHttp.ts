@@ -16,6 +16,11 @@ const request = createBackendClient({
   forbiddenMessage: "Accès à Atrium refusé.",
   unavailableMessage:
     "Atrium ne répond pas. Le service est-il démarré (profil Docker « atrium ») ?",
+  // Pendant un `docker compose up --build`, nginx peut deja servir le nouveau
+  // SPA alors que l'ancien conteneur Atrium termine son remplacement. Une
+  // nouvelle route GET repond alors 404 pendant quelques centaines de ms.
+  // Les ecritures ne sont jamais rejouees, pour eviter tout double effet.
+  retryStatuses: [404, 502, 503],
   makeError: (message, details) => new AtriumHttpError(message, details),
 });
 

@@ -18,6 +18,8 @@ export interface JsonRequestOptions {
   timeoutMs?: number;
   backend?: string;
   emptyStatuses?: ReadonlySet<number>;
+  /** Statuts GET transitoires a rejouer. Par defaut : 503 uniquement. */
+  retryStatuses?: ReadonlySet<number>;
   refreshSession?: () => Promise<boolean>;
   onUnauthorized?: () => void;
   makeError?: (message: string, details: HttpErrorDetails) => Error;
@@ -90,6 +92,7 @@ async function parseBody(response: Response): Promise<unknown> {
 
 async function fetchWithRetry(options: JsonRequestOptions): Promise<Response> {
   const delays = [0, 500, 1_500];
+  const retryStatuses = options.retryStatuses ?? new Set([503]);
   let response: Response | undefined;
 
   for (const fallbackDelay of delays) {
@@ -104,7 +107,7 @@ async function fetchWithRetry(options: JsonRequestOptions): Promise<Response> {
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
       signal: options.signal,
     }, options.timeoutMs);
-    if (options.method !== "GET" || response.status !== 503) return response;
+    if (options.method !== "GET" || !retryStatuses.has(response.status)) return response;
   }
   return response as Response;
 }

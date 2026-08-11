@@ -758,6 +758,12 @@ services:
         condition: service_healthy
       gateway:
         condition: service_started
+      # Profil optionnel : quand Atrium est actif, ne publier le nouveau SPA
+      # qu'une fois sa surface HTTP saine. Sans le profil, Compose ignore
+      # proprement cette dependance.
+      atrium-api:
+        condition: service_healthy
+        required: false
     # NOTE — web (nginx) a besoin de default pour que le port publish 80/443
     # fonctionne (Docker requiert un reseau non-internal pour le NAT host).
     # internal donne acces aux upstreams (api, gateway). nginx ne fait jamais

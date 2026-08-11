@@ -134,6 +134,29 @@ describe("requestJson", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("retente un GET 404 seulement quand le backend le declare transitoire", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ error: "ancienne route" }, 404, { "Retry-After": "0" }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(requestJson<{ ok: boolean }>({
+      url: "/atrium-api/admin/guilds/1/config",
+      method: "GET",
+      retryStatuses: new Set([404, 502, 503]),
+    })).resolves.toMatchObject({ data: { ok: true } });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("ne retente pas un 404 par defaut", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ error: "absent" }, 404));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(requestJson({ url: "/api/absent", method: "GET" }))
+      .rejects.toMatchObject({ status: 404 });
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
   it("convertit un dépassement de délai en HttpTimeoutError", async () => {
     vi.useFakeTimers();
     vi.stubGlobal("fetch", vi.fn((_input: RequestInfo | URL, init?: RequestInit) =>

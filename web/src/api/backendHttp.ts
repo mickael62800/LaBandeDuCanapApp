@@ -15,6 +15,7 @@ interface BackendClientOptions {
   forbiddenMessage: string;
   unavailableMessage?: string;
   emptyStatuses?: readonly number[];
+  retryStatuses?: readonly number[];
   makeError: (message: string, details: HttpErrorDetails) => Error;
 }
 
@@ -28,6 +29,7 @@ export interface BackendRequestOptions {
 /** Adaptateur métier d'un backend, posé sur le transport commun. */
 export function createBackendClient(options: BackendClientOptions) {
   const emptyStatuses = new Set(options.emptyStatuses ?? [204]);
+  const retryStatuses = new Set(options.retryStatuses ?? [503]);
 
   return async function request<T>(
     method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
@@ -52,6 +54,7 @@ export function createBackendClient(options: BackendClientOptions) {
       timeoutMs: requestOptions.timeoutMs,
       backend: options.errorLabel,
       emptyStatuses,
+      retryStatuses,
       refreshSession: tryRefreshSession,
       onUnauthorized: handleUnauthorizedSession,
       makeError: (message, details) => {

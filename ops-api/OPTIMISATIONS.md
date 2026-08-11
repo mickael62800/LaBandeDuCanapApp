@@ -1,6 +1,30 @@
 # Audit d'optimisation Ops
 
 Date de l'audit : 11 aout 2026
+Mise a jour : 11 aout 2026 — priorites P0 a P11 implementees.
+
+## Etat d'avancement
+
+| Priorite | Statut |
+|---|---|
+| P0 — metrique auth failures (JSONB `status_code`) | ✅ Fait |
+| P0 — reemission des changements Docker | ✅ Fait (curseur Redis `alert:docker:cursor`) |
+| P1 — `sysinfo` hors runtime async | ✅ Fait (`spawn_blocking`) |
+| P2 — allers-retours Redis | ✅ Fait (worker : connexion partagee/tick + `EXISTS` pipelines ; API : `ConnectionManager` partage) |
+| P3 — boucles periodiques | ✅ Fait (`tokio::time::interval` + `MissedTickBehavior::Skip`, premier tick immediat) |
+| P4 — dispatcher de webhooks | ✅ Fait (concurrence bornee a 3, `Retry-After` respecte, resume par cycle) |
+| P5 — monitor Docker | ✅ Fait (`record_batch` par lot, plus de clone complet, un seul verrou) |
+| P6 — endpoints Docker | ✅ Fait (`try_join!` overview, total prune reseaux inclus, echec partiel expose) |
+| P7 — audit Docker | ✅ Fait (resultat reel apres l'appel, awaite, wrapper `audited` mutualise) |
+| P8 — cleanup explicite | ✅ Fait (transaction locale + erreurs propagees + **statut par cible** `deleted`/`skipped`/`failed`) |
+| P9 — liveness/readiness | ✅ Fait (`/health` liveness, `/ready` readiness PG+Redis, healthcheck compose sur `/ready`) |
+| P10 — decoupler `ops-worker` de `ops-api` | ✅ Fait (crate `ops-adapters`) — reste : sortir axum via `docker_agent_client` |
+| P11 — decouper les god files | ✅ Fait (`handlers/docker/*` et `handlers/security/*`, sans re-export) |
+| P12 — index des logs | ⏳ A mesurer (`EXPLAIN ANALYZE`) avant migration — candidats listes plus bas |
+| Doc a remettre en coherence | ✅ Fait (monitor worker, role `sentinel_app`, socket Docker) |
+| Couverture de tests d'integration | ⏳ Necessite un harnais Postgres de test |
+
+Le detail d'origine de chaque priorite est conserve ci-dessous pour reference.
 
 ## Etat initial
 

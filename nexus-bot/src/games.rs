@@ -10,8 +10,8 @@ use std::collections::HashSet;
 use serenity::all::{
     Colour, CommandDataOptionValue, CommandInteraction, CommandOptionType, ComponentInteraction,
     ComponentInteractionDataKind, Context, CreateCommand, CreateCommandOption,
-    CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, EditMessage,
-    EditRole, GuildId, ReactionType, RoleId,
+    CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage,
+    EditInteractionResponse, EditMessage, EditRole, GuildId, ReactionType, RoleId,
 };
 use serenity::builder::CreateEmbed;
 use tracing::{info, warn};
@@ -521,6 +521,15 @@ async fn reply(ctx: &Context, cmd: &CommandInteraction, content: &str) {
     );
     if let Err(e) = cmd.create_response(&ctx.http, response).await {
         warn!(error = %e, "Erreur reponse commande game");
+    }
+}
+
+async fn edit_deferred_reply(ctx: &Context, cmd: &CommandInteraction, content: &str) {
+    if let Err(e) = cmd
+        .edit_response(&ctx.http, EditInteractionResponse::new().content(content))
+        .await
+    {
+        warn!(error = %e, "Erreur edition reponse differee commande game");
     }
 }
 

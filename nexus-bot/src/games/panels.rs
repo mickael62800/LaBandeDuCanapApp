@@ -13,6 +13,14 @@ pub(super) async fn handle_panel(
         return;
     }
 
+    // Le deploiement peut enchainer plusieurs appels API et jusqu'a 25 ajouts
+    // de reactions Discord. Acquitter l'interaction avant ces appels evite que
+    // Discord l'expire au bout de trois secondes.
+    if let Err(e) = cmd.defer_ephemeral(&ctx.http).await {
+        warn!(error = %e, "Defer /game-admin panel impossible");
+        return;
+    }
+
     let category = get_string_option(cmd, "category");
     let mut games = match api
         .list_games_by_category(guild_id, category.as_deref())
@@ -20,13 +28,13 @@ pub(super) async fn handle_panel(
     {
         Ok(g) => g,
         Err(e) => {
-            reply(ctx, cmd, &format!("Erreur : {e}")).await;
+            edit_deferred_reply(ctx, cmd, &format!("Erreur : {e}")).await;
             return;
         }
     };
 
     if games.is_empty() {
-        reply(
+        edit_deferred_reply(
             ctx,
             cmd,
             "Aucun jeu dans cette categorie. Ajoute-en avec `/game-admin create`.",
@@ -60,7 +68,7 @@ pub(super) async fn handle_panel(
     {
         Ok(m) => m,
         Err(e) => {
-            reply(ctx, cmd, &format!("Erreur envoi message : {e}")).await;
+            edit_deferred_reply(ctx, cmd, &format!("Erreur envoi message : {e}")).await;
             return;
         }
     };
@@ -78,7 +86,7 @@ pub(super) async fn handle_panel(
     {
         Ok(p) => p,
         Err(e) => {
-            reply(
+            edit_deferred_reply(
                 ctx,
                 cmd,
                 &format!("Panel envoye mais erreur de sauvegarde : {e}"),
@@ -91,7 +99,7 @@ pub(super) async fn handle_panel(
     // 3) Attache les reactions natives. Discord affiche alors automatiquement
     //    le compteur et surligne la reaction choisie pour chaque membre.
     if let Err(e) = edit_panel_with_reactions(ctx, &mut msg, &games_slice, None).await {
-        reply(
+        edit_deferred_reply(
             ctx,
             cmd,
             &format!("Panel envoye mais erreur d'ajout des boutons : {e}"),
@@ -100,7 +108,7 @@ pub(super) async fn handle_panel(
         return;
     }
 
-    reply(
+    edit_deferred_reply(
         ctx,
         cmd,
         &format!("Panneau deploye ({} jeux).", games_slice.len()),
@@ -119,13 +127,20 @@ pub(super) async fn handle_refresh(
         return;
     }
 
+    // Une edition suivie de nombreuses reactions depasse facilement la
+    // fenetre de reponse Discord si la commande n'est pas differee.
+    if let Err(e) = cmd.defer_ephemeral(&ctx.http).await {
+        warn!(error = %e, "Defer /game-admin refresh impossible");
+        return;
+    }
+
     let category = get_string_option(cmd, "category");
 
     // Trouve le panel existant via list_panels.
     let panels = match api.list_panels(guild_id).await {
         Ok(p) => p,
         Err(e) => {
-            reply(ctx, cmd, &format!("Erreur : {e}")).await;
+            edit_deferred_reply(ctx, cmd, &format!("Erreur : {e}")).await;
             return;
         }
     };
@@ -136,7 +151,7 @@ pub(super) async fn handle_refresh(
     let panel = match panel {
         Some(p) => p,
         None => {
-            reply(
+            edit_deferred_reply(
                 ctx,
                 cmd,
                 "Aucun panneau existant pour cette categorie. Utilise `/game-admin panel` d'abord.",
@@ -152,7 +167,7 @@ pub(super) async fn handle_refresh(
     {
         Ok(g) => g,
         Err(e) => {
-            reply(ctx, cmd, &format!("Erreur : {e}")).await;
+            edit_deferred_reply(ctx, cmd, &format!("Erreur : {e}")).await;
             return;
         }
     };
@@ -168,14 +183,14 @@ pub(super) async fn handle_refresh(
     let channel_id: serenity::model::id::ChannelId = match panel.channel_id.parse::<u64>() {
         Ok(id) => serenity::model::id::ChannelId::new(id),
         Err(_) => {
-            reply(ctx, cmd, "channel_id invalide en DB.").await;
+            edit_deferred_reply(ctx, cmd, "channel_id invalide en DB.").await;
             return;
         }
     };
     let message_id: serenity::model::id::MessageId = match panel.message_id.parse::<u64>() {
         Ok(id) => serenity::model::id::MessageId::new(id),
         Err(_) => {
-            reply(ctx, cmd, "message_id invalide en DB.").await;
+            edit_deferred_reply(ctx, cmd, "message_id invalide en DB.").await;
             return;
         }
     };
@@ -183,7 +198,7 @@ pub(super) async fn handle_refresh(
     let mut msg = match channel_id.message(&ctx.http, message_id).await {
         Ok(m) => m,
         Err(e) => {
-            reply(ctx, cmd, &format!("Message panneau introuvable : {e}")).await;
+            edit_deferred_reply(ctx, cmd, &format!("Message panneau introuvable : {e}")).await;
             return;
         }
     };
@@ -191,11 +206,11 @@ pub(super) async fn handle_refresh(
     // Repasse aussi les anciens panneaux à la sélection par réactions : le
     // compteur et l'état sélectionné sont gérés nativement par Discord.
     if let Err(e) = edit_panel_with_reactions(ctx, &mut msg, &games_slice, Some(embed)).await {
-        reply(ctx, cmd, &format!("Erreur edition : {e}")).await;
+        edit_deferred_reply(ctx, cmd, &format!("Erreur edition : {e}")).await;
         return;
     }
 
-    reply(
+    edit_deferred_reply(
         ctx,
         cmd,
         &format!("Panneau rafraichi ({} jeux).", games_slice.len()),

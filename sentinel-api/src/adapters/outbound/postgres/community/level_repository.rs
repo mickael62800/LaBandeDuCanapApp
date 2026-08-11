@@ -1,6 +1,7 @@
 use crate::adapters::outbound::postgres::pg_err;
 use async_trait::async_trait;
 use sqlx::PgPool;
+use tracing::warn;
 use uuid::Uuid;
 
 use sentinel_core::domain::entities::community::level::UserLevel;
@@ -17,6 +18,14 @@ impl PgLevelRepository {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
+}
+
+fn materialized_view_unpopulated(error: &sqlx::Error) -> bool {
+    matches!(
+        error,
+        sqlx::Error::Database(database_error)
+            if database_error.code().as_deref() == Some("55000")
+    )
 }
 
 #[derive(sqlx::FromRow)]
@@ -157,8 +166,29 @@ impl LevelRepository for PgLevelRepository {
         .bind(guild_id)
         .bind(limit)
         .fetch_all(&self.pool)
-        .await
-        .map_err(pg_err)?;
+        .await;
+
+        let rows = match rows {
+            Ok(rows) => rows,
+            Err(error) if materialized_view_unpopulated(&error) => {
+                // Protection pendant le bootstrap : la table source possede
+                // deja l'index (guild_id, xp DESC), ce repli reste donc borne
+                // et evite un 500 pendant le premier refresh de la vue.
+                warn!(
+                    guild_id,
+                    "Leaderboard materialized view is not populated; using indexed source table"
+                );
+                sqlx::query_as::<_, UserLevelRow>(
+                    "SELECT id, guild_id, user_id, username, xp, level, xp_text, level_text, xp_voice, level_voice, last_xp_at, created_at, updated_at FROM user_levels WHERE guild_id = $1 ORDER BY xp DESC LIMIT $2",
+                )
+                .bind(guild_id)
+                .bind(limit)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(pg_err)?
+            }
+            Err(error) => return Err(pg_err(error)),
+        };
 
         Ok(rows.into_iter().map(UserLevel::from).collect())
     }

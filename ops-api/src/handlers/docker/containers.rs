@@ -170,15 +170,31 @@ pub struct LogsDto {
     pub logs: String,
 }
 
+/// Lecture des logs d'un conteneur — AUDITEE au meme titre que les actions
+/// destructives.
+///
+/// Elle ne modifie rien, mais c'est l'operation la plus exposante de cette
+/// surface : les logs d'`auth-api`, de `postgres` ou d'`api` contiennent
+/// couramment des jetons, des chaines de connexion en cas d'erreur et des
+/// donnees d'utilisateurs. Tracer les suppressions sans tracer les lectures
+/// aurait laisse l'exfiltration comme seule action invisible du journal.
 pub async fn container_logs(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Path(id): Path<String>,
     Query(q): Query<LogsQuery>,
 ) -> Result<Json<LogsDto>, ApiError> {
+    let actor = actor_from(&headers);
     let tail = q.tail.unwrap_or(200).min(5000);
-    let logs = state
-        .docker_host
-        .container_logs(&id, tail, q.timestamps.unwrap_or(false))
-        .await?;
+    let logs = audited(
+        &state,
+        &actor,
+        "container.logs",
+        &id,
+        state
+            .docker_host
+            .container_logs(&id, tail, q.timestamps.unwrap_or(false)),
+    )
+    .await?;
     Ok(Json(LogsDto { logs }))
 }

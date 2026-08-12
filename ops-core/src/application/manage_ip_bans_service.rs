@@ -34,21 +34,33 @@ impl ManageIpBansService {
 }
 
 /// Valide une IP destinee a un ban : doit etre parsable et publique.
+///
+/// Bannir une adresse interne coupe l'hote de son propre reseau : le garde-fou
+/// couvre donc les DEUX familles. La version initiale ne testait `is_private()`
+/// que sur la branche IPv4, ce qui laissait passer une ULA (`fc00::/7`) et une
+/// link-local (`fe80::/10`) — seul `::1` etait arrete, par `is_loopback`.
 fn validate_bannable_ip(raw: &str) -> Result<IpAddr, DomainError> {
     let ip: IpAddr = raw
         .parse()
         .map_err(|_| DomainError::ValidationError(format!("IP invalide : {raw}")))?;
-    if ip.is_loopback() {
+    if ip.is_loopback() || ip.is_unspecified() || ip.is_multicast() {
         return Err(DomainError::ValidationError(
-            "Refus de bannir une IP loopback".into(),
+            "Refus de bannir une IP non routable (loopback, indeterminee ou multicast)".into(),
         ));
     }
-    if let IpAddr::V4(v4) = ip {
-        if v4.is_private() {
-            return Err(DomainError::ValidationError(
-                "Refus de bannir une IP privee LAN".into(),
-            ));
+    let interne = match ip {
+        IpAddr::V4(v4) => v4.is_private() || v4.is_link_local() || v4.is_broadcast(),
+        // `fc00::/7` (unique local) et `fe80::/10` (link-local). Les methodes
+        // stables ne les exposent pas encore : on teste les prefixes.
+        IpAddr::V6(v6) => {
+            let o = v6.octets();
+            (o[0] & 0xfe) == 0xfc || (o[0] == 0xfe && (o[1] & 0xc0) == 0x80)
         }
+    };
+    if interne {
+        return Err(DomainError::ValidationError(
+            "Refus de bannir une IP privee ou de lien local".into(),
+        ));
     }
     Ok(ip)
 }
@@ -69,10 +81,18 @@ impl ManageIpBansUseCase for ManageIpBansService {
         self.queue.queue_ban(ip, reason).await?;
         // 2. Persiste/reactive le ban manuel (source de verite UI).
         self.repo.record_manual_ban(ip, actor, reason).await?;
-        // 3. Purge des logs API de cette IP. Best-effort : on n'echoue pas.
-        let deleted_logs = self.repo.delete_api_logs_for_ip(ip).await.unwrap_or(0);
 
-        Ok(BanIpOutcome { deleted_logs })
+        // Les logs de l'IP ne sont PLUS supprimes ici.
+        //
+        // Le ban effacait les traces qui le justifiaient : impossible ensuite
+        // de reconstituer ce que l'adresse avait fait, et un aller-retour
+        // ban/deban suffisait a nettoyer l'historique de n'importe quelle IP
+        // sans que le journal en garde mention. Une mesure de securite ne doit
+        // pas detruire ses propres preuves.
+        //
+        // La retention des logs est le travail de la purge programmee
+        // (`/security/cleanup`), qui est explicite et auditee.
+        Ok(BanIpOutcome { deleted_logs: 0 })
     }
 
     async fn unban(

@@ -1,8 +1,10 @@
 //! Adapter postgres du port `SecurityLogRepository` : agregations sur la table
 //! `logs` (categorie `api`). Le mapping fenetre -> intervalle SQL vit ici.
 //!
-//! Les valeurs interpolees dans le SQL (`interval`, `bucket`) proviennent
-//! d'un enum domaine et d'un entier borne par le use case : pas d'injection.
+//! Les valeurs interpolees dans le SQL (`interval`, `limit`, `bucket`)
+//! proviennent d'un enum du domaine et d'entiers `i64` bornes par le use case
+//! (`ReadSecurityLogsService::borne`) : pas d'injection possible, et pas de
+//! division par zero sur le bucket.
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};

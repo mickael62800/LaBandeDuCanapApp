@@ -36,11 +36,24 @@ impl HostProbeReader for FileHostProbeReader {
     async fn read(&self, probe: HostProbe) -> Result<serde_json::Value, DomainError> {
         let path = Self::path(probe);
         let feature = probe.feature();
-        let raw = std::fs::read_to_string(path).map_err(|e| {
+
+        // Lecture bloquante deportee : ces fichiers sont ecrits par des cron
+        // hote et `trivy.json` atteint plusieurs Mo. Un `read_to_string` direct
+        // retenait un thread du runtime pendant l'I/O.
+        let raw = tokio::fs::read_to_string(path).await.map_err(|e| {
+            // Le chemin exact et l'erreur systeme restent dans les logs : ce
+            // message-ci part au client tel quel (`public_message` ne masque
+            // que les 5xx), et decrire l'arborescence de l'hote dans une 404
+            // n'aide que celui qui la cartographie.
+            tracing::warn!(error = %e, path, "sonde hote illisible");
             DomainError::NotFound(format!(
-                "{feature} non disponible. Setup : sudo bash infrastructure/scripts/setup-host-security.sh {feature}. (lecture {path}: {e})"
+                "{feature} non disponible. Setup : sudo bash infrastructure/scripts/setup-host-security.sh {feature}"
             ))
         })?;
-        serde_json::from_str(&raw).map_err(|e| DomainError::Internal(format!("parse {path}: {e}")))
+
+        serde_json::from_str(&raw).map_err(|e| {
+            tracing::error!(error = %e, path, "sonde hote au format invalide");
+            DomainError::Internal("sonde hote au format invalide".into())
+        })
     }
 }

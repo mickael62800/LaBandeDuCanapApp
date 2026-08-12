@@ -1,11 +1,31 @@
-//! Adapter du port `TlsCertReader` : recupere le cert du domaine web (lecture
-//! fichier certbot, fallback `openssl s_client`) et en extrait l'expiration.
+//! Adapter du port `TlsCertReader` : recupere le cert du domaine web via le
+//! handshake TLS et en extrait l'expiration.
+//!
+//! # Pourquoi le handshake et PAS le fichier certbot
+//!
+//! Une premiere version lisait `/etc/letsencrypt/live/{domain}/cert.pem`, ce
+//! qui imposait de monter `/etc/letsencrypt` dans ce conteneur. Or `privkey.pem`
+//! vit dans le meme repertoire : une compromission d'ops-api livrait la CLE
+//! PRIVEE du certificat, pour n'afficher qu'une date d'expiration. Restreindre
+//! le montage a `live/` n'aurait rien change — certbot n'y met que des liens
+//! symboliques vers `archive/`, qui contient les cles aussi.
+//!
+//! Le handshake rend exactement la meme information et ne lit qu'une donnee
+//! publique : celle que le certificat presente a n'importe quel visiteur. Le
+//! montage a donc ete retire du compose.
+
+use std::time::Duration;
 
 use async_trait::async_trait;
 
 use ops_core::domain::entities::tls_cert::TlsCertInfo;
 use ops_core::domain::errors::DomainError;
 use ops_core::ports::outbound::tls_cert_reader::TlsCertReader;
+
+/// Plafond de l'appel `openssl`. Sans lui, un `web:443` qui accepte la
+/// connexion sans jamais repondre laisse le processus en attente indefinie —
+/// et, l'appel etant fait depuis un handler, immobilise un thread du runtime.
+const OPENSSL_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Default)]
 pub struct FileTlsCertReader;
@@ -24,32 +44,25 @@ impl TlsCertReader for FileTlsCertReader {
             return Err(DomainError::Internal("WEB_DOMAIN non defini en env".into()));
         }
 
-        // 2 strategies :
-        //   1. Lecture fichier /etc/letsencrypt/live/{domain}/cert.pem (rapide).
-        //   2. Fallback : openssl s_client connect web:443 (independant des
-        //      perms fichier certbot).
-        let path = format!("/etc/letsencrypt/live/{domain}/cert.pem");
-        let pem = match std::fs::read_to_string(&path) {
-            Ok(p) => p,
-            Err(_) => fetch_cert_via_openssl(&domain).map_err(|e| {
-                DomainError::Internal(format!(
-                    "lecture cert {path} echouee + fallback openssl echec : {e}"
-                ))
-            })?,
-        };
+        let pem = fetch_cert_via_openssl(&domain)
+            .await
+            .map_err(DomainError::Internal)?;
 
         parse_cert(&pem).map_err(|e| DomainError::Internal(format!("parse cert: {e}")))
     }
 }
 
-/// Fallback : `openssl s_client -connect web:443 -servername {domain}` pour
-/// recuperer le cert via TLS handshake (independant des perms fichier).
-fn fetch_cert_via_openssl(domain: &str) -> Result<String, String> {
-    use std::io::Write;
-    use std::process::Command;
-    use std::process::Stdio;
+/// `openssl s_client -connect web:443 -servername {domain}` : recupere le cert
+/// tel qu'il est presente au handshake.
+///
+/// `tokio::process` et non `std::process` : la version bloquante retenait un
+/// thread du runtime pendant toute la duree de l'appel.
+async fn fetch_cert_via_openssl(domain: &str) -> Result<String, String> {
+    use tokio::process::Command;
 
-    let mut child = Command::new("openssl")
+    // `-servername` est passe en argument d'un exec direct, jamais a un shell :
+    // aucune interpolation possible, meme si WEB_DOMAIN etait mal renseigne.
+    let child = Command::new("openssl")
         .args([
             "s_client",
             "-connect",
@@ -58,18 +71,18 @@ fn fetch_cert_via_openssl(domain: &str) -> Result<String, String> {
             domain,
             "-showcerts",
         ])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        // `< /dev/null` : sans fermeture de l'entree, `s_client` reste ouvert
+        // en attente d'input apres le handshake.
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true)
         .spawn()
         .map_err(|e| format!("spawn openssl: {e}"))?;
 
-    if let Some(mut stdin) = child.stdin.take() {
-        let _ = stdin.write_all(b"");
-    }
-
-    let output = child
-        .wait_with_output()
+    let output = tokio::time::timeout(OPENSSL_TIMEOUT, child.wait_with_output())
+        .await
+        .map_err(|_| format!("openssl n'a pas repondu en {}s", OPENSSL_TIMEOUT.as_secs()))?
         .map_err(|e| format!("wait openssl: {e}"))?;
     let stdout = String::from_utf8_lossy(&output.stdout);
 

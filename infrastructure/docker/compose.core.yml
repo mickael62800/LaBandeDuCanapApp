@@ -381,9 +381,11 @@ services:
       # Fichiers host security (RW) :
       # - Lecture : fail2ban-status.json, ssh-failures.json, disk-trend.json,
       #   open-ports.json, file-integrity.json, etc. (genere par cron host).
-      # - Ecriture : bans-pending.txt / unbans-pending.txt (consomme par
-      #   sentinel-apply-bans.sh cron host) pour /api/security/ban-ip
-      #   et /api/security/unban-ip.
+      # - Ecriture : bans-pending.txt, en append, pour l'auto-ban du rate
+      #   limiter dynamique (adapters/outbound/system/rate_limiter.rs).
+      #   Les bans MANUELS (/security/ban-ip, /security/unban-ip) sont partis
+      #   avec le domaine `ops` : c'est ops-api qui ecrit desormais ce meme
+      #   fichier. Le cron hote sentinel-apply-bans.sh consomme les deux.
       # Si le repertoire n'existe pas, les endpoints lecture retournent
       # installed=false avec les instructions setup-host-security.sh.
       - /var/lib/sentinel:/var/lib/sentinel
@@ -477,6 +479,11 @@ services:
       # Requis : l'API refuse de demarrer sans jeton d'au moins 16 caracteres.
       OPS_API_TOKEN: ${OPS_API_TOKEN:?OPS_API_TOKEN est requis}
       OPS_METRICS_TOKEN: ${OPS_METRICS_TOKEN:-}
+      # Resolution GeoIP : transfert d'adresses IP a un tiers, donc opt-in
+      # explicite. Cf. .env.example pour la portee RGPD et le point sur le
+      # http:// du palier gratuit.
+      OPS_GEOIP_ENABLED: ${OPS_GEOIP_ENABLED:-false}
+      OPS_GEOIP_URL: ${OPS_GEOIP_URL:-http://ip-api.com/batch}
       REDIS_URL: redis://:${REDIS_PASSWORD:-sentinel_redis}@redis:6379
       # Journal des logins reussis : la table appartient a la base de
       # l'identite, l'ecran « Securite de l'hote » la lit par HTTP. Meme
@@ -489,8 +496,17 @@ services:
     security_opt:
       - no-new-privileges:true
     volumes:
-      - /var/lib/sentinel:/var/lib/sentinel:ro
-      - /etc/letsencrypt:/etc/letsencrypt:ro
+      # RW et non `:ro` : `adapters/host_security/ban_queue.rs` ECRIT
+      # bans-pending.txt / unbans-pending.txt, consommes par le cron hote
+      # sentinel-apply-bans.sh. En lecture seule, POST /security/ban-ip
+      # echouait en permission denied — la page Securite proposait un bouton
+      # qui ne bannissait rien.
+      - /var/lib/sentinel:/var/lib/sentinel
+      # PAS de montage de /etc/letsencrypt : `privkey.pem` y voisine
+      # `cert.pem`, et ce service n'a besoin que de la date d'expiration.
+      # `adapters/host_security/tls_cert.rs` la lit desormais par le handshake
+      # TLS (donnee publique), ce qui supprime le besoin d'acces fichier.
+      # Ne pas le remettre pour « accelerer » la lecture.
     networks:
       - internal
       - default

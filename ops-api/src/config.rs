@@ -4,7 +4,9 @@ use std::net::SocketAddr;
 
 pub struct AppConfig {
     pub bind_addr: SocketAddr,
-    /// Base de Sentinel, via un role restreint (cf. doc du crate).
+    /// Base de Sentinel, via le role applicatif `sentinel_app` PARTAGE avec
+    /// sentinel-api et sentinel-worker (cf. doc du crate). Ce n'est pas un
+    /// role restreint : `sentinel_ops` a ete abandonne en migration 028.
     pub database_url: String,
     /// Jeton injecte par nginx sur `/ops-api/`. Le navigateur ne le voit jamais.
     pub api_token: String,

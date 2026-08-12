@@ -7,6 +7,39 @@ use nexus_core::domain::entities::game::server::{GameServer, GameServerStatus};
 use nexus_core::ports::inbound::game::manage_game_servers::GameServerDetail;
 use nexus_core::ports::outbound::game::container_runtime::ContainerStats;
 
+/// Deserialise une map de config en TOLERANT les scalaires JSON non-chaine.
+///
+/// La config est stockee et validee comme du texte (`HashMap<String, String>`),
+/// mais le formulaire web envoie naturellement un champ entier comme un nombre
+/// JSON (`"PLAYERS": 10`) et une case a cocher comme un booleen. Sans cette
+/// conversion, serde rejetait tout le corps en 422 (« invalid type: integer,
+/// expected a string »). On accepte chaine/nombre/booleen et on normalise en
+/// chaine ; `null` est ignore (champ laisse au defaut) ; objet/tableau restent
+/// une vraie erreur.
+fn deserialize_config_map<'de, D>(deserializer: D) -> Result<HashMap<String, String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::Deserialize;
+    let raw: HashMap<String, serde_json::Value> = HashMap::deserialize(deserializer)?;
+    let mut out = HashMap::with_capacity(raw.len());
+    for (k, v) in raw {
+        let s = match v {
+            serde_json::Value::String(s) => s,
+            serde_json::Value::Number(n) => n.to_string(),
+            serde_json::Value::Bool(b) => b.to_string(),
+            serde_json::Value::Null => continue,
+            other => {
+                return Err(serde::de::Error::custom(format!(
+                    "valeur de config invalide pour `{k}` : scalaire attendu, recu {other}"
+                )))
+            }
+        };
+        out.insert(k, s);
+    }
+    Ok(out)
+}
+
 #[derive(Debug, Deserialize)]
 pub struct CreateGameServerDto {
     pub template_slug: String,
@@ -17,7 +50,7 @@ pub struct CreateGameServerDto {
     pub cpu_limit: Option<f64>,
     pub owner_user_id: String,
     /// Overrides initiaux (key/value SCREAMING_SNAKE).
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_config_map")]
     pub config: HashMap<String, String>,
     /// Delai (jours) avant la revelation de l'IP. Vide = defaut de la guild
     /// (`ip_reveal_default_days`). 0 = pas de revelation programmee.
@@ -26,6 +59,7 @@ pub struct CreateGameServerDto {
 
 #[derive(Debug, Deserialize)]
 pub struct UpdateConfigDto {
+    #[serde(deserialize_with = "deserialize_config_map")]
     pub config: HashMap<String, String>,
 }
 

@@ -15,10 +15,10 @@
 use std::sync::Arc;
 
 use serenity::all::{
-    ButtonStyle, ChannelId, ChannelType, ComponentInteraction, Context, CreateActionRow,
+    ButtonStyle, ChannelId, ChannelType, Colour, ComponentInteraction, Context, CreateActionRow,
     CreateButton, CreateChannel, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse,
-    CreateInteractionResponseMessage, CreateMessage, EditMessage, GuildId, PermissionOverwrite,
-    PermissionOverwriteType, Permissions, RoleId,
+    CreateInteractionResponseMessage, CreateMessage, EditMessage, EditRole, GuildId,
+    PermissionOverwrite, PermissionOverwriteType, Permissions, RoleId,
 };
 
 use crate::api_client::{ApiClient, GameServer};
@@ -28,12 +28,18 @@ const MODULE_BOT_NAME: &str = "game-portal";
 
 /// custom_id du bouton d'inscription : `gp_register:{server_id}`.
 pub const REGISTER_PREFIX: &str = "gp_register:";
+pub const REVEAL_IP_PREFIX: &str = "gp_reveal_ip:";
 
 pub fn handles_component(custom_id: &str) -> bool {
-    custom_id.starts_with(REGISTER_PREFIX)
+    custom_id.starts_with(REGISTER_PREFIX) || custom_id.starts_with(REVEAL_IP_PREFIX)
 }
 
 pub async fn on_component(api: &ApiClient, ctx: &Context, component: &ComponentInteraction) {
+    if let Some(server_id) = component.data.custom_id.strip_prefix(REVEAL_IP_PREFIX) {
+        on_reveal_ip_component(api, ctx, component, server_id).await;
+        return;
+    }
+
     let Some(server_id) = component.data.custom_id.strip_prefix(REGISTER_PREFIX) else {
         return;
     };
@@ -67,18 +73,24 @@ pub async fn on_component(api: &ApiClient, ctx: &Context, component: &ComponentI
         .collect();
 
     if let Ok(detail) = api.get_game_server(server_id).await {
-        let game_name = api
-            .get_game_template(&detail.server.template_id)
-            .await
-            .map(|t| t.name)
-            .unwrap_or_else(|_| "Jeu".into());
-        let embed = build_panel_embed(
+        let template = api.get_game_template(&detail.server.template_id).await.ok();
+        let game_name = template
+            .as_ref()
+            .map(|t| t.name.clone())
+            .unwrap_or_else(|| "Jeu".into());
+        let cover_url = public_cover_url(
+            template
+                .as_ref()
+                .and_then(|template| template.cover_image_url.as_deref()),
+        );
+        grant_session_role(ctx, component, server_id, &game_name).await;
+        let embed = build_public_panel_embed(
             &game_name,
             &detail.server.name,
             &user_ids,
             detail.server.ip_reveal_at.as_deref(),
             detail.server.ip_revealed,
-            detail.server.host_port,
+            cover_url.as_deref(),
         );
         let _ = component
             .create_response(
@@ -86,7 +98,7 @@ pub async fn on_component(api: &ApiClient, ctx: &Context, component: &ComponentI
                 CreateInteractionResponse::UpdateMessage(
                     CreateInteractionResponseMessage::new()
                         .embed(embed)
-                        .components(vec![register_row(server_id)]),
+                        .components(vec![panel_row(server_id, detail.server.ip_revealed)]),
                 ),
             )
             .await;
@@ -106,15 +118,206 @@ pub async fn on_component(api: &ApiClient, ctx: &Context, component: &ComponentI
         .await;
 }
 
+fn session_suffix(server_id: &str) -> String {
+    server_id
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .take(8)
+        .collect()
+}
+
+fn session_role_name(game_name: &str, server_id: &str) -> String {
+    format!("{}_{}", slugify(game_name), session_suffix(server_id))
+}
+
+fn private_text_name(server_id: &str) -> String {
+    format!("joueurs-{}", session_suffix(server_id))
+}
+
+fn is_player_password_key(key: &str) -> bool {
+    matches!(
+        key.to_ascii_uppercase().as_str(),
+        "PASSWORD" | "SERVER_PASS" | "SERVER_PASSWORD" | "SERVERCONFIG_SERVERPASSWORD"
+    )
+}
+
+fn is_safe_game_option(key: &str) -> bool {
+    let key = key.to_ascii_uppercase();
+    if is_player_password_key(&key) {
+        return true;
+    }
+    ![
+        "ADMIN",
+        "RCON",
+        "TOKEN",
+        "SECRET",
+        "PRIVATE_KEY",
+        "API_KEY",
+        "ACCESS_KEY",
+        "OPERATOR",
+        "OP_PERMISSION",
+    ]
+    .iter()
+    .any(|forbidden| key.contains(forbidden))
+        && key != "OPS"
+}
+
+fn public_game_options(config: &std::collections::HashMap<String, String>) -> Vec<String> {
+    let mut options: Vec<_> = config
+        .iter()
+        .filter(|(key, _)| is_safe_game_option(key))
+        .map(|(key, value)| {
+            let shown = if is_player_password_key(key) && value.trim().is_empty() {
+                "Aucun (accès libre)"
+            } else {
+                value.as_str()
+            };
+            format!("**{key}** : `{shown}`")
+        })
+        .collect();
+    options.sort_unstable();
+    options
+}
+
+fn chunk_options(options: &[String]) -> Vec<String> {
+    let mut chunks = Vec::new();
+    let mut current = String::new();
+    for line in options {
+        if !current.is_empty() && current.len() + line.len() + 1 > 1800 {
+            chunks.push(std::mem::take(&mut current));
+        }
+        if !current.is_empty() {
+            current.push('\n');
+        }
+        current.push_str(line);
+    }
+    if !current.is_empty() {
+        chunks.push(current);
+    }
+    chunks
+}
+
+fn public_cover_url(path: Option<&str>) -> Option<String> {
+    let path = path?.trim();
+    if path.starts_with("https://") || path.starts_with("http://") {
+        return Some(path.to_string());
+    }
+    let base = std::env::var("WEB_FRONT_URL").ok()?;
+    let base = base.trim().trim_end_matches('/');
+    if base.is_empty() {
+        return None;
+    }
+    Some(format!("{base}/{}", path.trim_start_matches('/')))
+}
+
+async fn grant_session_role(
+    ctx: &Context,
+    component: &ComponentInteraction,
+    server_id: &str,
+    game_name: &str,
+) {
+    let Some(guild_id) = component.guild_id else {
+        return;
+    };
+    let expected = session_role_name(game_name, server_id);
+    let role_id = match guild_id.roles(&ctx.http).await {
+        Ok(roles) => roles.values().find(|r| r.name == expected).map(|r| r.id),
+        Err(e) => {
+            tracing::warn!(error = %e, server_id, "game-portal: lecture roles impossible");
+            None
+        }
+    };
+    let Some(role_id) = role_id else {
+        tracing::warn!(
+            server_id,
+            role = expected,
+            "game-portal: role de session introuvable"
+        );
+        return;
+    };
+    match guild_id.member(&ctx.http, component.user.id).await {
+        Ok(member) => {
+            if let Err(e) = member.add_role(&ctx.http, role_id).await {
+                tracing::warn!(error = %e, server_id, user = %component.user.id, "game-portal: attribution role de session impossible");
+            }
+        }
+        Err(e) => tracing::warn!(error = %e, server_id, "game-portal: membre introuvable"),
+    }
+}
+
+async fn on_reveal_ip_component(
+    api: &ApiClient,
+    ctx: &Context,
+    component: &ComponentInteraction,
+    server_id: &str,
+) {
+    let detail = match api.get_game_server(server_id).await {
+        Ok(detail) => detail,
+        Err(e) => {
+            respond_ephemeral(ctx, component, format!("❌ Serveur introuvable : {e}")).await;
+            return;
+        }
+    };
+    if detail.server.owner_user_id != component.user.id.to_string() {
+        respond_ephemeral(
+            ctx,
+            component,
+            "⛔ Seul le propriétaire du serveur peut révéler son adresse.",
+        )
+        .await;
+        return;
+    }
+    match api
+        .reveal_server_ip(server_id, &component.user.id.to_string())
+        .await
+    {
+        Ok(()) => {
+            respond_ephemeral(
+                ctx,
+                component,
+                "✅ Adresse publiée dans le salon privé des inscrits.",
+            )
+            .await;
+        }
+        Err(e) => {
+            respond_ephemeral(ctx, component, format!("❌ Révélation impossible : {e}")).await;
+        }
+    }
+}
+
+async fn respond_ephemeral(
+    ctx: &Context,
+    component: &ComponentInteraction,
+    content: impl Into<String>,
+) {
+    let _ = component
+        .create_response(
+            &ctx.http,
+            CreateInteractionResponse::Message(
+                CreateInteractionResponseMessage::new()
+                    .content(content)
+                    .ephemeral(true),
+            ),
+        )
+        .await;
+}
+
 // ── Panneau ──
 
-pub fn register_row(server_id: &str) -> CreateActionRow {
-    CreateActionRow::Buttons(vec![CreateButton::new(format!(
-        "{REGISTER_PREFIX}{server_id}"
-    ))
-    .label("Je m'inscris")
-    .emoji('✅')
-    .style(ButtonStyle::Success)])
+pub fn panel_row(server_id: &str, ip_revealed: bool) -> CreateActionRow {
+    let mut buttons = vec![CreateButton::new(format!("{REGISTER_PREFIX}{server_id}"))
+        .label("Je m'inscris")
+        .emoji('✅')
+        .style(ButtonStyle::Success)];
+    if !ip_revealed {
+        buttons.push(
+            CreateButton::new(format!("{REVEAL_IP_PREFIX}{server_id}"))
+                .label("Révéler l'adresse IP")
+                .emoji('🔓')
+                .style(ButtonStyle::Danger),
+        );
+    }
+    CreateActionRow::Buttons(buttons)
 }
 
 pub fn build_panel_embed(
@@ -123,6 +326,7 @@ pub fn build_panel_embed(
     inscrits: &[String],
     ip_reveal_at: Option<&str>,
     ip_revealed: bool,
+    public_host: Option<&str>,
     host_port: Option<u16>,
 ) -> CreateEmbed {
     let inscrits_txt = if inscrits.is_empty() {
@@ -136,9 +340,10 @@ pub fn build_panel_embed(
     };
 
     let ip_txt = if ip_revealed {
-        match host_port {
-            Some(p) => format!("**Serveur ouvert !** Port : `{p}`"),
-            None => "**Serveur ouvert !**".to_string(),
+        match (public_host.filter(|h| !h.trim().is_empty()), host_port) {
+            (Some(host), Some(p)) => format!("**Serveur ouvert !** `{host}:{p}`"),
+            (_, Some(p)) => format!("**Serveur ouvert !** Port : `{p}`"),
+            _ => "**Serveur ouvert !**".to_string(),
         }
     } else {
         match ip_reveal_at {
@@ -161,6 +366,31 @@ pub fn build_panel_embed(
         .color(0x5865f2)
         .footer(CreateEmbedFooter::new("Game Portal | Nexus"))
         .timestamp(serenity::model::Timestamp::now())
+}
+
+/// Panneau du salon d'inscription : il indique l'ouverture, mais ne contient
+/// jamais l'adresse, meme apres sa revelation dans le salon prive.
+fn build_public_panel_embed(
+    game_name: &str,
+    server_name: &str,
+    inscrits: &[String],
+    ip_reveal_at: Option<&str>,
+    ip_revealed: bool,
+    cover_url: Option<&str>,
+) -> CreateEmbed {
+    let mut embed = build_panel_embed(
+        game_name,
+        server_name,
+        inscrits,
+        ip_reveal_at,
+        ip_revealed,
+        None,
+        None,
+    );
+    if let Some(url) = cover_url {
+        embed = embed.image(url);
+    }
+    embed
 }
 
 // ── Consumer d'evenements ──
@@ -552,12 +782,35 @@ async fn on_started(ctx: &Context, api: &ApiClient, guild_id: GuildId, server_id
     }
 
     let (game_name, role_id) = game_name_and_role(api, &server).await;
+    let cover_url = api
+        .get_game_template(&server.template_id)
+        .await
+        .ok()
+        .and_then(|template| public_cover_url(template.cover_image_url.as_deref()));
 
     let cfg = api
         .get_guild_config(&server.guild_id, MODULE_BOT_NAME)
         .await
         .unwrap_or_default();
     let category = ensure_session_category(ctx, api, guild_id, &cfg).await;
+
+    let session_role = match guild_id
+        .create_role(
+            &ctx.http,
+            EditRole::new()
+                .name(session_role_name(&game_name, server_id))
+                .colour(Colour::new(0x5865f2))
+                .mentionable(false)
+                .hoist(false),
+        )
+        .await
+    {
+        Ok(role) => role,
+        Err(e) => {
+            tracing::error!(error = %e, server_id, "game-portal: creation role de session impossible");
+            return;
+        }
+    };
 
     let text_ch = create_channel(
         ctx,
@@ -568,17 +821,40 @@ async fn on_started(ctx: &Context, api: &ApiClient, guild_id: GuildId, server_id
         &build_overwrites(guild_id, role_id, ChannelType::Text),
     )
     .await;
+    let private_text_ch = create_channel(
+        ctx,
+        guild_id,
+        &private_text_name(server_id),
+        ChannelType::Text,
+        category,
+        &build_overwrites(guild_id, Some(session_role.id), ChannelType::Text),
+    )
+    .await;
     let voice_ch = create_channel(
         ctx,
         guild_id,
         &format!("Vocal {}", server.name),
         ChannelType::Voice,
         category,
-        &build_overwrites(guild_id, role_id, ChannelType::Voice),
+        &build_overwrites(guild_id, Some(session_role.id), ChannelType::Voice),
     )
     .await;
 
-    let Some(text_ch) = text_ch else { return };
+    let (Some(text_ch), Some(private_text_ch), Some(voice_ch)) =
+        (text_ch, private_text_ch, voice_ch)
+    else {
+        if let Some(ch) = text_ch {
+            let _ = ch.delete(&ctx.http).await;
+        }
+        if let Some(ch) = private_text_ch {
+            let _ = ch.delete(&ctx.http).await;
+        }
+        if let Some(ch) = voice_ch {
+            let _ = ch.delete(&ctx.http).await;
+        }
+        let _ = guild_id.delete_role(&ctx.http, session_role.id).await;
+        return;
+    };
 
     // Enregistrement cote API : le claim sert de garde anti-doublon. Si le
     // claim echoue (claimed=false), des salons etaient deja enregistres
@@ -588,15 +864,15 @@ async fn on_started(ctx: &Context, api: &ApiClient, guild_id: GuildId, server_id
         .set_session_channels(
             server_id,
             Some(&text_ch.to_string()),
-            voice_ch.map(|c| c.to_string()).as_deref(),
+            Some(&voice_ch.to_string()),
         )
         .await
     {
         Ok(false) => {
             let _ = text_ch.delete(&ctx.http).await;
-            if let Some(vc) = voice_ch {
-                let _ = vc.delete(&ctx.http).await;
-            }
+            let _ = private_text_ch.delete(&ctx.http).await;
+            let _ = voice_ch.delete(&ctx.http).await;
+            let _ = guild_id.delete_role(&ctx.http, session_role.id).await;
             tracing::warn!(
                 server_id,
                 "game-portal: salons deja enregistres (evenement rejoue) -> doublons supprimes"
@@ -609,20 +885,35 @@ async fn on_started(ctx: &Context, api: &ApiClient, guild_id: GuildId, server_id
         }
     }
 
-    let embed = build_panel_embed(
+    let registered_user_ids: Vec<String> = api
+        .list_server_registrations(server_id)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| r.user_id)
+        .collect();
+    for user_id in &registered_user_ids {
+        if let Ok(user_num) = user_id.parse::<u64>() {
+            if let Ok(member) = guild_id.member(&ctx.http, user_num).await {
+                let _ = member.add_role(&ctx.http, session_role.id).await;
+            }
+        }
+    }
+
+    let embed = build_public_panel_embed(
         &game_name,
         &server.name,
-        &[],
+        &registered_user_ids,
         server.ip_reveal_at.as_deref(),
         server.ip_revealed,
-        server.host_port,
+        cover_url.as_deref(),
     );
     let msg = text_ch
         .send_message(
             &ctx.http,
             CreateMessage::new()
                 .embed(embed)
-                .components(vec![register_row(server_id)]),
+                .components(vec![panel_row(server_id, server.ip_revealed)]),
         )
         .await;
     if let Ok(m) = &msg {
@@ -658,6 +949,27 @@ async fn on_stopped(ctx: &Context, api: &ApiClient, server_id: &str) {
     {
         let _ = ch.delete(&ctx.http).await;
     }
+
+    if let Ok(guild_num) = detail.server.guild_id.parse::<u64>() {
+        let guild_id = GuildId::new(guild_num);
+        let private_name = private_text_name(server_id);
+        if let Ok(channels) = guild_id.channels(&ctx.http).await {
+            for channel in channels.values().filter(|c| c.name == private_name) {
+                let _ = channel.delete(&ctx.http).await;
+            }
+        }
+        let game_name = api
+            .get_game_template(&detail.server.template_id)
+            .await
+            .map(|t| t.name)
+            .unwrap_or_else(|_| "jeu".into());
+        let role_name = session_role_name(&game_name, server_id);
+        if let Ok(roles) = guild_id.roles(&ctx.http).await {
+            for role in roles.values().filter(|r| r.name == role_name) {
+                let _ = guild_id.delete_role(&ctx.http, role.id).await;
+            }
+        }
+    }
     // Libere les salons cote API (sinon un futur demarrage se croirait rejoue).
     if let Err(e) = api.set_session_channels(server_id, None, None).await {
         tracing::warn!(error = %e, server_id, "game-portal: echec liberation des salons");
@@ -671,36 +983,75 @@ async fn on_ip_reveal(ctx: &Context, api: &ApiClient, server_id: &str) {
     let Ok(detail) = api.get_game_server(server_id).await else {
         return;
     };
+    let config = detail.config;
     let server = detail.server;
     let Some(text_ch) = parse_channel(server.text_channel_id.as_ref()) else {
         return;
     };
 
-    let (game_name, role_id) = game_name_and_role(api, &server).await;
+    let template = api.get_game_template(&server.template_id).await.ok();
+    let game_name = template
+        .as_ref()
+        .map(|t| t.name.clone())
+        .unwrap_or_else(|| "Jeu".into());
+    let cover_url = public_cover_url(
+        template
+            .as_ref()
+            .and_then(|template| template.cover_image_url.as_deref()),
+    );
 
-    // Adresse : {hote public}:{port} si l'hote est configure, sinon le port seul.
-    let cfg = api
-        .get_guild_config(&server.guild_id, MODULE_BOT_NAME)
-        .await
-        .unwrap_or_default();
-    let host = cfg.get("session_public_host").cloned().unwrap_or_default();
-    let addr = match (host.trim().is_empty(), server.host_port) {
-        (false, Some(p)) => format!("`{}:{}`", host.trim(), p),
-        (true, Some(p)) => format!("port `{p}`"),
-        _ => "_communiquee par le staff_".to_string(),
-    };
+    // Publie l'adresse uniquement dans le salon textuel prive des inscrits.
+    if let Ok(guild_num) = server.guild_id.parse::<u64>() {
+        let guild_id = GuildId::new(guild_num);
+        let private_name = private_text_name(server_id);
+        if let Ok(channels) = guild_id.channels(&ctx.http).await {
+            if let Some(private_ch) = channels.values().find(|c| c.name == private_name) {
+                let address = match (
+                    server
+                        .public_host
+                        .as_deref()
+                        .filter(|h| !h.trim().is_empty()),
+                    server.host_port,
+                ) {
+                    (Some(host), Some(port)) => format!("`{host}:{port}`"),
+                    (_, Some(port)) => format!("port `{port}`"),
+                    _ => "_Adresse indisponible, contacte le propriétaire._".to_string(),
+                };
+                let options = public_game_options(&config);
+                let mut chunks = chunk_options(&options);
+                if chunks.is_empty() {
+                    chunks.push("_Aucune option publique configurée._".into());
+                }
+                for (index, chunk) in chunks.into_iter().enumerate() {
+                    let mut card = CreateEmbed::new()
+                        .title(if index == 0 {
+                            format!("🎮 {game_name} — {name}", name = server.name)
+                        } else {
+                            format!("🎮 {game_name} — options (suite)")
+                        })
+                        .description(if index == 0 {
+                            format!("🔓 **Serveur ouvert**\nConnexion : {address}")
+                        } else {
+                            "Suite des options accessibles aux joueurs.".to_string()
+                        })
+                        .field("Options de la partie", chunk, false)
+                        .color(0x5865f2)
+                        .footer(CreateEmbedFooter::new("Game Portal | Accès privé"))
+                        .timestamp(serenity::model::Timestamp::now());
+                    if index == 0 {
+                        if let Some(url) = cover_url.as_deref() {
+                            card = card.image(url);
+                        }
+                    }
+                    let _ = private_ch
+                        .send_message(&ctx.http, CreateMessage::new().embed(card))
+                        .await;
+                }
+            }
+        }
+    }
 
-    let ping = role_id.map(|r| format!("<@&{r}> ")).unwrap_or_default();
-    let _ = text_ch
-        .send_message(
-            &ctx.http,
-            CreateMessage::new().content(format!(
-                "{ping}Le serveur **{game_name}** est **OUVERT** ! Connexion : {addr}"
-            )),
-        )
-        .await;
-
-    // Rafraichit le panneau epingle (IP desormais visible).
+    // Le panneau public indique seulement que le serveur est ouvert.
     let user_ids: Vec<String> = api
         .list_server_registrations(server_id)
         .await
@@ -708,13 +1059,13 @@ async fn on_ip_reveal(ctx: &Context, api: &ApiClient, server_id: &str) {
         .into_iter()
         .map(|r| r.user_id)
         .collect();
-    let embed = build_panel_embed(
+    let embed = build_public_panel_embed(
         &game_name,
         &server.name,
         &user_ids,
         None,
         true,
-        server.host_port,
+        cover_url.as_deref(),
     );
     if let Ok(pins) = text_ch.pins(&ctx.http).await {
         if let Some(m) = pins.into_iter().find(|m| !m.embeds.is_empty()) {
@@ -724,7 +1075,7 @@ async fn on_ip_reveal(ctx: &Context, api: &ApiClient, server_id: &str) {
                     m.id,
                     EditMessage::new()
                         .embed(embed)
-                        .components(vec![register_row(server_id)]),
+                        .components(vec![panel_row(server_id, true)]),
                 )
                 .await;
         }

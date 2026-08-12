@@ -15,10 +15,10 @@ use tracing::warn;
 use crate::shared::api_client::BaseApiClient;
 use crate::shared::heartbeat::ApiClientKey;
 
-use super::{StatsApiKey, MODULE_BOT_NAME};
+use super::MODULE_BOT_NAME;
 
 pub use sentinel_core::domain::services::progression::nickname::{
-    build_nickname_full, parse_level_prefix, parse_role_emojis, pick_emoji, strip_all_prefixes,
+    build_nickname_full, parse_role_emojis, pick_emoji, strip_all_prefixes,
 };
 
 /// Resultat d'une tentative de renommage. Permet a la commande resync de
@@ -48,15 +48,15 @@ async fn load_guild_config(ctx: &Context, guild_id: GuildId) -> HashMap<String, 
     }
 }
 
-/// Point d'entree historique (level-up + resync) : applique le prefixe de
-/// niveau `[level]` en preservant aussi l'emoji staff eventuel.
+/// Point d'entree historique (level-up + resync) : retire l'ancien prefixe de
+/// niveau en preservant aussi l'emoji staff eventuel.
 pub async fn apply_level_prefix(
     ctx: &Context,
     guild_id: GuildId,
     user_id: UserId,
-    level: i32,
+    _level: i32,
 ) -> ResyncOutcome {
-    apply_prefixes(ctx, guild_id, user_id, Some(level)).await
+    apply_prefixes(ctx, guild_id, user_id, None).await
 }
 
 /// Recompute le pseudo complet `{emoji}{[level]}{base}` a partir de l'etat
@@ -165,23 +165,7 @@ pub async fn on_member_update(ctx: &Context, member: &Member) {
         return;
     }
 
-    let user_id = member.user.id;
-    let level: Option<i32> = {
-        let data = ctx.data.read().await;
-        if let Some(api) = data.get::<StatsApiKey>() {
-            match api
-                .get_user_level(&guild_id.to_string(), &user_id.to_string())
-                .await
-            {
-                Ok(Some(u)) => Some(u.level),
-                _ => member.nick.as_deref().and_then(parse_level_prefix),
-            }
-        } else {
-            member.nick.as_deref().and_then(parse_level_prefix)
-        }
-    };
-
-    apply_prefixes(ctx, guild_id, user_id, level).await;
+    apply_prefixes(ctx, guild_id, member.user.id, None).await;
 }
 
 /// Declencheur (re)join (guild_member_addition) : un membre qui rejoint en

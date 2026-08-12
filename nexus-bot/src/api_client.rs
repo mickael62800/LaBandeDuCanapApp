@@ -195,6 +195,8 @@ struct SavePanelReq<'a> {
 #[derive(Debug, Deserialize)]
 pub struct ServerDetailResponse {
     pub server: GameServer,
+    #[serde(default)]
+    pub config: HashMap<String, String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -202,7 +204,9 @@ pub struct GameServer {
     pub guild_id: String,
     pub template_id: String,
     pub name: String,
+    pub owner_user_id: String,
     pub host_port: Option<u16>,
+    pub public_host: Option<String>,
     pub ip_reveal_at: Option<String>,
     pub ip_revealed: bool,
     pub text_channel_id: Option<String>,
@@ -213,6 +217,7 @@ pub struct GameServer {
 pub struct GameTemplate {
     pub slug: String,
     pub name: String,
+    pub cover_image_url: Option<String>,
 }
 
 /// Reglage d'un template pour une guild : role Discord a pinguer.

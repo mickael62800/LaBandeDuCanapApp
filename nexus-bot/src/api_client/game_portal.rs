@@ -36,6 +36,17 @@ impl ApiClient {
         self.send(self.http.post(&url).json(&body)).await
     }
 
+    /// POST /api/games/servers/{server_id}/reveal-ip.
+    pub async fn reveal_server_ip(&self, server_id: &str, actor_id: &str) -> Result<(), String> {
+        let url = format!(
+            "{}/api/games/servers/{}/reveal-ip",
+            self.base_url,
+            encode_segment(server_id)
+        );
+        self.send_no_content(self.http.post(&url).query(&[("actor_id", actor_id)]))
+            .await
+    }
+
     /// GET /api/games/servers/{server_id}/registrations.
     pub async fn list_server_registrations(
         &self,

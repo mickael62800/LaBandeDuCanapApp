@@ -41,7 +41,6 @@ const DEFAULT_GHOST_MINUTES: u64 = 30;
 /// Duree au-dela de laquelle une entree du tracker d'accueils ne peut plus
 /// servir : la plus longue fenetre acceptee par le schema (1440 min) tient
 /// largement dedans. Le balayage se fait a l'insertion, sans tache de fond.
-const GHOST_RETENTION: std::time::Duration = std::time::Duration::from_secs(48 * 3600);
 
 #[derive(Deserialize)]
 struct CalmingEvent {
@@ -53,7 +52,10 @@ struct CalmingEvent {
 struct CalmingEventData {
     guild_id: String,
     #[serde(default)]
+    user_id: String,
+    #[serde(default)]
     channel_id: String,
+    #[serde(default)]
     reason: String,
     #[serde(default)]
     kind: String,
@@ -152,9 +154,6 @@ impl Handler {
         let Ok(event) = serde_json::from_str::<CalmingEvent>(&payload) else {
             return;
         };
-        if event.event != "atrium_calming_requested" || event.data.reason != "channel_tension" {
-            return;
-        }
         if primary_guild
             .read()
             .await
@@ -162,6 +161,49 @@ impl Handler {
             .as_deref()
             != Some(event.data.guild_id.as_str())
         {
+            return;
+        }
+
+        if event.event == "atrium_welcome_requested" {
+            let Ok(guild_num) = event.data.guild_id.parse::<u64>() else {
+                return;
+            };
+            let Ok(user_num) = event.data.user_id.parse::<u64>() else {
+                return;
+            };
+            let guild_id = GuildId::new(guild_num);
+            let Ok(member) = guild_id.member(&ctx.http, user_num).await else {
+                return;
+            };
+            let mut client = WelcomeServiceClient::new(channel);
+            let mut request = Request::new(GenerateReplyRequest {
+                guild_id: event.data.guild_id,
+                member_id: event.data.user_id,
+                member_display_name: member.display_name().to_string(),
+                channel_id: config.general_channel_id.to_string(),
+                scope: ConversationScope::General as i32,
+                member_message: String::new(),
+                server_context: config.server_context.clone(),
+            });
+            let Ok(bearer) = format!("Bearer {}", config.grpc_token).parse() else {
+                return;
+            };
+            request.metadata_mut().insert("authorization", bearer);
+            if let Ok(response) = client.generate_reply(request).await {
+                let reply = response.into_inner().reply;
+                let atrium_id = ctx.cache.current_user().id;
+                let message = format!(
+                    "<@{}> {reply}\n\n**Pour discuter avec moi dans ce salon, mentionne-moi : <@{}>.**",
+                    member.user.id, atrium_id
+                );
+                if let Err(error) = config.general_channel_id.say(&ctx.http, message).await {
+                    tracing::warn!(%error, "message d'accueil Atrium non envoye");
+                }
+            }
+            return;
+        }
+
+        if event.event != "atrium_calming_requested" || event.data.reason != "channel_tension" {
             return;
         }
 
@@ -476,42 +518,10 @@ impl EventHandler for Handler {
     }
 
     async fn guild_member_addition(&self, ctx: Context, member: Member) {
-        let server_context = self.server_context(&ctx, member.guild_id);
-        if let Some(reply) = self
-            .reply(
-                member.guild_id.to_string(),
-                member.user.id.to_string(),
-                member.display_name().to_string(),
-                self.config.general_channel_id.to_string(),
-                ConversationScope::General,
-                String::new(),
-                server_context,
-            )
-            .await
-        {
-            let atrium_id = ctx.cache.current_user().id;
-            let mentioned_reply = format!(
-                "<@{}> {reply}\n\n**Pour discuter avec moi dans ce salon, mentionne-moi : <@{}>.**",
-                member.user.id, atrium_id
-            );
-            match self
-                .config
-                .general_channel_id
-                .say(&ctx.http, mentioned_reply)
-                .await
-            {
-                Err(error) => tracing::warn!(%error, "message d'accueil non envoye"),
-                Ok(sent) => {
-                    if let Ok(mut map) = self.welcomes.lock() {
-                        map.retain(|_, (at, _)| at.elapsed() < GHOST_RETENTION);
-                        map.insert(
-                            (member.guild_id.get(), member.user.id.get()),
-                            (std::time::Instant::now(), sent.id),
-                        );
-                    }
-                }
-            }
-        }
+        // Sentinel connait la configuration optionnelle du reglement. Il emet
+        // `atrium_welcome_requested` a l'arrivee si aucun bouton n'est requis,
+        // ou seulement apres l'acceptation dans le cas contraire.
+        let _ = (ctx, member);
     }
 
     /// Depart eclair : le membre accueilli quitte le serveur dans la foulee.

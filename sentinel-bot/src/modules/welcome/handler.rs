@@ -287,6 +287,10 @@ pub async fn on_voice_state_update(
 }
 
 pub async fn on_member_add(ctx: &Context, new_member: &Member) {
+    on_member_add_impl(ctx, new_member, false).await;
+}
+
+async fn on_member_add_impl(ctx: &Context, new_member: &Member, rules_accepted: bool) {
     // Les bots ajoutes au serveur ne doivent pas declencher le welcome / DM /
     // role de verification (ni recevoir le role "membre temporaire").
     if new_member.user.bot {
@@ -337,7 +341,7 @@ pub async fn on_member_add(ctx: &Context, new_member: &Member) {
     // Si active, le nouveau membre recoit le role d'attente (qui ne voit que
     // le reglement) ; il obtiendra le role Membre apres avoir saisi un age
     // suffisant via le formulaire du reglement.
-    if config.age_check_enabled {
+    if config.age_check_enabled && !rules_accepted {
         if let Some(role) = config
             .unverified_role_id
             .as_deref()
@@ -368,12 +372,15 @@ pub async fn on_member_add(ctx: &Context, new_member: &Member) {
     let member_count = human_member_count(&ctx, guild_id).await;
 
     // ── Detecter si c'est un retour (membre deja connu) ──
-    let is_rejoin = api
-        .is_known_member(&guild_id.to_string(), &user_id.to_string())
-        .await;
+    let is_rejoin = if rules_accepted {
+        false
+    } else {
+        api.is_known_member(&guild_id.to_string(), &user_id.to_string())
+            .await
+    };
 
     // ── Message de bienvenue ──
-    if config.welcome_enabled {
+    if config.welcome_enabled && (!config.rules_enabled || rules_accepted) {
         if let Some(ch_id) = &config.welcome_channel_id {
             if let Ok(ch) = ch_id.parse::<u64>() {
                 let channel = ChannelId::new(ch);
@@ -462,7 +469,7 @@ pub async fn on_member_add(ctx: &Context, new_member: &Member) {
     }
 
     // ── DM de bienvenue ──
-    if config.welcome_dm_enabled {
+    if config.welcome_dm_enabled && (!config.rules_enabled || rules_accepted) {
         let dm_text = template::render(
             &config.welcome_dm_message,
             &user_id.to_string(),
@@ -483,21 +490,46 @@ pub async fn on_member_add(ctx: &Context, new_member: &Member) {
     }
 
     // ── Compteur de membres ──
-    update_counter(
-        &ctx,
-        config.counter_enabled,
-        config.counter_channel_id.as_ref(),
-        &config.counter_format,
-        member_count,
-    )
-    .await;
+    if !rules_accepted {
+        update_counter(
+            &ctx,
+            config.counter_enabled,
+            config.counter_channel_id.as_ref(),
+            &config.counter_format,
+            member_count,
+        )
+        .await;
+    }
+
+    if !config.rules_enabled || rules_accepted {
+        base.publish_event(
+            "atrium_welcome_requested",
+            serde_json::json!({
+                "guild_id": guild_id.to_string(),
+                "user_id": user_id.to_string(),
+            }),
+        );
+    }
 
     // ── Log ──
-    base.send_log(
-        "info",
-        &guild_id.to_string(),
-        &format!("Nouveau membre : {} ({})", new_member.user.name, user_id),
-    );
+    if !rules_accepted {
+        base.send_log(
+            "info",
+            &guild_id.to_string(),
+            &format!("Nouveau membre : {} ({})", new_member.user.name, user_id),
+        );
+    }
+}
+
+async fn send_welcome_after_rules(
+    ctx: &Context,
+    guild_id: GuildId,
+    user_id: serenity::all::UserId,
+) {
+    match guild_id.member(&ctx.http, user_id).await {
+        Ok(member) => on_member_add_impl(ctx, &member, true).await,
+        Err(e) => warn!(error = %e, %guild_id, %user_id, "Accueil apres reglement impossible"),
+    }
 }
 
 /// Appele quand un membre quitte.
@@ -850,7 +882,8 @@ pub async fn on_screening_complete(
     let n = assign_roles_csv(ctx, guild_id, user_id, config.rules_role_id.as_deref()).await;
     match Ok::<usize, String>(n) {
         Ok(n) if n > 0 => {
-            info!(user = %user_id, guild = %guild_id, roles = n, "Roles reglement attribues (filtrage Discord)")
+            info!(user = %user_id, guild = %guild_id, roles = n, "Roles reglement attribues (filtrage Discord)");
+            send_welcome_after_rules(ctx, guild_id, user_id).await;
         }
         Ok(_) => {}
         // Desactive / non configure : silencieux (cas normal sur la plupart
@@ -913,6 +946,10 @@ async fn handle_rules_accept(
     );
     if let Err(e) = component.create_response(&ctx.http, resp).await {
         warn!(error = %e, "Echec reponse acceptation reglement");
+    }
+
+    if assigned > 0 {
+        send_welcome_after_rules(ctx, guild_id, component.user.id).await;
     }
 
     info!(user = %component.user.name, guild = %guild_id, assigned, "Reglement accepte");
@@ -1222,6 +1259,7 @@ pub async fn handle_age_modal(
 
         if assigned > 0 {
             reply_modal(ctx, modal, "Bienvenue sur le serveur ! Acces accorde.").await;
+            send_welcome_after_rules(ctx, guild_id, user_id).await;
             info!(user = %modal.user.name, guild = %guild_id, age, "Age verifie -> Membre");
         } else {
             reply_modal(

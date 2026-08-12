@@ -1,11 +1,11 @@
-//! Slash command `/progression-resync` — re-synchronise les pseudos
-//! `[NN]Pseudo` apres changement de niveau ou en backfill suite a un
-//! deploiement.
+//! Slash command `/progression-resync` — re-synchronise les roles de palier
+//! d'un membre a son niveau, et nettoie au passage les anciens prefixes de
+//! pseudo `[NN]` (le prefixe de niveau a ete retire).
 //!
 //! Sous-commandes :
-//! - `/progression-resync user @cible`  — rename 1 membre
-//! - `/progression-resync me`           — rename soi-meme
-//! - `/progression-resync all`          — rename les top N du leaderboard
+//! - `/progression-resync user @cible`  — re-sync 1 membre
+//! - `/progression-resync me`           — re-sync soi-meme
+//! - `/progression-resync all`          — re-sync les top N du leaderboard
 //!   global (admin only, MANAGE_GUILD).
 
 use std::time::Duration;
@@ -20,7 +20,7 @@ use tracing::warn;
 
 use crate::shared::discord_helpers::reply_ephemeral;
 
-use super::nickname::{apply_level_prefix, ResyncOutcome};
+use super::nickname::{apply_prefixes, ResyncOutcome};
 use super::StatsApiKey;
 
 /// Throttle entre 2 syncs en mode `all` : evite de cogner le rate limit
@@ -31,13 +31,13 @@ const RESYNC_ALL_MAX_USERS: u32 = 200;
 
 pub fn register() -> CreateCommand {
     CreateCommand::new("progression-resync")
-        .description("Re-synchronise les pseudos [NN]Pseudo selon le niveau global")
+        .description("Re-synchronise les roles de palier et nettoie les anciens prefixes")
         .default_member_permissions(Permissions::MANAGE_GUILD)
         .add_option(
             CreateCommandOption::new(
                 CommandOptionType::SubCommand,
                 "user",
-                "Re-applique le prefixe sur un membre precis",
+                "Re-synchronise les roles d'un membre precis",
             )
             .add_sub_option(
                 CreateCommandOption::new(
@@ -51,13 +51,13 @@ pub fn register() -> CreateCommand {
         .add_option(CreateCommandOption::new(
             CommandOptionType::SubCommand,
             "me",
-            "Re-applique le prefixe sur ton propre pseudo",
+            "Re-synchronise tes propres roles de palier",
         ))
         .add_option(
             CreateCommandOption::new(
                 CommandOptionType::SubCommand,
                 "all",
-                "Re-applique le prefixe sur les top N joueurs (admin only)",
+                "Re-synchronise les roles des top N joueurs (admin only)",
             )
             .add_sub_option(
                 CreateCommandOption::new(
@@ -164,7 +164,9 @@ async fn handle_single(
         }
     };
 
-    let outcome = apply_level_prefix(ctx, guild_id, target, level).await;
+    // `None` : on ne pose plus de prefixe `[NN]`, on NETTOIE ceux qui restent
+    // (en preservant l'emoji staff eventuel).
+    let outcome = apply_prefixes(ctx, guild_id, target, None).await;
     // Le resync rattrape aussi les paliers : sans cela, un membre deja au bon
     // niveau devrait attendre un level-up pour recevoir son role.
     super::role_tiers::appliquer_paliers(ctx, guild_id, target, level).await;
@@ -228,7 +230,7 @@ async fn handle_all(ctx: &Context, command: &CommandInteraction, guild_id: Guild
                 continue;
             }
         };
-        match apply_level_prefix(ctx, guild_id, user_id, entry.level).await {
+        match apply_prefixes(ctx, guild_id, user_id, None).await {
             ResyncOutcome::Renamed => renamed += 1,
             ResyncOutcome::AlreadyOk => already_ok += 1,
             ResyncOutcome::Skipped => skipped += 1,
@@ -239,10 +241,10 @@ async fn handle_all(ctx: &Context, command: &CommandInteraction, guild_id: Guild
     }
 
     let embed = CreateEmbed::new()
-        .title("\u{1f504} Resync des pseudos — termine")
+        .title("\u{1f504} Resync des roles — termine")
         .description(format!(
             "**{total}** joueurs traites (top XP global).\n\n\
-             - \u{270f}\u{fe0f} Renommes : **{renamed}**\n\
+             - \u{270f}\u{fe0f} Anciens prefixes [NN] retires : **{renamed}**\n\
              - \u{2705} Deja a jour : **{already_ok}**\n\
              - \u{23ed}\u{fe0f} Skipped (owner, parti, etc.) : **{skipped}**\n\
              - \u{26a0}\u{fe0f} Erreurs Discord : **{errors}**"
@@ -277,7 +279,7 @@ async fn fetch_level(ctx: &Context, guild_id: &str, user_id: &str) -> Result<i32
 
 fn build_single_embed(user_id: UserId, level: i32, outcome: &ResyncOutcome) -> CreateEmbed {
     let (status, color) = match outcome {
-        ResyncOutcome::Renamed => ("\u{270f}\u{fe0f} Pseudo mis a jour", 0x3498DB),
+        ResyncOutcome::Renamed => ("\u{270f}\u{fe0f} Ancien prefixe [NN] retire", 0x3498DB),
         ResyncOutcome::AlreadyOk => ("\u{2705} Deja a jour", 0x57F287),
         ResyncOutcome::Skipped => (
             "\u{23ed}\u{fe0f} Skipped (owner / member introuvable)",
@@ -285,7 +287,7 @@ fn build_single_embed(user_id: UserId, level: i32, outcome: &ResyncOutcome) -> C
         ),
         ResyncOutcome::Error(msg) => {
             return CreateEmbed::new()
-                .title("\u{1f504} Resync pseudo")
+                .title("\u{1f504} Resync")
                 .description(format!(
                     "<@{user_id}> — niveau **{level}**\n\n\u{26a0}\u{fe0f} Erreur Discord : {msg}"
                 ))

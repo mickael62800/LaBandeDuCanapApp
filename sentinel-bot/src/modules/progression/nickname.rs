@@ -48,17 +48,6 @@ async fn load_guild_config(ctx: &Context, guild_id: GuildId) -> HashMap<String, 
     }
 }
 
-/// Point d'entree historique (level-up + resync) : retire l'ancien prefixe de
-/// niveau en preservant aussi l'emoji staff eventuel.
-pub async fn apply_level_prefix(
-    ctx: &Context,
-    guild_id: GuildId,
-    user_id: UserId,
-    _level: i32,
-) -> ResyncOutcome {
-    apply_prefixes(ctx, guild_id, user_id, None).await
-}
-
 /// Recompute le pseudo complet `{emoji}{[level]}{base}` a partir de l'etat
 /// courant du membre et de la config guild, puis le met a jour si besoin.
 ///

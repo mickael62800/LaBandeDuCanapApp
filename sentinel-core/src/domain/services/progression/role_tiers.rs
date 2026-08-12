@@ -88,11 +88,23 @@ pub fn analyser_paliers(brut: &str) -> Vec<Palier> {
 /// niveau courant. Retirer les paliers superieurs importe autant que les
 /// inferieurs : un membre retrograde (correction d'XP, remise a zero) doit
 /// perdre le rang qu'il ne merite plus.
+///
+/// # Plancher au niveau 1
+///
+/// Un membre pris en compte ici a une ligne d'XP : dans notre modele c'est un
+/// membre **niveau 1 au minimum** (`level_from_xp` est base 1). Le `niveau.max(1)`
+/// est une defense residuelle : une ligne d'XP heritee d'avant la bascule en
+/// base 1 peut encore porter un `level = 0` en base tant qu'elle n'a pas ete
+/// recalculee. Sans ce plancher, ce membre verrait son role de depart (palier
+/// niveau 1, pose a l'acceptation du reglement) juge non merite, donc RETIRE a
+/// chaque reconciliation — le rajouter a la main ne tenait pas, le tick suivant
+/// le reprenait.
 pub fn roles_pour_niveau(
     paliers: &[Palier],
     niveau: i32,
     mode: ModePalier,
 ) -> (Vec<u64>, Vec<u64>) {
+    let niveau = niveau.max(1);
     let atteints: Vec<u64> = paliers
         .iter()
         .filter(|p| niveau >= p.niveau)

@@ -9,11 +9,12 @@ fn test_xp_for_level() {
 
 #[test]
 fn test_level_from_xp() {
-    assert_eq!(level_from_xp(0), 0);
-    assert_eq!(level_from_xp(154), 0);
-    assert_eq!(level_from_xp(155), 1);
-    assert_eq!(level_from_xp(374), 1);
-    assert_eq!(level_from_xp(375), 2);
+    // Base 1 : 0 XP = niveau 1 (modele RPG), puis +1 a chaque palier franchi.
+    assert_eq!(level_from_xp(0), 1);
+    assert_eq!(level_from_xp(154), 1);
+    assert_eq!(level_from_xp(155), 2);
+    assert_eq!(level_from_xp(374), 2);
+    assert_eq!(level_from_xp(375), 3);
 }
 
 #[test]

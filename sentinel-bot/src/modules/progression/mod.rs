@@ -386,10 +386,10 @@ pub async fn on_message(ctx: &Context, msg: &Message) {
                 )
                 .await;
             }
-            // Renommage `[NN]Pseudo` uniquement quand le niveau global change.
+            // Paliers de roles uniquement quand le niveau global change. Plus de
+            // renommage `[NN]` : le prefixe de niveau a ete retire.
             if result.user.level > result.old_level_global {
                 drop(data);
-                nickname::apply_level_prefix(ctx, guild_id, msg.author.id, result.user.level).await;
                 role_tiers::appliquer_paliers(ctx, guild_id, msg.author.id, result.user.level)
                     .await;
             }
@@ -544,10 +544,6 @@ pub async fn on_voice_state_update(ctx: &Context, old: Option<VoiceState>, new: 
                                     if result.user.level > result.old_level_global {
                                         let new_level = result.user.level;
                                         drop(data);
-                                        nickname::apply_level_prefix(
-                                            ctx, guild_id, user_id, new_level,
-                                        )
-                                        .await;
                                         role_tiers::appliquer_paliers(
                                             ctx, guild_id, user_id, new_level,
                                         )

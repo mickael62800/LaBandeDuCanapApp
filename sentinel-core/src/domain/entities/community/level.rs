@@ -61,29 +61,40 @@ pub fn xp_for_level(level: i32) -> i64 {
 pub const MAX_LEVEL: i32 = 10_000;
 
 /// Calcule le niveau a partir du XP total.
+///
+/// Le niveau demarre a **1** : un membre a 0 XP est niveau 1, comme dans un
+/// RPG ou l'on commence niveau 1 puis l'on gravit les echelons. Le « niveau 0 »
+/// n'existe pas dans le modele — c'etait l'artefact d'un compteur base zero qui
+/// faisait passer tout membre sous 100 XP pour non-progresse, et privait de son
+/// role de depart tout membre entre 0 et 99 XP (cf. `progression::role_tiers`).
+///
+/// On compte donc les paliers d'XP franchis et l'on ajoute le niveau de depart.
 pub fn level_from_xp(xp: i64) -> i32 {
-    let mut level = 0;
+    let mut franchis = 0;
     let mut total_needed: i64 = 0;
-    while level < MAX_LEVEL {
-        let next = xp_for_level(level + 1);
+    while franchis < MAX_LEVEL {
+        let next = xp_for_level(franchis + 1);
         if total_needed + next > xp {
             break;
         }
         total_needed += next;
-        level += 1;
+        franchis += 1;
     }
-    level
+    franchis + 1
 }
 
 /// XP restant dans le niveau actuel et XP requis pour le prochain.
 pub fn xp_progress(xp: i64) -> (i64, i64) {
-    let level = level_from_xp(xp);
+    // `level_from_xp` est base 1 ; le nombre de paliers d'XP reellement
+    // franchis est donc `level - 1`. On raisonne sur ce compte pour retrouver
+    // l'XP consomme et le seuil du palier suivant, inchanges par le decalage.
+    let franchis = level_from_xp(xp) - 1;
     let mut consumed: i64 = 0;
-    for l in 1..=level {
+    for l in 1..=franchis {
         consumed += xp_for_level(l);
     }
     let current_in_level = xp - consumed;
-    let needed = xp_for_level(level + 1);
+    let needed = xp_for_level(franchis + 1);
     (current_in_level, needed)
 }
 

@@ -137,6 +137,24 @@ fn niveau_sous_le_premier_palier_ne_donne_rien() {
 }
 
 #[test]
+fn niveau_zero_est_traite_comme_niveau_un() {
+    // Defense residuelle : une ligne d'XP heritee (avant la bascule en base 1)
+    // peut encore porter un `level = 0`. Un tel membre reste un membre accepte,
+    // niveau 1 au minimum : son role de depart (palier niveau 1) ne doit JAMAIS
+    // partir au retrait, sinon la boucle periodique le reprend a chaque tick et
+    // le membre finit sans aucun role.
+    let p = analyser_paliers("1:100,5:200");
+    let (ajout, retrait) = roles_pour_niveau(&p, 0, ModePalier::Cumulatif);
+    assert_eq!(ajout, vec![100]);
+    assert!(!retrait.contains(&100));
+
+    // Idem en mode remplacement : le palier de depart est le palier courant.
+    let (ajout, retrait) = roles_pour_niveau(&p, 0, ModePalier::Remplacement);
+    assert_eq!(ajout, vec![100]);
+    assert!(!retrait.contains(&100));
+}
+
+#[test]
 fn niveau_exact_declenche_le_palier() {
     // Le seuil est inclusif : atteindre 5 donne le role du palier 5.
     let p = analyser_paliers("5:200");

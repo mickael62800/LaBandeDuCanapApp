@@ -31,12 +31,6 @@ use sentinel_core::domain::errors::DomainError;
 /// Ensemble des guilds ou le caller est Moderator+ (pour scoper les endpoints
 /// guild-less comme `list_all_channels`). Délègue au use case tickets (source
 /// unique de la règle, plus de SQL dupliqué dans l'inbound).
-async fn moderated_guilds(
-    state: &VoiceChannelsState,
-    user_id: &str,
-) -> Result<std::collections::HashSet<String>, ApiError> {
-    Ok(state.tickets_uc.moderated_guilds(user_id).await?)
-}
 use sentinel_core::domain::entities::system::discord_ids::ChannelId;
 use sentinel_core::domain::entities::system::discord_ids::GuildId;
 use sentinel_core::ports::inbound::audit::manage_audit_logs::CreateAuditLogCommand;

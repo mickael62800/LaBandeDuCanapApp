@@ -2,7 +2,7 @@ use super::*;
 
 pub async fn list_all_channels(
     State(state): State<VoiceChannelsState>,
-    user: Option<Extension<WebUser>>,
+    _user: Option<Extension<WebUser>>,
     Query(params): Query<PaginationQuery>,
 ) -> Result<Json<Vec<VoiceChannelResponseDto>>, ApiError> {
     let limit =
@@ -10,29 +10,10 @@ pub async fn list_all_channels(
     let offset = crate::adapters::inbound::http::helpers::normalize_offset(params.offset) as usize;
     let channels = state.voice_channels_uc.list_all_channels().await?;
 
-    // Endpoint guild-less : on scope au web. Le chemin bot/interne (pas de
-    // WebUser) n'est PAS filtre. Un superadmin voit tout ; sinon on ne
-    // retourne que les salons des guilds ou le caller est Moderator+ (mirroir
-    // de `list_tickets`).
-    let channels = match user.as_ref() {
-        None => channels,
-        Some(Extension(ctx)) => {
-            if state
-                .superadmin_user_ids
-                .iter()
-                .any(|sid| sid == &ctx.discord_user_id)
-            {
-                channels
-            } else {
-                let allowed = moderated_guilds(&state, &ctx.discord_user_id).await?;
-                channels
-                    .into_iter()
-                    .filter(|c| allowed.contains(c.guild_id.as_str()))
-                    .collect()
-            }
-        }
-    };
-
+    // Plus de scope par role (miroir de `list_tickets`) : le back-office est
+    // superadmin-only, l'autorisation est faite par `superadmin_middleware`, et
+    // la branche de repli interrogeait `api_user_guilds` — table supprimee par
+    // la migration 007.
     let page: Vec<_> = channels.into_iter().skip(offset).take(limit).collect();
     Ok(map_to_dtos(page))
 }

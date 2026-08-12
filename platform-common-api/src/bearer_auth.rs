@@ -25,9 +25,22 @@ impl OptionalBearerToken {
 }
 
 /// Verifie strictement `Authorization: Bearer <token>`.
+///
+/// **Un jeton attendu vide ne valide rien.** Sans cette garde, `matches(h, "")`
+/// renvoyait `true` des que le client envoyait `Authorization: Bearer ` — le
+/// prefixe seul, suivi d'une chaine vide. Une API dont le jeton n'est pas
+/// configure (variable definie mais vide, ce que `std::env::var` rend en
+/// `Ok("")`) s'ouvrait donc a qui connaissait l'astuce, sans qu'aucun garde
+/// n'ait l'air absent a la relecture.
+///
+/// La configuration doit refuser un secret vide en amont ; ceci est la seconde
+/// barriere, dans le seul endroit que toutes les APIs traversent.
 pub fn matches(headers: &HeaderMap, expected_token: &str) -> bool {
     use subtle::ConstantTimeEq;
 
+    if expected_token.is_empty() {
+        return false;
+    }
     headers
         .get(AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
@@ -86,6 +99,21 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert(AUTHORIZATION, "Basic secret".parse().unwrap());
         assert!(!matches(&headers, "secret"));
+    }
+
+    #[test]
+    fn un_jeton_attendu_vide_ne_valide_jamais() {
+        // `Bearer ` (prefixe seul) donnait un jeton vide, egal au jeton attendu
+        // vide : l'API s'ouvrait entierement.
+        let mut prefixe_seul = HeaderMap::new();
+        prefixe_seul.insert(AUTHORIZATION, "Bearer ".parse().unwrap());
+        assert!(!matches(&prefixe_seul, ""));
+
+        assert!(!matches(&HeaderMap::new(), ""));
+
+        let mut quelconque = HeaderMap::new();
+        quelconque.insert(AUTHORIZATION, "Bearer nimporte".parse().unwrap());
+        assert!(!matches(&quelconque, ""));
     }
 
     #[tokio::test]

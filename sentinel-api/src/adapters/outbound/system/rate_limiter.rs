@@ -6,8 +6,21 @@
 //!   RATE_LIMIT_BAN_DURATION_HOURS (defaut 1, indicatif pour fail2ban)
 
 use std::collections::VecDeque;
+use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+
+/// Adresse d'un reseau prive / non routable sur Internet. `Ipv4Addr::is_private`
+/// existe en stable, son equivalent v6 (`is_unique_local`) non — d'ou ce test
+/// explicite sur le prefixe `fc00::/7`.
+fn est_privee(ip: &IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => v4.is_private() || v4.is_link_local() || v4.is_unspecified(),
+        IpAddr::V6(v6) => {
+            v6.is_unspecified() || (v6.segments()[0] & 0xfe00) == 0xfc00 // fc00::/7
+        }
+    }
+}
 
 use dashmap::DashMap;
 use tokio::sync::Mutex;
@@ -41,7 +54,9 @@ impl RateLimiter {
     /// A appeler dans le middleware pour chaque requete. Retourne true si
     /// l'IP doit etre bannie maintenant (pour declenchement async).
     pub async fn observe(&self, ip: &str) -> bool {
-        if ip.is_empty() || ip == "unknown" {
+        // `0.0.0.0` = pas de `ConnectInfo` (routeur de test) : compter dessus
+        // agregerait toutes les requetes sur un bucket unique.
+        if ip.is_empty() || ip == "unknown" || ip == "0.0.0.0" {
             return false;
         }
         // Skip si deja banni dans les 5 dernieres minutes
@@ -73,24 +88,54 @@ impl RateLimiter {
         false
     }
 
-    /// Ecrit l'IP dans le fichier de ban consume par le shim ban-apply.
+    /// Fichier de demandes de ban, consomme par le cron hote
+    /// `sentinel-apply-bans.sh` (cf. `infrastructure/scripts/setup-host-security.sh`).
+    ///
+    /// Format TSV `ip \t timestamp \t raison`, en append : c'est celui que le
+    /// shim sait lire, et il vide le fichier apres application. L'ancienne
+    /// version ecrivait un `ban-requests.json` que plus rien ne lisait depuis
+    /// l'extraction du domaine `ops` — l'auto-ban etait annonce dans l'interface
+    /// et ne bannissait personne.
+    const BANS_PENDING_PATH: &str = "/var/lib/sentinel/bans-pending.txt";
+
+    /// Ecrit l'IP dans la file de ban consommee par le shim ban-apply.
     pub async fn trigger_ban(self: &Arc<Self>, ip: String) {
-        let path = "/var/lib/sentinel/ban-requests.json";
-        let entry = serde_json::json!({
-            "ip": ip,
-            "reason": format!("rate-limit auto: > {} req/{:?}", self.threshold, self.window),
-            "requested_at": chrono::Utc::now().to_rfc3339(),
-        });
-        // Append a la liste si fichier existe, sinon cree
-        let existing: Vec<serde_json::Value> = std::fs::read_to_string(path)
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default();
-        let mut all = existing;
-        all.push(entry);
-        if let Ok(s) = serde_json::to_string_pretty(&all) {
-            let _ = std::fs::write(path, s);
+        // Le shim passe cette valeur a `ufw deny from "$IP"`, et la ligne est
+        // relue en TSV : une valeur qui n'est pas une IP n'a rien a y faire, et
+        // une tabulation ou un saut de ligne y injecterait une seconde entree.
+        // L'appelant fournit deja une IP resolue par `client_ip`, mais ce
+        // fichier declenche une action sur le pare-feu de l'hote : on revalide.
+        let Ok(parsed) = ip.parse::<std::net::IpAddr>() else {
+            tracing::warn!(valeur = %ip, "auto-ban ignore : ce n'est pas une adresse IP");
+            return;
+        };
+        // Meme garde que `ops_core::validate_bannable_ip` sur le chemin manuel :
+        // un `TRUST_PROXY_HOPS` mal regle fait remonter l'IP du reverse proxy,
+        // et `ufw deny` sur le loopback ou le reseau Docker coupe la production
+        // entiere pour cause d'exces de trafic legitime.
+        if parsed.is_loopback() || est_privee(&parsed) {
+            tracing::warn!(
+                ip = %parsed,
+                "auto-ban ignore : adresse locale/privee (verifier TRUST_PROXY_HOPS)"
+            );
+            return;
         }
-        tracing::warn!(ip = %ip, "rate-limit auto-ban declenche");
+
+        let reason = format!("rate-limit auto: > {} req/{:?}", self.threshold, self.window);
+        let ligne = format!("{parsed}\t{}\t{reason}\n", chrono::Utc::now().to_rfc3339());
+
+        // Append : deux bans concurrents ne peuvent pas s'ecraser, et le shim
+        // tronque le fichier lui-meme apres application. Le read-modify-write
+        // precedent perdait des entrees et faisait croitre le fichier sans borne.
+        let ecriture = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(Self::BANS_PENDING_PATH)
+            .and_then(|mut f| std::io::Write::write_all(&mut f, ligne.as_bytes()));
+
+        match ecriture {
+            Ok(()) => tracing::warn!(ip = %parsed, "rate-limit auto-ban declenche"),
+            Err(e) => tracing::error!(error = %e, ip = %parsed, "auto-ban : ecriture impossible"),
+        }
     }
 }

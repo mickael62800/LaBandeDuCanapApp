@@ -21,6 +21,33 @@ pub struct GatewayState {
     pub auth_api_token: String,
     pub logger: Arc<GatewayLogger>,
     pub http_client: reqwest::Client,
+    /// Origines autorisees a ouvrir un WebSocket, parsees depuis
+    /// `ALLOWED_ORIGINS`. Vide = pas de restriction (dev).
+    pub allowed_origins: Vec<String>,
+}
+
+/// Un handshake WebSocket n'est pas soumis a la CORS : pas de preflight, et les
+/// en-tetes de reponse de `CorsLayer` n'empechent pas le navigateur d'ouvrir la
+/// connexion. Le seul filtre cote serveur est donc de lire `Origin` soi-meme.
+///
+/// Sans ce controle, la defense reposait entierement sur le `SameSite=Lax` du
+/// cookie `ds_session`, pose dans un AUTRE crate (`auth-api`) : un jour ou
+/// quelqu'un passe ce cookie en `SameSite=None` pour debloquer un cas
+/// cross-domaine, n'importe quel site visite par un administrateur connecte
+/// ouvrirait ce flux et lirait tout `sentinel:events` en direct. Rien, ici,
+/// n'aurait signale le lien.
+///
+/// Liste vide = aucune restriction (developpement). Une requete SANS `Origin`
+/// passe : ce sont les clients non-navigateur (curl, service interne), qui ne
+/// sont de toute facon pas le vecteur — un navigateur en envoie toujours un.
+fn origin_authorized(allowed: &[String], headers: &HeaderMap) -> bool {
+    if allowed.is_empty() {
+        return true;
+    }
+    match headers.get(header::ORIGIN).and_then(|v| v.to_str().ok()) {
+        Some(origin) => allowed.iter().any(|a| a == origin),
+        None => true,
+    }
 }
 
 /// Valide le cookie de session HttpOnly aupres d'auth-api. Le navigateur
@@ -80,7 +107,19 @@ pub async fn ws_handler(
     // Web passent par le cookie HttpOnly ; un eventuel client interne peut
     // utiliser le header Authorization standard.
     let valid_service = service_bearer_authorized(&state, &headers);
+
+    // L'`Origin` n'est verifie que sur le chemin SESSION : c'est le seul ou le
+    // navigateur fournit le credential tout seul (cookie), donc le seul
+    // exposable depuis un site tiers. Un client interne porteur du Bearer
+    // n'envoie pas d'`Origin` et n'a aucune raison d'etre filtre dessus.
     let valid_session = if valid_service {
+        false
+    } else if !origin_authorized(&state.allowed_origins, &headers) {
+        warn!(
+            client_ip = %addr,
+            origin = ?headers.get(header::ORIGIN),
+            "WebSocket rejected: origine non autorisee"
+        );
         false
     } else {
         session_cookie_authorized(&state, &headers).await

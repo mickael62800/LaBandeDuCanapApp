@@ -135,6 +135,55 @@ impl ConversationMemory {
         Ok(())
     }
 
+    /// Purge des donnees conversationnelles au-dela de la fenetre de retention.
+    ///
+    /// `remember_exchange` ne borne que le NOMBRE de messages par membre (20) :
+    /// un membre inactif depuis un an gardait donc ses 20 derniers messages
+    /// indefiniment, et `atrium_server_summaries` n'etait jamais purgee du tout.
+    /// Ce sont des propos de membres, conserves sans limite de duree et sans
+    /// aucun chemin d'effacement.
+    ///
+    /// La fenetre est volontairement large (90 jours) : la memoire sert la
+    /// continuite d'une conversation, pas l'archivage.
+    pub async fn purge_old(&self, retention_days: i64) -> Result<(u64, u64), sqlx::Error> {
+        let messages = sqlx::query(
+            "DELETE FROM atrium_conversation_messages \
+             WHERE created_at < now() - make_interval(days => $1)",
+        )
+        .bind(retention_days as i32)
+        .execute(&self.pool)
+        .await?
+        .rows_affected();
+
+        let summaries = sqlx::query(
+            "DELETE FROM atrium_server_summaries \
+             WHERE created_at < now() - make_interval(days => $1)",
+        )
+        .bind(retention_days as i32)
+        .execute(&self.pool)
+        .await?
+        .rows_affected();
+
+        Ok((messages, summaries))
+    }
+
+    /// Efface tout ce qu'Atrium a retenu d'un membre.
+    ///
+    /// Repond a une demande d'effacement : sans ce chemin, la seule facon de
+    /// retirer les propos d'une personne etait d'attendre qu'ils sortent de la
+    /// fenetre des 20 derniers messages — c'est-a-dire, pour un membre parti,
+    /// jamais.
+    pub async fn forget_member(&self, guild_id: &str, member_id: &str) -> Result<u64, sqlx::Error> {
+        Ok(sqlx::query(
+            "DELETE FROM atrium_conversation_messages WHERE guild_id = $1 AND member_id = $2",
+        )
+        .bind(guild_id)
+        .bind(member_id)
+        .execute(&self.pool)
+        .await?
+        .rows_affected())
+    }
+
     pub async fn get_latest_summary(&self, guild_id: &str) -> Result<Option<String>, sqlx::Error> {
         let row = sqlx::query(
             "SELECT content FROM atrium_server_summaries WHERE guild_id = $1 ORDER BY created_at DESC LIMIT 1"

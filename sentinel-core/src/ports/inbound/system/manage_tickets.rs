@@ -68,13 +68,9 @@ pub trait ManageTicketsUseCase: Send + Sync {
         satisfaction_rating: Option<i32>,
     ) -> Result<(), DomainError>;
 
-    /// Ensemble des guilds ou l'utilisateur est Moderator+ (scope web de
-    /// `list_tickets`). Applique le filtre de niveau de role sur les roles
-    /// applicatifs stockes.
-    async fn moderated_guilds(
-        &self,
-        user_id: &str,
-    ) -> Result<std::collections::HashSet<String>, DomainError>;
+    // `moderated_guilds` a ete retire avec le RBAC multi-roles : il lisait
+    // `api_user_guilds`, supprimee par la migration 007. Le back-office est
+    // superadmin-only, `list_tickets` n'a plus de scope par role a appliquer.
 
     /// Suppression en masse des tickets selon des filtres optionnels
     /// (`author_id`, plage `created_at`). Renvoie le nombre de tickets supprimes.

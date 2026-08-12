@@ -28,6 +28,8 @@ reqwest = { workspace = true }
 redis = { workspace = true }
 # Derivation de la cle de cache depuis l'access token (SHA-256 tronque).
 sha2 = "0.10"
+# Comparaison constant-time du jeton de service (cf. `authorize_service`).
+subtle = "2"
 
 [lints]
 workspace = true

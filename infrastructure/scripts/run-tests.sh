@@ -96,8 +96,11 @@ fi
 info "Tests d'integration HTTP..."
 export DATABASE_URL="$DB_URL"
 export REDIS_URL="$REDIS_URL"
-export API_KEY=""
-export REQUIRE_API_KEY="false"
+# Noms lus par `sentinel-api/src/config.rs`. Sous les anciens noms (API_KEY /
+# REQUIRE_API_KEY), la config retombait sur son defaut `require = true` avec une
+# cle vide et l'API sortait en exit(1) au demarrage.
+export SENTINEL_API_KEY=""
+export SENTINEL_REQUIRE_API_KEY="false"
 
 if cargo test --manifest-path sentinel-api/Cargo.toml --tests --quiet 2>&1; then
     ok "Tests d'integration HTTP"

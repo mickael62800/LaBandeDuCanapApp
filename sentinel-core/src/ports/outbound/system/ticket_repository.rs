@@ -46,13 +46,9 @@ pub trait TicketRepository: Send + Sync {
         satisfaction_rating: Option<i32>,
     ) -> Result<(), DomainError>;
 
-    /// Roles applicatifs (`api_user_guilds`) d'un utilisateur : liste de
-    /// `(guild_id, role)`. Sert a scoper `list_tickets` aux guilds ou le caller
-    /// est habilite. Le filtrage par niveau de role est fait dans le use case.
-    async fn find_user_guild_roles(
-        &self,
-        user_id: &str,
-    ) -> Result<Vec<(String, String)>, DomainError>;
+    // `find_user_guild_roles` a ete retire : il faisait un SELECT sur
+    // `api_user_guilds`, table supprimee par la migration 007. Toute execution
+    // de cette methode partait donc en erreur SQL.
 
     /// Suppression en masse avec filtres optionnels combinables (AND) :
     /// `author_id`, borne basse et borne haute de `created_at`. Renvoie le

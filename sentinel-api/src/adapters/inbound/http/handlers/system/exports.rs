@@ -4,9 +4,15 @@
 //! l'export-worker depile, execute la query, serialise le resultat et le
 //! stocke inline dans `result` (TEXT). Les clients poll via GET pour recuperer.
 //!
-//! Gates RBAC : `POST` requiert `Moderator+` pour eviter qu'un viewer puisse
-//! dumper toute la moderation d'un guild. Le GET est ouvert a tout role
-//! (on assume que si quelqu'un a le job_id, il l'a demande lui-meme).
+//! Controle d'acces : `auth_middleware` puis `superadmin_middleware`, poses au
+//! niveau du routeur. Il n'y a plus de gate `Moderator+` propre a ces handlers
+//! — le RBAC multi-roles a ete supprime (migration 007), le back-office n'a
+//! qu'un utilisateur humain autorise.
+//!
+//! `GET` ne verifie pas non plus la propriete du job : connaitre l'UUID suffit.
+//! Acceptable tant que tous les appelants sont l'administrateur unique et les
+//! services internes ; a revoir le jour ou plusieurs comptes web coexistent,
+//! puisqu'un export contient le dump de moderation d'un serveur entier.
 
 use axum::extract::Path;
 use axum::extract::State;
@@ -82,8 +88,9 @@ impl From<ExportJobRecord> for ExportJobStatusDto {
 
 /// POST /api/exports/jobs — enqueue un job d'export. Retourne 202.
 ///
-/// Gated `Moderator+` via `require_role_for_guild` (body-based : le guild_id
-/// n'est pas dans l'URL).
+/// Le `guild_id` vient du CORPS, donc echappe au verrou mono-serveur (qui ne
+/// lit que l'URL) — cf. `middleware/single_guild.rs` pour pourquoi c'est sans
+/// consequence sur cette installation.
 pub async fn create_export_job(
     State(state): State<SystemState>,
     Json(dto): Json<CreateExportJobDto>,
@@ -106,8 +113,6 @@ pub async fn create_export_job(
             dto.format
         ))));
     }
-
-    // Phase 7 B — Gate RBAC : moderator+ pour lancer un export
 
     let id = state
         .export_jobs_uc

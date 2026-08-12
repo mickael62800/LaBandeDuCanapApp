@@ -11,6 +11,7 @@ use axum::{Extension, Json};
 use serde::{Deserialize, Serialize};
 
 use crate::adapters::inbound::http::errors::ApiError;
+use crate::adapters::inbound::http::event_signing;
 use crate::adapters::inbound::http::middleware::superadmin::WebUser;
 use crate::bootstrap::state::SystemState;
 
@@ -95,9 +96,11 @@ pub async fn reset_guild(
     }))
 }
 
-/// Signature HMAC-SHA256 d'un event `guild_reset`. Le format canonique du
-/// message est partage a l'identique avec le consumer bot. Secret vide (mode
-/// dev sans API_KEY) -> signature vide (le bot n'exige alors pas de signature).
+/// Signature HMAC-SHA256 d'un event `guild_reset`.
+///
+/// Le HMAC et le message canonique vivent desormais dans
+/// [`crate::adapters::inbound::http::event_signing`], partages avec les events
+/// `guild_backup:*` qui sont tout aussi destructifs.
 pub fn sign_guild_reset(
     secret: &str,
     guild_id: &str,
@@ -105,17 +108,8 @@ pub fn sign_guild_reset(
     unmute: bool,
     remove_roles: bool,
 ) -> String {
-    if secret.is_empty() {
-        return String::new();
-    }
-    use hmac::{Hmac, Mac};
-    use sha2::Sha256;
-    let msg = format!("guild_reset:{guild_id}:{unban}:{unmute}:{remove_roles}");
-    let mut mac = <Hmac<Sha256>>::new_from_slice(secret.as_bytes()).expect("cle HMAC");
-    mac.update(msg.as_bytes());
-    mac.finalize()
-        .into_bytes()
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
+    event_signing::sign(
+        secret,
+        &event_signing::guild_reset_message(guild_id, unban, unmute, remove_roles),
+    )
 }

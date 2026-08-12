@@ -37,7 +37,7 @@ pub async fn serve(
     let welcome_service = WelcomeGrpc {
         welcome: welcome_use_case(&config),
         rag: Some(rag.clone()),
-        budget: Some(budget),
+        budget: Some(budget.clone()),
         control: Some(control.clone()),
         memory: Some(memory),
         config_pool: config_pool.clone(),
@@ -45,19 +45,26 @@ pub async fn serve(
     let calming_service = CalmingGrpc {
         calming: calming_use_case(&config),
         control: Some(control.clone()),
+        budget: Some(budget.clone()),
         config_pool: config_pool.clone(),
     };
     let rag_service = RagGrpc { rag: Some(rag) };
     let control_service = BotControlGrpc { control };
-    let grpc_token = config.grpc_token.clone();
+    let expected = format!("Bearer {}", config.grpc_token);
     let auth = move |request: Request<()>| {
-        let expected = format!("Bearer {grpc_token}");
-        if request
+        // Comparaison constant-time, comme `bearer_auth::matches` cote HTTP et
+        // l'interceptor gRPC de sentinel-api : un `==` sur un secret partage
+        // court-circuite au premier octet different et laisse fuir sa longueur
+        // et son prefixe par la latence.
+        let fourni = request
             .metadata()
             .get("authorization")
             .and_then(|v| v.to_str().ok())
-            == Some(expected.as_str())
-        {
+            .unwrap_or_default();
+        if bool::from(subtle::ConstantTimeEq::ct_eq(
+            fourni.as_bytes(),
+            expected.as_bytes(),
+        )) {
             Ok(request)
         } else {
             Err(Status::unauthenticated(
@@ -257,8 +264,19 @@ impl WelcomeService for WelcomeGrpc {
 pub struct CalmingGrpc {
     pub calming: Arc<dyn GenerateCalmingReplyUseCase>,
     pub control: Option<Arc<BotControlStore>>,
+    /// Le meme plafond que l'accueil. L'apaisement appelait DeepSeek sans passer
+    /// par le budget : il etait declenche par un evenement du bus Redis COMMUN
+    /// (`atrium_calming_requested`), non signe, dont le `channel_id` sert de cle
+    /// de cooldown — en faisant varier ce champ on obtenait autant d'appels
+    /// payants qu'on voulait, sans qu'aucun compteur ne bouge.
+    pub budget: Option<Arc<BudgetGuard>>,
     pub config_pool: Option<PgPool>,
 }
+
+/// Identite portee au compteur de quota pour les appels declenches par un
+/// evenement plutot que par un membre. Un identifiant fixe suffit : ce qui
+/// compte est que la depense s'impute au plafond quotidien de la guilde.
+const CALMING_QUOTA_ACTOR: &str = "system:calming";
 
 #[tonic::async_trait]
 impl CalmingService for CalmingGrpc {
@@ -293,6 +311,27 @@ impl CalmingService for CalmingGrpc {
                 reply: kind.fallback_message().to_string(),
                 generated_by_ai: false,
             }));
+        }
+
+        // Plafond quotidien de la guilde, applique AVANT l'appel payant.
+        // `interactive = false` : le cooldown par membre n'a pas de sens pour un
+        // declenchement automatique, seul le compteur journalier compte. Quota
+        // atteint -> rappel statique, qui reste la bonne reponse de moderation.
+        if let Some(budget) = &self.budget {
+            let limits = budget.settings_from_map(&config);
+            let bloque = budget
+                .check_and_record(&input.guild_id, CALMING_QUOTA_ACTOR, false, &limits)
+                .await
+                .map_err(|error| {
+                    tracing::error!(%error, "Verification du budget d'apaisement impossible");
+                    Status::unavailable("verification du quota indisponible")
+                })?;
+            if bloque.is_some() {
+                return Ok(Response::new(proto::GenerateCalmingResponse {
+                    reply: kind.fallback_message().to_string(),
+                    generated_by_ai: false,
+                }));
+            }
         }
 
         let admin_context = config.get("conflict_context").cloned().unwrap_or_default();

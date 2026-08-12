@@ -3,8 +3,13 @@
 //! Ecoute `sentinel:events` (consumer group `guild-backup-bot`) et declenche
 //! capture / restore / wipe en reponse aux events publies par l'API/le web :
 //!
-//! - `guild_backup:capture_requested` — data `{guild_id, label, requested_by}`
-//! - `guild_backup:restore_requested` — data `{guild_id, snapshot_id, wipe, requested_by}`
+//! - `guild_backup:capture_requested` — data `{guild_id, label, requested_by, sig}`
+//! - `guild_backup:restore_requested` — data `{guild_id, snapshot_id, wipe, requested_by, sig}`
+//!
+//! Les deux portent une **signature HMAC** verifiee avant toute action (cf.
+//! [`crate::shared::event_signing`]) : `sentinel:events` est le bus commun aux
+//! trois plateformes, et `restore` avec `wipe` supprime l'integralite des
+//! salons, roles et emojis du serveur.
 //!
 //! Ces memes actions sont aussi declenchables par la slash-command `/backup`
 //! (chemin interaction, inchange). Ici le feedback est HEADLESS (log tracing
@@ -21,6 +26,7 @@ use tracing::{info, warn};
 
 use crate::shared::api_client::BaseApiClient;
 use crate::shared::event_bus;
+use crate::shared::event_signing;
 use crate::shared::heartbeat::ApiClientKey;
 
 use super::guild_config::Config;
@@ -96,6 +102,13 @@ async fn on_capture_requested(ctx: &Context, data: &serde_json::Value) {
         return;
     };
     let gid = guild_id.to_string();
+    // La capture n'est pas destructive, mais elle consomme le quota de
+    // snapshots : sans signature, un tiers capable d'ecrire sur le bus evincait
+    // les sauvegardes reelles en en declenchant en boucle.
+    if !event_signing::verifie(data, &event_signing::guild_backup_capture_message(&gid)) {
+        warn!(guild = %gid, "guild_backup(event): signature invalide ou absente -> capture REJETEE");
+        return;
+    }
     let requested_by = data
         .get("requested_by")
         .and_then(|v| v.as_str())
@@ -200,6 +213,24 @@ async fn on_restore_requested(ctx: &Context, data: &serde_json::Value) {
     let snapshot_id = snapshot_id.to_string();
     let wipe_first = data.get("wipe").and_then(|v| v.as_bool()).unwrap_or(false);
 
+    // Signature HMAC AVANT toute action : avec `wipe`, cet event supprime tous
+    // les salons, roles et emojis du serveur. Le bus Redis est commun a toutes
+    // les plateformes, donc en ecriture pour six processus plus la gateway :
+    // seule la signature atteste que la demande vient bien de l'API.
+    // `wipe` est dans le message signe -> impossible de rejouer une restauration
+    // legitime en basculant le drapeau.
+    let message =
+        event_signing::guild_backup_restore_message(&gid, &snapshot_id, wipe_first);
+    if !event_signing::verifie(data, &message) {
+        warn!(
+            guild = %gid,
+            snapshot_id = %snapshot_id,
+            wipe = wipe_first,
+            "guild_backup(event): signature invalide ou absente -> restore REJETE"
+        );
+        return;
+    }
+
     let (Some(api), Some(grpc)) = (api(ctx).await, grpc(ctx).await) else {
         warn!(guild = %gid, "guild_backup(event): API indisponible, restore ignore");
         return;
@@ -210,8 +241,9 @@ async fn on_restore_requested(ctx: &Context, data: &serde_json::Value) {
         info!(guild = %gid, "guild_backup(event): composant desactive, restore ignore");
         return;
     }
-    // NB RBAC : sur le chemin EVENT, `requested_by` est deja gate cote API/web
-    // (Owner). `restore_role_ids` n'est pas re-verifie ici (best-effort).
+    // NB : sur le chemin EVENT, l'autorisation est faite cote API (Bearer puis
+    // gate superadmin) et attestee ici par la signature. `restore_role_ids`
+    // n'est pas re-verifie (le reglage n'a jamais ete applique nulle part).
 
     let snapshot = match api_client::get_snapshot(&grpc, &snapshot_id).await {
         Ok(s) => s,

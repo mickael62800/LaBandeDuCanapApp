@@ -204,12 +204,6 @@ impl ManageTicketsUseCase for MockTicketsUc {
         ));
         Ok(())
     }
-    async fn moderated_guilds(
-        &self,
-        _user_id: &str,
-    ) -> Result<std::collections::HashSet<String>, DomainError> {
-        Ok(std::collections::HashSet::new())
-    }
     async fn bulk_delete_tickets(
         &self,
         _author_id: Option<&str>,

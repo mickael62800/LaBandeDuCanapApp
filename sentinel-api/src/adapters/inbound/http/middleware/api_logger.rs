@@ -1,6 +1,8 @@
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use std::time::Instant;
 
+use axum::extract::ConnectInfo;
 use axum::extract::Request;
 use axum::extract::State;
 use axum::middleware::Next;
@@ -41,22 +43,15 @@ pub async fn api_logger_middleware(
     let rate_limiter = s.rate_limiter.clone();
     let method = request.method().to_string();
     let uri = request.uri().path().to_string();
-    // Extrait l'IP client : derriere nginx, X-Forwarded-For est l'autoritative.
-    // Sinon X-Real-IP ou peer addr (cas dev direct).
-    let client_ip = request
-        .headers()
-        .get("x-forwarded-for")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|s| s.split(',').next())
-        .map(|s| s.trim().to_string())
-        .or_else(|| {
-            request
-                .headers()
-                .get("x-real-ip")
-                .and_then(|v| v.to_str().ok())
-                .map(|s| s.to_string())
-        })
-        .unwrap_or_else(|| "-".to_string());
+    // IP client : meme resolution que le rate limiter du socle, et pour la meme
+    // raison. Prendre la PREMIERE valeur de `X-Forwarded-For` — ce que faisait
+    // ce middleware — revient a lire une chaine entierement fournie par le
+    // client : il suffisait d'en changer a chaque requete pour ne jamais
+    // accumuler de compteur, ou d'y mettre l'IP de quelqu'un d'autre pour la
+    // faire bannir a sa place. `client_ip` compte les sauts depuis la DROITE,
+    // ou nos propres proxies ecrivent.
+    let client_ip = platform_common_api::rate_limit::client_ip(&request, peer_ip(&request))
+        .to_string();
 
     // Rate limit dynamique : track + ban auto si seuil franchi
     if let Some(rl) = &rate_limiter {
@@ -143,6 +138,18 @@ pub async fn api_logger_middleware(
     }
 
     response
+}
+
+/// Adresse de la socket, seule source non falsifiable. `ConnectInfo` est pose
+/// par `into_make_service_with_connect_info` ; il est absent du routeur de test,
+/// d'ou le repli sur l'adresse non specifiee — que `RateLimiter::observe`
+/// ignore, plutot que de compter toutes les requetes de test sur un meme bucket.
+fn peer_ip(request: &Request) -> IpAddr {
+    request
+        .extensions()
+        .get::<ConnectInfo<SocketAddr>>()
+        .map(|ConnectInfo(addr)| addr.ip())
+        .unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
 }
 
 fn is_mutation(method: &str) -> bool {

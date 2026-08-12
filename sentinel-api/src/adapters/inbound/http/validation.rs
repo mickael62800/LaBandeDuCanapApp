@@ -32,6 +32,8 @@ pub fn validate_discord_id(field: &str, value: &str) -> Result<(), DomainError> 
             "{field} ne peut pas etre vide"
         )));
     }
+    // `len()` (octets) suffit ici : le controle suivant impose des chiffres
+    // ASCII, ou un octet vaut exactement un caractere.
     if value.len() > MAX_DISCORD_ID_LEN {
         return Err(DomainError::ValidationError(format!(
             "{field} trop long ({} chars, max {MAX_DISCORD_ID_LEN})",
@@ -60,11 +62,18 @@ pub fn validate_optional_discord_id(
 }
 
 /// Valide la longueur d'un champ string obligatoire.
+///
+/// La longueur est comptee en **caracteres**, pas en octets. `str::len()` rend
+/// des octets UTF-8 : le contenu est en francais, donc un texte d'accents et de
+/// caracteres accentues etait refuse a mi-chemin de la limite annoncee, et le
+/// message d'erreur affichait un nombre de « chars » qui n'en etait pas un.
+/// Les bornes de la base sont posees en `VARCHAR(n)`, que Postgres compte
+/// aussi en caracteres — les deux mesures concordent desormais.
 fn validate_string(field: &str, value: &str, max_len: usize) -> Result<(), DomainError> {
-    if value.len() > max_len {
+    let len = value.chars().count();
+    if len > max_len {
         return Err(DomainError::ValidationError(format!(
-            "{field} trop long ({} chars, max {max_len})",
-            value.len()
+            "{field} trop long ({len} caracteres, max {max_len})"
         )));
     }
     Ok(())

@@ -126,6 +126,9 @@ async fn main() {
             .timeout(std::time::Duration::from_secs(5))
             .build()
             .expect("reqwest client"),
+        // Meme source que la CORS, mais applique par le handler : un handshake
+        // WebSocket ne passe pas par la CORS du navigateur (cf. `origin_authorized`).
+        allowed_origins: parse_origins(&config.allowed_origins),
     };
 
     let trace_layer = TraceLayer::new_for_http()
@@ -199,6 +202,24 @@ async fn main() {
     );
 
     info!("Sentinel Gateway arrete proprement");
+}
+
+/// Origines exactes declarees dans `ALLOWED_ORIGINS`. Vide ou `*` -> liste vide,
+/// c'est-a-dire aucune restriction — reserve au developpement.
+fn parse_origins(allowed_origins: &str) -> Vec<String> {
+    if allowed_origins.is_empty() || allowed_origins == "*" {
+        warn!(
+            "ALLOWED_ORIGINS non configure ou en wildcard : le handshake WebSocket \
+             n'est PAS filtre par origine. Lister les origines exactes en production."
+        );
+        return Vec::new();
+    }
+    allowed_origins
+        .split(',')
+        .map(str::trim)
+        .filter(|o| !o.is_empty())
+        .map(str::to_owned)
+        .collect()
 }
 
 fn build_cors(allowed_origins: &str, max_age_secs: u64) -> CorsLayer {

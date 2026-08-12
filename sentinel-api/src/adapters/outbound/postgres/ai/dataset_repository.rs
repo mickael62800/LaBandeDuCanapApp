@@ -110,7 +110,11 @@ impl DatasetRepository for PgDatasetRepository {
         q_items = q_items.bind(query.limit).bind(query.offset);
 
         let rows = q_items.fetch_all(&self.pool).await.map_err(pg_err)?;
-        let total = q_count.fetch_one(&self.pool).await.unwrap_or(0);
+        // Le COUNT remonte son erreur comme le SELECT. En `unwrap_or(0)`, une
+        // base en panne rendait un `total: 0` indiscernable d'un dataset vide :
+        // la pagination disparaissait de l'ecran sans qu'aucune erreur ne soit
+        // affichee, et le probleme se lisait « il n'y a plus de messages ».
+        let total = q_count.fetch_one(&self.pool).await.map_err(pg_err)?;
 
         let items = rows
             .into_iter()

@@ -344,19 +344,6 @@ impl TicketRepository for PgTicketRepository {
         Ok(())
     }
 
-    async fn find_user_guild_roles(
-        &self,
-        user_id: &str,
-    ) -> Result<Vec<(String, String)>, DomainError> {
-        let rows: Vec<(String, String)> =
-            sqlx::query_as("SELECT guild_id, role FROM api_user_guilds WHERE discord_user_id = $1")
-                .bind(user_id)
-                .fetch_all(&self.pool)
-                .await
-                .map_err(pg_err)?;
-        Ok(rows)
-    }
-
     async fn bulk_delete(
         &self,
         author_id: Option<&str>,

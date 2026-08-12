@@ -107,6 +107,24 @@ fn reason_accepts_max() {
 }
 
 #[test]
+fn les_longueurs_se_comptent_en_caracteres_pas_en_octets() {
+    // Chaque « é » pese 2 octets en UTF-8. En comptant les octets, une raison
+    // de 2000 caracteres accentues etait refusee a mi-chemin de la limite
+    // annoncee — et le message parlait de « chars ».
+    let deux_mille_accents = "é".repeat(2000);
+    assert_eq!(deux_mille_accents.len(), 4000); // octets
+    assert!(validate_reason(&deux_mille_accents).is_ok());
+
+    assert!(validate_reason(&"é".repeat(2001)).is_err());
+}
+
+#[test]
+fn le_message_de_longueur_annonce_des_caracteres() {
+    let msg = err_msg(validate_title(&"é".repeat(501)));
+    assert!(msg.contains("501 caracteres"), "message inattendu : {msg}");
+}
+
+#[test]
 fn content_rejects_empty() {
     assert!(err_msg(validate_content("")).contains("vide"));
 }

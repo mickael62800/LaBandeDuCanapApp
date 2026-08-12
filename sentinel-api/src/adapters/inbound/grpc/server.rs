@@ -355,9 +355,21 @@ fn build_auth_interceptor(
     } else {
         match format!("Bearer {api_key}").parse::<MetadataValue<_>>() {
             Ok(v) => Some(Arc::new(v)),
+            // Fail-CLOSED. Retomber sur `None` ouvrait les 23 services gRPC
+            // (moderation, purge, export, confessions, guild_backup...) a qui
+            // pouvait joindre le port, avec pour seule trace une ligne d'erreur
+            // au demarrage : le chemin HTTP, lui, compare des octets bruts et
+            // continuait de fonctionner, donc rien ne paraissait casse.
+            // Une cle non-ASCII est une erreur de configuration, au meme titre
+            // qu'une cle absente ou trop courte — que `config.rs` traite deja
+            // par un arret immediat.
             Err(_) => {
-                error!("API_KEY contient des caracteres invalides pour un header gRPC; auth desactivee");
-                None
+                error!(
+                    "SENTINEL_API_KEY contient des caracteres invalides pour un en-tete gRPC \
+                     (ASCII imprimable uniquement, ni retour a la ligne ni accent). \
+                     Arret : demarrer avec l'auth gRPC desactivee ouvrirait toute l'API interne."
+                );
+                std::process::exit(1);
             }
         }
     };

@@ -44,7 +44,9 @@ async fn main() {
         .await
         .expect("Impossible de binder Atrium API");
     tracing::info!(%addr, "Atrium API demarree");
-    axum::serve(listener, router(config, pool, rag, budget, control, memory))
+    // `atrium_api::serve` et pas `axum::serve` : le rate limit exige
+    // `ConnectInfo`, et l'oubli rendait toute l'API muette (500 partout).
+    atrium_api::serve(listener, router(config, pool, rag, budget, control, memory))
         .await
         .expect("Erreur serveur Atrium API");
 }

@@ -24,7 +24,16 @@ async fn main() {
 
     let api_url =
         std::env::var("ATRIUM_API_URL").unwrap_or_else(|_| "http://localhost:8090".into());
-    let api_token = std::env::var("ATRIUM_API_TOKEN").unwrap_or_default();
+    // Pas de repli vide : l'API refuse desormais un jeton vide, et un worker qui
+    // demarre avec un Bearer vide echouerait a chaque tick en 401 sans que rien
+    // n'explique pourquoi. Mieux vaut ne pas demarrer.
+    let api_token = std::env::var("ATRIUM_API_TOKEN")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| {
+            tracing::error!("ATRIUM_API_TOKEN manquant ou vide : les jobs Atrium seraient refuses");
+            std::process::exit(2);
+        });
     let guild_id = std::env::var("ATRIUM_PRIMARY_GUILD_ID")
         .ok()
         .filter(|value| !value.trim().is_empty())

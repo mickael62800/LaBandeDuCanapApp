@@ -1,6 +1,15 @@
 # Sécurité — points ouverts
 
-Ce qui reste après les audits des plateformes `sentinel-*`, `atrium-*` et `ops-*`. Tout le reste a été corrigé (voir l'historique des commits). Chaque point est ouvert pour une raison explicite, et chacun porte la condition qui le rendrait urgent.
+Ce qui reste après les audits des plateformes `sentinel-*`, `atrium-*`, `ops-*` et `nexus-*`.
+
+**Deux catégories, à ne pas confondre :**
+
+- **Ouvert par décision** (S1, S2, A1–A4, O1–O5) — le point est connu, la raison de ne pas le traiter est écrite, et chacun porte la condition qui le rendrait urgent.
+- **Ouvert faute d'avoir été traité** (N1–N4, W1–W4) — trouvé lors des audits Nexus et Web, non corrigé à ce jour. Ce ne sont pas des arbitrages, ce sont des correctifs en attente.
+
+> ### ⚠️ N1 est critique et exploitable sans authentification
+>
+> La passerelle `/nexus-public/` relaie **toute** l'API de Nexus en y attachant elle-même la clé d'API. N'importe qui sur Internet peut exécuter du RCON sur les serveurs de jeu, en créer ou en supprimer, et déplacer de la monnaie. Détail en fin de document — à traiter avant le reste.
 
 ## Sentinel
 
@@ -29,6 +38,28 @@ Audit de `ops-api` / `ops-core`. Onze points relevés, huit corrigés dans la fo
 | O3 | GeoIP en clair si on l'active | Le palier gratuit d'ip-api n'accepte que `http://` — le correctif est un changement de fournisseur, pas de code |
 | O4 | `deleted_logs` vaut désormais toujours `0` | **Dette introduite par le correctif** — le champ et le libellé survivent au comportement qu'ils décrivaient |
 | O5 | Quatre modules non audités | Périmètre non couvert, pas un défaut constaté |
+
+## Web — **non corrigés**
+
+Audit statique du frontend Vue, de sa chaîne de build et de la configuration nginx. Aucun secret réel ou jeton codé en dur n'a été trouvé. Le build, ESLint et les 89 tests passent ; aucun source map n'est publié. Les en-têtes CSP, HSTS, anti-frame et `nosniff` sont présents, et les passerelles Nexus, Ops et Atrium utilisent `auth_request`.
+
+| # | Sujet | Gravité |
+|---|---|---|
+| W1 | `nanoid 3.3.11` et `postcss 8.5.13` ont des avis de sécurité avec correctifs disponibles | Élevée selon `npm audit`, impact surtout limité à la chaîne de build |
+| W2 | Le rendu Markdown utilisé avec `v-html` n'échappe pas les guillemets avant de construire les liens | Moyenne — injection d'attribut HTML possible, actuellement contenue en production par la CSP |
+| W3 | Le callback OAuth continue si la vérification `check-access` échoue autrement que par un 403 | Moyenne — fail-open côté interface ; les API restent l'autorité et refusent les appels non autorisés |
+| W4 | L'ancien champ `api_key` peut encore être stocké dans `localStorage` et envoyé comme Bearer | Faible — vide en production actuelle, mais exfiltrable par une XSS s'il était renseigné |
+
+## Nexus — **non corrigés**
+
+Contrairement aux sections précédentes, ces quatre points ne sont pas des arbitrages : ils ont été relevés et attendent leur correctif.
+
+| # | Sujet | Gravité |
+|---|---|---|
+| N1 | `/nexus-public/` relaie toute l'API avec la clé injectée | **Critique** — exploitable sans authentification, depuis Internet |
+| N2 | `nexus-api` s'ouvre entièrement si `NEXUS_API_KEY` est vide | Élevée — la seule API qui lance des conteneurs, et la seule à échouer en s'ouvrant |
+| N3 | L'acteur de l'audit est un paramètre d'URL | Moyenne — traçabilité falsifiable |
+| N4 | RCON transmis sans liste blanche | Contextuelle — acceptable seule, aggravante avec N1 |
 
 ---
 
@@ -370,3 +401,195 @@ N'ont **pas** été relus :
 Les deux derniers groupes sont les plus intéressants pour une prochaine passe : les règles d'alerte comportent un envoi sortant (donc une exfiltration possible vers un webhook contrôlé par celui qui écrit la règle), et les handlers de purge appellent des opérations irréversibles.
 
 Sur ce qui a été vérifié : les `format!` SQL de `security_log_repository.rs` et `security_audit_repository.rs` n'interpolent que des entiers typés et des constantes — aucun vecteur d'injection. La file de bans est durcie contre l'injection de ligne (`ban_queue.rs`), et les chemins des sondes viennent d'un enum fermé, donc pas de traversée.
+
+---
+
+## W1 — Dépendances frontend signalées par `npm audit`
+
+Le lockfile fixe `nanoid` à `3.3.11` et `postcss` à `8.5.13`. `npm audit --omit=dev` remonte deux vulnérabilités de gravité élevée avec correctifs disponibles : boucles infinies dans certains générateurs Nano ID et lecture arbitraire de fichiers `.map` par PostCSS lors du traitement d'un `sourceMappingURL` contrôlé.
+
+L'exploitabilité dans le navigateur est faible : ces paquets interviennent surtout pendant la compilation et aucun source map n'est publié dans `dist`. Le risque concerne davantage un pipeline qui compilerait du CSS ou des source maps fournis par un tiers.
+
+Correctif : mettre à jour le lockfile vers `nanoid >= 3.3.17` et `postcss > 8.5.22`, puis rejouer `npm run build`, `npm run lint`, `npm test` et `npm audit`.
+
+## W2 — Échappement incomplet du Markdown rendu avec `v-html`
+
+`web/src/utils/discordMarkdown.ts` échappe `&`, `<` et `>`, mais pas `"` ni `'`. La règle des liens réinjecte ensuite directement l'URL capturée dans `href="$2"`. Une URL Markdown contenant un guillemet peut donc sortir de l'attribut et introduire un nouvel attribut HTML.
+
+La CSP de production (`script-src 'self'`, sans `unsafe-inline`) empêche actuellement l'exécution d'un gestionnaire comme `onmouseover`. Ce n'est toutefois qu'une seconde barrière : le HTML produit par le sanitizer reste incorrect, le serveur de développement n'applique pas cette CSP, et une future relaxation de celle-ci réactiverait immédiatement le vecteur.
+
+Correctif : échapper aussi les deux types de guillemets et construire/valider chaque URL avec `new URL`, idéalement sans générer le HTML par substitutions regex. Ajouter un test avec une URL contenant `"onmouseover=`.
+
+## W3 — Le callback OAuth échoue en s'ouvrant côté interface
+
+`web/src/components/pages/auth/AuthCallbackPage.vue` traite explicitement le 403 comme un refus, mais toute autre erreur de `GET /api/auth/check-access` produit `check-access failed, proceeding anyway`. Le profil issu du fragment OAuth est alors placé dans Pinia et les routes d'administration deviennent navigables.
+
+Les API et les passerelles nginx restent protégées côté serveur : ce point ne donne pas à lui seul accès aux données. Il affaiblit toutefois la défense en profondeur, affiche une interface privilégiée avant validation et transforme toute route backend oubliée en fuite potentielle.
+
+Correctif : ne finaliser le store et la navigation qu'après un 200. Une panne réseau ou un 5xx doit afficher une erreur réessayable, sans conserver de session locale considérée comme autorisée.
+
+## W4 — Clé Bearer historique conservable dans `localStorage`
+
+`web/src/api/config.ts` conserve encore `{ api_url, api_key }` sous `ds.api.config`, et `web/src/api/http.ts` transforme toute valeur non vide en `Authorization: Bearer ...`. Le déploiement actuel initialise cette clé à vide et les secrets Nexus/Ops/Atrium sont correctement injectés par nginx, côté serveur.
+
+Si cette capacité historique était réutilisée, la clé resterait lisible par tout JavaScript exécuté sur l'origine et survivrait aux fermetures de navigateur. Une XSS aurait alors un secret interne durable à exfiltrer.
+
+Correctif : retirer `api_key` du contrat frontend et supprimer l'ajout du Bearer. Si un mode développeur en a réellement besoin, le rendre explicite, limité à `localhost` et stocké au maximum en mémoire ou `sessionStorage`.
+
+---
+
+## N1 — `/nexus-public/` relaie toute l'API de Nexus, sans authentification, clé attachée
+
+**Critique. Exploitable depuis Internet, sans compte, sans information préalable.**
+
+### Le mécanisme
+
+`web/nginx.conf`, bloc de la vitrine publique :
+
+```nginx
+location /nexus-public/ {                      # pas d'auth_request — volontaire
+    rewrite ^/nexus-public/(.*)$ /$1 break;    # relaie N'IMPORTE QUEL chemin
+    proxy_pass $nexus_pub_upstream;
+    include /etc/nginx/snippets/nexus-auth.inc;  # injecte le Bearer NEXUS_API_KEY
+}
+```
+
+Côté Rust, l'intention est respectée : le router `public` (`nexus-api/src/adapters/inbound/http/mod.rs`) ne contient **qu'une seule** route, `/api/public/games/{guild_id}/servers`. Tout le reste vit dans le router `api`, derrière le Bearer.
+
+Mais `location` est un **préfixe**, et le `rewrite` se contente de retirer `/nexus-public/`. Le chemin qui suit est transmis tel quel — y compris s'il désigne une route protégée. Et nginx y ajoute lui-même une clé valide, puisque le snippet est inclus dans ce bloc.
+
+Résultat : le Bearer de `nexus-api` ne protège rien de ce qui passe par cette porte.
+
+```
+POST   /nexus-public/api/games/servers/<id>/command    → RCON sur un serveur de jeu
+POST   /nexus-public/api/games/<guild_id>/servers      → création de conteneur sur l'hôte
+DELETE /nexus-public/api/games/servers/<id>            → suppression
+POST   /nexus-public/api/wallet/<guild_id>/transfer    → transfert de monnaie
+PUT    /nexus-public/api/config/<guild_id>/<bot_name>  → configuration par serveur
+```
+
+### Pourquoi la chaîne est complète
+
+Aucun secret n'est nécessaire pour démarrer : la route légitime de la vitrine **publie les UUID des serveurs** (`PublicGameServerDto.id`, `handlers/game/public_servers.rs`). Un attaquant lit les identifiants là où c'est prévu, puis les rejoue sur les routes d'administration.
+
+Sur Minecraft, RCON donne `op`, `ban`, `stop` — l'administration complète du serveur de jeu.
+
+### Ce qui ne protège pas
+
+- **Le verrou mono-serveur** : les routes `/api/games/servers/{server_id}/...` ne portent pas de `guild_id` dans l'URL, il ne s'applique donc pas. Et là où il s'applique, le `guild_id` est public de toute façon.
+- **Le rate limit strict** (2 req/s sur le cycle de vie) : il ralentit, il n'interdit pas. Et il n'est pas atteint par une poignée de requêtes ciblées.
+- **L'absence de `ports:` sur `nexus-api`** : le service n'est pas publié sur l'hôte, mais nginx l'est — et c'est nginx qui ouvre la porte.
+
+### Le correctif
+
+Restreindre le `location` au préfixe réellement public, pour que le relais ne puisse pas déborder :
+
+```nginx
+location /nexus-public/api/public/ {
+    rewrite ^/nexus-public/(.*)$ /$1 break;
+    # … reste inchangé
+}
+```
+
+Le SPA appelle déjà `/nexus-public/api/public/games/{guild}/servers` : le chemin ne change pas côté client.
+
+À vérifier après application : `curl -i https://<domaine>/nexus-public/api/games/<guild>/servers` doit répondre **404** et non 200/401.
+
+---
+
+## N2 — `nexus-api` s'ouvre entièrement quand la clé est absente
+
+`nexus-api/src/bootstrap/mod.rs` :
+
+```rust
+let api_key = std::env::var("NEXUS_API_KEY").ok().filter(|k| !k.is_empty());
+// …
+if api_key.is_none() {
+    tracing::warn!("NEXUS_API_KEY absente — API SANS auth (dev uniquement)");
+}
+```
+
+`None` alimente `OptionalBearerToken`, dont le middleware `require_optional` laisse alors passer **toutes** les routes `/api` — cycle de vie des conteneurs compris. Le compose renforce le risque : `NEXUS_API_KEY: ${NEXUS_API_KEY:-}`, défaut vide.
+
+C'est le défaut déjà corrigé pour Atrium et consigné dans `CLAUDE.md` (« Un secret vide n'est pas un secret absent »). Nexus est passé au travers — alors que c'est la **seule** API capable de lancer des conteneurs sur l'hôte.
+
+Les trois autres échouent en se fermant :
+
+| Service | Comportement sans jeton |
+|---|---|
+| `ops-api` | `exit(1)` — refuse aussi un jeton < 16 caractères |
+| `auth-api` | `AUTH_API_TOKEN` requis par le compose (`:?`) |
+| `docker-agent` | refuse de démarrer, et refuse deux jetons identiques |
+| **`nexus-api`** | **démarre ouvert, avec un `warn!`** |
+
+### Le correctif
+
+Aligner sur `ops-api` : refuser le démarrage plutôt que de servir ouvert.
+
+```rust
+let api_key = std::env::var("NEXUS_API_KEY").ok().filter(|k| k.trim().len() >= 16)
+    .unwrap_or_else(|| { tracing::error!("NEXUS_API_KEY manquante ou trop courte"); std::process::exit(1) });
+```
+
+Et `NEXUS_API_KEY: ${NEXUS_API_KEY:?NEXUS_API_KEY est requis}` dans `compose.nexus.yml`.
+
+Même précaution que pour S1 : le `.env` du serveur doit contenir la variable **avant** d'appliquer, sinon `docker compose up` s'arrête.
+
+---
+
+## N3 — L'acteur de l'audit est un paramètre d'URL
+
+`nexus-api/src/adapters/inbound/http/handlers/game/servers.rs` :
+
+```rust
+pub struct ActorQuery {
+    /// Discord user id de l'acteur (audit). Si absent, fallback sur l'owner.
+    pub actor_id: Option<String>,
+}
+
+async fn resolve_actor(…, explicit: Option<&str>) -> Result<String, ApiError> {
+    if let Some(s) = explicit { return Ok(s.to_string()); }   // repris tel quel
+    …
+}
+```
+
+Toute action tracée — RCON, arrêt, suppression de serveur — peut donc être attribuée à n'importe qui, en ajoutant `?actor_id=<autre_personne>`.
+
+C'est la même classe que le point corrigé côté OPS (l'en-tête `x-actor-id` que nginx ne posait pas), en plus facile à exploiter : un paramètre d'URL suffit, sans même forger un en-tête.
+
+### Le correctif
+
+Le même que pour OPS, et il gagne à être fait en même temps : faire descendre l'identité par la passerelle depuis `auth_request`, et **ignorer** ce que le client propose.
+
+```nginx
+auth_request_set $nexus_actor $upstream_http_x_auth_user_id;
+proxy_set_header X-Actor-Id $nexus_actor;
+```
+
+Côté handler, lire l'en-tête et supprimer `ActorQuery`. Le repli sur le propriétaire du serveur reste légitime pour les appels internes du bot, qui n'ont pas d'utilisateur web.
+
+---
+
+## N4 — RCON transmis sans liste blanche
+
+`nexus-core/src/application/game/manage_game_servers_service.rs` : la commande reçue est passée telle quelle au serveur de jeu, après vérification que le serveur tourne et que `rcon_enabled` est vrai. Aucun filtrage du contenu.
+
+Pris isolément, c'est défendable : un panneau d'administration de serveur de jeu sert précisément à exécuter des commandes, et en restreindre la liste reviendrait à réimplémenter la console.
+
+Ça cesse de l'être **combiné à N1** : la commande devient accessible sans authentification. Corriger N1 ramène ce point à un choix de produit ; tant que N1 est ouvert, c'est le vecteur d'impact.
+
+Si une restriction est souhaitée un jour, la placer dans le domaine (`nexus-core`) et non dans le handler — sinon le bot Discord, qui appelle le même use case, passera à côté.
+
+---
+
+## Périmètre de l'audit Nexus
+
+Couvert : routeur et posture d'authentification, vitrine publique, passerelle nginx, RCON, résolution de l'acteur, verrou mono-serveur.
+
+**Non couvert** — un second passage reste à faire sur :
+
+- l'économie : `wallet`, `coussin`, `casino`, `wheel` (manipulation de soldes, rejeu, courses)
+- le Grand Salon (`grand_salon.rs`, motions et votes)
+- les adaptateurs Postgres de `nexus-api`
+- l'allocateur de ports Redis
+- les événements de session (`session_events.rs`) et la surface gRPC

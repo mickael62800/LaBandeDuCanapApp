@@ -32,10 +32,16 @@ async fn main() {
     let config = Arc::new(AppConfig::from_env());
 
     if config.api_token.trim().is_empty() {
-        // On ne refuse pas de démarrer : le développement local en a besoin.
-        // Mais en compose le jeton est requis, et l'absence doit se voir.
+        // On ne refuse pas de démarrer : le flux OAuth (`/auth/discord/*`) et le
+        // healthcheck doivent rester servis, et le développement local en a
+        // besoin. Les routes de SERVICE, elles, refusent désormais (503) au lieu
+        // de laisser passer — `/access` résout n'importe quel jeton et
+        // `/security/last-logins` expose l'historique de connexion des
+        // administrateurs. Cf. `http::authorize_service`.
         tracing::warn!(
-            "AUTH_API_TOKEN vide — les routes de service (/access, /security/*) sont OUVERTES"
+            "AUTH_API_TOKEN vide — les routes de service (/access, /security/*) repondront 503. \
+             Les consommateurs (sentinel-api, ops-api, gateway, nginx) verront une identite \
+             indisponible tant que le jeton n'est pas defini."
         );
     }
 

@@ -59,8 +59,9 @@ if ($LASTEXITCODE -eq 0) { Ok "  API (lib)" } else { Fail "  API (lib)"; $FAILED
 Info "Tests d'integration HTTP..."
 $env:DATABASE_URL = $DB_URL
 $env:REDIS_URL = $REDIS_URL
-$env:API_KEY = ""
-$env:REQUIRE_API_KEY = "false"
+# Noms lus par `sentinel-api/src/config.rs` (cf. run-tests.sh).
+$env:SENTINEL_API_KEY = ""
+$env:SENTINEL_REQUIRE_API_KEY = "false"
 
 cargo test --manifest-path sentinel-api/Cargo.toml --tests --quiet 2>&1 | Out-Null
 if ($LASTEXITCODE -eq 0) { Ok "Tests d'integration HTTP" } else { Fail "Tests d'integration HTTP"; $FAILED++ }

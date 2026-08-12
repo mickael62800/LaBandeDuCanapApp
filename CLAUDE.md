@@ -115,9 +115,13 @@ async fn restore(State(st): State<AppState>, ...) { st.guild_snapshots_uc... }
 
 Chaque sous-état implémente `FromRef<AppState>`, donc les deux formes coexistent dans un même `Router<AppState>` : la migration se fait fichier par fichier, avec un code qui compile à chaque étape.
 
-**Migration terminée.** Sept sous-états : `ai`, `moderation`, `audit`, `community`, `system`, `ops`, `guild_backup`. `AppState` est passé de **100 à 14 champs**, tous légitimes : infrastructure partagée (`broadcaster`, `redis_client`, `cache`, `discord_api`, `job_client`, `log_repo`, `bot_config_repo`, `pg_pool`), config lue par les middlewares (`api_key`, `guild_id`, `superadmin_user_ids`, `metrics_token`, `discord_bot_token`) et `nexus_games`.
+**Migration terminée.** Sept sous-états : `ai`, `moderation`, `audit`, `community`, `system`, `ops`, `guild_backup`. `AppState` est passé de **100 à 14 champs**, tous légitimes : infrastructure partagée (`broadcaster`, `redis_client`, `cache`, `discord_api`, `job_client`, `log_repo`, `bot_config_repo`, `pg_pool`), config lue par les middlewares (`api_key`, `guild_id`, `metrics_token`, `discord_bot_token`) et `nexus_games`.
 
-Deux fichiers restent volontairement sur `AppState`, faute d'appartenir à un domaine unique : `handlers/moderation/purge.rs` (audit-logs + logs système) et `handlers/community/voice_channels.rs` (réclame `tickets_uc`, `audit_logs_uc` et `superadmin_user_ids`). Les forcer dans un sous-état aurait reconstitué un god-object en miniature.
+`superadmin_user_ids` n'y figure plus. `SUPERADMIN_USER_IDS` reste la variable qui décide qui entre dans le back-office, mais **seul `auth-api` la lit**. La copie locale servait un scope par rôle dans `list_tickets` et `list_all_channels` : identité comparée à la liste locale, sinon repli sur `moderated_guilds`, qui faisait un `SELECT` sur `api_user_guilds` — table supprimée par la migration 007. Le moindre écart entre les deux listes transformait donc ces deux écrans en 500. Le port `moderated_guilds`, l'outbound `find_user_guild_roles` et leurs implémentations ont été retirés avec.
+
+Un fichier reste volontairement sur `AppState`, faute d'appartenir à un domaine unique : `handlers/moderation/purge.rs` (audit-logs + logs système). Le forcer dans un sous-état aurait reconstitué un god-object en miniature.
+
+`handlers/community/voice_channels.rs` en est sorti : il réclamait `tickets_uc` et `superadmin_user_ids` uniquement pour le scope par rôle supprimé ci-dessus. `VoiceChannelsState` ne porte plus que `voice_channels_uc`, `audit_logs_uc` (il trace ses propres actions) et `broadcaster`.
 
 **Règle de rangement** : si un fichier réclame plus de 2-3 ports étrangers à son domaine, c'est le fichier qui est mal rangé, pas le sous-état qui est trop étroit.
 
@@ -168,6 +172,18 @@ Choisir en connaissance de cause :
 - **Asynchrone** — l'API publie sur Redis Stream `sentinel:events` (`XADD MAXLEN ~ 10000`, champ `payload = {"event":…, "data":…}`), un module du bot consomme via `XREADGROUP` + `XACK` et rapporte le résultat à l'API. **Obligatoire** quand le message doit venir du bot (identité, avatar, permissions) : voir `modules/{announcements,embeds,messages}`.
 
 La gateway lit la même stream en `XREAD $` (live-tail, sans group) pour le relay WebSocket.
+
+**Les events destructifs sont signés (HMAC-SHA256, secret = `SENTINEL_API_KEY`).** `sentinel:events` vit sur l'instance Redis **commune** : les trois bots, les trois workers et la gateway en portent l'URL, donc y publier ne demande aucun privilège. C'est acceptable pour un event d'affichage, pas pour `guild_reset` (déban de tous les bannis, retrait des rôles) ni `guild_backup:restore_requested`, qui avec `wipe` supprime **tous** les salons, rôles et emojis avant de restaurer. Le bot rejette un event non signé ou mal signé ; secret vide (dev) = signature non exigée.
+
+Le **message canonique** existe en trois exemplaires — `sentinel-api/src/adapters/inbound/http/event_signing.rs`, `sentinel-bot/src/shared/event_signing.rs`, et `sign_capture` dans `sentinel-worker/.../guild_backup/auto_backup.rs`. C'est un contrat inter-processus, pas du code mutualisable : aucun des trois crates ne peut dépendre des deux autres. Modifier un format sans le répercuter partout fait rejeter l'event — le sens de défaillance est le bon (rien n'est détruit), mais ça ne se voit que dans les logs du bot. Tout champ qui change l'effet de l'action doit être **dans** le message signé : `wipe` y est, sinon une restauration légitime se rejouerait en effacement.
+
+`guild_backup:restore_requested` ne l'était pas alors que `guild_reset` l'était depuis le début — l'asymétrie protégeait la moins destructive des deux opérations.
+
+## Deux pièges qui ne se voient pas à la relecture
+
+**`into_make_service_with_connect_info` n'est pas optionnel.** Le rate limit commun extrait `ConnectInfo<SocketAddr>` ; servir un routeur avec `axum::serve(listener, router)` fait répondre **500 à toutes les routes**, `/health` compris — donc healthcheck en échec, conteneur jamais `healthy`, et tout ce qui l'attend en `depends_on` qui ne démarre pas. C'est arrivé à `atrium-api`, et ça n'a pas été vu parce que les tests appelaient le routeur en `oneshot` **en injectant `ConnectInfo` à la main**. Un test qui fabrique lui-même l'extension que la production oublie ne teste rien. `atrium_api::serve` centralise désormais le montage, et `health_repond_quand_l_api_est_servie_comme_en_production` ouvre une vraie socket.
+
+**Un secret vide n'est pas un secret absent.** `std::env::var` rend `Ok("")` pour une variable déclarée mais vide : un contrôle qui ne teste que la présence laisse passer la chaîne vide. Et `bearer_auth::matches(h, "")` renvoyait alors `true` dès que le client envoyait `Authorization: Bearer ` — le préfixe seul. `ATRIUM_API_TOKEN: ${ATRIUM_API_TOKEN:-}` rendait le cas atteignable, ouvrant tout `/admin/*`. Trois barrières désormais : le compose exige la variable (`:?`), la config refuse une valeur vide, et `matches` refuse un jeton attendu vide. Utiliser `:?` et non `:-` pour tout secret.
 
 ## Migrations
 

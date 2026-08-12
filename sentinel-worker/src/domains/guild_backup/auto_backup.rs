@@ -16,7 +16,13 @@
 //! Enveloppe publiee (IDENTIQUE a l'API, cf. broadcaster.rs + le handler
 //! request_capture) :
 //! {"event":"guild_backup:capture_requested","guild_id":"<id>",
-//!  "data":{"guild_id":"<id>","label":"Auto-backup ...","requested_by":"auto"}}
+//!  "data":{"guild_id":"<id>","label":"Auto-backup ...","requested_by":"auto",
+//!          "sig":"<hmac-sha256 hex>"}}
+//!
+//! Le `sig` n'est pas optionnel : le bot rejette tout event `guild_backup:*` non
+//! signe, parce que `sentinel:events` est le bus COMMUN aux trois plateformes et
+//! que la restauration y detruit un serveur entier. Ce worker signe avec le meme
+//! secret que l'API (`SENTINEL_API_KEY`).
 
 use std::collections::HashMap;
 
@@ -54,6 +60,9 @@ pub async fn run(pool: &PgPool, redis: &redis::aio::ConnectionManager) -> Result
 
     let now = Utc::now();
     let mut conn = redis.clone();
+    // Lu une fois par tick plutot que par guilde : c'est la meme valeur, et un
+    // `env::var` par iteration n'apporte rien.
+    let secret = std::env::var("SENTINEL_API_KEY").unwrap_or_default();
 
     let mut published = 0u32;
     for (guild_id, cfg) in &configs {
@@ -90,6 +99,10 @@ pub async fn run(pool: &PgPool, redis: &redis::aio::ConnectionManager) -> Result
                 "guild_id": guild_id,
                 "label": label,
                 "requested_by": "auto",
+                // Le bot rejette un event `guild_backup:*` non signe. Ce worker
+                // est un producteur legitime au meme titre que l'API : il porte
+                // le meme secret, il signe le meme message canonique.
+                "sig": sign_capture(&secret, guild_id),
             }
         });
 
@@ -105,6 +118,33 @@ pub async fn run(pool: &PgPool, redis: &redis::aio::ConnectionManager) -> Result
         info!(published, "guild_backup auto: capture_requested publies");
     }
     Ok(())
+}
+
+/// Signature HMAC-SHA256 de `guild_backup:capture_requested`.
+///
+/// Message canonique reproduit a l'identique dans
+/// `sentinel-api/.../http/event_signing.rs` et `sentinel-bot/src/shared/event_signing.rs`.
+/// Le troisieme exemplaire est ici parce que ce worker est le troisieme
+/// producteur/consommateur du contrat, et qu'aucun des trois crates ne peut
+/// dependre des deux autres. Modifier le format sans le repercuter partout fait
+/// rejeter l'event — silencieux du point de vue du worker, mais visible dans les
+/// logs du bot, et surtout sans destruction.
+///
+/// Secret vide (dev) -> signature vide, que le bot n'exige alors pas.
+fn sign_capture(secret: &str, guild_id: &str) -> String {
+    if secret.is_empty() {
+        return String::new();
+    }
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+    let message = format!("guild_backup:capture:{guild_id}");
+    let mut mac = <Hmac<Sha256>>::new_from_slice(secret.as_bytes()).expect("cle HMAC");
+    mac.update(message.as_bytes());
+    mac.finalize()
+        .into_bytes()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 /// Vrai si une sauvegarde est due : jamais sauvegardee, ou l'intervalle est

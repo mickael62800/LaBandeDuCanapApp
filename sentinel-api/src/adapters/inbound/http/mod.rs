@@ -1,5 +1,6 @@
 pub mod dto;
 pub mod errors;
+pub mod event_signing;
 pub mod errors_helpers;
 pub mod extractors;
 pub mod handlers;

@@ -87,9 +87,21 @@ impl AuthClient {
                     .headers()
                     .get("x-auth-user-id")
                     .and_then(|v| v.to_str().ok())
-                    .unwrap_or_default()
-                    .to_string();
-                AccessOutcome::Granted(user_id)
+                    .filter(|id| !id.is_empty());
+                match user_id {
+                    Some(id) => AccessOutcome::Granted(id.to_string()),
+                    // Un 200 sans identite est une incoherence de l'amont, pas
+                    // une autorisation. `Granted("")` remontait jusqu'aux
+                    // extensions de requete et signait les traces d'audit des
+                    // actions les plus sensibles (factory reset, restore,
+                    // `deleted_by`, `granted_by`) avec un auteur vide.
+                    None => {
+                        tracing::error!(
+                            "auth-api a autorise sans en-tete x-auth-user-id — verdict ignore"
+                        );
+                        AccessOutcome::Unavailable
+                    }
+                }
             }
             403 => AccessOutcome::Denied,
             // 401 sur la sous-requête peut vouloir dire deux choses : pas de

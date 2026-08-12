@@ -31,6 +31,24 @@ use serde::{Deserialize, Serialize};
 
 use crate::{budget::BudgetStats, guild_config, rag::IndexedDocument, ApiError, AppState};
 
+/// Un identifiant Discord est un entier 64 bits en decimal : au plus 20
+/// chiffres, rien d'autre.
+///
+/// Ces routes recevaient le `guild_id` du chemin sans le regarder. Le SQL est
+/// parametre, donc rien n'etait injectable — mais une chaine arbitraire
+/// atteignait quand meme la base, et `set_config` pouvait creer des lignes de
+/// configuration pour un « serveur » qui n'en est pas un, invisibles ensuite
+/// dans l'interface.
+fn valider_guild_id(guild_id: &str) -> Result<(), ApiError> {
+    if guild_id.is_empty()
+        || guild_id.len() > 20
+        || !guild_id.chars().all(|c| c.is_ascii_digit())
+    {
+        return Err(ApiError::bad_request("guild_id invalide"));
+    }
+    Ok(())
+}
+
 #[derive(Serialize)]
 pub struct StateResponse {
     pub guild_id: String,
@@ -52,6 +70,7 @@ pub async fn get_state(
     Extension(state): Extension<Arc<AppState>>,
     Path(guild_id): Path<String>,
 ) -> Result<Json<StateResponse>, ApiError> {
+    valider_guild_id(&guild_id)?;
     let control = state
         .control
         .as_ref()
@@ -99,6 +118,7 @@ pub async fn get_usage(
     Extension(state): Extension<Arc<AppState>>,
     Path(guild_id): Path<String>,
 ) -> Result<Json<BudgetStats>, ApiError> {
+    valider_guild_id(&guild_id)?;
     let budget = state
         .budget
         .as_ref()
@@ -128,6 +148,7 @@ pub async fn get_config(
     Extension(state): Extension<Arc<AppState>>,
     Path(guild_id): Path<String>,
 ) -> Result<Json<ContextConfigResponse>, ApiError> {
+    valider_guild_id(&guild_id)?;
     let pool = state
         .config_pool
         .as_ref()
@@ -164,6 +185,7 @@ pub async fn set_config(
     Path(guild_id): Path<String>,
     Json(request): Json<SetConfigRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
+    valider_guild_id(&guild_id)?;
     let pool = state
         .config_pool
         .as_ref()
@@ -237,6 +259,7 @@ pub async fn get_knowledge(
     Extension(state): Extension<Arc<AppState>>,
     Path(guild_id): Path<String>,
 ) -> Result<Json<Vec<IndexedDocument>>, ApiError> {
+    valider_guild_id(&guild_id)?;
     let rag = state
         .rag
         .as_ref()
@@ -259,6 +282,7 @@ pub async fn job_generate_summary(
     Extension(state): Extension<Arc<AppState>>,
     Path(guild_id): Path<String>,
 ) -> Result<Json<JobSummaryResponse>, ApiError> {
+    valider_guild_id(&guild_id)?;
     let memory = state
         .memory
         .as_ref()
@@ -316,6 +340,29 @@ pub async fn job_retention(
         tracing::error!(%error, "Purge des quotas Atrium impossible");
         ApiError::unavailable("purge des quotas impossible")
     })?;
+
+    // La memoire conversationnelle passe par la meme purge quotidienne : ce sont
+    // des propos de membres, et rien ne les effaçait — `remember_exchange` ne
+    // borne que le nombre de messages par personne, pas leur duree de vie.
+    if let Some(memory) = state.memory.as_ref() {
+        let jours = std::env::var("ATRIUM_MEMORY_RETENTION_DAYS")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(90);
+        match memory.purge_old(jours).await {
+            Ok((messages, resumes)) => tracing::info!(
+                messages,
+                resumes,
+                jours,
+                "Purge de la memoire conversationnelle Atrium effectuee"
+            ),
+            Err(error) => {
+                tracing::error!(%error, "Purge de la memoire Atrium impossible");
+                return Err(ApiError::unavailable("purge de la memoire impossible"));
+            }
+        }
+    }
+
     tracing::info!("Purge des compteurs de quota Atrium effectuee");
     Ok(Json(JobRetentionResponse { ok: true }))
 }

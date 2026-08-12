@@ -11,6 +11,10 @@ platform-common-worker = { path = "../platform-common-worker" }
 # (scans, claims atomiques `UPDATE ... WHERE`, XADD) et importe du core les
 # DÉCISIONS métier (fonctions pures et constantes, ex. tickets::sla).
 sentinel-core = { workspace = true }
+# Signature des events `guild_backup:*` publies sur le bus commun (le bot rejette
+# un event destructif non signe). Memes versions que sentinel-api / sentinel-bot.
+hmac = "0.12"
+sha2 = "0.10"
 tokio = { workspace = true }
 sqlx = { workspace = true }
 reqwest = { workspace = true }

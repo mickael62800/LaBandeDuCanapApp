@@ -13,9 +13,9 @@ use platform_common::EventBus;
 use serde::Deserialize;
 use serenity::{
     all::{
-        CommandInteraction, CommandOptionType, CreateCommand, CreateCommandOption,
-        CreateInteractionResponse, CreateInteractionResponseMessage, GuildId, Interaction,
-        Permissions,
+        CommandInteraction, CommandOptionType, CreateAllowedMentions, CreateCommand,
+        CreateCommandOption, CreateInteractionResponse, CreateInteractionResponseMessage,
+        CreateMessage, GuildId, Interaction, Permissions,
     },
     async_trait,
     model::{
@@ -41,6 +41,57 @@ const DEFAULT_GHOST_MINUTES: u64 = 30;
 /// Duree au-dela de laquelle une entree du tracker d'accueils ne peut plus
 /// servir : la plus longue fenetre acceptee par le schema (1440 min) tient
 /// largement dedans. Le balayage se fait a l'insertion, sans tache de fond.
+
+/// Publie un texte produit par le modele, avec les mentions BORNEES.
+///
+/// # Pourquoi ce detour plutot qu'un `say()`
+///
+/// Le contenu vient de DeepSeek, a partir d'un message de membre que personne
+/// ne controle (1 500 caracteres libres). Le prompt systeme demande par ailleurs
+/// au modele d'emettre des mentions `<@...>` telles quelles, pour repondre aux
+/// questions sur les roles : emettre des mentions est donc un comportement
+/// VOULU, pas un accident, ce qui rend l'absence de borne d'autant plus lourde.
+///
+/// Une injection de prompt reussie suffisait alors a faire publier au bot un
+/// `@everyone` ou une salve de mentions de roles. On autorise ici uniquement les
+/// membres explicitement cites par le bot lui-meme (`destinataires`) — jamais
+/// `@everyone`, `@here`, ni les roles.
+///
+/// `sentinel-bot` applique la meme regle depuis toujours (cf.
+/// `modules/messages/mod.rs`), ou elle est assouplie a dessein pour l'outil
+/// d'annonce du back-office. Ici, rien ne la justifie.
+async fn publier_texte_modele(
+    http: &serenity::http::Http,
+    salon: ChannelId,
+    contenu: String,
+    destinataires: &[serenity::model::id::UserId],
+) -> serenity::Result<Message> {
+    let mentions = CreateAllowedMentions::new()
+        .everyone(false)
+        .all_roles(false)
+        .all_users(false)
+        .users(destinataires.to_vec());
+    salon
+        .send_message(http, CreateMessage::new().content(contenu).allowed_mentions(mentions))
+        .await
+}
+
+/// Vrai si `salon` appartient bien a `guilde`, d'apres le cache Discord.
+///
+/// Filtre FERMANT : cache froid ou guilde inconnue -> `false`, on ne publie
+/// pas. C'est la regle du depot pour tout ce qui touche a une destination
+/// publique (cf. `sentinel-bot/src/modules/presence`) : en cas de doute sur une
+/// permission ou une appartenance Discord, on s'abstient. Ici le cout d'un faux
+/// negatif est un rappel d'apaisement manque ; celui d'un faux positif est un
+/// message publie hors du serveur concerne.
+fn salon_de_la_guilde(ctx: &Context, guilde: Option<GuildId>, salon: ChannelId) -> bool {
+    let Some(guilde) = guilde else {
+        return false;
+    };
+    ctx.cache
+        .guild(guilde)
+        .is_some_and(|g| g.channels.contains_key(&salon))
+}
 
 #[derive(Deserialize)]
 struct CalmingEvent {
@@ -196,7 +247,16 @@ impl Handler {
                     "<@{}> {reply}\n\n**Pour discuter avec moi dans ce salon, mentionne-moi : <@{}>.**",
                     member.user.id, atrium_id
                 );
-                if let Err(error) = config.general_channel_id.say(&ctx.http, message).await {
+                // Seul le nouveau membre est mentionnable : c'est le bot qui
+                // pose ce `<@...>`, pas le modele.
+                if let Err(error) = publier_texte_modele(
+                    &ctx.http,
+                    config.general_channel_id,
+                    message,
+                    &[member.user.id],
+                )
+                .await
+                {
                     tracing::warn!(%error, "message d'accueil Atrium non envoye");
                 }
             }
@@ -264,16 +324,31 @@ impl Handler {
         if message.trim().is_empty() {
             return;
         }
-        // Le rappel est publie directement dans le salon ou Sentinel a
-        // constate la tension. Le general reste le repli pour les evenements
-        // emis par une ancienne version de Sentinel sans channel_id.
-        let target_channel = event
-            .data
-            .channel_id
-            .parse::<u64>()
-            .map(ChannelId::new)
-            .unwrap_or(config.general_channel_id);
-        if let Err(error) = target_channel.say(&ctx.http, message).await {
+        // Le rappel est publie dans le salon ou Sentinel a constate la tension.
+        // Le general reste le repli pour les evenements emis par une ancienne
+        // version de Sentinel sans channel_id.
+        //
+        // Le `channel_id` vient de l'evenement, et `sentinel:events` est le bus
+        // COMMUN aux trois plateformes : il n'atteste de rien. On verifie donc
+        // que le salon appartient bien a la guilde de l'evenement avant d'y
+        // ecrire — sans quoi un evenement forge faisait publier Atrium dans
+        // n'importe quel salon qu'il peut joindre, y compris hors de ce serveur.
+        let guilde = event.data.guild_id.parse::<u64>().map(GuildId::new).ok();
+        let target_channel = match event.data.channel_id.parse::<u64>().map(ChannelId::new) {
+            Ok(salon) if salon_de_la_guilde(&ctx, guilde, salon) => salon,
+            Ok(salon) => {
+                tracing::warn!(
+                    guild_id = %event.data.guild_id,
+                    channel_id = %salon,
+                    "rappel apaisant ignore : salon hors de la guilde de l'evenement"
+                );
+                return;
+            }
+            Err(_) => config.general_channel_id,
+        };
+        if let Err(error) =
+            publier_texte_modele(&ctx.http, target_channel, message, &[]).await
+        {
             tracing::warn!(%error, "rappel apaisant Atrium non envoye");
         } else {
             tracing::info!(guild_id = %event.data.guild_id, channel_id = %target_channel, kind = %event.data.kind, "rappel apaisant Atrium envoye");
@@ -595,7 +670,15 @@ impl EventHandler for Handler {
             .await
         {
             let mentioned_reply = format!("<@{}> {reply}", message.author.id);
-            if let Err(error) = message.channel_id.say(&ctx.http, mentioned_reply).await {
+            // Seul l'auteur du message auquel on repond est mentionnable.
+            if let Err(error) = publier_texte_modele(
+                &ctx.http,
+                message.channel_id,
+                mentioned_reply,
+                &[message.author.id],
+            )
+            .await
+            {
                 tracing::warn!(%error, "reponse Atrium non envoyee");
             }
         }

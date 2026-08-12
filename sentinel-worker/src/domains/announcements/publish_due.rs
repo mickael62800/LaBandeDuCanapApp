@@ -64,7 +64,11 @@ pub fn start(
     mut shutdown: watch::Receiver<bool>,
 ) -> SupervisedTask {
     SupervisedTask::spawn("publish_due_announcements", async move {
-        let api_key = std::env::var("API_KEY").unwrap_or_default();
+        // `SENTINEL_API_KEY` et pas `API_KEY` : c'est le seul nom que le compose
+        // definit pour les workers. Sous l'ancien nom, la cle etait vide, le
+        // Bearer partait vide, l'API repondait 401 et aucune annonce programmee
+        // n'etait jamais publiee — sans autre trace qu'un warn par tick.
+        let api_key = std::env::var("SENTINEL_API_KEY").unwrap_or_default();
         let mut job_metrics = JobMetrics::new("publish_due_announcements", WORKER_NAME);
 
         let initial_delay = compute_initial_delay();

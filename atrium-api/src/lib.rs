@@ -96,8 +96,31 @@ impl AppConfig {
             .unwrap_or_else(|_| "0.0.0.0:8090".into())
             .parse()
             .map_err(|_| "ATRIUM_API_BIND_ADDR invalide".to_owned())?;
-        let required =
-            |key: &str| std::env::var(key).map_err(|_| format!("variable {key} manquante"));
+        // `std::env::var` rend `Ok("")` pour une variable DEFINIE MAIS VIDE :
+        // ne tester que la presence laissait passer une chaine vide. Or un
+        // jeton attendu vide est accepte par `bearer_auth::matches` des lors que
+        // le client envoie l'en-tete `Authorization: Bearer ` (prefixe seul) —
+        // autrement dit, `/admin/*` s'ouvrait a qui savait cela. Le compose
+        // rendait le cas atteignable : `ATRIUM_API_TOKEN: ${ATRIUM_API_TOKEN:-}`.
+        let required = |key: &str| {
+            let value = std::env::var(key).map_err(|_| format!("variable {key} manquante"))?;
+            if value.trim().is_empty() {
+                return Err(format!("variable {key} vide"));
+            }
+            Ok(value)
+        };
+        // Un secret court est devinable. On ne refuse pas de demarrer (ce serait
+        // bloquer une installation qui fonctionne sur un jeton court), mais le
+        // silence sur ce point serait pire que l'avertissement.
+        let secret = |key: &str| {
+            let value = required(key)?;
+            if value.len() < 16 {
+                tracing::warn!(
+                    "{key} fait moins de 16 caracteres — 32+ recommandes en production"
+                );
+            }
+            Ok::<String, String>(value)
+        };
         Ok(Self {
             bind_addr,
             grpc_addr: std::env::var("ATRIUM_GRPC_BIND_ADDR")
@@ -115,9 +138,9 @@ impl AppConfig {
             user_cooldown_secs: env_u64("ATRIUM_USER_COOLDOWN_SECS", 10)?,
             user_daily_limit: env_u32("ATRIUM_USER_DAILY_LIMIT", 30)?,
             global_daily_limit: env_u32("ATRIUM_GLOBAL_DAILY_LIMIT", 500)?,
-            api_token: required("ATRIUM_API_TOKEN")?,
-            grpc_token: required("ATRIUM_GRPC_TOKEN")?,
-            deepseek_api_key: required("DEEPSEEK_API_KEY")?,
+            api_token: secret("ATRIUM_API_TOKEN")?,
+            grpc_token: secret("ATRIUM_GRPC_TOKEN")?,
+            deepseek_api_key: secret("DEEPSEEK_API_KEY")?,
             model: std::env::var("DEEPSEEK_MODEL").unwrap_or_else(|_| "deepseek-v4-flash".into()),
         })
     }
@@ -151,6 +174,28 @@ pub async fn run_migrations(pool: &PgPool) -> Result<(), sqlx::Error> {
     sqlx::migrate!("./migrations").run(pool).await?;
     tracing::info!("Migrations Atrium appliquees");
     Ok(())
+}
+
+/// Sert le routeur sur `listener`.
+///
+/// **`into_make_service_with_connect_info` n'est pas optionnel** : le rate limit
+/// commun (`platform_common_api::rate_limit_middleware`) extrait
+/// `ConnectInfo<SocketAddr>` pour identifier le client. Sans cette extension,
+/// l'extracteur rejette et l'API repond 500 sur TOUTES ses routes, `/health`
+/// compris — donc le healthcheck du conteneur echoue, atrium-api n'est jamais
+/// `healthy`, et le bot comme le worker (qui l'attendent en `depends_on`) ne
+/// demarrent jamais.
+///
+/// C'est exactement ce qui se passait : `main` appelait `axum::serve` avec le
+/// routeur nu. Cette fonction existe pour qu'il n'y ait plus qu'un seul endroit
+/// ou l'oublier, et pour que le test d'integration passe par le meme chemin que
+/// la production.
+pub async fn serve(listener: tokio::net::TcpListener, router: Router) -> std::io::Result<()> {
+    axum::serve(
+        listener,
+        router.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await
 }
 
 pub fn router(
@@ -279,11 +324,16 @@ async fn health() -> Json<HealthResponse> {
 /// Vide = ouvert, ce qui reste acceptable sur le reseau interne ou Prometheus
 /// scrape, et evite d'imposer un secret de plus a une installation simple.
 async fn metrics(headers: HeaderMap) -> axum::response::Response {
-    let configured = std::env::var("ATRIUM_METRICS_TOKEN").unwrap_or_default();
+    // Lu une fois par processus : relire l'environnement a chaque scrape ne
+    // changeait rien (l'environnement d'un processus ne bouge pas) et faisait
+    // dependre un controle d'acces d'un appel systeme sur le chemin chaud.
+    static CONFIGURED: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    let configured =
+        CONFIGURED.get_or_init(|| std::env::var("ATRIUM_METRICS_TOKEN").unwrap_or_default());
     let supplied = headers
         .get(AUTHORIZATION)
         .and_then(|value| value.to_str().ok());
-    if !platform_common_api::metrics::metrics_auth_ok(Some(configured.as_str()), supplied) {
+    if !platform_common_api::metrics::metrics_auth_ok(Some(configured), supplied) {
         return (StatusCode::UNAUTHORIZED, "jeton metrics invalide").into_response();
     }
     platform_common_api::metrics::render_metrics()
@@ -376,12 +426,20 @@ impl WelcomeAiGateway for DeepSeekGateway {
             tracing::warn!(%error, %status, "Lecture reponse DeepSeek impossible");
             AiProviderError
         })?;
+        // Le corps n'est JAMAIS journalise : il porte la sortie du modele, donc
+        // du contenu derive des messages des membres, et ces logs partent dans le
+        // journal technique consultable en back-office. La taille et le statut
+        // suffisent a diagnostiquer un refus ou une reponse malformee.
         if !status.is_success() {
-            tracing::warn!(%status, body = %response_body, "DeepSeek a refuse la requete");
+            tracing::warn!(
+                %status,
+                octets = response_body.len(),
+                "DeepSeek a refuse la requete"
+            );
             return Err(AiProviderError);
         }
         let payload: DeepSeekResponse = serde_json::from_str(&response_body).map_err(|error| {
-            tracing::warn!(%error, body = %response_body, "Reponse DeepSeek invalide");
+            tracing::warn!(%error, octets = response_body.len(), "Reponse DeepSeek invalide");
             AiProviderError
         })?;
         let content = payload
@@ -391,7 +449,10 @@ impl WelcomeAiGateway for DeepSeekGateway {
             .and_then(|choice| choice.message.content)
             .filter(|content| !content.trim().is_empty());
         if content.is_none() {
-            tracing::warn!(body = %response_body, "DeepSeek n'a retourne aucun contenu final");
+            tracing::warn!(
+                octets = response_body.len(),
+                "DeepSeek n'a retourne aucun contenu final"
+            );
         }
         content.ok_or(AiProviderError)
     }

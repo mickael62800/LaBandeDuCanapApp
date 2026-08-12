@@ -57,10 +57,12 @@ pub struct SystemState {
     // La configuration OAuth (`DISCORD_CLIENT_ID/SECRET/REDIRECT_URI`,
     // `WEB_FRONT_URL`) a suivi le flux dans `auth-api`. Elle n'a plus de
     // lecteur ici.
-    /// Discord user_ids superadmin. Duplique depuis `AppState`. N'est PLUS une
-    /// regle d'autorisation — c'est `auth-api` qui tranche ; ne subsiste que
-    /// pour les handlers qui affichent la liste.
-    pub superadmin_user_ids: Arc<Vec<String>>,
+    // `superadmin_user_ids` a ete retire : c'est `auth-api` qui tranche, et les
+    // deux derniers lecteurs (`list_tickets`, `list_all_channels`) comparaient
+    // l'identite a cette liste LOCALE avant de retomber sur `moderated_guilds`,
+    // lui-meme casse depuis la migration 007. Une liste locale qui double la
+    // decision de l'identite est exactement la divergence que l'extraction de
+    // `auth-api` a supprimee.
     /// Secret HMAC partage bot <-> API, PAS un jeton d'authentification ici.
     /// `guild_reset` signe son event Redis avec : sans cette signature, publier
     /// sur la stream suffirait a declencher un reset destructif (unban-all +

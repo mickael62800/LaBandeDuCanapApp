@@ -1,12 +1,16 @@
 //! Handlers HTTP de sauvegarde / restauration de serveur (`guild_backup`).
 //!
-//! Action PUISSANTE (capture/restauration de toute la structure d'un serveur)
-//! -> reservee au role **Owner**. Le bot (appels internes sans
-//! `X-Discord-Token`) contourne la gate RBAC via `check_role_for_guild`
-//! (rbac = None => pass-through), ce qui lui permet de capturer et restaurer.
+//! Action PUISSANTE : la restauration avec `wipe` supprime tous les salons,
+//! roles et emojis du serveur avant de les recreer.
 //!
-//! Phase 1 (backbone) : STOCKAGE seul. La capture Discord (production du
-//! `GuildSnapshot`) et la restauration effective sont cote bot (phase 2).
+//! **Controle d'acces** : `auth_middleware` puis `superadmin_middleware`, poses
+//! au niveau du routeur. Il n'y a plus de role « Owner » — le RBAC multi-roles
+//! a ete supprime (migration 007). Les appels internes (bot/worker, Bearer
+//! `API_KEY`, sans `X-Discord-Token`) passent en tant que service de confiance.
+//!
+//! L'API ne touche pas a Discord : elle stocke, et publie un event Redis que le
+//! bot execute. Cet event est **signe** (cf. `http::event_signing`), le bus
+//! etant commun aux trois plateformes.
 
 use axum::extract::{Path, State};
 use axum::Extension;
@@ -14,6 +18,7 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 
 use crate::adapters::inbound::http::errors::ApiError;
+use crate::adapters::inbound::http::event_signing;
 use crate::adapters::inbound::http::extractors::ValidatedGuild;
 use crate::adapters::inbound::http::middleware::superadmin::WebUser;
 use crate::adapters::inbound::http::validation;
@@ -55,7 +60,7 @@ impl From<SnapshotSummary> for SnapshotSummaryDto {
 }
 
 /// POST /api/guild-backup/{guild_id}/snapshots — stocke une nouvelle capture.
-/// Body = `GuildSnapshot`. Owner requis (bypass interne pour le bot).
+/// Body = `GuildSnapshot`.
 pub async fn store_snapshot(
     State(state): State<GuildBackupState>,
     ValidatedGuild { guild_id }: ValidatedGuild,
@@ -99,7 +104,7 @@ pub async fn list_snapshots(
 }
 
 /// GET /api/guild-backup/snapshots/{snapshot_id} — capture complete (pour la
-/// restauration). Owner de la guild concernee requis (bypass interne bot).
+/// restauration).
 pub async fn get_snapshot(
     State(state): State<GuildBackupState>,
     Path(snapshot_id): Path<String>,
@@ -158,10 +163,6 @@ pub struct CaptureRequestBody {
 /// le bot capture le serveur. Le web ne peut pas agir sur Discord : l'API se
 /// contente de publier `guild_backup:capture_requested`.
 ///
-/// **Controle d'acces** : assure par les middlewares du routeur — Bearer API
-/// key puis `superadmin_middleware`. Il n'y a PAS de gate « Owner » propre a ce
-/// handler, contrairement a ce que disait ce commentaire auparavant.
-///
 /// `requested_by` est derive de l'identite AUTHENTIFIEE, jamais du corps :
 /// c'est une trace d'audit d'une action massive, un appelant ne doit pas
 /// pouvoir l'attribuer a quelqu'un d'autre.
@@ -171,12 +172,17 @@ pub async fn request_capture(
     ValidatedGuild { guild_id }: ValidatedGuild,
     Json(body): Json<CaptureRequestBody>,
 ) -> Result<StatusCode, ApiError> {
+    let sig = event_signing::sign(
+        &state.api_key,
+        &event_signing::guild_backup_capture_message(&guild_id),
+    );
     state.broadcaster.broadcast(
         "guild_backup:capture_requested",
         serde_json::json!({
             "guild_id": guild_id,
             "label": body.label,
             "requested_by": resolve_requester(&user),
+            "sig": sig,
         }),
     );
     Ok(StatusCode::ACCEPTED)
@@ -209,11 +215,8 @@ pub struct RestoreRequestBody {
 /// POST /api/guild-backup/snapshots/{snapshot_id}/restore — publie un event
 /// Redis pour que le bot restaure le serveur depuis la capture.
 ///
-/// **Controle d'acces** : Bearer API key puis `superadmin_middleware`, poses au
-/// niveau du routeur. Ce handler n'a PAS de gate « Owner » propre, contrairement
-/// a ce qu'affirmait ce commentaire auparavant, et le reglage
-/// « Roles autorises a restaurer » n'a jamais ete applique (cf. la migration
-/// qui le retire du schema de configuration).
+/// Le reglage « Roles autorises a restaurer » n'a jamais ete applique (cf. la
+/// migration qui le retire du schema de configuration).
 pub async fn request_restore(
     State(state): State<GuildBackupState>,
     user: Option<Extension<WebUser>>,
@@ -223,6 +226,19 @@ pub async fn request_restore(
     let id = parse_id(&snapshot_id)?;
     // On charge la capture pour resoudre le guild_id (RBAC + payload event).
     let snapshot = state.guild_snapshots_uc.get_snapshot(id).await?;
+
+    // Signature HMAC (secret = API_KEY partagee bot <-> API), meme protection
+    // que `guild_reset` : avec `wipe`, cet event fait supprimer TOUS les salons,
+    // roles et emojis du serveur. Sans signature, connaitre `REDIS_URL` — ce
+    // que font les six bots/workers et la gateway — suffisait a le declencher.
+    let sig = event_signing::sign(
+        &state.api_key,
+        &event_signing::guild_backup_restore_message(
+            &snapshot.guild_id,
+            &id.to_string(),
+            body.wipe,
+        ),
+    );
     state.broadcaster.broadcast(
         "guild_backup:restore_requested",
         serde_json::json!({
@@ -230,6 +246,7 @@ pub async fn request_restore(
             "snapshot_id": id.to_string(),
             "wipe": body.wipe,
             "requested_by": resolve_requester(&user),
+            "sig": sig,
         }),
     );
     Ok(StatusCode::ACCEPTED)

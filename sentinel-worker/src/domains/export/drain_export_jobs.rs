@@ -249,7 +249,10 @@ async fn call_export_api(
     filters: &serde_json::Value,
     max_rows: i64,
 ) -> Result<(String, usize), String> {
-    let api_key = std::env::var("API_KEY").unwrap_or_default();
+    // `SENTINEL_API_KEY` : seul nom defini par le compose pour les workers.
+    // Sous `API_KEY`, la cle etait vide et l'interceptor gRPC de l'API
+    // repondait `unauthenticated` — tous les exports finissaient en `dead`.
+    let api_key = std::env::var("SENTINEL_API_KEY").unwrap_or_default();
 
     // Delegue a crate::grpc::connect() pour beneficier du mTLS optionnel
     // (GRPC_TLS_DIR) en coherence avec les autres callers.

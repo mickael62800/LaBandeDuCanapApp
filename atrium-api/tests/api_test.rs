@@ -67,6 +67,41 @@ fn setup_test_app(should_fail: bool) -> axum::Router {
     router_with_state(state)
 }
 
+/// L'API doit repondre quand elle est servie COMME EN PRODUCTION.
+///
+/// Les autres tests appellent le routeur par `oneshot` en injectant `ConnectInfo`
+/// a la main (cf. `create_request`) — ce qui masquait entierement le fait que
+/// `main` servait le routeur nu, sans `into_make_service_with_connect_info`.
+/// Le rate limit extrait cette extension : sans elle, TOUTES les routes
+/// repondaient 500, `/health` compris, donc le conteneur n'etait jamais
+/// `healthy` et ni le bot ni le worker ne demarraient.
+///
+/// Ce test-ci ouvre une vraie socket et passe par `atrium_api::serve`, le seul
+/// chemin que `main` utilise. Il echoue si quelqu'un revient a `axum::serve`.
+#[tokio::test]
+async fn health_repond_quand_l_api_est_servie_comme_en_production() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let app = setup_test_app(false);
+    tokio::spawn(async move {
+        let _ = atrium_api::serve(listener, app).await;
+    });
+
+    let response = reqwest::Client::new()
+        .get(format!("http://{addr}/health"))
+        .send()
+        .await
+        .expect("l'API doit repondre");
+
+    assert_eq!(
+        response.status(),
+        200,
+        "/health doit repondre 200 en conditions reelles"
+    );
+    let body: Value = response.json().await.unwrap();
+    assert_eq!(body["status"], "ok");
+}
+
 fn create_request(method: &str, uri: &str, body: Body) -> Request<Body> {
     let mut req = Request::builder()
         .method(method)

@@ -146,7 +146,9 @@ async fn process_job(
 
     // Note : l'API expose ces endpoints sans /api prefix car ce sont des
     // routes "lourdes" historiques (cf. router.rs heavy_routes).
-    let api_key = std::env::var("API_KEY").unwrap_or_default();
+    // `SENTINEL_API_KEY` : seul nom defini par le compose pour les workers.
+    // Cf. `crate::config::loader` et `main.rs`, qui lisent deja celui-la.
+    let api_key = std::env::var("SENTINEL_API_KEY").unwrap_or_default();
     let mut req = http.post(&endpoint).json(&job.input_payload);
     if !api_key.is_empty() {
         req = req.bearer_auth(&api_key);

@@ -57,23 +57,26 @@ impl FromRef<AppState> for DashboardState {
     }
 }
 
+/// Salons vocaux temporaires.
+///
+/// `tickets_uc` et `superadmin_user_ids` en sont sortis avec le scope par role
+/// de `list_all_channels` : le premier n'y servait qu'a appeler
+/// `moderated_guilds`, retire parce qu'il lisait une table supprimee par la
+/// migration 007. Ce sous-etat ne reclame donc plus de port etranger a son
+/// domaine, hors `audit_logs_uc` qui trace ses propres actions.
 #[derive(Clone)]
 pub struct VoiceChannelsState {
     pub voice_channels_uc: Arc<dyn ManageVoiceChannelsUseCase>,
-    pub tickets_uc: Arc<dyn ManageTicketsUseCase>,
     pub audit_logs_uc: Arc<dyn ManageAuditLogsUseCase>,
     pub broadcaster: Arc<EventBroadcaster>,
-    pub superadmin_user_ids: Arc<Vec<String>>,
 }
 
 impl FromRef<AppState> for VoiceChannelsState {
     fn from_ref(state: &AppState) -> Self {
         Self {
             voice_channels_uc: state.community.voice_channels_uc.clone(),
-            tickets_uc: state.system.tickets_uc.clone(),
             audit_logs_uc: state.audit.audit_logs_uc.clone(),
             broadcaster: state.shared.broadcaster.clone(),
-            superadmin_user_ids: state.system.superadmin_user_ids.clone(),
         }
     }
 }

@@ -26,6 +26,11 @@ pub struct GuildBackupState {
     pub pending_role_grants_uc: Arc<dyn ManagePendingRoleGrantsUseCase>,
     pub bot_config_repo: Arc<dyn BotConfigRepository>,
     pub broadcaster: Arc<EventBroadcaster>,
+    /// Secret partage bot <-> API, pour signer `guild_backup:capture_requested`
+    /// et `guild_backup:restore_requested`. Le bus Redis est commun a toutes les
+    /// plateformes : sans signature, y publier suffisait a faire vider un
+    /// serveur Discord. Meme role que dans `SystemState` pour `guild_reset`.
+    pub api_key: String,
 }
 
 impl FromRef<AppState> for GuildBackupState {

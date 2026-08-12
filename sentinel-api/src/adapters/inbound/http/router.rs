@@ -177,6 +177,18 @@ fn public_routes() -> Router<AppState> {
 }
 
 /// Construit le router sans rate limiter ni ConnectInfo — pour les tests d'integration.
+///
+/// La pile d'authentification est la MEME qu'en production : `auth_middleware`
+/// puis `superadmin_middleware`. Seuls le rate limiter et `ConnectInfo` sont
+/// omis, parce qu'ils demandent une socket reelle.
+///
+/// La gate superadmin manquait ici : les tests validaient une API dont aucun
+/// controle d'autorisation n'etait monte. C'est exactement le mode de
+/// defaillance decrit sur `public_routes()` — deux routeurs qui divergent, des
+/// tests verts sur un comportement que la production n'a pas. En pratique les
+/// tests tournent avec une `api_key` vide, donc les deux middlewares sont en
+/// pass-through ; les monter quand meme garantit qu'un test qui configure une
+/// cle exerce la vraie chaine.
 pub fn build_for_test(state: AppState) -> Router {
     let protected = Router::new()
         // Endpoints lourds (sans rate limit en test)
@@ -188,6 +200,10 @@ pub fn build_for_test(state: AppState) -> Router {
         .merge(routes::analytics::routes())
         // Routes standard
         .merge(protected_domain_routes())
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            crate::adapters::inbound::http::middleware::superadmin::superadmin_middleware,
+        ))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             auth_middleware,

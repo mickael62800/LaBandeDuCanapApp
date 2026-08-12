@@ -9,6 +9,27 @@
 //! handler : c'est la seule facon d'etre sur que la centaine de routes
 //! portant un `{guild_id}` soit couverte, y compris celles ajoutees demain.
 //!
+//! # Ce que ce verrou ne couvre PAS
+//!
+//! Il ne lit que l'URL. Une trentaine de handlers recoivent leur `guild_id`
+//! dans le CORPS de la requete (`POST /api/exports/jobs`,
+//! `POST /api/security/events`, la configuration par bot...) : ceux-la passent
+//! sans etre confrontes a `GUILD_ID`.
+//!
+//! C'est un choix, pas un oubli. Le couvrir demanderait de bufferiser et de
+//! desserialiser le corps de CHAQUE requete ici — y compris les images en
+//! base64 de `/analyze/image`, jusqu'a `MAX_BODY_SIZE` — pour un gain nul :
+//! l'installation ne sert qu'une guilde, la base n'en contient qu'une, et le
+//! seul appelant web est l'administrateur unique deja filtre par
+//! `superadmin_middleware`. Un `guild_id` etranger dans un corps ne designe
+//! donc aucune donnee.
+//!
+//! Ce qui rendrait la chose serieuse : le jour ou l'installation sert
+//! plusieurs guildes, ou bien ou plusieurs comptes web coexistent. La reponse
+//! serait alors un extracteur typé partagé (un `BodyGuild` qui lit le champ et
+//! le confronte a la config), pas un `if` recopie dans trente handlers — c'est
+//! precisement la duplication que ce module existe pour eviter.
+//!
 //! # Pourquoi ici et pas seulement dans le front
 //!
 //! Masquer le selecteur de serveur ne protege rien : l'API reste joignable

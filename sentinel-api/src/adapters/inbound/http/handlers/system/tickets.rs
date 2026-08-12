@@ -28,7 +28,7 @@ use sentinel_core::ports::inbound::system::manage_tickets::UpdateTicketChannelCo
 
 pub async fn list_tickets(
     State(state): State<SystemState>,
-    user: Option<Extension<WebUser>>,
+    _user: Option<Extension<WebUser>>,
     Query(params): Query<ListTicketsQuery>,
 ) -> Result<Json<Vec<TicketResponseDto>>, ApiError> {
     // Validation
@@ -49,30 +49,13 @@ pub async fn list_tickets(
         )
         .await?;
 
-    // S1 — scope web : on ne retourne que les tickets des guilds ou le caller
-    // est Moderator+. Les tickets legacy (guild_id NULL) sont exclus du web.
-    // Le chemin bot/interne (pas de WebUser) n'est PAS filtre.
-    let tickets = match user.as_ref() {
-        None => tickets,
-        Some(Extension(ctx)) => {
-            if state
-                .superadmin_user_ids
-                .iter()
-                .any(|sid| sid == &ctx.discord_user_id)
-            {
-                tickets
-            } else {
-                let allowed = state
-                    .tickets_uc
-                    .moderated_guilds(&ctx.discord_user_id)
-                    .await?;
-                tickets
-                    .into_iter()
-                    .filter(|t| t.guild_id.as_ref().is_some_and(|g| allowed.contains(g)))
-                    .collect()
-            }
-        }
-    };
+    // Plus de scope par role : le back-office est superadmin-only, donc tout
+    // appelant web qui arrive ici a deja ete autorise par `auth-api` via
+    // `superadmin_middleware`. Le filtre precedent comparait l'identite au
+    // `SUPERADMIN_USER_IDS` LOCAL puis, en cas de non-correspondance, retombait
+    // sur `moderated_guilds` — qui interroge `api_user_guilds`, table supprimee
+    // par la migration 007. Le moindre ecart entre la liste locale et celle de
+    // l'identite transformait donc cet ecran en 500.
     Ok(map_to_dtos(tickets))
 }
 
@@ -294,22 +277,15 @@ pub struct BulkDeleteTicketsParams {
 /// (meme si ON DELETE CASCADE est en place — on reste explicite pour
 /// pouvoir compter ce qui a ete supprime sans joindre).
 ///
-/// Gate user : admin+ (avec bypass superadmin).
+/// Controle d'acces : `superadmin_middleware`, pose au niveau du routeur. Il n'y
+/// a pas de gate propre a ce handler — l'ancien calculait `is_superadmin` puis
+/// n'en faisait rien (`if !is_superadmin {}`), reste d'un `require_role` retire
+/// avec le RBAC multi-roles.
 pub async fn bulk_delete_tickets(
     State(state): State<SystemState>,
-    user: Option<Extension<WebUser>>,
+    _user: Option<Extension<WebUser>>,
     Query(params): Query<BulkDeleteTicketsParams>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    // Gate user. On utilise require_role (les tickets ne sont pas scopes
-    // par guild de maniere fiable via le path). Superadmin bypass explicite.
-    if let Some(Extension(ctx)) = user.as_ref() {
-        let is_superadmin = state
-            .superadmin_user_ids
-            .iter()
-            .any(|id| id == &ctx.discord_user_id);
-        if !is_superadmin {}
-    }
-
     let has_filter = params.author_id.is_some() || params.from.is_some() || params.to.is_some();
     if !has_filter && !params.all {
         return Err(ApiError(DomainError::ValidationError(

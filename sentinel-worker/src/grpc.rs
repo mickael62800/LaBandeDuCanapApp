@@ -4,8 +4,9 @@
 //! connect + with_interceptor(Authorization Bearer)` duplique dans
 //! `export-worker/drain_export_jobs`.
 //!
-//! Lit `GRPC_API_URL` (default `http://127.0.0.1:50051`) et `API_KEY`
-//! depuis l'environnement.
+//! Lit `GRPC_API_URL` (default `http://127.0.0.1:50051`) depuis
+//! l'environnement. Le Bearer est pose par l'appelant, qui lit
+//! `SENTINEL_API_KEY` — le seul nom que le compose definit pour les workers.
 //!
 //! # Pourquoi ici et plus dans `platform-common-worker`
 //!

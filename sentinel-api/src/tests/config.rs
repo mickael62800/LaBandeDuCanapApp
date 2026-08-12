@@ -21,7 +21,6 @@ fn cfg(host: &str, port: u16, grpc_port: u16) -> AppConfig {
         docker_agent_token: String::new(),
         docker_agent_url: String::new(),
         discord_bot_token: String::new(),
-        superadmin_user_ids: vec![],
     }
 }
 

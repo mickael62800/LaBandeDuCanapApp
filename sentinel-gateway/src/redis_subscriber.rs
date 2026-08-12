@@ -157,10 +157,18 @@ async fn tail_loop(
                         if payloads_invalid == 1 {
                             logger.warn(
                                 "Event Redis stream invalide",
+                                // Pas d'extrait du payload : `sentinel:events`
+                                // transporte du contenu de message et des
+                                // identifiants Discord, et ce log part dans le
+                                // journal technique consultable en back-office.
+                                // Un event malforme se diagnostique avec sa
+                                // taille et l'erreur serde ; l'inspecter demande
+                                // de lire la stream, ce qui est un geste
+                                // deliberé et pas un effet de bord d'un log.
                                 serde_json::json!({
                                     "event_type": "gateway.payload_invalid",
                                     "error": e.to_string(),
-                                    "preview": payload_str.chars().take(120).collect::<String>(),
+                                    "payload_bytes": payload_str.len(),
                                 }),
                             );
                         }

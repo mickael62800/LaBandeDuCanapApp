@@ -122,15 +122,33 @@ fn front_error(state: &AppState, reason: &str) -> Response {
     )
 }
 
+/// Garde des routes de service (`/access`, `/security/*`).
+///
+/// **Fail-closed** : sans `AUTH_API_TOKEN`, on refuse. L'ancienne version
+/// laissait passer, ce qui ouvrait `/access` (resolution de n'importe quel
+/// jeton) et `/security/last-logins` (IP, user-agent et identifiants Discord
+/// des administrateurs) a tout ce qui joignait le port — le tout signale par un
+/// simple `warn!` au demarrage, alors que ce processus est celui qui detient les
+/// jetons d'acces. Les autres services du depot refusent de demarrer dans le
+/// cas symetrique ; celui-ci refuse de servir.
 fn authorize_service(headers: &HeaderMap, state: &AppState) -> Result<(), StatusCode> {
     if state.config.api_token.is_empty() {
-        return Ok(());
+        tracing::error!(
+            "AUTH_API_TOKEN absent : route de service refusee (voir .env.example)"
+        );
+        return Err(StatusCode::SERVICE_UNAVAILABLE);
     }
     let expected = format!("Bearer {}", state.config.api_token);
     let supplied = headers
         .get(header::AUTHORIZATION)
-        .and_then(|v| v.to_str().ok());
-    if supplied == Some(expected.as_str()) {
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default();
+    // Constant-time, comme partout ailleurs sur un secret partage
+    // (sentinel-api/middleware/auth.rs, gateway/handler.rs, interceptor gRPC).
+    if bool::from(subtle::ConstantTimeEq::ct_eq(
+        supplied.as_bytes(),
+        expected.as_bytes(),
+    )) {
         Ok(())
     } else {
         Err(StatusCode::UNAUTHORIZED)

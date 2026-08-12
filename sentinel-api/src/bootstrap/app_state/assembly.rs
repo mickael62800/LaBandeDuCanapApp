@@ -85,7 +85,6 @@ let system = crate::bootstrap::state::SystemState {
     discord_api: discord_api.clone(),
     bot_config_repo: bot_config_repo.clone(),
     redis_client: redis_client.clone(),
-    superadmin_user_ids: Arc::new(config.superadmin_user_ids.clone()),
     api_key: config.api_key.clone(),
 };
 
@@ -182,6 +181,7 @@ let guild_backup = crate::bootstrap::state::GuildBackupState {
     pending_role_grants_uc: pending_role_grants_uc.clone(),
     bot_config_repo: bot_config_repo.clone(),
     broadcaster: broadcaster.clone(),
+    api_key: config.api_key.clone(),
 };
 
 let shared = crate::bootstrap::state::SharedState {

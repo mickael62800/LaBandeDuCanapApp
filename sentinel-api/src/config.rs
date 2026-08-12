@@ -14,10 +14,12 @@ pub struct AppConfig {
     pub allowed_origins: String,
     /// Discord bot token pour executer des bans (optionnel).
     pub discord_bot_token: String,
-    /// Phase 7 B — Liste de Discord user IDs "superadmin" autorises sur les
-    /// endpoints globaux (non scoped par guild). Format : comma-separated.
-    /// Ex: `SUPERADMIN_USER_IDS=123456789012345678,234567890123456789`
-    pub superadmin_user_ids: Vec<String>,
+    // `superadmin_user_ids` a ete retire de cette config. `SUPERADMIN_USER_IDS`
+    // reste la variable qui decide QUI entre dans le back-office, mais elle est
+    // lue par `auth-api`, seul detenteur de la regle. En garder une copie ici
+    // recreait deux implementations de la meme decision : les derniers lecteurs
+    // s'en servaient pour un scope par role dont la branche de repli
+    // interrogeait `api_user_guilds`, table supprimee par la migration 007.
     // La configuration OAuth Discord (`DISCORD_CLIENT_ID`, `_SECRET`,
     // `_REDIRECT_URI`, `WEB_FRONT_URL`) est passee a `auth-api` avec le flux.
     // Ne pas la reintroduire ici : deux processus qui lisent le meme
@@ -127,12 +129,6 @@ impl AppConfig {
             discord_bot_token: std::env::var("SENTINEL_DISCORD_TOKEN")
                 .or_else(|_| std::env::var("DISCORD_TOKEN"))
                 .unwrap_or_default(),
-            superadmin_user_ids: std::env::var("SUPERADMIN_USER_IDS")
-                .unwrap_or_default()
-                .split(',')
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .collect(),
         }
     }
 

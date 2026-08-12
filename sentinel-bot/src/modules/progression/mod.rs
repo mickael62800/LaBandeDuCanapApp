@@ -294,6 +294,13 @@ pub async fn on_message(ctx: &Context, msg: &Message) {
         None => return,
     };
 
+    // Les bots et les webhooks ne gagnent pas d'XP : un bot present h24
+    // (musique, outil de moderation) grimperait sinon en niveau sans fin, et
+    // fausserait le classement. Exclusion la plus en amont possible.
+    if msg.author.bot || msg.webhook_id.is_some() {
+        return;
+    }
+
     let guild_config = guild_config_or_default(ctx, &guild_id.to_string(), MODULE_BOT_NAME).await;
     if !BaseApiClient::config_bool(&guild_config, "enabled", false) {
         return;
@@ -411,6 +418,46 @@ pub async fn on_voice_state_update(ctx: &Context, old: Option<VoiceState>, new: 
 
     if !is_module_enabled(ctx, &guild_id.to_string(), MODULE_BOT_NAME).await {
         return;
+    }
+
+    // Exclusion XP vocal, en miroir du texte : les bots (musique, soundboard)
+    // presents en permanence, et les membres portant un role ignore, ne
+    // gagnent pas d'XP. Le membre vient de l'evenement (present pour les etats
+    // vocaux de guilde), avec repli sur le cache.
+    let membre = new
+        .member
+        .clone()
+        .or_else(|| old.as_ref().and_then(|s| s.member.clone()));
+    let est_bot = membre
+        .as_ref()
+        .map(|m| m.user.bot)
+        .or_else(|| {
+            ctx.cache
+                .guild(guild_id)
+                .and_then(|g| g.members.get(&user_id).map(|m| m.user.bot))
+        })
+        .unwrap_or(false);
+    if est_bot {
+        return;
+    }
+    let roles_membre: Vec<u64> = membre
+        .as_ref()
+        .map(|m| m.roles.iter().map(|r| r.get()).collect())
+        .unwrap_or_default();
+    if !roles_membre.is_empty() {
+        let cfg = guild_config_or_default(ctx, &guild_id.to_string(), MODULE_BOT_NAME).await;
+        let ignored_roles_csv = BaseApiClient::config_or(&cfg, "ignored_roles", "");
+        if !ignored_roles_csv.is_empty() {
+            let porte: std::collections::HashSet<String> =
+                roles_membre.iter().map(|r| r.to_string()).collect();
+            let a_role_ignore = ignored_roles_csv
+                .split(',')
+                .map(|s| s.trim())
+                .any(|s| porte.contains(s));
+            if a_role_ignore {
+                return;
+            }
+        }
     }
 
     let data = ctx.data.read().await;

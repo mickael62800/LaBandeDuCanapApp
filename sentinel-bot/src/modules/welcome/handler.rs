@@ -18,6 +18,37 @@ use sentinel_proto::age_gate::v1 as proto_age;
 use super::api_client::WelcomeApiClient;
 use super::template;
 
+/// Reconstruit l'URL d'une banniere pour la rendre INDEPENDANTE du domaine.
+///
+/// Les bannieres du site sont stockees en base sous forme d'URL absolue
+/// (`https://domaine-du-jour/imgs/x.jpg`), figee au domaine utilise le jour du
+/// choix. Quand le site change d'adresse, Discord (qui va chercher l'image sur
+/// Internet) tombe sur l'ancien domaine : la banniere disparait, sans erreur
+/// nulle part. On repare a l'envoi : toute URL contenant `/imgs/` est
+/// recomposee sur `WEB_FRONT_URL` (le domaine public courant, deja configure
+/// pour l'OAuth). Les URLs externes (sans `/imgs/`) passent telles quelles.
+///
+/// Retourne `None` si `raw` est vide (pas d'image a poser).
+fn resolve_banner_url(raw: &str) -> Option<String> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return None;
+    }
+    match raw.split_once("/imgs/") {
+        Some((_, fichier)) => {
+            let base = std::env::var("WEB_FRONT_URL").unwrap_or_default();
+            let base = base.trim().trim_end_matches('/');
+            if base.is_empty() {
+                // Pas de domaine public connu : mieux vaut l'URL stockee que rien.
+                Some(raw.to_string())
+            } else {
+                Some(format!("{base}/imgs/{fichier}"))
+            }
+        }
+        None => Some(raw.to_string()),
+    }
+}
+
 pub const RULES_ACCEPT_ID: &str = "sentinel_rules_accept";
 /// custom_id du modal de saisie d'age (ouvert au clic sur "J'accepte" quand
 /// la verification d'age est activee).
@@ -437,8 +468,8 @@ async fn on_member_add_impl(ctx: &Context, new_member: &Member, rules_accepted: 
 
                 // L'image (banniere) est integree a l'embed : un seul message
                 // est envoye. Discord l'affiche en grand sous le texte.
-                if !raw_image.is_empty() {
-                    embed = embed.image(raw_image.as_str());
+                if let Some(image_url) = resolve_banner_url(raw_image) {
+                    embed = embed.image(image_url);
                 }
 
                 match channel
@@ -682,8 +713,8 @@ pub async fn on_member_remove(ctx: &Context, guild_id: GuildId, user: &User) {
         .footer(CreateEmbedFooter::new(leave_footer));
 
     // L'image est integree a l'embed : un seul message, image en grand sous le texte.
-    if !config.leave_image_url.is_empty() {
-        embed = embed.image(&config.leave_image_url);
+    if let Some(image_url) = resolve_banner_url(&config.leave_image_url) {
+        embed = embed.image(image_url);
     }
 
     if let Err(e) = ch

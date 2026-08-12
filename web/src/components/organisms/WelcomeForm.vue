@@ -11,6 +11,17 @@ import RoleSelect from "@/components/atoms/RoleSelect.vue";
 import IdsListPickerField from "@/components/molecules/IdsListPickerField.vue";
 import AppTextarea from "@/components/atoms/AppTextarea.vue";
 import ImagePicker from "@/components/molecules/ImagePicker.vue";
+import { banniereDepuisUrl, cheminBanniere } from "@/data/bannieres";
+
+/// URL d'aperçu d'une bannière, robuste au changement de domaine. Une bannière
+/// du site est ré-affichée via l'origine COURANTE (chemin relatif) : l'URL
+/// stockée peut porter un ancien domaine qui ne répond plus, l'aperçu serait
+/// alors cassé alors que l'image existe bien. Les URLs externes passent telles
+/// quelles.
+function apercuBanniere(url: string): string {
+  const connue = banniereDepuisUrl(url);
+  return connue ? cheminBanniere(connue.fichier) : url;
+}
 
 const { config, saving, saveConfig, publishRules } = useWelcome();
 const { guildIdFilter } = useGuildSelector();
@@ -237,7 +248,7 @@ async function onSave() {
             <strong v-if="draft.welcome_title">{{ draft.welcome_title }}</strong>
             <p>{{ previewWelcomeText }}</p>
             <figure v-if="draft.welcome_image_url" class="preview-image">
-              <img :src="draft.welcome_image_url" alt="Bannière de bienvenue" loading="lazy" />
+              <img :src="apercuBanniere(draft.welcome_image_url)" alt="Bannière de bienvenue" loading="lazy" />
             </figure>
             <small v-if="draft.welcome_footer_text">{{ draft.welcome_footer_text }}</small>
           </div>

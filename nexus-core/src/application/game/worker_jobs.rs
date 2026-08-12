@@ -203,6 +203,9 @@ mod tests {
         ) -> Result<(), DomainError> {
             Ok(())
         }
+        async fn list_scheduled_due_to_start(&self) -> Result<Vec<GameServer>, DomainError> {
+            Ok(vec![])
+        }
     }
 
     struct DummyEventPublisher;

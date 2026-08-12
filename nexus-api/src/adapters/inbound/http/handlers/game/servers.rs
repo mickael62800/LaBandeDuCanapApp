@@ -19,7 +19,7 @@ use crate::adapters::inbound::http::handlers::ApiError;
 use crate::bootstrap::AppState;
 use nexus_core::domain::entities::game::server::CreateGameServerCommand;
 use nexus_core::ports::outbound::events::game_events::{
-    IP_REVEAL, SERVER_DELETED, SERVER_STARTED, SERVER_STOPPED,
+    IP_REVEAL, SERVER_DELETED, SERVER_SCHEDULED, SERVER_STARTED, SERVER_STOPPED,
 };
 
 /// POST /api/games/{guild_id}/servers
@@ -203,6 +203,66 @@ pub async fn reveal_ip(
         .unwrap_or_else(|| detail.server.owner_user_id.clone());
     state.game_servers_uc.reveal_ip(server_id, &actor).await?;
     publish_lifecycle(&state, IP_REVEAL, server_id, &detail.server.guild_id).await;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Corps des routes de programmation. `reveal_at` optionnel pour
+/// `/reveal-schedule` (None efface la programmation) ; requis pour `/schedule`
+/// (une valeur nulle y est refusee par le use case).
+#[derive(Debug, Deserialize)]
+pub struct ScheduleDto {
+    pub reveal_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub actor_id: Option<String>,
+}
+
+/// POST /api/games/servers/{server_id}/schedule
+///
+/// Mode « Préparation » : programme l'ouverture sans démarrer le conteneur. Le
+/// serveur passe `scheduled` et le bot crée dès maintenant les salons + le
+/// panneau d'inscription (événement `game_server_scheduled`). Le worker
+/// démarrera le conteneur ~5 min avant l'heure.
+pub async fn schedule_server(
+    State(state): State<AppState>,
+    Path(server_id): Path<Uuid>,
+    Json(dto): Json<ScheduleDto>,
+) -> Result<StatusCode, ApiError> {
+    let reveal_at = dto.reveal_at.ok_or_else(|| {
+        ApiError::from(nexus_core::domain::errors::DomainError::ValidationError(
+            "reveal_at requis pour programmer l'ouverture".into(),
+        ))
+    })?;
+    let detail = state.game_servers_uc.get(server_id).await?;
+    let actor = dto
+        .actor_id
+        .clone()
+        .unwrap_or_else(|| detail.server.owner_user_id.clone());
+    state
+        .game_servers_uc
+        .schedule(server_id, reveal_at, &actor)
+        .await?;
+    publish_lifecycle(&state, SERVER_SCHEDULED, server_id, &detail.server.guild_id).await;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// POST /api/games/servers/{server_id}/reveal-schedule
+///
+/// Programme (ou efface avec `reveal_at` nul) l'heure de révélation auto de
+/// l'IP sans changer l'état du conteneur. Complète « Lancer maintenant » quand
+/// on veut aussi une révélation automatique.
+pub async fn set_reveal_schedule(
+    State(state): State<AppState>,
+    Path(server_id): Path<Uuid>,
+    Json(dto): Json<ScheduleDto>,
+) -> Result<StatusCode, ApiError> {
+    let detail = state.game_servers_uc.get(server_id).await?;
+    let actor = dto
+        .actor_id
+        .clone()
+        .unwrap_or_else(|| detail.server.owner_user_id.clone());
+    state
+        .game_servers_uc
+        .set_reveal_schedule(server_id, dto.reveal_at, &actor)
+        .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 

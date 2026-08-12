@@ -311,6 +311,9 @@ impl GameServerRepository for DummyServerRepo {
     async fn set_ip_reveal_at(&self, _: Uuid, _: Option<DateTime<Utc>>) -> Result<(), DomainError> {
         Ok(())
     }
+    async fn list_scheduled_due_to_start(&self) -> Result<Vec<GameServer>, DomainError> {
+        Ok(vec![])
+    }
 }
 
 struct DummyTemplateRepo;

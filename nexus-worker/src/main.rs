@@ -48,6 +48,12 @@ impl NexusWorkerConfig {
                     "GAME_DAILY_PING_INTERVAL_SECS",
                     3600,
                 ),
+                // Court devant les 5 min de PREP_LEAD_MINUTES : sinon on
+                // demarrerait le conteneur en retard sur l'ouverture.
+                auto_start_secs: platform_common_worker::env_u64(
+                    "GAME_AUTO_START_INTERVAL_SECS",
+                    60,
+                ),
             },
         }
     }

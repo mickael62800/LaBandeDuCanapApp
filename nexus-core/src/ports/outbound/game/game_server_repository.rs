@@ -114,6 +114,11 @@ pub trait GameServerRepository: Send + Sync {
         id: Uuid,
         at: Option<chrono::DateTime<chrono::Utc>>,
     ) -> Result<(), DomainError>;
+
+    /// Serveurs programmes (`scheduled`) dont le conteneur doit demarrer
+    /// maintenant : statut `scheduled`, non supprimes, `ip_reveal_at` non nul
+    /// et a moins de `PREP_LEAD_MINUTES` de maintenant. Pour le job auto-start.
+    async fn list_scheduled_due_to_start(&self) -> Result<Vec<GameServer>, DomainError>;
 }
 
 #[derive(Debug, Clone)]

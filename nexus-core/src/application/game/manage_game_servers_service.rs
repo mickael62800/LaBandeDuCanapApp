@@ -162,6 +162,92 @@ impl ManageGameServersUseCase for ManageGameServersService {
         Ok(())
     }
 
+    async fn schedule(
+        &self,
+        id: Uuid,
+        reveal_at: chrono::DateTime<chrono::Utc>,
+        actor_user_id: &str,
+    ) -> Result<(), DomainError> {
+        let server = self
+            .server_repo
+            .find_by_id(id)
+            .await?
+            .ok_or_else(|| DomainError::NotFound(format!("game_server {id} introuvable")))?;
+
+        if reveal_at <= chrono::Utc::now() {
+            return Err(DomainError::ValidationError(
+                "l'heure d'ouverture doit etre dans le futur".into(),
+            ));
+        }
+
+        // On ne programme que depuis un etat au repos (jamais un serveur en
+        // pleine transition ou deja en ligne). Re-programmer un serveur deja
+        // `scheduled` est permis (ajustement de l'heure). Claim atomique.
+        let claimed = self
+            .server_repo
+            .try_transition_status(
+                id,
+                &[
+                    GameServerStatus::Created,
+                    GameServerStatus::Scheduled,
+                    GameServerStatus::Stopped,
+                    GameServerStatus::Error,
+                ],
+                GameServerStatus::Scheduled,
+            )
+            .await?;
+        if !claimed {
+            return Err(DomainError::Conflict(format!(
+                "impossible de programmer depuis le statut {:?}",
+                server.status
+            )));
+        }
+
+        self.server_repo.set_ip_reveal_at(id, Some(reveal_at)).await?;
+        self.audit(
+            &server.guild_id,
+            Some(id),
+            Some(actor_user_id),
+            GameAuditAction::Schedule,
+            serde_json::json!({ "reveal_at": reveal_at }),
+        )
+        .await;
+        info!(server_id = %id, %reveal_at, "game_server programme (scheduled)");
+        Ok(())
+    }
+
+    async fn set_reveal_schedule(
+        &self,
+        id: Uuid,
+        reveal_at: Option<chrono::DateTime<chrono::Utc>>,
+        actor_user_id: &str,
+    ) -> Result<(), DomainError> {
+        let server = self
+            .server_repo
+            .find_by_id(id)
+            .await?
+            .ok_or_else(|| DomainError::NotFound(format!("game_server {id} introuvable")))?;
+
+        if let Some(at) = reveal_at {
+            if at <= chrono::Utc::now() {
+                return Err(DomainError::ValidationError(
+                    "l'heure de revelation doit etre dans le futur".into(),
+                ));
+            }
+        }
+
+        self.server_repo.set_ip_reveal_at(id, reveal_at).await?;
+        self.audit(
+            &server.guild_id,
+            Some(id),
+            Some(actor_user_id),
+            GameAuditAction::Schedule,
+            serde_json::json!({ "reveal_at": reveal_at }),
+        )
+        .await;
+        Ok(())
+    }
+
     async fn delete(&self, id: Uuid, actor_user_id: &str) -> Result<(), DomainError> {
         let server = self
             .server_repo
@@ -283,6 +369,7 @@ impl ManageGameServersUseCase for ManageGameServersService {
                 id,
                 &[
                     GameServerStatus::Created,
+                    GameServerStatus::Scheduled,
                     GameServerStatus::Stopped,
                     GameServerStatus::Error,
                 ],

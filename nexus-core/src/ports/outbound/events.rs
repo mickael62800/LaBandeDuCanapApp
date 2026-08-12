@@ -10,6 +10,10 @@ use async_trait::async_trait;
 /// Nom des evenements game-portal, partages entre publieur (API) et
 /// consommateur (bot). Une constante par event pour eviter les typos.
 pub mod game_events {
+    /// Ouverture programmee : le conteneur n'est pas encore lance, mais le bot
+    /// doit deja creer les salons et le panneau d'inscription (comme pour un
+    /// demarrage), afin d'ouvrir les inscriptions a l'avance.
+    pub const SERVER_SCHEDULED: &str = "game_server_scheduled";
     pub const SERVER_STARTED: &str = "game_server_started";
     pub const SERVER_STOPPED: &str = "game_server_stopped";
     pub const SERVER_DELETED: &str = "game_server_deleted";

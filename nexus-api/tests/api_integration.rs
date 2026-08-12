@@ -285,6 +285,22 @@ impl ManageGameServersUseCase for DummyManageGameServers {
     async fn reveal_ip(&self, _: Uuid, _: &str) -> Result<(), DomainError> {
         Ok(())
     }
+    async fn schedule(
+        &self,
+        _: Uuid,
+        _: chrono::DateTime<chrono::Utc>,
+        _: &str,
+    ) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn set_reveal_schedule(
+        &self,
+        _: Uuid,
+        _: Option<chrono::DateTime<chrono::Utc>>,
+        _: &str,
+    ) -> Result<(), DomainError> {
+        Ok(())
+    }
     async fn get_logs(&self, _: Uuid, _: u32) -> Result<Vec<String>, DomainError> {
         Ok(vec!["[Server] Started".into()])
     }
@@ -412,6 +428,9 @@ impl GameServerRepository for DummyGameServerRepo {
         _: Option<chrono::DateTime<chrono::Utc>>,
     ) -> Result<(), DomainError> {
         Ok(())
+    }
+    async fn list_scheduled_due_to_start(&self) -> Result<Vec<GameServer>, DomainError> {
+        Ok(vec![])
     }
 }
 

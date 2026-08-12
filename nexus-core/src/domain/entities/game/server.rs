@@ -11,6 +11,11 @@ use uuid::Uuid;
 pub enum GameServerStatus {
     /// Ligne creee, container pas encore lance.
     Created,
+    /// Ouverture programmee : le conteneur n'est PAS lance, mais les salons
+    /// Discord et le panneau d'inscription existent deja (les joueurs peuvent
+    /// s'inscrire a l'avance). Le worker demarre le conteneur ~5 min avant
+    /// `ip_reveal_at`, puis l'IP est revelee a l'heure dite.
+    Scheduled,
     /// Docker start envoye, attente health.
     Starting,
     /// Container running, repond aux health checks.
@@ -29,6 +34,7 @@ impl GameServerStatus {
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Created => "created",
+            Self::Scheduled => "scheduled",
             Self::Starting => "starting",
             Self::Running => "running",
             Self::Stopping => "stopping",
@@ -41,6 +47,7 @@ impl GameServerStatus {
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "created" => Some(Self::Created),
+            "scheduled" => Some(Self::Scheduled),
             "starting" => Some(Self::Starting),
             "running" => Some(Self::Running),
             "stopping" => Some(Self::Stopping),
@@ -56,9 +63,14 @@ impl GameServerStatus {
         matches!(self, Self::Starting | Self::Running | Self::Stopping)
     }
 
-    /// True si une transition `start` est legale depuis cet etat.
+    /// True si une transition `start` est legale depuis cet etat. `Scheduled`
+    /// en fait partie : c'est le worker (auto-start ~5 min avant l'ouverture)
+    /// ou un administrateur qui lance alors le conteneur.
     pub fn can_start(&self) -> bool {
-        matches!(self, Self::Created | Self::Stopped | Self::Error)
+        matches!(
+            self,
+            Self::Created | Self::Scheduled | Self::Stopped | Self::Error
+        )
     }
 
     /// True si une transition `stop` est legale.
@@ -175,6 +187,25 @@ pub fn should_auto_restart(
     }
 }
 
+/// Delai FIXE (minutes) entre le demarrage automatique du conteneur d'un
+/// serveur `Scheduled` et l'heure de revelation de l'IP. On lance le jeu en
+/// avance pour qu'il ait fini de booter (chargement du monde, plugins) au
+/// moment ou l'adresse est communiquee aux joueurs.
+pub const PREP_LEAD_MINUTES: i64 = 5;
+
+/// Decision PURE : un serveur programme doit-il demarrer maintenant ? `true`
+/// des que l'on est a moins de `PREP_LEAD_MINUTES` de l'heure de revelation.
+/// `None` (pas d'heure programmee) ne declenche jamais d'auto-start.
+pub fn should_auto_start_scheduled(
+    ip_reveal_at: Option<DateTime<Utc>>,
+    now: DateTime<Utc>,
+) -> bool {
+    match ip_reveal_at {
+        Some(reveal_at) => now >= reveal_at - chrono::Duration::minutes(PREP_LEAD_MINUTES),
+        None => false,
+    }
+}
+
 impl GameServer {
     /// Nom Docker normalise pour ce serveur.
     /// Doit matcher container_name persiste en DB (cohérence reconciler).
@@ -267,6 +298,7 @@ mod tests {
     fn can_start_only_from_terminal_states() {
         for st in [
             GameServerStatus::Created,
+            GameServerStatus::Scheduled,
             GameServerStatus::Stopped,
             GameServerStatus::Error,
         ] {
@@ -429,6 +461,7 @@ mod tests {
     fn status_str_roundtrip() {
         for st in [
             GameServerStatus::Created,
+            GameServerStatus::Scheduled,
             GameServerStatus::Starting,
             GameServerStatus::Running,
             GameServerStatus::Stopping,
@@ -438,6 +471,31 @@ mod tests {
         ] {
             assert_eq!(GameServerStatus::from_str(st.as_str()), Some(st));
         }
+    }
+
+    // ── Auto-start des serveurs programmes ──
+
+    #[test]
+    fn auto_start_se_declenche_dans_la_fenetre_de_prep() {
+        let now = Utc::now();
+        // Revelation dans 4 min : on est deja dans la fenetre des 5 min -> start.
+        let reveal = now + chrono::Duration::minutes(4);
+        assert!(should_auto_start_scheduled(Some(reveal), now));
+        // Revelation dans 6 min : trop tot, on attend encore.
+        let reveal = now + chrono::Duration::minutes(6);
+        assert!(!should_auto_start_scheduled(Some(reveal), now));
+    }
+
+    #[test]
+    fn auto_start_a_la_frontiere_exacte_des_5_min() {
+        let now = Utc::now();
+        let reveal = now + chrono::Duration::minutes(PREP_LEAD_MINUTES);
+        assert!(should_auto_start_scheduled(Some(reveal), now));
+    }
+
+    #[test]
+    fn sans_heure_programmee_jamais_d_auto_start() {
+        assert!(!should_auto_start_scheduled(None, Utc::now()));
     }
 
     // ── Marge memoire du conteneur ──

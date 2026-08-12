@@ -8,6 +8,7 @@ import { nexusDelete, nexusGet, nexusPost, nexusPut } from "@/api/nexusHttp";
 /** Etats possibles d'un serveur, tels que renvoyes par l'API. */
 export type GameServerStatus =
   | "created"
+  | "scheduled"
   | "starting"
   | "running"
   | "stopping"
@@ -168,6 +169,42 @@ export const nexusGamesService = {
     return nexusPost<void>(
       `/api/games/servers/${encodeURIComponent(serverId)}/reveal-ip?actor_id=${encodeURIComponent(actorId)}`,
       guildId,
+    );
+  },
+
+  /**
+   * POST /api/games/servers/{id}/schedule — mode « Préparation ».
+   * Programme l'ouverture sans démarrer le conteneur : le serveur passe
+   * `scheduled`, les salons/panneau sont créés tout de suite, et le worker
+   * démarre le conteneur ~5 min avant `revealAt` (ISO 8601).
+   */
+  schedule(
+    guildId: string,
+    serverId: string,
+    revealAt: string,
+    actorId: string,
+  ): Promise<void> {
+    return nexusPost<void>(
+      `/api/games/servers/${encodeURIComponent(serverId)}/schedule`,
+      guildId,
+      { reveal_at: revealAt, actor_id: actorId },
+    );
+  },
+
+  /**
+   * POST /api/games/servers/{id}/reveal-schedule — programme (ou efface avec
+   * `null`) l'heure de révélation auto de l'IP sans changer l'état du conteneur.
+   */
+  setRevealSchedule(
+    guildId: string,
+    serverId: string,
+    revealAt: string | null,
+    actorId: string,
+  ): Promise<void> {
+    return nexusPost<void>(
+      `/api/games/servers/${encodeURIComponent(serverId)}/reveal-schedule`,
+      guildId,
+      { reveal_at: revealAt, actor_id: actorId },
     );
   },
 

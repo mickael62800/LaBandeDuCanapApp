@@ -21,6 +21,9 @@ pub enum GameAuditAction {
     BackupCreate,
     BackupRestore,
     IpReveal,
+    /// Ouverture programmee (mode « Préparation ») ou ajustement de l'heure de
+    /// révélation.
+    Schedule,
 }
 
 impl GameAuditAction {
@@ -39,6 +42,7 @@ impl GameAuditAction {
             Self::BackupCreate => "backup_create",
             Self::BackupRestore => "backup_restore",
             Self::IpReveal => "ip_reveal",
+            Self::Schedule => "schedule",
         }
     }
 }

@@ -25,6 +25,10 @@ pub struct GamePortalIntervals {
     pub image_cleanup_secs: u64,
     pub reveal_ip_secs: u64,
     pub daily_ping_secs: u64,
+    /// Frequence de verification des serveurs programmes a demarrer (~5 min
+    /// avant leur ouverture). Doit rester court devant PREP_LEAD_MINUTES (5 min)
+    /// pour ne pas rater la fenetre — 60 s par defaut.
+    pub auto_start_secs: u64,
 }
 
 pub fn start(client: HttpJobClient, api_url: String, intervals: GamePortalIntervals) {
@@ -35,6 +39,7 @@ pub fn start(client: HttpJobClient, api_url: String, intervals: GamePortalInterv
         ("image-cleanup", intervals.image_cleanup_secs),
         ("reveal-ip", intervals.reveal_ip_secs),
         ("daily-ping", intervals.daily_ping_secs),
+        ("auto-start", intervals.auto_start_secs),
     ] {
         spawn_job(client.clone(), api_url.clone(), job, interval_secs);
     }

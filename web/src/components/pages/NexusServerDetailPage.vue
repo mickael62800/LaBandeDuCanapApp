@@ -49,6 +49,10 @@ const errorMessage = ref("");
 const busy = ref(false);
 const savingConfig = ref(false);
 const revealingIp = ref(false);
+const showScheduleForm = ref(false);
+const scheduling = ref(false);
+/// Valeur du champ `datetime-local` (heure locale « YYYY-MM-DDTHH:mm »).
+const revealAtInput = ref("");
 const rconCommand = ref("");
 const rconOutput = ref("");
 
@@ -75,8 +79,11 @@ const isTransient = computed(
   () => server.value?.status === "starting" || server.value?.status === "stopping",
 );
 
+const isScheduled = computed(() => server.value?.status === "scheduled");
+
 const STATUS_LABELS: Record<string, string> = {
   created: "Créé",
+  scheduled: "En attente d'ouverture",
   starting: "Démarrage…",
   running: "En ligne",
   stopping: "Arrêt…",
@@ -151,6 +158,45 @@ async function revealIpNow() {
     showError(e instanceof Error ? e.message : "Révélation impossible");
   } finally {
     revealingIp.value = false;
+  }
+}
+
+/// Programme l'ouverture. Sur un serveur au repos -> mode « Préparation »
+/// (le conteneur démarrera ~5 min avant, l'IP sera révélée à l'heure). Sur un
+/// serveur déjà en ligne -> programme seulement la révélation auto de l'IP.
+async function submitSchedule() {
+  if (!selectedGuildId.value || !server.value || scheduling.value) return;
+  if (!revealAtInput.value) return;
+  const iso = new Date(revealAtInput.value).toISOString();
+  if (new Date(iso).getTime() <= Date.now()) {
+    showError("Choisis une date et une heure dans le futur.");
+    return;
+  }
+  scheduling.value = true;
+  try {
+    if (isRunning.value) {
+      await nexusGamesService.setRevealSchedule(
+        selectedGuildId.value,
+        server.value.id,
+        iso,
+        user.value?.id ?? "",
+      );
+      success("Révélation de l'adresse programmée.");
+    } else {
+      await nexusGamesService.schedule(
+        selectedGuildId.value,
+        server.value.id,
+        iso,
+        user.value?.id ?? "",
+      );
+      success("Ouverture programmée : les inscriptions sont ouvertes.");
+    }
+    showScheduleForm.value = false;
+    await load();
+  } catch (e) {
+    showError(e instanceof Error ? e.message : "Programmation impossible");
+  } finally {
+    scheduling.value = false;
   }
 }
 
@@ -299,13 +345,41 @@ function fmtDuration(secs: number | null): string {
         <span v-if="server.cpu_limit" class="sd-mem">{{ server.cpu_limit }} cœur(s)</span>
 
         <div class="sd-actions">
-          <button v-if="!isRunning" :disabled="busy || isTransient" @click="act('start')">
-            Démarrer
-          </button>
-          <button v-else :disabled="busy" @click="act('stop')">Arrêter</button>
-          <button :disabled="busy || isTransient" @click="act('restart')">Redémarrer</button>
+          <template v-if="isRunning">
+            <button :disabled="busy" @click="act('stop')">Arrêter</button>
+            <button :disabled="busy || isTransient" @click="act('restart')">Redémarrer</button>
+          </template>
+          <template v-else>
+            <button :disabled="busy || isTransient" @click="act('start')">
+              {{ isScheduled ? "Lancer maintenant" : "Démarrer" }}
+            </button>
+            <button
+              :disabled="busy || isTransient"
+              @click="showScheduleForm = !showScheduleForm"
+            >
+              {{ isScheduled ? "Reprogrammer" : "Programmer l’ouverture" }}
+            </button>
+          </template>
           <AppButton variant="danger" size="sm" @click="remove">Supprimer</AppButton>
         </div>
+      </div>
+
+      <!-- Formulaire de programmation (Préparation / révélation auto) -->
+      <div v-if="showScheduleForm" class="sd-schedule">
+        <label>
+          {{ isRunning ? "Révéler l’adresse le" : "Ouverture le" }}
+          <input type="datetime-local" v-model="revealAtInput" />
+        </label>
+        <button :disabled="scheduling || !revealAtInput" @click="submitSchedule">
+          {{ scheduling ? "Programmation…" : "Programmer" }}
+        </button>
+        <p class="sd-hint">
+          {{
+            isRunning
+              ? "L’adresse sera révélée automatiquement à l’heure choisie."
+              : "Le conteneur démarrera automatiquement ~5 min avant, et l’adresse sera révélée à l’heure choisie. Les salons et le panneau d’inscription sont créés dès maintenant."
+          }}
+        </p>
       </div>
 
       <p v-if="server.last_error" class="sd-lasterror">⚠ {{ server.last_error }}</p>

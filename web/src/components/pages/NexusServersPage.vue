@@ -48,6 +48,7 @@ const templateName = computed(() => {
 /// Libelle FR + classe CSS par etat, pour eviter d'afficher les valeurs brutes.
 const STATUS_LABELS: Record<string, string> = {
   created: "Cree",
+  scheduled: "En attente d'ouverture",
   starting: "Demarrage…",
   running: "En ligne",
   stopping: "Arret…",

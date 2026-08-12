@@ -2,10 +2,15 @@
 //!
 //! Porte depuis sentinel-bot (modules/game_portal). Pilote par les evenements
 //! publies par nexus-api sur la stream Redis `nexus:events` :
+//!   - `game_server_scheduled` : ouverture programmee — cree les memes salons et
+//!     le panneau que `game_server_started`, mais le conteneur reste eteint (le
+//!     worker le demarre ~5 min avant l'ouverture) ;
 //!   - `game_server_started` : cree un salon texte + un salon vocal PRIVES
 //!     (visibles du seul role du jeu) dans la categorie configuree, epingle un
 //!     panneau avec bouton d'inscription et ping le role ;
-//!   - `game_server_stopped` / `game_server_deleted` : supprime les salons ;
+//!   - `game_server_stopped` : arret temporaire — les salons, le role et le
+//!     panneau sont CONSERVES (pour pouvoir redemarrer sans tout reconstruire) ;
+//!   - `game_server_deleted` : suppression du jeu — supprime salons et role ;
 //!   - `game_ip_reveal` : poste l'adresse de connexion et rafraichit le panneau ;
 //!   - `game_daily_ping` : rappelle l'ouverture a venir au role du jeu.
 //!
@@ -436,10 +441,14 @@ async fn handle_event(ctx: &Context, api: &ApiClient, payload_json: &str) {
 
     use nexus_core::ports::outbound::events::game_events as ev;
     match event {
-        Some(ev::SERVER_STARTED) => on_started(ctx, api, GuildId::new(guild_id), &server_id).await,
-        Some(ev::SERVER_STOPPED) | Some(ev::SERVER_DELETED) => {
-            on_stopped(ctx, api, &server_id).await
+        // Programmation ET demarrage creent les salons/panneau. La programmation
+        // ouvre les inscriptions a l'avance ; le garde anti-doublon de
+        // `on_started` evite qu'un demarrage ulterieur ne recree quoi que ce soit.
+        Some(ev::SERVER_SCHEDULED) | Some(ev::SERVER_STARTED) => {
+            on_started(ctx, api, GuildId::new(guild_id), &server_id).await
         }
+        Some(ev::SERVER_STOPPED) => on_stopped(ctx, api, &server_id).await,
+        Some(ev::SERVER_DELETED) => on_deleted(ctx, api, &server_id).await,
         Some(ev::IP_REVEAL) => on_ip_reveal(ctx, api, &server_id).await,
         Some(ev::DAILY_PING) => on_daily_ping(ctx, api, &server_id).await,
         _ => {}
@@ -934,9 +943,21 @@ async fn on_started(ctx: &Context, api: &ApiClient, guild_id: GuildId, server_id
     tracing::info!(guild = %guild_id, server_id, "game-portal: session ouverte (salons crees)");
 }
 
-// ── Arret / suppression -> suppression des salons ──
+// ── Arret -> on CONSERVE les salons ──
 
-async fn on_stopped(ctx: &Context, api: &ApiClient, server_id: &str) {
+/// Serveur arrete (mais pas supprime) : les salons de session, le role et le
+/// panneau d'inscription sont CONSERVES. Un arret est temporaire — on veut
+/// pouvoir redemarrer sans reconstruire salons ni inscriptions, et sans que le
+/// role de session (donc l'acces des inscrits) ne saute a chaque pause. La
+/// suppression effective des salons n'a lieu qu'a la suppression du jeu
+/// (`on_deleted`, evenement `game_server_deleted`).
+async fn on_stopped(_ctx: &Context, _api: &ApiClient, server_id: &str) {
+    tracing::info!(server_id, "game-portal: session arretee (salons conserves)");
+}
+
+// ── Suppression du jeu -> suppression des salons ──
+
+async fn on_deleted(ctx: &Context, api: &ApiClient, server_id: &str) {
     let Ok(detail) = api.get_game_server(server_id).await else {
         return;
     };

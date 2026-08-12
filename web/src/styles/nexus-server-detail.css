@@ -40,6 +40,32 @@
   color: var(--warning);
 }
 
+.st-scheduled {
+  background: color-mix(in srgb, var(--accent, #a855f7) 20%, transparent);
+  color: var(--accent, #a855f7);
+}
+
+.sd-schedule {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  padding: var(--space-md) 0;
+  border-bottom: 1px solid var(--bg-hover);
+}
+
+.sd-schedule label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.sd-schedule .sd-hint {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 0.85rem;
+}
+
 .sd-copie {
   font: inherit;
   cursor: pointer;

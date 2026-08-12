@@ -483,7 +483,7 @@ impl GameServerRepository for PgGameServerRepository {
             "SELECT {SELECT_COLS} FROM game_servers \
              WHERE deleted_at IS NULL AND ip_revealed = false \
                AND ip_reveal_at IS NOT NULL AND ip_reveal_at <= NOW() \
-               AND text_channel_id IS NOT NULL \
+               AND text_channel_id IS NOT NULL AND status = 'running' \
              ORDER BY ip_reveal_at ASC LIMIT 100"
         );
         let rows = sqlx::query_as::<_, ServerRow>(&q)
@@ -533,5 +533,23 @@ impl GameServerRepository for PgGameServerRepository {
         .await
         .map_err(pg_ctx("set_ip_reveal_at"))?;
         Ok(())
+    }
+
+    async fn list_scheduled_due_to_start(&self) -> Result<Vec<GameServer>, DomainError> {
+        // Fenetre de 5 minutes = PREP_LEAD_MINUTES (domaine). L'intervalle est
+        // ecrit en dur ici faute de pouvoir binder un INTERVAL Postgres proprement ;
+        // garder les deux valeurs synchronisees.
+        let q = format!(
+            "SELECT {SELECT_COLS} FROM game_servers \
+             WHERE deleted_at IS NULL AND status = 'scheduled' \
+               AND ip_reveal_at IS NOT NULL \
+               AND ip_reveal_at <= NOW() + INTERVAL '5 minutes' \
+             ORDER BY ip_reveal_at ASC LIMIT 100"
+        );
+        let rows = sqlx::query_as::<_, ServerRow>(&q)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(pg_ctx("list_scheduled_due_to_start"))?;
+        rows.into_iter().map(GameServer::try_from).collect()
     }
 }

@@ -109,6 +109,14 @@ fn container_lifecycle_routes() -> Router<AppState> {
             post(handlers::game::servers::reveal_ip),
         )
         .route(
+            "/api/games/servers/{server_id}/schedule",
+            post(handlers::game::servers::schedule_server),
+        )
+        .route(
+            "/api/games/servers/{server_id}/reveal-schedule",
+            post(handlers::game::servers::set_reveal_schedule),
+        )
+        .route(
             "/api/games/servers/{server_id}/command",
             post(handlers::game::servers::execute_rcon),
         )
@@ -415,6 +423,10 @@ pub fn build_router_with(state: AppState, config: HttpConfig) -> Router {
         .route(
             "/api/games/internal/jobs/daily-ping",
             post(handlers::game::jobs::job_daily_ping),
+        )
+        .route(
+            "/api/games/internal/jobs/auto-start",
+            post(handlers::game::jobs::job_auto_start),
         )
         // Les routes de cycle de vie des conteneurs rejoignent le groupe
         // protege : elles heritent du Bearer et du verrou mono-serveur, et

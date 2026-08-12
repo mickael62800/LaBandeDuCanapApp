@@ -33,6 +33,28 @@ pub trait ManageGameServersUseCase: Send + Sync {
     /// Réservé aux appels d'administration par la couche HTTP.
     async fn reveal_ip(&self, id: Uuid, actor_user_id: &str) -> Result<(), DomainError>;
 
+    /// Mode « Préparation » : programme l'ouverture à `reveal_at` sans démarrer
+    /// le conteneur. Le serveur passe en `scheduled` ; le worker le démarrera
+    /// ~5 min avant l'heure, et l'IP sera révélée à l'heure dite. Les salons
+    /// Discord et le panneau d'inscription sont créés dès maintenant (par le
+    /// bot, sur l'événement `game_server_scheduled` publié par la couche HTTP).
+    async fn schedule(
+        &self,
+        id: Uuid,
+        reveal_at: chrono::DateTime<chrono::Utc>,
+        actor_user_id: &str,
+    ) -> Result<(), DomainError>;
+
+    /// Définit (ou efface) l'heure de révélation programmée de l'IP sans changer
+    /// l'état du conteneur. Utilisé par « Lancer maintenant » pour programmer en
+    /// plus une révélation automatique, ou pour l'ajuster/annuler.
+    async fn set_reveal_schedule(
+        &self,
+        id: Uuid,
+        reveal_at: Option<chrono::DateTime<chrono::Utc>>,
+        actor_user_id: &str,
+    ) -> Result<(), DomainError>;
+
     // ── Observabilite ─────────────────────────────────────────────────
     async fn get_logs(&self, id: Uuid, lines: u32) -> Result<Vec<String>, DomainError>;
     async fn get_stats(&self, id: Uuid) -> Result<ContainerStats, DomainError>;

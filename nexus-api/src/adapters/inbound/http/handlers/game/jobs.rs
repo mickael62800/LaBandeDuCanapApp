@@ -51,3 +51,30 @@ pub async fn job_reveal_ip(State(state): State<AppState>) -> Result<Json<JobRepo
 pub async fn job_daily_ping(State(state): State<AppState>) -> Result<Json<JobReport>, ApiError> {
     Ok(Json(run_daily_ping(&ctx(&state)).await?))
 }
+
+/// Auto-start des serveurs programmes : demarre le conteneur des serveurs
+/// `scheduled` dont l'ouverture est a moins de `PREP_LEAD_MINUTES`. Contrairement
+/// aux autres jobs, il passe par le use case complet `start()` (allocation ports,
+/// creation + demarrage du conteneur) — d'ou l'implementation ici, au niveau API,
+/// plutot que dans `worker_jobs` qui n'a pas acces au use case. Les salons Discord
+/// existent deja (crees a la programmation), on ne republie donc aucun evenement.
+pub async fn job_auto_start(State(state): State<AppState>) -> Result<Json<JobReport>, ApiError> {
+    let due = state.game_server_repo.list_scheduled_due_to_start().await?;
+    let mut processed = 0usize;
+    let mut errors = 0usize;
+    for server in &due {
+        match state.game_servers_uc.start(server.id, "system").await {
+            Ok(()) => processed += 1,
+            Err(e) => {
+                tracing::warn!(error = %e, server_id = %server.id, "auto-start: echec demarrage serveur programme");
+                errors += 1;
+            }
+        }
+    }
+    Ok(Json(JobReport {
+        job: "auto_start",
+        processed,
+        errors,
+        details: serde_json::json!({ "due": due.len() }),
+    }))
+}

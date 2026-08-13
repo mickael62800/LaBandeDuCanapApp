@@ -1,12 +1,19 @@
 # À tester — changements du 13/08/2026
 
-Six changements, expliqués simplement, avec ce qu'il faut vérifier pour chacun.
+Neuf changements, expliqués simplement, avec ce qu'il faut vérifier pour chacun.
 
 > **À faire d'abord : reconstruire.** Tous ces changements sont dans le code, aucun n'est actif tant que les images ne sont pas reconstruites. C'est aussi ce qui explique les bugs signalés cette semaine : les conteneurs tournaient sur du code antérieur au 12/08.
 >
 > ```bash
-> docker compose build web atrium-api atrium-bot sentinel-bot nexus-api
-> docker compose up -d web atrium-api atrium-bot sentinel-bot nexus-api
+> docker compose build web atrium-api atrium-bot sentinel-bot nexus-api ops-api
+> docker compose up -d web atrium-api atrium-bot sentinel-bot nexus-api ops-api
+> ```
+>
+> **Deux variables doivent être présentes dans le `.env` avant de relancer**, sinon le démarrage s'arrête en les nommant (c'est voulu — voir les points 2 et 7) :
+>
+> ```bash
+> grep -E '^(ATRIUM_)?DEEPSEEK_API_KEY=' .env
+> grep -E '^NEXUS_API_KEY=' .env      # doit faire au moins 16 caractères
 > ```
 
 ---
@@ -106,6 +113,50 @@ Une des deux lignes doit apparaître. Atrium tournant aujourd'hui, elle y est no
 
 ---
 
+## 7. Sécurité — `nexus-api` ne peut plus démarrer sans clé (N2)
+
+**Le problème.** Si `NEXUS_API_KEY` était absente ou vide, `nexus-api` démarrait quand même — **sans aucune authentification sur toutes ses routes**, y compris la création et la suppression de conteneurs sur la machine. Un simple avertissement dans les logs, que personne ne lit. C'était la seule des quatre API à échouer en s'ouvrant, et la seule capable de lancer des conteneurs.
+
+**Le changement.** Elle refuse maintenant de démarrer si la clé manque, est vide, ou fait moins de 16 caractères. Docker exige aussi la variable.
+
+**⚠️ À vérifier AVANT de relancer** (voir l'encadré en haut) : `NEXUS_API_KEY` doit être dans le `.env`, avec au moins 16 caractères.
+
+**À vérifier après** :
+
+1. `docker compose ps nexus-api` → le conteneur est `healthy`.
+2. La page **Jeux** du site public affiche les serveurs, et la partie Nexus du back-office fonctionne (liste des serveurs, démarrage/arrêt).
+3. Le bot Nexus répond toujours sur Discord.
+
+Si l'un des trois échoue avec un 401, c'est que le client concerné n'a pas la même clé que l'API — le `.env` étant unique, ça ne devrait pas arriver.
+
+---
+
+## 8. Le message de ban IP n'annonce plus « 0 logs purgés » (O4)
+
+**Le problème.** Bannir une IP purgeait autrefois ses logs. Cette purge a été retirée — une mesure de sécurité ne doit pas détruire les preuves qui la justifient — mais le message est resté, et l'écran Sécurité annonçait donc « 0 logs purgés » à chaque ban.
+
+**Le changement.** Le décompte disparaît du message, de l'événement d'audit et du code.
+
+**À vérifier**, dans **Exploitation → Sécurité de l'hôte** :
+
+1. Bannir une IP de test → le message doit dire « IP x.x.x.x bannie (sera appliqué au prochain tick du cron host) », sans mention de logs.
+2. L'IP apparaît bien dans la liste des bans, et les logs de cette IP sont **toujours là** (c'est le comportement voulu).
+3. Lever le ban fonctionne normalement.
+
+---
+
+## 9. Mise à jour de deux dépendances du site (W1)
+
+**Le problème.** `nanoid` et `postcss` avaient des failles connues, corrigées en amont.
+
+**Le changement.** `nanoid 3.3.11 → 3.3.18`, `postcss 8.5.13 → 8.5.26`. `npm audit --omit=dev` ne remonte plus rien.
+
+**À vérifier** : rien de spécifique — ces paquets servent à la compilation. Si le site s'affiche et que les styles sont corrects après reconstruction de `web`, c'est bon.
+
+> À noter : `npm audit` **complet** signale encore 5 avis sur des outils de développement (eslint, vitest). Ils ne sont pas dans le site publié. Ce n'est pas dans le périmètre de ce lot.
+
+---
+
 ## Récapitulatif des fichiers modifiés
 
 | Changement | Fichier | Service à reconstruire |
@@ -116,7 +167,12 @@ Une des deux lignes doit apparaître. Atrium tournant aujourd'hui, elle y est no
 | 4 — départ éclair | `atrium-bot/src/main.rs` | `atrium-bot` |
 | 5 — largeur du site | `web/src/components/templates/PublicLayout.vue` | `web` |
 | 6 — univers sur mobile | `web/src/components/organisms/Sidebar.vue` | `web` |
+| 7 — clé Nexus exigée | `nexus-api/src/{bootstrap,adapters}`, `compose.{core,nexus}.yml`, `platform-common-api/src/bearer_auth.rs` | `nexus-api` |
+| 8 — message de ban IP | `ops-core/src/{domain,application,ports}`, `ops-api/src/{handlers,adapters}` | `ops-api` |
+| 9 — dépendances | `web/package-lock.json` | `web` |
 
-Vérifications automatiques déjà passées : `cargo check`, `cargo clippy`, `npm run lint`, `npm run build`. Elles ne prouvent que la compilation — les points ci-dessus demandent un vrai essai.
+Vérifications automatiques déjà passées : `cargo clippy --workspace --all-targets`, `npm run lint`, `npm run build`, et les 89 tests web. Elles ne prouvent que la compilation et le comportement en test — les points ci-dessus demandent un vrai essai.
+
+Les points 1, 2, 7, 8 et 9 correspondent à N1, A4, N2, O4 et W1 de [SECURITE-POINTS-OUVERTS.md](SECURITE-POINTS-OUVERTS.md), mis à jour en conséquence.
 
 Le 404 de l'écran Atrium dans le back-office est traité à part, dans [ATRIUM_404.md](ATRIUM_404.md) : c'est le même retard de déploiement, pas un bug de code.

@@ -7,9 +7,11 @@ Ce qui reste après les audits des plateformes `sentinel-*`, `atrium-*`, `ops-*`
 - **Ouvert par décision** (S1, S2, A1–A4, O1–O5) — le point est connu, la raison de ne pas le traiter est écrite, et chacun porte la condition qui le rendrait urgent.
 - **Ouvert faute d'avoir été traité** (N1–N4, W1–W4) — trouvé lors des audits Nexus et Web, non corrigé à ce jour. Ce ne sont pas des arbitrages, ce sont des correctifs en attente.
 
-> ### ⚠️ N1 est critique et exploitable sans authentification
+> ### ✅ Corrigés le 13/08/2026
 >
-> La passerelle `/nexus-public/` relaie **toute** l'API de Nexus en y attachant elle-même la clé d'API. N'importe qui sur Internet peut exécuter du RCON sur les serveurs de jeu, en créer ou en supprimer, et déplacer de la monnaie. Détail en fin de document — à traiter avant le reste.
+> **N1, N2, A4, W1, O4.** Les deux failles réellement exploitables sont fermées : la passerelle `/nexus-public/` ne relaie plus que `/api/public/`, et `nexus-api` refuse de démarrer sans clé d'au moins 16 caractères au lieu de servir ouvert. Le détail de chacun reste plus bas, annoté du correctif appliqué — l'historique du raisonnement vaut d'être conservé.
+>
+> Restent ouverts : S1, S2, A1, A2, A3, O1, O2, O3, O5, W2, W3, W4, N3, N4.
 
 ## Sentinel
 
@@ -25,7 +27,7 @@ Ce qui reste après les audits des plateformes `sentinel-*`, `atrium-*`, `ops-*`
 | A1 | `forget_member` existe mais n'est joignable par aucune route | **Dette introduite pendant le correctif** — la capacité a été écrite, pas exposée |
 | A2 | `atrium_calming_requested` n'est pas signé | Le signer demande un secret partagé inter-plateformes qui n'existe pas encore |
 | A3 | Contenu des membres envoyé à DeepSeek | Choix de produit, pas défaut de code — mais sans information ni base légale explicite |
-| A4 | `DEEPSEEK_API_KEY` garde un défaut vide dans le compose | Rattrapé au démarrage par la config ; reste une incohérence de forme |
+| ~~A4~~ | ~~`DEEPSEEK_API_KEY` garde un défaut vide dans le compose~~ | ✅ **Corrigé le 13/08** — `:?` sur le dernier repli |
 
 ## Exploitation (ops)
 
@@ -36,7 +38,7 @@ Audit de `ops-api` / `ops-core`. Onze points relevés, huit corrigés dans la fo
 | O1 | `ops-api` cumule la base Sentinel complète et le jeton d'administration de l'hôte | Structurel : c'est le périmètre du produit, pas un défaut — mais c'est la concentration de pouvoir la plus forte du dépôt |
 | O2 | `/metrics` ouvert par défaut | Comportement identique sur les quatre APIs ; le changer pour ops seul casserait la cohérence sans gain |
 | O3 | GeoIP en clair si on l'active | Le palier gratuit d'ip-api n'accepte que `http://` — le correctif est un changement de fournisseur, pas de code |
-| O4 | `deleted_logs` vaut désormais toujours `0` | **Dette introduite par le correctif** — le champ et le libellé survivent au comportement qu'ils décrivaient |
+| ~~O4~~ | ~~`deleted_logs` vaut désormais toujours `0`~~ | ✅ **Corrigé le 13/08** — champ, message et port morts retirés |
 | O5 | Quatre modules non audités | Périmètre non couvert, pas un défaut constaté |
 
 ## Web — **non corrigés**
@@ -45,21 +47,21 @@ Audit statique du frontend Vue, de sa chaîne de build et de la configuration ng
 
 | # | Sujet | Gravité |
 |---|---|---|
-| W1 | `nanoid 3.3.11` et `postcss 8.5.13` ont des avis de sécurité avec correctifs disponibles | Élevée selon `npm audit`, impact surtout limité à la chaîne de build |
+| ~~W1~~ | ~~`nanoid 3.3.11` et `postcss 8.5.13`~~ | ✅ **Corrigé le 13/08** — `nanoid 3.3.18`, `postcss 8.5.26` ; `npm audit --omit=dev` renvoie 0 |
 | W2 | Le rendu Markdown utilisé avec `v-html` n'échappe pas les guillemets avant de construire les liens | Moyenne — injection d'attribut HTML possible, actuellement contenue en production par la CSP |
 | W3 | Le callback OAuth continue si la vérification `check-access` échoue autrement que par un 403 | Moyenne — fail-open côté interface ; les API restent l'autorité et refusent les appels non autorisés |
 | W4 | L'ancien champ `api_key` peut encore être stocké dans `localStorage` et envoyé comme Bearer | Faible — vide en production actuelle, mais exfiltrable par une XSS s'il était renseigné |
 
-## Nexus — **non corrigés**
+## Nexus
 
-Contrairement aux sections précédentes, ces quatre points ne sont pas des arbitrages : ils ont été relevés et attendent leur correctif.
+Contrairement aux sections précédentes, ces quatre points ne sont pas des arbitrages : ils ont été relevés et attendent leur correctif. **N1 et N2 ont été corrigés le 13/08** ; N3 et N4 restent ouverts.
 
 | # | Sujet | Gravité |
 |---|---|---|
-| N1 | `/nexus-public/` relaie toute l'API avec la clé injectée | **Critique** — exploitable sans authentification, depuis Internet |
-| N2 | `nexus-api` s'ouvre entièrement si `NEXUS_API_KEY` est vide | Élevée — la seule API qui lance des conteneurs, et la seule à échouer en s'ouvrant |
+| ~~N1~~ | ~~`/nexus-public/` relaie toute l'API avec la clé injectée~~ | ✅ **Corrigé le 13/08** — préfixe descendu à `/api/public/` |
+| ~~N2~~ | ~~`nexus-api` s'ouvre entièrement si `NEXUS_API_KEY` est vide~~ | ✅ **Corrigé le 13/08** — `exit(1)`, `:?` au compose, mode fail-open supprimé du socle |
 | N3 | L'acteur de l'audit est un paramètre d'URL | Moyenne — traçabilité falsifiable |
-| N4 | RCON transmis sans liste blanche | Contextuelle — acceptable seule, aggravante avec N1 |
+| N4 | RCON transmis sans liste blanche | Redescendue à un choix de produit depuis la correction de N1 : la commande n'est plus accessible sans authentification |
 
 ---
 
@@ -576,7 +578,7 @@ Côté handler, lire l'en-tête et supprimer `ActorQuery`. Le repli sur le propr
 
 Pris isolément, c'est défendable : un panneau d'administration de serveur de jeu sert précisément à exécuter des commandes, et en restreindre la liste reviendrait à réimplémenter la console.
 
-Ça cesse de l'être **combiné à N1** : la commande devient accessible sans authentification. Corriger N1 ramène ce point à un choix de produit ; tant que N1 est ouvert, c'est le vecteur d'impact.
+Ça cessait de l'être **combiné à N1** : la commande devenait accessible sans authentification. **N1 étant corrigé (13/08), ce point est redescendu à un choix de produit** — c'est bien la correction de N1, et non une décision sur RCON, qui a retiré le vecteur d'impact.
 
 Si une restriction est souhaitée un jour, la placer dans le domaine (`nexus-core`) et non dans le handler — sinon le bot Discord, qui appelle le même use case, passera à côté.
 

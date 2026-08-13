@@ -35,6 +35,29 @@ const DISCORD_DIRECTORY_MAX_CHARS: usize = 6_000;
 const MEMBERS_PER_ROLE: usize = 30;
 const SENTINEL_EVENTS: EventBus = EventBus::new("sentinel:events");
 const CALMING_COOLDOWN_SECS: u64 = 15 * 60;
+
+/// Mention d'information posee sous le mot d'accueil.
+///
+/// POURQUOI ELLE EXISTE (point A3 de `SECURITE-POINTS-OUVERTS.md`)
+///
+/// Les messages adresses a Atrium partent vers un service d'IA hors UE pour
+/// etre traites. C'est le produit, pas un defaut — mais personne ne le disait
+/// aux membres, qui n'avaient donc aucun moyen de le savoir ni de s'y opposer.
+/// Informer est la premiere des pistes de l'audit, et la moins couteuse.
+///
+/// Posee ICI et nulle part ailleurs : au moment ou le membre decouvre le bot,
+/// avant son premier message. La repeter a chaque reponse la rendrait invisible
+/// a force d'etre lue.
+///
+/// `-#` est la syntaxe Discord du texte en petit : l'information doit etre
+/// presente sans occuper l'accueil.
+///
+/// Le texte est FIXE et non configurable : un reglage vide par defaut
+/// n'informerait personne tant que quelqu'un ne l'a pas rempli — c'est-a-dire,
+/// en pratique, jamais.
+const MENTION_IA: &str = "-# Mes réponses sont générées par un service d'IA externe, \
+     qui reçoit le message que tu m'adresses. Nos échanges sont conservés un temps \
+     limité puis effacés ; tu peux demander leur suppression à un administrateur.";
 /// Repli du seuil de depart eclair quand la cle `welcome_ghost_minutes` du
 /// serveur est absente (aligne sur le defaut declare dans le `config_schema`).
 const DEFAULT_GHOST_MINUTES: u64 = 30;
@@ -255,7 +278,7 @@ impl Handler {
                 let reply = response.into_inner().reply;
                 let atrium_id = ctx.cache.current_user().id;
                 let message = format!(
-                    "<@{}> {reply}\n\n**Pour discuter avec moi dans ce salon, mentionne-moi : <@{}>.**",
+                    "<@{}> {reply}\n\n**Pour discuter avec moi dans ce salon, mentionne-moi : <@{}>.**\n{MENTION_IA}",
                     member.user.id, atrium_id
                 );
                 // Seul le nouveau membre est mentionnable : c'est le bot qui

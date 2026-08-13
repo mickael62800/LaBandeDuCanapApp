@@ -60,6 +60,15 @@ services:
       DEEPSEEK_API_KEY: ${ATRIUM_DEEPSEEK_API_KEY:-${DEEPSEEK_API_KEY:?DEEPSEEK_API_KEY est requis}}
       DEEPSEEK_MODEL: ${ATRIUM_DEEPSEEK_MODEL:-${DEEPSEEK_MODEL:-deepseek-v4-flash}}
       ATRIUM_API_RATE_LIMIT_PER_SEC: ${ATRIUM_API_RATE_LIMIT_PER_SEC:-5}
+      # Retention de la memoire conversationnelle. Le job quotidien efface
+      # messages et resumes au-dela de ce delai.
+      #
+      # Declaree ICI et pas seulement dans le code : c'est un reglage a portee
+      # RGPD, et il etait invisible a l'exploitant — il fallait lire
+      # `admin.rs` pour apprendre que la valeur etait 90 jours. Une donnee
+      # personnelle dont la duree de conservation ne se lit nulle part est une
+      # duree que personne ne peut ni verifier ni justifier.
+      ATRIUM_MEMORY_RETENTION_DAYS: ${ATRIUM_MEMORY_RETENTION_DAYS:-90}
       ATRIUM_USER_COOLDOWN_SECS: ${ATRIUM_USER_COOLDOWN_SECS:-10}
       ATRIUM_USER_DAILY_LIMIT: ${ATRIUM_USER_DAILY_LIMIT:-30}
       ATRIUM_GLOBAL_DAILY_LIMIT: ${ATRIUM_GLOBAL_DAILY_LIMIT:-500}

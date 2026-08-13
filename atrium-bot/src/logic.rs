@@ -1,4 +1,8 @@
-//! Decisions pures du bot, testables sans connexion Discord.
+//! Décisions pures du bot, testables sans connexion Discord.
+//!
+//! Le bot répond aux messages privés et aux mentions dans le salon général
+//! configuré. Les autres messages sont ignorés afin qu'Atrium ne se comporte
+//! pas comme un chatbot global par défaut.
 
 use atrium_proto::welcome::v1::ConversationScope;
 

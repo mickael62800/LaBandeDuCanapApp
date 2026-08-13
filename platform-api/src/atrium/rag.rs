@@ -142,14 +142,17 @@ pub struct IndexedDocument {
 }
 
 impl RagService {
-    /// Documents indexes pour une guilde, les plus recemment modifies d'abord.
+    /// Documents indexes accessibles a une guilde, les plus recemment modifies
+    /// d'abord. Les documents `*` sont le corpus commun embarque ; les masquer
+    /// ici alors que `context_for` les utilise faisait afficher une base vide
+    /// dans l'administration malgré un RAG fonctionnel.
     pub async fn documents(&self, guild_id: &str) -> Result<Vec<IndexedDocument>, sqlx::Error> {
         sqlx::query_as::<_, IndexedDocument>(
             "SELECT d.id, d.title, d.source_url, d.enabled, \
                     COUNT(c.id)::bigint AS chunk_count, d.updated_at \
              FROM atrium_knowledge_documents d \
              LEFT JOIN atrium_knowledge_chunks c ON c.document_id = d.id \
-             WHERE d.guild_id = $1 \
+             WHERE d.guild_id IN ($1, '*') \
              GROUP BY d.id \
              ORDER BY d.updated_at DESC \
              LIMIT 200",

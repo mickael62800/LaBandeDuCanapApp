@@ -67,7 +67,7 @@ Contrairement aux sections précédentes, ces quatre points ne sont pas des arbi
 | ~~N1~~ | ~~`/nexus-public/` relaie toute l'API avec la clé injectée~~ | ✅ **Corrigé le 13/08** — préfixe descendu à `/api/public/` |
 | ~~N2~~ | ~~`nexus-api` s'ouvre entièrement si `NEXUS_API_KEY` est vide~~ | ✅ **Corrigé le 13/08** — `exit(1)`, `:?` au compose, mode fail-open supprimé du socle |
 | ~~N3~~ | ~~L'acteur de l'audit est un paramètre d'URL~~ | ✅ **Corrigé le 13/08** — identité posée par la passerelle (`X-Actor-Id`), paramètre d'URL ignoré pour tout ce qui vient du web |
-| N4 | RCON transmis sans liste blanche | Redescendue à un choix de produit depuis la correction de N1 : la commande n'est plus accessible sans authentification |
+| N4 | RCON transmis sans liste blanche | Choix de produit depuis la correction de N1. ⚠️ **Durci le 13/08** : contrôle de forme dans le domaine + toute tentative auditée, aboutie ou non. La liste blanche reste volontairement absente |
 
 ---
 
@@ -600,6 +600,15 @@ Pris isolément, c'est défendable : un panneau d'administration de serveur de j
 Ça cessait de l'être **combiné à N1** : la commande devenait accessible sans authentification. **N1 étant corrigé (13/08), ce point est redescendu à un choix de produit** — c'est bien la correction de N1, et non une décision sur RCON, qui a retiré le vecteur d'impact.
 
 Si une restriction est souhaitée un jour, la placer dans le domaine (`nexus-core`) et non dans le handler — sinon le bot Discord, qui appelle le même use case, passera à côté.
+
+### Ce qui a été fait le 13/08 (et ce qui ne l'a pas été)
+
+**Pas de liste blanche** : elle reviendrait à réimplémenter la console, et c'est bien la console qu'on veut. Deux durcissements en revanche, tous deux dans le domaine — à l'emplacement que ce document prescrivait :
+
+- **Contrôle de forme** (`valider_commande_rcon`) : commande vide refusée, longueur bornée à 2 000 caractères, **caractères de contrôle refusés**. Ce dernier point est le seul qui touche à la sécurité : le protocole RCON transporte une commande par paquet, mais l'interprétation du corps appartient au serveur de jeu, et selon les implémentations un `\n` peut y être lu comme un séparateur. La question est retirée pour le prix d'une comparaison. Ça ne restreint pas ce qu'un administrateur peut faire.
+- **Toute tentative est auditée**, aboutie ou non. L'audit était posé après le `?` : une commande refusée par le serveur de jeu ou partie en timeout ne laissait **aucune** trace. Ce qu'on veut savoir après coup, c'est ce qui a été tenté — pas seulement ce qui a réussi. Un champ `succes` distingue les deux.
+
+Le point reste « ouvert » parce que l'absence de liste blanche est un choix, pas un oubli.
 
 ---
 

@@ -1,6 +1,6 @@
 # À tester — changements du 13/08/2026
 
-Dix-neuf changements, expliqués simplement, avec ce qu'il faut vérifier pour chacun.
+Vingt changements, expliqués simplement, avec ce qu'il faut vérifier pour chacun.
 
 **Commencer par le point 10** : il exige de compléter le `.env` et, sans ça, plus rien ne démarre.
 
@@ -343,6 +343,24 @@ La protection du navigateur en production (CSP) empêchait l'exécution, mais ce
 
 ---
 
+## 20. Commandes RCON : forme contrôlée et tentatives tracées (N4)
+
+**Le contexte.** La console d'administration d'un serveur de jeu envoie les commandes telles quelles — c'est **voulu** : une console sert précisément à ça, et en restreindre la liste reviendrait à la réimplémenter. Ce point n'était dangereux que combiné à la faille N1 (corrigée ce matin), qui rendait ces commandes accessibles sans compte.
+
+**Le changement.** Toujours pas de liste de commandes autorisées. Deux garde-fous seulement :
+
+- une commande vide, trop longue (plus de 2 000 caractères) ou contenant des caractères invisibles (retour à la ligne, caractère nul) est refusée **avant** d'atteindre le serveur de jeu ;
+- **toute tentative est enregistrée dans le journal**, qu'elle réussisse ou non. Avant, une commande refusée par le serveur ou partie en timeout ne laissait aucune trace — or c'est justement ce qu'on veut pouvoir relire après coup.
+
+**À vérifier**, dans **Nexus → un serveur de jeu → console** :
+
+1. Une commande normale (`say bonjour`) fonctionne comme avant.
+2. Une commande vide est refusée avec un message clair.
+3. Une commande volontairement erronée (`cette-commande-nexiste-pas`) échoue — puis **apparaît quand même** dans le journal d'audit du serveur, avec `succes: false`.
+4. Depuis Discord, une commande passée par le bot est soumise aux mêmes règles (le contrôle est dans le domaine, pas dans l'interface web).
+
+---
+
 ## Récapitulatif des fichiers modifiés
 
 | Changement | Fichier | Service à reconstruire |
@@ -366,6 +384,7 @@ La protection du navigateur en production (CSP) empêchait l'exécution, mais ce
 | 17 — GeoIP en clair | `ops-api/src/adapters/geoip.rs`, `compose.core.yml` | `ops-api` |
 | 18 — sondes S2 | `sentinel-api/src/main.rs`, `auth-api/src/config.rs`, `auth-core/.../identity.rs` | `api`, `auth-api` |
 | 19 — mention IA | `atrium-bot/src/main.rs`, `compose.atrium.yml` | `atrium-bot`, `atrium-api` |
+| 20 — forme RCON | `nexus-core/.../manage_game_servers_service.rs` | `nexus-api`, `nexus-bot` |
 
 Vérifications automatiques déjà passées : `cargo clippy --workspace --all-targets`, `npm run lint`, `npm run build`, et les 89 tests web. Elles ne prouvent que la compilation et le comportement en test — les points ci-dessus demandent un vrai essai.
 

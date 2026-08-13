@@ -5,6 +5,7 @@
 //! (7 jours par defaut, refresh sur usage). Liberation = DEL.
 
 use async_trait::async_trait;
+use rand::Rng;
 use redis::AsyncCommands;
 use redis::Client;
 
@@ -39,6 +40,23 @@ impl RedisPortAllocator {
         };
         format!("game:port:{prefix}:{port}")
     }
+
+    /// Parcourt toute la plage une seule fois, depuis une position aleatoire.
+    /// On conserve ainsi la garantie de trouver un slot libre sans attribuer
+    /// systematiquement les ports dans l'ordre croissant.
+    fn randomized_candidates(range_start: u16, range_end: u16) -> Vec<u16> {
+        let count = u32::from(range_end) - u32::from(range_start) + 1;
+        let offset = rand::thread_rng().gen_range(0..count);
+        Self::rotated_candidates(range_start, range_end, offset)
+    }
+
+    fn rotated_candidates(range_start: u16, range_end: u16, offset: u32) -> Vec<u16> {
+        let count = u32::from(range_end) - u32::from(range_start) + 1;
+        (0..count)
+            .map(|index| u32::from(range_start) + (offset + index) % count)
+            .map(|port| port as u16)
+            .collect()
+    }
 }
 
 #[async_trait]
@@ -61,7 +79,7 @@ impl PortAllocator for RedisPortAllocator {
             .await
             .map_err(|e| DomainError::Internal(format!("redis conn: {e}")))?;
 
-        for port in range_start..=range_end {
+        for port in Self::randomized_candidates(range_start, range_end) {
             let key = Self::key(kind, port);
             // SET NX EX (atomic). Retourne true si on a gagne le slot.
             let won: bool = redis::cmd("SET")
@@ -96,6 +114,7 @@ impl PortAllocator for RedisPortAllocator {
             ));
         }
         let last_start = range_end - (width - 1);
+        let candidates = Self::randomized_candidates(range_start, last_start);
         let mut conn = self
             .client
             .get_multiplexed_async_connection()
@@ -107,7 +126,7 @@ impl PortAllocator for RedisPortAllocator {
             "for i=1,#KEYS do if redis.call('EXISTS', KEYS[i]) == 1 then return 0 end end \
              for i=1,#KEYS do redis.call('SET', KEYS[i], ARGV[1], 'EX', ARGV[2]) end return 1",
         );
-        for start in range_start..=last_start {
+        for start in candidates {
             let mut invocation = script.prepare_invoke();
             for port in start..start + width {
                 invocation.key(Self::key(kind, port));
@@ -151,5 +170,26 @@ impl PortAllocator for RedisPortAllocator {
             .await
             .map_err(|e| DomainError::Internal(format!("redis EXISTS: {e}")))?;
         Ok(!exists)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RedisPortAllocator;
+
+    #[test]
+    fn rotated_candidates_wrap_and_cover_the_whole_range() {
+        assert_eq!(
+            RedisPortAllocator::rotated_candidates(25500, 25504, 3),
+            vec![25503, 25504, 25500, 25501, 25502]
+        );
+    }
+
+    #[test]
+    fn single_port_range_is_supported() {
+        assert_eq!(
+            RedisPortAllocator::rotated_candidates(25500, 25500, 0),
+            vec![25500]
+        );
     }
 }

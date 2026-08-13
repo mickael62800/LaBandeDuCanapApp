@@ -42,20 +42,21 @@ pub fn init_prometheus() {
 
 /// Variante avec des buckets de latence explicites.
 pub fn init_prometheus_with_buckets(buckets: &[f64]) {
-    if PROMETHEUS_HANDLE.get().is_some() {
-        return;
-    }
-
-    let handle = PrometheusBuilder::new()
-        .set_buckets_for_metric(
-            metrics_exporter_prometheus::Matcher::Full("http_request_duration_seconds".to_string()),
-            buckets,
-        )
-        .expect("buckets HTTP latency valides")
-        .install_recorder()
-        .expect("recorder Prometheus installe une seule fois");
-
-    let _ = PROMETHEUS_HANDLE.set(handle);
+    // `get()` suivi de `set()` n'est pas atomique : deux domaines demarrant en
+    // parallele pouvaient tous deux tenter d'installer le recorder global.
+    // `get_or_init` garantit qu'une seule construction a lieu par processus.
+    PROMETHEUS_HANDLE.get_or_init(|| {
+        PrometheusBuilder::new()
+            .set_buckets_for_metric(
+                metrics_exporter_prometheus::Matcher::Full(
+                    "http_request_duration_seconds".to_string(),
+                ),
+                buckets,
+            )
+            .expect("buckets HTTP latency valides")
+            .install_recorder()
+            .expect("recorder Prometheus installe une seule fois")
+    });
 }
 
 /// Rend les metriques au format texte Prometheus, sans controle d'acces.

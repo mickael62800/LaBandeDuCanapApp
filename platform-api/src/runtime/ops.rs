@@ -4,11 +4,6 @@ use std::sync::Arc;
 
 use platform_api::ops::{router, AppConfig, AppState};
 
-#[tokio::main]
-async fn main() {
-    run().await;
-}
-
 pub async fn run() {
     let _ = dotenvy::dotenv();
     if std::env::var_os("PLATFORM_API_UNIFIED_RUNTIME").is_none() {

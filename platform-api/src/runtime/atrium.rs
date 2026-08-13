@@ -1,10 +1,5 @@
 use platform_api::atrium::{self, AppConfig};
 
-#[tokio::main]
-async fn main() {
-    run().await;
-}
-
 pub async fn run() {
     dotenvy::dotenv().ok();
     if std::env::var_os("PLATFORM_API_UNIFIED_RUNTIME").is_none() {

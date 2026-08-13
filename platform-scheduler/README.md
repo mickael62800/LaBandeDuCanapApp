@@ -10,33 +10,17 @@ SQLx, Redis, Docker, gRPC ou d'un SDK Discord.
 
 ## Domaines
 
-| Domaine | Etat | Activation |
-|---|---|---|
-| Atrium | Pret | `SCHEDULER_ATRIUM_ENABLED=true` |
-| Nexus | Pret | `SCHEDULER_NEXUS_ENABLED=true` |
-| Sentinel | Migration progressive (10 jobs migres) | `SCHEDULER_SENTINEL_ENABLED=true` |
-| Ops | `ops-agent` separe; dispatcher encore temporaire | Desactive |
+| Domaine | Etat |
+|---|---|
+| Atrium | Actif |
+| Nexus | Actif |
+| Sentinel | Actif |
+| Ops | Actif ; `ops-agent` reste separe |
 
-## Bascule sans doublon
-
-Pour chaque domaine, arreter d'abord l'ancien service worker, puis activer le
-domaine correspondant dans `platform-scheduler`. Ne jamais activer les deux en
-meme temps: les endpoints sont idempotents lorsque possible, mais cette
-propriete ne remplace pas une seule source de planification.
-
-Atrium et Nexus sont bascules dans Compose: leurs anciens services ont ete
-retires. Les indicateurs doivent correspondre aux profils deployes
-(`SCHEDULER_ATRIUM_ENABLED=true` avec le profil Atrium et
-`SCHEDULER_NEXUS_ENABLED=true` avec le profil Nexus). Le scheduler retente les
-appels si une API est temporairement indisponible.
-
-Leurs crates historiques
-restent temporairement dans le workspace pour permettre un retour arriere. Ils
-seront supprimes apres validation en environnement reel.
-
-Sentinel reste dans `sentinel-worker` tant que ses traitements SQL/Redis n'ont
-pas chacun un endpoint interne dans `sentinel-api`. Ops conserve son agent
-isole pour `/host/proc` et la surveillance Docker.
+Les anciens workers ont été retirés. Les quatre domaines démarrent toujours et
+le scheduler retente les appels si une surface API est temporairement
+indisponible. Ops conserve son agent isolé pour `/host/proc` et la surveillance
+Docker ; cette frontière de privilèges n'est pas un worker de planification.
 
 Jobs Sentinel deja migres : `sursis-expire`, snapshots quotidien et horaire,
 retention analytics, publication Top users, classement mensuel, nettoyage des

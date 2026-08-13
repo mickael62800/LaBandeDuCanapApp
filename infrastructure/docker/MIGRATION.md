@@ -147,16 +147,16 @@ docker compose -f infrastructure/docker/docker-compose.yml up -d --build
 docker compose -f infrastructure/docker/docker-compose.yml logs -f --tail=50
 ```
 
-Si tu utilises Prometheus/Grafana :
+Prometheus et Grafana font partie du démarrage standard :
 
 ```bash
-docker compose -f infrastructure/docker/docker-compose.yml --profile monitoring up -d
+docker compose -f infrastructure/docker/docker-compose.yml up -d prometheus grafana
 ```
 
-Si tu utilises le profile TLS (Let's Encrypt) :
+Certbot fait également partie du démarrage standard :
 
 ```bash
-docker compose -f infrastructure/docker/docker-compose.yml --profile tls up -d
+docker compose -f infrastructure/docker/docker-compose.yml up -d certbot
 ```
 
 ---
@@ -191,7 +191,7 @@ docker compose -f infrastructure/docker/docker-compose.yml --profile tls up -d
 ### Logs / observabilité
 - [ ] Les logs sont rotés (vérifier sur les fichiers JSON dans
   `/var/lib/docker/containers/<id>/<id>-json.log`, ils ne dépassent pas 10 MB)
-- [ ] Si profile monitoring activé : `http://localhost:3002` (Grafana) montre
+- [ ] `http://localhost:3002` (Grafana) montre
   les métriques workers (port 9100 chacun)
 
 ---

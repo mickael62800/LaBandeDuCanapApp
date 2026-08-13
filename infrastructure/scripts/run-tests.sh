@@ -11,6 +11,7 @@ cd "$(dirname "$0")/../.."
 COMPOSE_FILE="infrastructure/docker/docker-compose.test.yml"
 DB_URL="postgres://sentinel_test:sentinel_test@localhost:5433/sentinel_test"
 REDIS_URL="redis://localhost:6380"
+MIGRATIONS_DIR="platform-api/migrations/sentinel"
 
 # Couleurs
 GREEN='\033[0;32m'
@@ -37,8 +38,7 @@ ok "Services demarres (postgres:5433, redis:6380)"
 # ── 2. Lancer les migrations ──
 info "Application des migrations..."
 export DATABASE_URL="$DB_URL"
-cd sentinel-api
-cargo sqlx migrate run --source ./migrations 2>/dev/null || {
+cargo sqlx migrate run --source "$MIGRATIONS_DIR" 2>/dev/null || {
     # Si sqlx-cli n'est pas installe, utiliser psql dans le container de test
     # (evite de requerir psql sur le host Windows).
     #
@@ -46,9 +46,9 @@ cargo sqlx migrate run --source ./migrations 2>/dev/null || {
     # automatique des paths POSIX (/tmp/...) en paths Windows (C:/...)
     # sur les arguments passes aux commandes docker.
     info "sqlx-cli non disponible, application via docker exec..."
-    MSYS_NO_PATHCONV=1 docker cp migrations sentinel-test-postgres:/tmp/migrations_run
+    MSYS_NO_PATHCONV=1 docker cp "$MIGRATIONS_DIR/." sentinel-test-postgres:/tmp/migrations_run
     MIGRATION_FAIL=0
-    for f in migrations/*.sql; do
+    for f in "$MIGRATIONS_DIR"/*.sql; do
         BASENAME=$(basename "$f")
         # Pattern OUT=$(...) + RC capture : set -e ne peut pas killer
         # le script sur une assignment avec || ... bloc.
@@ -65,27 +65,26 @@ cargo sqlx migrate run --source ./migrations 2>/dev/null || {
         exit 1
     fi
 }
-cd ../..
 ok "Migrations appliquees"
 
-# ── 3. Tests unitaires (tous les bots + API) ──
+# ── 3. Tests unitaires (processus deployes + API) ──
 info "Tests unitaires..."
 FAILED=0
 
-for bot in automod-bot security-bot moderation-bot audit-bot voice-bot ticket-bot community-bot progression-bot; do
-    if [ -f "bots/$bot/Cargo.toml" ]; then
-        info "  $bot..."
-        if cargo test --manifest-path "bots/$bot/Cargo.toml" --quiet 2>&1; then
-            ok "  $bot"
+for service in sentinel-bot nexus-bot atrium-bot platform-scheduler platform-gateway ops-agent auth-api docker-agent; do
+    if [ -f "$service/Cargo.toml" ]; then
+        info "  $service..."
+        if cargo test --manifest-path "$service/Cargo.toml" --quiet 2>&1; then
+            ok "  $service"
         else
-            fail "  $bot"
+            fail "  $service"
             FAILED=$((FAILED + 1))
         fi
     fi
 done
 
 info "  API (lib)..."
-if cargo test --manifest-path sentinel-api/Cargo.toml --lib --quiet 2>&1; then
+if cargo test --manifest-path platform-api/Cargo.toml --lib --quiet 2>&1; then
     ok "  API (lib)"
 else
     fail "  API (lib)"
@@ -96,13 +95,13 @@ fi
 info "Tests d'integration HTTP..."
 export DATABASE_URL="$DB_URL"
 export REDIS_URL="$REDIS_URL"
-# Noms lus par `sentinel-api/src/config.rs`. Sous les anciens noms (API_KEY /
+# Noms lus par `platform-api/src/sentinel/config.rs`. Sous les anciens noms (API_KEY /
 # REQUIRE_API_KEY), la config retombait sur son defaut `require = true` avec une
 # cle vide et l'API sortait en exit(1) au demarrage.
 export SENTINEL_API_KEY=""
 export SENTINEL_REQUIRE_API_KEY="false"
 
-if cargo test --manifest-path sentinel-api/Cargo.toml --tests --quiet 2>&1; then
+if cargo test --manifest-path platform-api/Cargo.toml --tests --quiet 2>&1; then
     ok "Tests d'integration HTTP"
 else
     fail "Tests d'integration HTTP"

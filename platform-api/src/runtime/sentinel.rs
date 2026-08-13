@@ -17,11 +17,6 @@ use tokio::signal;
 use tracing::info;
 use tracing::warn;
 
-#[tokio::main]
-async fn main() {
-    run().await;
-}
-
 pub async fn run() {
     dotenvy::dotenv().ok();
 

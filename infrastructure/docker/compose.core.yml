@@ -84,8 +84,7 @@ x-worker-networks-with-internet: &worker-networks-with-internet
 services:
 
   # Planificateur HTTP commun. Aucun acces DB, Redis, Docker, /proc ou Discord.
-  # Les domaines restent opt-in pendant la migration pour garantir qu'un job
-  # ne tourne jamais a la fois ici et dans son ancien worker.
+  # Les quatre domaines sont actifs : les anciens workers ont ete retires.
   platform-scheduler:
     <<: *rust-base
     build:
@@ -94,14 +93,12 @@ services:
         BIN_NAME: platform-scheduler
     environment:
       RUST_LOG: ${RUST_LOG:-info}
-      SCHEDULER_ATRIUM_ENABLED: ${SCHEDULER_ATRIUM_ENABLED:-false}
-      ATRIUM_API_URL: http://atrium-api:8090
+      ATRIUM_API_URL: http://api:8090
       ATRIUM_API_TOKEN: ${ATRIUM_SCHEDULER_TOKEN:?ATRIUM_SCHEDULER_TOKEN est requis}
       ATRIUM_PRIMARY_GUILD_ID: ${PUBLIC_GUILD_ID:-}
       ATRIUM_SUMMARY_INTERVAL_SECS: ${ATRIUM_SUMMARY_INTERVAL_SECS:-86400}
       ATRIUM_RETENTION_INTERVAL_SECS: ${ATRIUM_RETENTION_INTERVAL_SECS:-86400}
-      SCHEDULER_NEXUS_ENABLED: ${SCHEDULER_NEXUS_ENABLED:-false}
-      NEXUS_API_URL: http://nexus-api:3100
+      NEXUS_API_URL: http://api:3100
       NEXUS_API_TOKEN: ${NEXUS_SCHEDULER_TOKEN:?NEXUS_SCHEDULER_TOKEN est requis}
       GAME_HEALTH_CHECK_INTERVAL_SECS: ${GAME_HEALTH_CHECK_INTERVAL_SECS:-30}
       GAME_IDLE_SHUTDOWN_CHECK_INTERVAL_SECS: ${GAME_IDLE_SHUTDOWN_CHECK_INTERVAL_SECS:-3600}
@@ -110,7 +107,6 @@ services:
       GAME_REVEAL_IP_INTERVAL_SECS: ${GAME_REVEAL_IP_INTERVAL_SECS:-300}
       GAME_DAILY_PING_INTERVAL_SECS: ${GAME_DAILY_PING_INTERVAL_SECS:-3600}
       GAME_AUTO_START_INTERVAL_SECS: ${GAME_AUTO_START_INTERVAL_SECS:-60}
-      SCHEDULER_SENTINEL_ENABLED: ${SCHEDULER_SENTINEL_ENABLED:-true}
       SENTINEL_API_URL: http://api:3000
       SENTINEL_API_TOKEN: ${SENTINEL_SCHEDULER_TOKEN:?SENTINEL_SCHEDULER_TOKEN est requis}
       SENTINEL_SURSIS_EXPIRE_INTERVAL_SECS: ${SENTINEL_SURSIS_EXPIRE_INTERVAL_SECS:-60}
@@ -148,8 +144,7 @@ services:
       AI_POLL_INTERVAL: ${AI_POLL_INTERVAL:-2}
       TICKETS_SLA_CHECK_INTERVAL: ${TICKETS_SLA_CHECK_INTERVAL:-300}
       TICKETS_CLOSE_INACTIVE_INTERVAL: ${TICKETS_CLOSE_INACTIVE_INTERVAL:-1800}
-      SCHEDULER_OPS_ENABLED: ${SCHEDULER_OPS_ENABLED:-true}
-      OPS_API_URL: http://ops-api:3200
+      OPS_API_URL: http://api:3200
       OPS_API_TOKEN: ${OPS_SCHEDULER_TOKEN:?OPS_SCHEDULER_TOKEN est requis}
       SECURITY_ALERTS_INTERVAL_SECS: ${SECURITY_ALERTS_INTERVAL_SECS:-300}
     security_opt:
@@ -453,14 +448,18 @@ services:
       # Relais des jeux joues depuis le site. Le navigateur ne joint
       # jamais nexus-api : il passe par sentinel-api, seul composant a
       # savoir QUI est connecte. La cle ne quitte donc pas le reseau interne.
-      NEXUS_API_URL: http://nexus-api:3100
+      NEXUS_API_URL: http://127.0.0.1:3100
       NEXUS_API_KEY: ${NEXUS_API_KEY:?NEXUS_API_KEY est requis}
-      NEXUS_API_ENABLED: ${NEXUS_API_ENABLED:-false}
-      NEXUS_DATABASE_URL: ${NEXUS_DATABASE_URL:-postgres://nexus:${NEXUS_DB_PASSWORD:-disabled}@nexus-pgbouncer:5432/nexus}
-      NEXUS_REDIS_URL: ${NEXUS_REDIS_URL:-redis://:${NEXUS_REDIS_PASSWORD:-disabled}@nexus-redis:6379}
+      NEXUS_DATABASE_URL: ${NEXUS_DATABASE_URL:-postgres://nexus:${NEXUS_DB_PASSWORD:?NEXUS_DB_PASSWORD est requis}@nexus-pgbouncer:5432/nexus}
+      NEXUS_REDIS_URL: ${NEXUS_REDIS_URL:-redis://:${NEXUS_REDIS_PASSWORD:?NEXUS_REDIS_PASSWORD est requis}@nexus-redis:6379}
       NEXUS_API_PORT: "3100"
       NEXUS_GRPC_PORT: "3101"
-      NEXUS_SCHEDULER_TOKEN: ${NEXUS_SCHEDULER_TOKEN:-}
+      NEXUS_ALLOWED_ORIGINS: ${NEXUS_ALLOWED_ORIGINS:-${ALLOWED_ORIGINS:-}}
+      NEXUS_RATE_LIMIT_PER_SEC: ${NEXUS_RATE_LIMIT_PER_SEC:-50}
+      NEXUS_HEAVY_RATE_LIMIT_PER_SEC: ${NEXUS_HEAVY_RATE_LIMIT_PER_SEC:-2}
+      NEXUS_MAX_BODY_SIZE: ${NEXUS_MAX_BODY_SIZE:-10485760}
+      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
+      NEXUS_SCHEDULER_TOKEN: ${NEXUS_SCHEDULER_TOKEN:?NEXUS_SCHEDULER_TOKEN est requis}
       NEXUS_DISCORD_TOKEN: ${NEXUS_BOT_TOKEN:-${NEXUS_DISCORD_TOKEN:-}}
       NEXUS_METRICS_TOKEN: ${NEXUS_METRICS_TOKEN:-${METRICS_TOKEN:?METRICS_TOKEN est requis}}
       DOCKER_AGENT_GAME_TOKEN: ${DOCKER_AGENT_GAME_TOKEN:?DOCKER_AGENT_GAME_TOKEN est requis}
@@ -499,19 +498,23 @@ services:
       OPS_GEOIP_ENABLED: ${OPS_GEOIP_ENABLED:-false}
       OPS_GEOIP_URL: ${OPS_GEOIP_URL:-http://ip-api.com/batch}
       OPS_GEOIP_ALLOW_PLAINTEXT: ${OPS_GEOIP_ALLOW_PLAINTEXT:-false}
-      ATRIUM_API_ENABLED: ${ATRIUM_API_ENABLED:-false}
       ATRIUM_API_BIND_ADDR: 0.0.0.0:8090
       ATRIUM_GRPC_BIND_ADDR: 0.0.0.0:8091
-      ATRIUM_API_TOKEN: ${ATRIUM_API_TOKEN:-}
-      ATRIUM_SCHEDULER_TOKEN: ${ATRIUM_SCHEDULER_TOKEN:-}
-      ATRIUM_GRPC_TOKEN: ${ATRIUM_GRPC_TOKEN:-}
-      ATRIUM_RAG_DATABASE_URL: ${ATRIUM_RAG_DATABASE_URL:-postgres://atrium:${ATRIUM_DB_PASSWORD:-disabled}@atrium-pgbouncer:5432/atrium}
+      ATRIUM_API_TOKEN: ${ATRIUM_API_TOKEN:?ATRIUM_API_TOKEN est requis}
+      ATRIUM_SCHEDULER_TOKEN: ${ATRIUM_SCHEDULER_TOKEN:?ATRIUM_SCHEDULER_TOKEN est requis}
+      ATRIUM_GRPC_TOKEN: ${ATRIUM_GRPC_TOKEN:?ATRIUM_GRPC_TOKEN est requis}
+      ATRIUM_RAG_DATABASE_URL: ${ATRIUM_RAG_DATABASE_URL:-postgres://atrium:${ATRIUM_DB_PASSWORD:?ATRIUM_DB_PASSWORD est requis}@atrium-pgbouncer:5432/atrium}
       DEEPSEEK_API_KEY: ${ATRIUM_DEEPSEEK_API_KEY:-${DEEPSEEK_API_KEY:-}}
       DEEPSEEK_MODEL: ${ATRIUM_DEEPSEEK_MODEL:-${DEEPSEEK_MODEL:-deepseek-v4-flash}}
       ATRIUM_EMBEDDINGS_BASE_URL: ${ATRIUM_EMBEDDINGS_BASE_URL:-http://atrium-ollama:11434/v1}
       ATRIUM_EMBEDDINGS_API_KEY: ${ATRIUM_EMBEDDINGS_API_KEY:-}
       ATRIUM_EMBEDDINGS_MODEL: ${ATRIUM_EMBEDDINGS_MODEL:-nomic-embed-text}
       ATRIUM_METRICS_TOKEN: ${ATRIUM_METRICS_TOKEN:-${METRICS_TOKEN:?METRICS_TOKEN est requis}}
+      ATRIUM_API_RATE_LIMIT_PER_SEC: ${ATRIUM_API_RATE_LIMIT_PER_SEC:-5}
+      ATRIUM_MEMORY_RETENTION_DAYS: ${ATRIUM_MEMORY_RETENTION_DAYS:-90}
+      ATRIUM_USER_COOLDOWN_SECS: ${ATRIUM_USER_COOLDOWN_SECS:-10}
+      ATRIUM_USER_DAILY_LIMIT: ${ATRIUM_USER_DAILY_LIMIT:-30}
+      ATRIUM_GLOBAL_DAILY_LIMIT: ${ATRIUM_GLOBAL_DAILY_LIMIT:-500}
       # Gate RBAC global fail-closed par route (defaut false). Mettre a "true"
       # active la deuxieme couche de defense en profondeur devant les gardes par
       # handler. Surchargeable via la var RBAC_GLOBAL_GATE du .env docker.
@@ -593,29 +596,19 @@ services:
         condition: service_started
       nexus-pgbouncer:
         condition: service_started
-        required: false
       nexus-db-init:
         condition: service_completed_successfully
-        required: false
       nexus-redis:
         condition: service_healthy
-        required: false
       atrium-pgbouncer:
         condition: service_started
-        required: false
       atrium-ollama-init:
         condition: service_completed_successfully
-        required: false
     # SECURITE — API a besoin d'internet (Discord OAuth, get_user_guilds).
     # internal : Redis + pgbouncer + autres services internes.
     # default : sortie internet (Discord).
     networks:
-      internal:
-        aliases:
-          - sentinel-api
-          - nexus-api
-          - atrium-api
-          - ops-api
+      internal: {}
       default: {}
 
   # ── Agent Docker ────────────────────────────────────────────────────────
@@ -678,99 +671,6 @@ services:
       timeout: 3s
       retries: 3
 
-  # ── API Exploitation ────────────────────────────────────────────────────
-  #
-  # Ecrans de la MACHINE hote (sondes, Docker, logs techniques, securite de
-  # l'hote, regles d'alerte), transverses aux trois plateformes Discord.
-  #
-  # Se connecte a la base de Sentinel : Postgres ne sait pas requeter entre
-  # bases logiques, or l'exploitation doit LIRE `logs` et `audit_logs`. La
-  # separation passe par un role restreint, pas par une base dediee.
-  ops-api:
-    <<: *rust-base
-    build:
-      <<: *build-alpine
-      args:
-        BIN_NAME: ops-api
-    environment:
-      RUST_LOG: ${RUST_LOG:-info}
-      OPS_API_BIND_ADDR: 0.0.0.0:3200
-      # Role RESTREINT (cf. migration 034) via son pool dedie : l'exploitation
-      # ne se connecte plus avec le proprietaire de la base. Elle porte le
-      # jeton d'administration de l'hote ; lui laisser en plus tout
-      # `discord_sentinel` faisait d'un seul processus compromis la machine ET
-      # les donnees de la communaute.
-      OPS_DATABASE_URL: postgres://sentinel_ops:${OPS_DB_PASSWORD:?OPS_DB_PASSWORD est requis}@ops-pgbouncer:5432/discord_sentinel
-      # Requis : l'API refuse de demarrer sans jeton d'au moins 16 caracteres.
-      OPS_API_TOKEN: ${OPS_API_TOKEN:?OPS_API_TOKEN est requis}
-      # Surcharge facultative ; a defaut, le jeton commun aux quatre API.
-      OPS_METRICS_TOKEN: ${OPS_METRICS_TOKEN:-${METRICS_TOKEN:?METRICS_TOKEN est requis}}
-      OPS_SCHEDULER_TOKEN: ${OPS_SCHEDULER_TOKEN:?OPS_SCHEDULER_TOKEN est requis}
-      # Resolution GeoIP : transfert d'adresses IP a un tiers, donc opt-in
-      # explicite. Cf. .env.example pour la portee RGPD et le point sur le
-      # http:// du palier gratuit.
-      # Resolution GeoIP : ce sont des ADRESSES IP DE VISITEURS envoyees a un
-      # tiers, donc une donnee personnelle. Desactivee par defaut.
-      OPS_GEOIP_ENABLED: ${OPS_GEOIP_ENABLED:-false}
-      OPS_GEOIP_URL: ${OPS_GEOIP_URL:-http://ip-api.com/batch}
-      # Le defaut ci-dessus est en http:// — le palier gratuit d'ip-api n'expose
-      # pas de TLS. Activer la resolution ne suffit donc plus : envoyer ces IP
-      # EN CLAIR demande sa propre declaration. Sans elle, ops-api journalise un
-      # avertissement au demarrage et laisse la resolution eteinte, plutot que
-      # de degrader silencieusement vers le transfert en clair.
-      #
-      # Pour s'en passer : pointer OPS_GEOIP_URL sur un service TLS (palier
-      # payant, ou instance auto-hebergee), ou une base locale type GeoLite2 —
-      # qui supprimerait le transfert lui-meme.
-      OPS_GEOIP_ALLOW_PLAINTEXT: ${OPS_GEOIP_ALLOW_PLAINTEXT:-false}
-      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD est requis}@redis:6379
-      # Journal des logins reussis : la table appartient a la base de
-      # l'identite, l'ecran « Securite de l'hote » la lit par HTTP. Meme
-      # relation qu'avec docker-agent pour le daemon Docker.
-      AUTH_API_URL: http://auth-api:8096
-      AUTH_API_TOKEN: ${AUTH_API_TOKEN:?AUTH_API_TOKEN est requis}
-      DOCKER_AGENT_URL: http://docker-agent:8095
-      DOCKER_AGENT_TOKEN: ${DOCKER_AGENT_TOKEN:?DOCKER_AGENT_TOKEN est requis}
-      WEB_DOMAIN: ${WEB_DOMAIN:-localhost}
-    security_opt:
-      - no-new-privileges:true
-    volumes:
-      # RW et non `:ro` : `adapters/host_security/ban_queue.rs` ECRIT
-      # bans-pending.txt / unbans-pending.txt, consommes par le cron hote
-      # sentinel-apply-bans.sh. En lecture seule, POST /security/ban-ip
-      # echouait en permission denied — la page Securite proposait un bouton
-      # qui ne bannissait rien.
-      - /var/lib/sentinel:/var/lib/sentinel
-      # PAS de montage de /etc/letsencrypt : `privkey.pem` y voisine
-      # `cert.pem`, et ce service n'a besoin que de la date d'expiration.
-      # `adapters/host_security/tls_cert.rs` la lit desormais par le handshake
-      # TLS (donnee publique), ce qui supprime le besoin d'acces fichier.
-      # Ne pas le remettre pour « accelerer » la lecture.
-    networks:
-      - internal
-      - default
-    depends_on:
-      postgres:
-        condition: service_healthy
-      # Son pool, pas le commun : ops-api n'a plus d'identifiants pour celui-ci.
-      ops-pgbouncer:
-        condition: service_started
-      docker-agent:
-        condition: service_started
-      redis:
-        condition: service_healthy
-    healthcheck:
-      # /ready (readiness) et non /health (liveness) : un dependant en
-      # `condition: service_healthy` doit attendre que l'API puisse REELLEMENT
-      # servir (Postgres + Redis joignables), pas seulement que le process tourne.
-      # /health reste disponible pour une sonde de liveness pure.
-      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:3200/ready || exit 1"]
-      interval: 30s
-      timeout: 3s
-      retries: 3
-    profiles:
-      - compat-api
-
   # Agent de collecte hote. Lui seul lit /proc et interroge docker-agent ; le
   # scheduler commun et le dispatcher d'alertes ne portent pas ces privileges.
   ops-agent:
@@ -806,6 +706,48 @@ services:
         condition: service_healthy
     networks:
       - internal
+
+  # Gateway WebSocket transverse. Le nom de service `gateway` reste stable
+  # pour nginx ; seul le binaire a ete consolide dans `platform-gateway`.
+  gateway:
+    <<: *rust-base
+    build:
+      <<: *build-alpine
+      args:
+        BIN_NAME: platform-gateway
+    # Acces local de diagnostic uniquement ; le trafic public passe par nginx.
+    ports:
+      - "127.0.0.1:3001:3001"
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:3001/health || exit 1"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 15s
+    environment:
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD est requis}@redis:6379
+      REDIS_CHANNEL: sentinel:events
+      API_URL: http://api:3000
+      SENTINEL_API_KEY: ${SENTINEL_API_KEY:-${API_KEY:-}}
+      # Le navigateur joint le cookie HttpOnly au handshake same-origin ; le
+      # gateway le fait valider par auth-api sans credential dans l'URL.
+      AUTH_API_URL: http://auth-api:8096
+      AUTH_API_TOKEN: ${AUTH_API_TOKEN:?AUTH_API_TOKEN est requis}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+      HOST: 0.0.0.0
+      PORT: "3001"
+      MAX_CONNECTIONS: "1000"
+      RUST_LOG: ${RUST_LOG:-info}
+    depends_on:
+      api:
+        condition: service_healthy
+      auth-api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - internal
+      - default
 
   # ──────────────────────────────────────────────────────────────────────────
   # Bot unifie
@@ -945,9 +887,8 @@ services:
     depends_on:
       api:
         condition: service_healthy
-      # Profil optionnel : quand Atrium est actif, ne publier le nouveau SPA
-      # qu'une fois sa surface HTTP saine. Sans le profil, Compose ignore
-      # proprement cette dependance.
+      gateway:
+        condition: service_healthy
     # NOTE — web (nginx) a besoin de default pour que le port publish 80/443
     # fonctionne (Docker requiert un reseau non-internal pour le NAT host).
     # internal donne acces aux upstreams (api, gateway). nginx ne fait jamais

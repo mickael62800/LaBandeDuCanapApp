@@ -1,4 +1,4 @@
-# Plateforme Atrium — activee par les profils atrium ou full.
+# Plateforme Atrium — composant permanent de la plateforme unifiee.
 x-atrium-default-logging: &atrium-default-logging
   driver: json-file
   options:
@@ -17,72 +17,10 @@ x-atrium-build-alpine: &atrium-build-alpine
 services:
 
   # ──────────────────────────────────────────────────────────────────────────
-  # Atrium — bot d'accueil IA (profil optionnel)
+  # Atrium — bot d'accueil IA
   # ──────────────────────────────────────────────────────────────────────────
   # L'API appelle DeepSeek et le bot joint Discord : tous deux ont donc acces
   # sortant. Leur liaison gRPC reste interne et n'expose aucun port sur l'hote.
-  atrium-api:
-    <<: *atrium-rust-base
-    build:
-      <<: *atrium-build-alpine
-      args:
-        BIN_NAME: atrium-api
-    healthcheck:
-      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:8090/health || exit 1"]
-      interval: 15s
-      timeout: 3s
-      retries: 3
-      start_period: 15s
-    environment:
-      ATRIUM_API_BIND_ADDR: 0.0.0.0:8090
-      ATRIUM_GRPC_BIND_ADDR: 0.0.0.0:8091
-      ATRIUM_API_TOKEN: ${ATRIUM_API_TOKEN:?ATRIUM_API_TOKEN est requis}
-      ATRIUM_SCHEDULER_TOKEN: ${ATRIUM_SCHEDULER_TOKEN:?ATRIUM_SCHEDULER_TOKEN est requis}
-      ATRIUM_GRPC_TOKEN: ${ATRIUM_GRPC_TOKEN:?ATRIUM_GRPC_TOKEN est requis}
-      # `:?` sur le DERNIER repli, comme les deux lignes au-dessus : la chaine
-      # se terminait sur une valeur vide, et l'echec survenait alors au
-      # demarrage du binaire (« variable DEEPSEEK_API_KEY vide ») plutot qu'au
-      # montage du compose. Le message nomme desormais la variable sans qu'il
-      # faille ouvrir les logs du conteneur.
-      # `ATRIUM_DEEPSEEK_API_KEY` reste la surcharge par plateforme ; quand elle
-      # est definie, le repli n'est pas evalue et `DEEPSEEK_API_KEY` n'est pas
-      # exigee.
-      DEEPSEEK_API_KEY: ${ATRIUM_DEEPSEEK_API_KEY:-${DEEPSEEK_API_KEY:?DEEPSEEK_API_KEY est requis}}
-      DEEPSEEK_MODEL: ${ATRIUM_DEEPSEEK_MODEL:-${DEEPSEEK_MODEL:-deepseek-v4-flash}}
-      # Protege /metrics par un Bearer. La variable n'etait pas declaree ici du
-      # tout : l'endpoint restait donc ouvert quoi qu'on mette dans le .env.
-      # Surcharge facultative ; a defaut, le jeton commun aux quatre API.
-      ATRIUM_METRICS_TOKEN: ${ATRIUM_METRICS_TOKEN:-${METRICS_TOKEN:?METRICS_TOKEN est requis}}
-      ATRIUM_API_RATE_LIMIT_PER_SEC: ${ATRIUM_API_RATE_LIMIT_PER_SEC:-5}
-      # Retention de la memoire conversationnelle. Le job quotidien efface
-      # messages et resumes au-dela de ce delai.
-      #
-      # Declaree ICI et pas seulement dans le code : c'est un reglage a portee
-      # RGPD, et il etait invisible a l'exploitant — il fallait lire
-      # `admin.rs` pour apprendre que la valeur etait 90 jours. Une donnee
-      # personnelle dont la duree de conservation ne se lit nulle part est une
-      # duree que personne ne peut ni verifier ni justifier.
-      ATRIUM_MEMORY_RETENTION_DAYS: ${ATRIUM_MEMORY_RETENTION_DAYS:-90}
-      ATRIUM_USER_COOLDOWN_SECS: ${ATRIUM_USER_COOLDOWN_SECS:-10}
-      ATRIUM_USER_DAILY_LIMIT: ${ATRIUM_USER_DAILY_LIMIT:-30}
-      ATRIUM_GLOBAL_DAILY_LIMIT: ${ATRIUM_GLOBAL_DAILY_LIMIT:-500}
-      # Base logique Atrium, isolee derriere son pool dedie.
-      ATRIUM_RAG_DATABASE_URL: ${ATRIUM_RAG_DATABASE_URL:-postgres://atrium:${ATRIUM_DB_PASSWORD:?ATRIUM_DB_PASSWORD est requis}@atrium-pgbouncer:5432/atrium}
-      ATRIUM_EMBEDDINGS_BASE_URL: ${ATRIUM_EMBEDDINGS_BASE_URL:-http://atrium-ollama:11434/v1}
-      ATRIUM_EMBEDDINGS_API_KEY: ${ATRIUM_EMBEDDINGS_API_KEY:-}
-      ATRIUM_EMBEDDINGS_MODEL: ${ATRIUM_EMBEDDINGS_MODEL:-nomic-embed-text}
-      RUST_LOG: ${RUST_LOG:-info}
-    depends_on:
-      atrium-pgbouncer:
-        condition: service_started
-      atrium-ollama-init:
-        condition: service_completed_successfully
-    networks:
-      - internal
-      - default
-    profiles:
-      - compat-api
-
   # Embeddings RAG locaux : pas de cle API ni de cout par requete.
   # Le modele est telecharge une fois dans le volume persistant puis reste
   # limite pour ne pas affamer Sentinel, Nexus et PostgreSQL.
@@ -111,9 +49,6 @@ services:
     networks:
       - internal
       - default
-    profiles:
-      - atrium
-      - full
 
   # Le pull est separe du serveur Ollama : le healthcheck du serveur peut
   # devenir vert avant le telechargement, mais Atrium ne demarre qu'apres.
@@ -140,9 +75,6 @@ services:
       # registre Ollama. Le serveur Ollama reste sur le reseau interne.
       - default
     restart: "no"
-    profiles:
-      - atrium
-      - full
 
   atrium-bot:
     <<: *atrium-rust-base
@@ -164,7 +96,7 @@ services:
       # `sentinel-bot` qui les signe : une divergence fait tout rejeter, et ne
       # se voit que dans les logs de ce conteneur.
       PLATFORM_EVENTS_HMAC_KEY: ${PLATFORM_EVENTS_HMAC_KEY:?PLATFORM_EVENTS_HMAC_KEY est requis}
-      ATRIUM_GRPC_URL: http://atrium-api:8091
+      ATRIUM_GRPC_URL: http://api:8091
       ATRIUM_GRPC_TOKEN: ${ATRIUM_GRPC_TOKEN:?ATRIUM_GRPC_TOKEN est requis}
       ATRIUM_GENERAL_CHANNEL_ID: ${ATRIUM_GENERAL_CHANNEL_ID:-}
       ATRIUM_SERVER_CONTEXT: ${ATRIUM_SERVER_CONTEXT:-}
@@ -175,9 +107,6 @@ services:
     networks:
       - internal
       - default
-    profiles:
-      - atrium
-      - full
 
   # One-shot idempotent : Atrium a sa base logique, dans l'unique conteneur
   # PostgreSQL de la plateforme.
@@ -223,9 +152,6 @@ services:
         condition: service_healthy
     networks:
       - data
-    profiles:
-      - atrium
-      - full
 
   # Pool dedie : atrium-api reste sur le reseau interne et ne joint jamais
   # PostgreSQL directement.
@@ -247,6 +173,3 @@ services:
     networks:
       - data
       - internal
-    profiles:
-      - atrium
-      - full

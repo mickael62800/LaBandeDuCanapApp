@@ -1,4 +1,4 @@
-# Outils d'administration et observabilite optionnels.
+# Outils d'administration et observabilite de la stack standard.
 x-observability-default-logging: &observability-default-logging
   driver: json-file
   options:
@@ -9,10 +9,6 @@ services:
 
   # ──────────────────────────────────────────────────────────────────────────
   # Supervision et outils d'administration.
-  # - monitoring : ensemble historique complet
-  # - tools : pgAdmin + Redis Commander uniquement
-  # - observability : Prometheus + Grafana uniquement
-  # - full : tous les modules optionnels applicatifs (hors TLS)
   # ──────────────────────────────────────────────────────────────────────────
 
   pgadmin:
@@ -33,10 +29,6 @@ services:
     # pgadmin a besoin de joindre postgres (sur "data") direct.
     networks:
       - data
-    profiles:
-      - monitoring
-      - tools
-      - full
 
   redis-commander:
     image: rediscommander/redis-commander:latest@sha256:19cd0c49f418779fa2822a0496c5e6516d0c792effc39ed20089e6268477e40a
@@ -55,10 +47,6 @@ services:
     # redis-commander a besoin de joindre Redis (sur "internal").
     networks:
       - internal
-    profiles:
-      - monitoring
-      - tools
-      - full
 
   # One-shot : ecrit le jeton de scrape dans un fichier lisible par Prometheus.
   #
@@ -92,10 +80,6 @@ services:
         printf '%s' "$$METRICS_TOKEN" > /secrets/metrics-token
         chmod 0444 /secrets/metrics-token
     restart: "no"
-    profiles:
-      - monitoring
-      - observability
-      - full
 
   prometheus:
     image: prom/prometheus:latest@sha256:508729e0e2d18e11fd742a5a5ca70e557b940a93948c3c95fd0123a6fd538b69
@@ -119,10 +103,6 @@ services:
     # prometheus scrape /metrics sur les workers (tous sur "internal").
     networks:
       - internal
-    profiles:
-      - monitoring
-      - observability
-      - full
 
   grafana:
     image: grafana/grafana:latest@sha256:ab5cb380e3ff3172d6c8bd2e7cfd31cce977d2881b260e1f5bc089bf0b759b43
@@ -144,7 +124,3 @@ services:
     # grafana query prometheus (sur "internal").
     networks:
       - internal
-    profiles:
-      - monitoring
-      - observability
-      - full

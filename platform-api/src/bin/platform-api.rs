@@ -2,17 +2,17 @@
 //! processus tout en conservant leurs listeners et leurs ports.
 
 #[allow(dead_code)]
-#[path = "atrium-api.rs"]
-mod atrium_api;
+#[path = "../runtime/atrium.rs"]
+mod atrium_runtime;
 #[allow(dead_code)]
-#[path = "nexus-api.rs"]
-mod nexus_api;
+#[path = "../runtime/nexus.rs"]
+mod nexus_runtime;
 #[allow(dead_code)]
-#[path = "ops-api.rs"]
-mod ops_api;
+#[path = "../runtime/ops.rs"]
+mod ops_runtime;
 #[allow(dead_code)]
-#[path = "sentinel-api.rs"]
-mod sentinel_api;
+#[path = "../runtime/sentinel.rs"]
+mod sentinel_runtime;
 
 use std::time::Duration;
 
@@ -29,26 +29,10 @@ async fn main() {
     tracing::info!("demarrage du runtime platform-api sur quatre listeners");
 
     let mut services = tokio::task::JoinSet::new();
-    services.spawn(async { ("sentinel", sentinel_api::run().await) });
-    services.spawn(async { ("ops", ops_api::run().await) });
-    if domain_enabled(
-        "NEXUS_API_ENABLED",
-        "nexus",
-        &["NEXUS_DATABASE_URL", "NEXUS_API_KEY"],
-    ) {
-        services.spawn(async { ("nexus", nexus_api::run().await) });
-    }
-    if domain_enabled(
-        "ATRIUM_API_ENABLED",
-        "atrium",
-        &[
-            "ATRIUM_RAG_DATABASE_URL",
-            "ATRIUM_API_TOKEN",
-            "ATRIUM_GRPC_TOKEN",
-        ],
-    ) {
-        services.spawn(async { ("atrium", atrium_api::run().await) });
-    }
+    services.spawn(async { ("sentinel", sentinel_runtime::run().await) });
+    services.spawn(async { ("ops", ops_runtime::run().await) });
+    services.spawn(async { ("nexus", nexus_runtime::run().await) });
+    services.spawn(async { ("atrium", atrium_runtime::run().await) });
 
     tokio::select! {
         () = shutdown_signal() => {
@@ -82,30 +66,6 @@ async fn main() {
         tracing::error!("delai d'arret depasse; interruption des surfaces restantes");
         services.abort_all();
     }
-}
-
-fn domain_enabled(flag: &str, name: &str, required: &[&str]) -> bool {
-    let requested = std::env::var(flag).is_ok_and(|value| value.eq_ignore_ascii_case("true"));
-    let configured = required
-        .iter()
-        .all(|key| std::env::var(key).is_ok_and(|value| !value.trim().is_empty()));
-    let enabled = requested && configured;
-    if requested && !configured {
-        tracing::error!(
-            domain = name,
-            "domaine demande mais configuration incomplete"
-        );
-        std::process::exit(1);
-    }
-    if enabled {
-        tracing::info!(domain = name, "domaine optionnel active");
-    } else {
-        tracing::info!(
-            domain = name,
-            "domaine optionnel inactif (configuration absente)"
-        );
-    }
-    enabled
 }
 
 fn init_tracing() {

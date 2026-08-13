@@ -1,4 +1,4 @@
-# Renouvellement Let's Encrypt — active par le profil tls.
+# Renouvellement Let's Encrypt — composant de la stack standard.
 x-tls-default-logging: &tls-default-logging
   driver: json-file
   options:
@@ -7,7 +7,7 @@ x-tls-default-logging: &tls-default-logging
 
 services:
 
-  # Certbot Let's Encrypt — active via profile `tls`.
+  # Certbot Let's Encrypt.
   certbot:
     image: certbot/certbot:latest@sha256:34ee91d2f43008eb78a007d22f23ed4b2eaa9a454cb27ca2c042b49527a695b4
     restart: unless-stopped
@@ -75,5 +75,3 @@ services:
     # certbot a besoin d'internet (Let's Encrypt ACME).
     networks:
       - default
-    profiles:
-      - tls

@@ -1,4 +1,4 @@
-# Plateforme Nexus — activee par les profils nexus ou full.
+# Plateforme Nexus — composant permanent de la plateforme unifiee.
 x-nexus-default-logging: &nexus-default-logging
   driver: json-file
   options:
@@ -54,9 +54,6 @@ services:
       retries: 5
     networks:
       - internal
-    profiles:
-      - nexus
-      - full
 
   # One-shot : cree le ROLE `nexus` et la base `nexus` qu'il possede
   # (idempotent, rejouable sur une installation existante).
@@ -118,9 +115,6 @@ services:
         condition: service_healthy
     networks:
       - data
-    profiles:
-      - nexus
-      - full
 
   # Pool dedie, symetrique d'atrium-pgbouncer : nexus-api reste sur le reseau
   # interne et ne joint jamais PostgreSQL directement. Avant, il etait bi-network
@@ -152,103 +146,6 @@ services:
     networks:
       - data
       - internal
-    profiles:
-      - nexus
-      - full
-
-  nexus-api:
-    <<: *nexus-rust-base
-    build:
-      <<: *nexus-build-alpine
-      args:
-        BIN_NAME: nexus-api
-    # PAS de `ports:` volontairement — point d'entree unique. nexus-api n'est
-    # joignable que par le reseau docker `internal` : le proxy nginx du service
-    # `web` (qui authentifie et injecte la cle), le bot et le worker. Pour un
-    # acces de debug ponctuel :
-    #   docker compose exec nexus-api wget -qO- http://127.0.0.1:3100/health
-    healthcheck:
-      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:3100/health || exit 1"]
-      interval: 15s
-      timeout: 3s
-      retries: 3
-      start_period: 15s
-    environment:
-      # Serveur Discord unique servi par cette installation.
-      # Les API refusent tout autre guild_id ; les bots quittent toute
-      # autre guilde. Vide = verrou desactive.
-      PUBLIC_GUILD_ID: ${PUBLIC_GUILD_ID:-}
-      # Via nexus-pgbouncer (le pgbouncer principal ne route que
-      # discord_sentinel). L'API ne touche jamais postgres directement, et se
-      # connecte avec le role `nexus` — pas le superuser du cluster.
-      NEXUS_DATABASE_URL: postgres://nexus:${NEXUS_DB_PASSWORD:?NEXUS_DB_PASSWORD est requis}@nexus-pgbouncer:5432/nexus
-      NEXUS_API_KEY: ${NEXUS_API_KEY:?NEXUS_API_KEY est requis}
-      NEXUS_SCHEDULER_TOKEN: ${NEXUS_SCHEDULER_TOKEN:?NEXUS_SCHEDULER_TOKEN est requis}
-      NEXUS_API_PORT: "3100"
-      NEXUS_GRPC_PORT: "3101"
-      # L'API Nexus appelle aussi Discord (gestion des salons de session).
-      # Elle doit recevoir le meme token que nexus-bot.
-      NEXUS_DISCORD_TOKEN: ${NEXUS_BOT_TOKEN:-${NEXUS_DISCORD_TOKEN:-}}
-      # Protege /metrics par un Bearer. Surcharge facultative ; a defaut, le
-      # jeton commun aux quatre API (cf. `METRICS_TOKEN` dans compose.core.yml).
-      NEXUS_METRICS_TOKEN: ${NEXUS_METRICS_TOKEN:-${METRICS_TOKEN:?METRICS_TOKEN est requis}}
-      # Origines CORS autorisees. Vide = origines de dev uniquement ; en prod
-      # le front est same-origin derriere nginx, donc CORS ne joue pas.
-      NEXUS_ALLOWED_ORIGINS: ${NEXUS_ALLOWED_ORIGINS:-${ALLOWED_ORIGINS:-}}
-      # Rate limit par IP. Le debit "heavy" s'applique aux routes qui lancent
-      # un conteneur (create/start/stop/restart/delete/command) : deliberement
-      # bas, un humain qui clique ne l'atteint jamais.
-      NEXUS_RATE_LIMIT_PER_SEC: ${NEXUS_RATE_LIMIT_PER_SEC:-50}
-      NEXUS_HEAVY_RATE_LIMIT_PER_SEC: ${NEXUS_HEAVY_RATE_LIMIT_PER_SEC:-2}
-      NEXUS_MAX_BODY_SIZE: ${NEXUS_MAX_BODY_SIZE:-10485760}
-      # Nombre de proxies de confiance devant l'API (nginx du service web).
-      # Sert a lire la bonne IP dans X-Forwarded-For sans se faire spoofer.
-      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
-      # Redis DEDIE (cf. le service `nexus-redis`) : allocation atomique des
-      # ports de jeu ET bus d'evenements game-portal (stream nexus:events
-      # consomme par nexus-bot). Sans lui, l'API bascule sur un publieur inerte
-      # et les salons de session ne sont jamais crees.
-      REDIS_URL: redis://:${NEXUS_REDIS_PASSWORD:?NEXUS_REDIS_PASSWORD est requis}@nexus-redis:6379
-      # Runtime des serveurs de jeu : docker | noop. `noop` par defaut (aucun
-      # container reel) : passer a `docker` quand la flotte doit tourner.
-      #
-      # `docker` ne veut plus dire « socket local » : les operations passent par
-      # `docker-agent`, seul processus du depot a monter /var/run/docker.sock.
-      NEXUS_GAME_RUNTIME: ${NEXUS_GAME_RUNTIME:-noop}
-      DOCKER_AGENT_URL: http://docker-agent:8095
-      # Jeton de la surface `/game/*` SEULEMENT. Ne pas y mettre
-      # DOCKER_AGENT_TOKEN : il ouvre l'arret et la purge de tous les
-      # conteneurs de l'hote.
-      DOCKER_AGENT_GAME_TOKEN: ${DOCKER_AGENT_GAME_TOKEN:?DOCKER_AGENT_GAME_TOKEN est requis}
-      DOCKER_AGENT_GAME_IMAGES: ${DOCKER_AGENT_GAME_IMAGES:-itzg/minecraft-server:latest@sha256:23f417bcccfc5b96fad0c7898e1a9f6472a97d28450975a7c53a666722baeef3,lloesche/valheim-server:latest@sha256:20fde516ce311e6084f82f295c9eb6934af57b357c657937a04f62bdf5946149,factoriotools/factorio:stable@sha256:c21d798e75a8333ddca2f7029290325b3f2085841c72ab31cc64f7a916872841,thijsvanloef/palworld-server-docker:latest@sha256:401d3eb5c053bcd72949e1ede8c4e38be5e5ad66be7272ac37940706df0aeb2f,hermsi/ark-server:latest@sha256:e18189505c76187366714a2d297bbe8462937f6e43690311f71b20f9cd87b14e,vinanrra/7dtd-server:latest@sha256:c3b2073b4519b80437ec2b1841cf8b3bfb9dea6eef5078fb13b607fa86333ed6,ryshe/terraria:tshock-1.4.5.6-6.1.0@sha256:b1c89f7f359abfe1171db454101853c3812b581eecd0f4eeabb9e9f77da240ef}
-      DOCKER_AGENT_GAME_ROOT_IMAGES: ${DOCKER_AGENT_GAME_ROOT_IMAGES:-lloesche/valheim-server:latest@sha256:20fde516ce311e6084f82f295c9eb6934af57b357c657937a04f62bdf5946149,factoriotools/factorio:stable@sha256:c21d798e75a8333ddca2f7029290325b3f2085841c72ab31cc64f7a916872841,thijsvanloef/palworld-server-docker:latest@sha256:401d3eb5c053bcd72949e1ede8c4e38be5e5ad66be7272ac37940706df0aeb2f,hermsi/ark-server:latest@sha256:e18189505c76187366714a2d297bbe8462937f6e43690311f71b20f9cd87b14e,vinanrra/7dtd-server:latest@sha256:c3b2073b4519b80437ec2b1841cf8b3bfb9dea6eef5078fb13b607fa86333ed6,ryshe/terraria:tshock-1.4.5.6-6.1.0@sha256:b1c89f7f359abfe1171db454101853c3812b581eecd0f4eeabb9e9f77da240ef}
-      DOCKER_AGENT_GAME_COMMAND_IMAGES: ${DOCKER_AGENT_GAME_COMMAND_IMAGES:-ryshe/terraria:tshock-1.4.5.6-6.1.0@sha256:b1c89f7f359abfe1171db454101853c3812b581eecd0f4eeabb9e9f77da240ef}
-      DOCKER_AGENT_GAME_NETWORK: ${DOCKER_AGENT_GAME_NETWORK:-sentinel-games}
-      DOCKER_AGENT_GAME_CONTAINER_USER: ${DOCKER_AGENT_GAME_CONTAINER_USER:-1000:1000}
-      DOCKER_AGENT_GAME_PORT_START: ${DOCKER_AGENT_GAME_PORT_START:-25500}
-      DOCKER_AGENT_GAME_PORT_END: ${DOCKER_AGENT_GAME_PORT_END:-25599}
-      DOCKER_AGENT_RCON_PORT_START: ${DOCKER_AGENT_RCON_PORT_START:-25700}
-      DOCKER_AGENT_RCON_PORT_END: ${DOCKER_AGENT_RCON_PORT_END:-25799}
-      RUST_LOG: ${RUST_LOG:-info}
-    # NI `group_add: docker` NI montage du socket : ce service n'a plus rien a
-    # faire avec le daemon Docker. Le socket equivaut a un acces root sur
-    # l'hote, et nexus-api sert aussi la vitrine publique du portail.
-    # Ne PAS les remettre : c'est l'etat dont on sort.
-    security_opt:
-      - no-new-privileges:true
-    depends_on:
-      docker-agent:
-        condition: service_healthy
-      nexus-pgbouncer:
-        condition: service_started
-      nexus-db-init:
-        condition: service_completed_successfully
-      nexus-redis:
-        condition: service_healthy
-    networks:
-      - internal
-    profiles:
-      - compat-api
 
   nexus-bot:
     <<: *nexus-rust-base
@@ -264,7 +161,7 @@ services:
       # La source publique du .env est NEXUS_BOT_TOKEN. Le binaire Nexus
       # lit NEXUS_DISCORD_TOKEN ; conserver aussi ce fallback historique.
       NEXUS_DISCORD_TOKEN: ${NEXUS_BOT_TOKEN:-${NEXUS_DISCORD_TOKEN:-}}
-      NEXUS_API_URL: http://nexus-api:3100
+      NEXUS_API_URL: http://api:3100
       NEXUS_API_KEY: ${NEXUS_API_KEY:?NEXUS_API_KEY est requis}
       # URL publique servant web/public/imgs, requise par Discord pour charger
       # les bannieres des cartes de session de jeu.
@@ -280,11 +177,8 @@ services:
         condition: service_healthy
       nexus-redis:
         condition: service_healthy
-    # Connexion Discord Gateway -> internet + interne (nexus-api, redis).
+    # Connexion Discord Gateway -> internet + interne (API unifiee, Redis).
     networks:
       - internal
       - default
-    profiles:
-      - nexus
-      - full
 

@@ -1,11 +1,6 @@
 use platform_api::nexus::{adapters, bootstrap};
 use tokio::signal;
 
-#[tokio::main]
-async fn main() {
-    run().await;
-}
-
 pub async fn run() {
     dotenvy::dotenv().ok();
     if std::env::var_os("PLATFORM_API_UNIFIED_RUNTIME").is_none() {

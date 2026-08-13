@@ -8,7 +8,7 @@
 #                     cf. `services/workers/worker-common/src/metrics.rs`)
 #
 # Démarrage local :
-#   docker compose --profile monitoring up -d prometheus grafana
+#   docker compose up -d prometheus grafana
 #
 # Recharger cette config sans redémarrer :
 #   curl -X POST http://localhost:9090/-/reload
@@ -58,7 +58,7 @@ scrape_configs:
       type: Bearer
       credentials_file: /secrets/metrics-token
     static_configs:
-      - targets: ['nexus-api:3100']
+      - targets: ['api:3100']
         labels:
           service: 'nexus-api'
           component: 'backend'
@@ -74,7 +74,7 @@ scrape_configs:
       type: Bearer
       credentials_file: /secrets/metrics-token
     static_configs:
-      - targets: ['atrium-api:8090']
+      - targets: ['api:8090']
         labels:
           service: 'atrium-api'
           component: 'backend'
@@ -91,7 +91,7 @@ scrape_configs:
       type: Bearer
       credentials_file: /secrets/metrics-token
     static_configs:
-      - targets: ['ops-api:3200']
+      - targets: ['api:3200']
         labels:
           service: 'ops-api'
           component: 'backend'

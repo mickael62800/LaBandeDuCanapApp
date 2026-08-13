@@ -8,8 +8,8 @@ commandes de deploiement existantes.
 | --- | --- |
 | `compose.core.yml` | PostgreSQL/Redis communs, Sentinel, Ops, gateway et web |
 | `compose.auth.yml` | Identite, sessions OAuth et stockage associe |
-| `compose.atrium.yml` | API, bot, worker, base et Ollama Atrium |
-| `compose.nexus.yml` | API, bot, worker, base et Redis Nexus |
+| `compose.atrium.yml` | Bot, base et Ollama Atrium |
+| `compose.nexus.yml` | Bot, base et Redis Nexus |
 | `compose.observability.yml` | Prometheus, Grafana et outils d'administration |
 | `compose.tls.yml` | Emission et renouvellement Let's Encrypt |
 
@@ -21,9 +21,8 @@ docker compose -f infrastructure/docker/docker-compose.yml config --quiet
 docker compose -f infrastructure/docker/docker-compose.yml up -d
 ```
 
-Les profils restent identiques (`atrium`, `nexus`, `monitoring`, `tools`,
-`observability`, `tls`, `full`) et peuvent etre actives avec `--profile` ou
-`COMPOSE_PROFILES`.
+Tous les services font partie de la stack standard : un simple
+`docker compose up -d` lance l'ensemble.
 
 Chaque fragment possede ses propres ancres YAML. Les ancres ne traversent pas
 une frontiere `include`; les renommer avec le prefixe du domaine evite les

@@ -27,11 +27,7 @@ async fn main() {
     });
 
     let started = domains::start(&config);
-    if started == 0 {
-        tracing::warn!("aucun domaine active dans platform-scheduler");
-    } else {
-        tracing::info!(domains = started, "platform-scheduler demarre");
-    }
+    tracing::info!(domains = started, "platform-scheduler demarre");
 
     shutdown_signal().await;
     tracing::info!("platform-scheduler arrete");

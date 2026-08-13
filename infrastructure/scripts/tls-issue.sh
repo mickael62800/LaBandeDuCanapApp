@@ -114,9 +114,9 @@ reload_nginx() {
 # ---------- Mode self-signed ----------
 if [[ "$MODE" == "selfsigned" ]]; then
     info "Generation d'un cert self-signed pour ${DOMAIN} (valide ${DAYS} jours)..."
-    # On passe par `compose run --rm --profile tls` pour beneficier des volumes
+    # On passe par `compose run --rm` pour beneficier des volumes
     # declaratifs (letsencrypt_etc). L'image certbot embarque openssl nativement.
-    $DC --profile tls run --rm --no-deps --entrypoint /bin/sh certbot -c "
+    $DC run --rm --no-deps --entrypoint /bin/sh certbot -c "
         set -e
         mkdir -p /etc/letsencrypt/live/${DOMAIN}
         openssl req -x509 -nodes -newkey rsa:2048 -days ${DAYS} \
@@ -158,7 +158,7 @@ info "Challenge : LE appelle http://${DOMAIN}/.well-known/acme-challenge/<token>
 
 # `run --rm --no-deps` : on n'active pas les depends_on (web deja up de toute facon).
 # `--keep-until-expiring` : idempotent, ne reemet pas un cert encore valide.
-if ! $DC --profile tls run --rm --no-deps --entrypoint certbot certbot \
+if ! $DC run --rm --no-deps --entrypoint certbot certbot \
         certonly --webroot -w /var/www/certbot \
         --non-interactive --agree-tos \
         --email "${EMAIL}" \
@@ -181,4 +181,4 @@ ok "Acces : https://${DOMAIN}/"
 if [[ "$MODE" == "staging" ]]; then
     warn "Rappel : cert STAGING non trustable. Relance avec --letsencrypt pour la prod."
 fi
-info "Renouvellement auto : lance le sidecar certbot => $DC --profile tls up -d certbot"
+info "Renouvellement auto : lance le sidecar certbot => $DC up -d certbot"

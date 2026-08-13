@@ -1,12 +1,12 @@
 #!/bin/bash
 # ============================================
 # DiscordSentinel - Dev Launcher
-# Lance TOUT : API, API ML, 10 bots, 6 workers, desktop
+# Lance les processus consolides du workspace et le front Vite.
 # ============================================
 
 set -e
 
-ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 LOG_DIR="$ROOT_DIR/.logs"
 mkdir -p "$LOG_DIR"
 
@@ -16,7 +16,6 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
-MAGENTA='\033[0;35m'
 NC='\033[0m'
 
 # PIDs des processus lances
@@ -62,10 +61,6 @@ check_prereqs() {
         missing=1
     fi
 
-    if ! command -v python3 &>/dev/null && ! command -v python &>/dev/null; then
-        echo -e "${YELLOW}python3 non trouve — l'API ML ne sera pas lancee${NC}"
-    fi
-
     if [ "$missing" -eq 1 ]; then
         exit 1
     fi
@@ -104,107 +99,62 @@ echo ""
 
 check_prereqs
 
-# ── 1. API Backend (Rust) ──
-start_service "api" \
-    "$ROOT_DIR/sentinel-api" \
-    "cargo run" \
+# ── Processus consolides ──
+start_service "auth-api" \
+    "$ROOT_DIR" \
+    "cargo run -p auth-api" \
     "$GREEN"
 
-# Attendre que les APIs demarrent avant les bots et workers
-start_service "gateway" \
-    "$ROOT_DIR/platform-gateway" \
-    "cargo run" \
+start_service "platform-api" \
+    "$ROOT_DIR" \
+    "cargo run -p platform-api --bin platform-api" \
     "$GREEN"
 
-# Attendre que les APIs + gateway demarrent avant les bots et workers
+start_service "platform-gateway" \
+    "$ROOT_DIR" \
+    "cargo run -p platform-gateway" \
+    "$GREEN"
+
 sleep 3
 
-# ── 4. Workers (6) ──
-start_service "analytics-worker" \
-    "$ROOT_DIR/services/workers/analytics-worker" \
-    "cargo run" \
+start_service "platform-scheduler" \
+    "$ROOT_DIR" \
+    "cargo run -p platform-scheduler" \
     "$YELLOW"
 
-start_service "moderation-worker" \
-    "$ROOT_DIR/services/workers/moderation-worker" \
-    "cargo run" \
+start_service "ops-agent" \
+    "$ROOT_DIR" \
+    "cargo run -p ops-agent" \
     "$YELLOW"
 
-start_service "monitoring-worker" \
-    "$ROOT_DIR/services/workers/monitoring-worker" \
-    "cargo run" \
+start_service "docker-agent" \
+    "$ROOT_DIR" \
+    "cargo run -p docker-agent" \
     "$YELLOW"
 
-start_service "cache-worker" \
-    "$ROOT_DIR/services/workers/cache-worker" \
-    "cargo run" \
-    "$YELLOW"
-
-start_service "cleanup-worker" \
-    "$ROOT_DIR/services/workers/cleanup-worker" \
-    "cargo run" \
-    "$YELLOW"
-
-# ── 5. Tous les bots Discord (11) ──
-start_service "audit-bot" \
-    "$ROOT_DIR/bots/audit-bot" \
-    "cargo run" \
+start_service "sentinel-bot" \
+    "$ROOT_DIR" \
+    "cargo run -p sentinel-bot" \
     "$BLUE"
 
-start_service "automod-bot" \
-    "$ROOT_DIR/bots/automod-bot" \
-    "cargo run" \
+start_service "nexus-bot" \
+    "$ROOT_DIR" \
+    "cargo run -p nexus-bot" \
     "$BLUE"
 
-start_service "image-bot" \
-    "$ROOT_DIR/bots/image-bot" \
-    "cargo run" \
+start_service "atrium-bot" \
+    "$ROOT_DIR" \
+    "cargo run -p atrium-bot" \
     "$BLUE"
 
-start_service "moderation-bot" \
-    "$ROOT_DIR/bots/moderation-bot" \
-    "cargo run" \
-    "$BLUE"
-
-start_service "community-bot" \
-    "$ROOT_DIR/bots/community-bot" \
-    "cargo run" \
-    "$BLUE"
-
-start_service "security-bot" \
-    "$ROOT_DIR/bots/security-bot" \
-    "cargo run" \
-    "$BLUE"
-
-start_service "progression-bot" \
-    "$ROOT_DIR/bots/progression-bot" \
-    "cargo run" \
-    "$BLUE"
-
-start_service "ticket-bot" \
-    "$ROOT_DIR/bots/ticket-bot" \
-    "cargo run" \
-    "$BLUE"
-
-start_service "voice-bot" \
-    "$ROOT_DIR/bots/voice-bot" \
-    "cargo run" \
-    "$BLUE"
-
-start_service "roles-bot" \
-    "$ROOT_DIR/bots/roles-bot" \
-    "cargo run" \
-    "$BLUE"
-
-# ── 6. Desktop App (Tauri + Vue) ──
-if [ -d "$ROOT_DIR/apps/desktop" ]; then
-    if [ ! -d "$ROOT_DIR/apps/desktop/node_modules" ]; then
-        echo -e "${YELLOW}[INSTALL] Desktop - npm install...${NC}"
-        (cd "$ROOT_DIR/apps/desktop" && npm install) 2>&1
+if [ -d "$ROOT_DIR/web" ]; then
+    if [ ! -d "$ROOT_DIR/web/node_modules" ]; then
+        echo -e "${YELLOW}[INSTALL] Web - npm install...${NC}"
+        (cd "$ROOT_DIR/web" && npm install) 2>&1
     fi
-    start_service "desktop" \
-        "$ROOT_DIR/apps/desktop" \
-        "npm run tauri dev" \
+    start_service "web" \
+        "$ROOT_DIR/web" \
+        "npm run dev" \
         "$CYAN"
 fi
 
@@ -214,19 +164,12 @@ echo -e "${GREEN}   Tous les services sont lances !${NC}"
 echo -e "${GREEN}================================================${NC}"
 echo ""
 echo -e "  API Backend : ${GREEN}http://localhost:3000${NC}"
-echo -e "  API ML      : ${MAGENTA}http://localhost:8000${NC}"
 echo -e "  Gateway WS  : ${GREEN}ws://localhost:3001${NC}"
-echo -e "  Desktop     : ${CYAN}Tauri app (fenetre native)${NC}"
+echo -e "  Web Vite    : ${CYAN}http://localhost:5173${NC}"
 echo ""
-echo -e "  Workers (7) :"
-echo -e "    ${YELLOW}analytics-worker   moderation-worker  monitoring-worker${NC}"
-echo -e "    ${YELLOW}cache-worker       cleanup-worker${NC}"
+echo -e "  Services    : ${YELLOW}platform-scheduler  ops-agent  docker-agent  auth-api${NC}"
 echo ""
-echo -e "  Bots Discord (11) :"
-echo -e "    ${BLUE}audit-bot     automod-bot    image-bot${NC}"
-echo -e "    ${BLUE}community-bot moderation-bot security-bot${NC}"
-echo -e "    ${BLUE}progression-bot ticket-bot${NC}"
-echo -e "    ${BLUE}voice-bot     roles-bot${NC}"
+echo -e "  Bots Discord: ${BLUE}sentinel-bot  nexus-bot  atrium-bot${NC}"
 echo ""
 echo -e "  Logs        : ${YELLOW}.logs/*.log${NC}"
 echo ""

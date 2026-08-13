@@ -30,7 +30,7 @@ forme de modules. Il ne doit plus produire des crates `*-core`, `*-proto`,
 | Workers | Terminé | Les workers métier ont été absorbés par `platform-scheduler` ; les anciens workers ont été supprimés |
 | Cores | Terminé | `platform-core` contient `sentinel`, `nexus`, `atrium`, `ops` et `shared` |
 | Protos | Terminé | `platform-proto` contient les contrats gRPC de la plateforme ; les anciens crates proto ont été supprimés |
-| APIs | Terminé au niveau Cargo | `platform-api` contient les quatre domaines ; les anciens dossiers `sentinel-api`, `nexus-api`, `atrium-api` et `ops-api` ont été supprimés |
+| APIs | Terminé | `platform-api` contient les quatre domaines et ne produit plus qu'un seul binaire applicatif |
 
 Arborescence de référence :
 
@@ -48,10 +48,12 @@ platform-api/src/
   ops/
   sentinel/
   bin/
-    atrium-api.rs
-    nexus-api.rs
-    ops-api.rs
-    sentinel-api.rs
+    platform-api.rs
+  runtime/
+    atrium.rs
+    nexus.rs
+    ops.rs
+    sentinel.rs
 
 platform-scheduler/src/
   domains/
@@ -61,23 +63,13 @@ platform-proto/
   src/
 ```
 
-### 2.2 Point important : runtime unifié préparé, rollback conservé
+### 2.2 Runtime unifié
 
-`platform-api` produit désormais un binaire unifié `platform-api` qui supervise
-les quatre surfaces sur leurs ports historiques. Les quatre binaires suivants
-restent temporairement disponibles pour rollback :
-
-- `sentinel-api` ;
-- `nexus-api` ;
-- `atrium-api` ;
-- `ops-api`.
-
-L'image Docker unifiée est construite et les anciens services ne sont plus
-actifs par défaut : ils sont réservés au profil explicite `compat-api`. Les
-aliases DNS historiques sont conservés pendant la transition.
-
-La validation avec les secrets et dépendances de production reste nécessaire
-avant de supprimer définitivement ces compatibilités.
+`platform-api` produit désormais un unique binaire `platform-api` qui supervise
+les quatre surfaces sur leurs ports historiques. Les services Compose, binaires
+Cargo, profils `compat-api` et alias DNS historiques ont été retirés. Nginx,
+Prometheus, les bots et le scheduler joignent tous le service Docker `api`, sans
+changer les préfixes HTTP publics utilisés par le site.
 
 ## 3. Responsabilités des crates consolidées
 
@@ -178,30 +170,20 @@ Le processus unifié doit :
 - conserver les limites de taille, rate limits, middlewares d'authentification
   et en-têtes de sécurité propres à chaque surface.
 
-### Étape 2 - Basculer Docker sans changer les routes publiques (préparé)
+### Étape 2 - Basculer Docker sans changer les routes publiques (terminé)
 
-Remplacer les quatre conteneurs API par un service `platform-api`, tout en
-conservant les noms DNS historiques avec des alias réseau si nécessaire :
-
-- `sentinel-api` ;
-- `nexus-api` ;
-- `atrium-api` ;
-- `ops-api`.
+Les quatre conteneurs API ont été remplacés par le service Compose `api`, qui
+exécute le binaire `platform-api`.
 
 Nginx doit continuer à exposer `/api/`, `/nexus-api/`, `/atrium-api/` et
 `/ops-api/` pendant cette phase. Ne pas unifier les préfixes en même temps que
 le changement de processus.
 
-### Étape 3 - Supprimer les quatre binaires de compatibilité
+### Étape 3 - Supprimer les quatre binaires de compatibilité (terminé)
 
-Après validation en environnement réel :
-
-- supprimer `src/bin/sentinel-api.rs` ;
-- supprimer `src/bin/nexus-api.rs` ;
-- supprimer `src/bin/atrium-api.rs` ;
-- supprimer `src/bin/ops-api.rs` ;
-- retirer leurs targets Docker/Bake ;
-- conserver uniquement le nouveau binaire `platform-api`.
+Les anciens points d'entrée ont été déplacés dans `src/runtime/` comme modules
+internes. Cargo ne déclare plus que le binaire `platform-api`, et Compose ne
+contient plus les services de compatibilité.
 
 ### Étape 4 - Nettoyer les dépendances devenues communes
 
@@ -272,9 +254,10 @@ Validation Docker locale supplémentaire :
 - migrations Sentinel, Nexus et Atrium présentes dans l'image ;
 - ports 3000, 3100, 3101, 3200, 50051, 8090 et 8091 exposés.
 
-Le démarrage Compose réel n'a pas pu être exécuté sur le poste de reprise :
-aucun `.env` de déploiement n'y est présent. Ne pas retirer `compat-api` avant
-ce smoke test avec les vrais secrets.
+Le service unifié a démarré sainement en production pour Sentinel et Ops. Le
+smoke test final des listeners Nexus et Atrium reste à confirmer avec leurs
+dépendances et secrets de production. Les anciennes bascules d'activation de
+migration ont été supprimées : les quatre domaines démarrent systématiquement.
 
 ## 7. Commandes de reprise
 

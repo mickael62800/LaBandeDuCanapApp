@@ -1,6 +1,6 @@
 # À tester — changements du 13/08/2026
 
-Vingt-deux changements, expliqués simplement, avec ce qu'il faut vérifier pour chacun.
+Vingt-trois changements, expliqués simplement, avec ce qu'il faut vérifier pour chacun.
 
 **Commencer par le point 10** : il exige de compléter le `.env` et, sans ça, plus rien ne démarre.
 
@@ -405,6 +405,25 @@ echo "METRICS_TOKEN=$(openssl rand -base64 32 | tr -d '/+=' | head -c 32)" >> .e
 
 ---
 
+## 23. Deux actions sensibles laissent maintenant une trace (O5)
+
+**Le contexte.** Quatre modules n'avaient jamais été relus. C'est fait. Le bilan est plutôt bon : la surveillance des conteneurs et le flux de logs Redis sont sains, et les suppressions Docker (images, volumes, purges) étaient **déjà** tracées, y compris quand elles échouent.
+
+**Deux oublis trouvés, tous deux corrigés :**
+
+- **Modifier une règle d'alerte** n'était pas enregistré. Or désactiver une règle revient à éteindre la surveillance — et après un incident, « l'alerte n'a pas sonné » ne se distingue pas de « quelqu'un l'a éteinte la semaine dernière » sans cette trace.
+- **Supprimer les logs d'une catégorie** ne l'était pas non plus, alors que c'est définitif (base **et** cache).
+
+**Deux craintes du document, infirmées** : une règle d'alerte ne contient **pas** l'adresse du webhook (elle est fixée par la configuration du serveur, pas par la règle) — on ne peut donc pas détourner les alertes en éditant une règle. Et les purges Docker étaient déjà auditées.
+
+**À vérifier**, dans **Exploitation** :
+
+1. **Règles d'alerte** → désactiver une règle, puis la réactiver.
+2. **Opérations système** → les deux changements apparaissent dans le journal, avec votre compte. La désactivation doit être en `warn`, la réactivation en `info`.
+3. **Logs techniques** → vider une catégorie de test ; l'action apparaît au journal avec le nombre de lignes supprimées.
+
+---
+
 ## Récapitulatif des fichiers modifiés
 
 | Changement | Fichier | Service à reconstruire |
@@ -429,6 +448,7 @@ echo "METRICS_TOKEN=$(openssl rand -base64 32 | tr -d '/+=' | head -c 32)" >> .e
 | 18 — sondes S2 | `sentinel-api/src/main.rs`, `auth-api/src/config.rs`, `auth-core/.../identity.rs` | `api`, `auth-api` |
 | 19 — mention IA | `atrium-bot/src/main.rs`, `compose.atrium.yml` | `atrium-bot`, `atrium-api` |
 | 20 — forme RCON | `nexus-core/.../manage_game_servers_service.rs` | `nexus-api`, `nexus-bot` |
+| 23 — audit des règles et purges de logs | `ops-api/src/handlers/{alert_rules,logs}.rs` | `ops-api` |
 | 22 — /metrics protégé | `infrastructure/prometheus/prometheus.yml`, les 3 composes | `api`, `nexus-api`, `atrium-api`, `ops-api`, `prometheus` |
 | 21 — events signés | `sentinel-bot/src/shared/platform_event_signing.rs`, `atrium-bot/src/platform_event_signing.rs`, composes | `sentinel-bot`, `atrium-bot` |
 

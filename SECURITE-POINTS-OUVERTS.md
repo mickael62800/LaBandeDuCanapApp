@@ -11,7 +11,7 @@ Ce qui reste après les audits des plateformes `sentinel-*`, `atrium-*`, `ops-*`
 >
 > **N1, N2, N3, A1, A2, A4, W1, W2, W3, W4, O2, O4, S1**, et **O1 partiellement**. Web, Nexus et Atrium sont traités. N4, O3, A3 et S2 sont durcis mais restent ouverts **par décision**, pas par manque de temps : leurs déclencheurs sont écrits, et deux d'entre eux sont désormais surveillés au démarrage.
 >
-> **Ne reste réellement à faire que O5** — la relecture de quatre modules jamais audités.
+> **O5 est fait aussi** (13/08) : les quatre modules sont relus. Plus aucun point n'est ouvert « faute d'avoir été traité » — les six restants le sont **par décision**, chacun avec son déclencheur écrit, et deux d'entre eux surveillés au démarrage.
 >
 > S1 est corrigé **dans le dépôt** : plus aucun mot de passe n'a de valeur de repli publiée. Le travail côté serveur reste entier — compléter le `.env`, puis faire tourner les secrets qui valaient encore le défaut. Ajouter la variable ne remplace pas la rotation.
 >
@@ -47,7 +47,7 @@ Audit de `ops-api` / `ops-core`. Onze points relevés, huit corrigés dans la fo
 | ~~O2~~ | ~~`/metrics` ouvert par défaut~~ | ✅ **Corrigé le 13/08** — Bearer exigé sur les **quatre** API, jeton lu par Prometheus depuis un fichier monté |
 | O3 | GeoIP en clair si on l'active | ⚠️ **Réduit le 13/08** — le transfert en clair exige désormais sa propre déclaration (`OPS_GEOIP_ALLOW_PLAINTEXT`). Supprimer l'exposition reste un changement de fournisseur, pas de code |
 | ~~O4~~ | ~~`deleted_logs` vaut désormais toujours `0`~~ | ✅ **Corrigé le 13/08** — champ, message et port morts retirés |
-| O5 | Quatre modules non audités | Périmètre non couvert, pas un défaut constaté |
+| ~~O5~~ | ~~Quatre modules non audités~~ | ✅ **Audités le 13/08** — deux trous de traçabilité trouvés et corrigés, deux craintes du document infirmées |
 
 ## Web — **tous corrigés le 13/08**
 
@@ -439,7 +439,27 @@ N'ont **pas** été relus :
 - `ops-api/src/handlers/alert_rules.rs` et `adapters/alert_rule_repository.rs` — règles d'alerte, avec webhook Discord
 - `ops-api/src/handlers/docker/{prune,images,volumes,networks}.rs` — opérations destructives sur l'hôte
 
-Les deux derniers groupes sont les plus intéressants pour une prochaine passe : les règles d'alerte comportent un envoi sortant (donc une exfiltration possible vers un webhook contrôlé par celui qui écrit la règle), et les handlers de purge appellent des opérations irréversibles.
+Les deux derniers groupes semblaient les plus intéressants : les règles d'alerte comportent un envoi sortant, et les handlers de purge appellent des opérations irréversibles.
+
+## O5 — résultat de la passe du 13/08
+
+### Deux craintes du document, infirmées
+
+- **« Une exfiltration possible vers un webhook contrôlé par celui qui écrit la règle. »** Faux. Une règle d'alerte ne porte **pas** d'URL : elle n'a que `enabled`, `threshold`, `severity` et `cooldown_secs` — `metric`, `comparator` et `label` ne sont même pas modifiables. La destination est `SECURITY_ALERTS_WEBHOOK`, lue dans l'environnement d'`ops-worker`. Éditer une règle ne permet donc pas de choisir où part l'alerte.
+- **« Les handlers de purge appellent des opérations irréversibles. »** Vrai, mais ils sont **déjà tracés** : `prune_*`, `remove_image` et `remove_volume` passent par le même `audited(...)` qui enregistre l'auteur, la cible, le succès **et** l'erreur. `networks.rs` est en lecture seule.
+
+### Deux trous de traçabilité, trouvés et corrigés
+
+- **`PATCH /alert-rules/{id}` n'était pas audité.** Désactiver une règle ou relever son seuil revient à **aveugler la supervision** — et « l'alerte n'a pas sonné » ne se distingue pas de « quelqu'un l'a éteinte trois jours plus tôt » sans cette ligne. Désormais enregistré, en `warn` quand la règle est désactivée pour que la coupure ressorte du journal.
+- **`DELETE /logs/{category}` n'était pas audité.** C'est pourtant une suppression définitive, en base **et** dans la stream Redis. La *lecture* des logs l'était déjà (corrigée en amont), pas la suppression. C'est exactement le reproche fait à la purge au bannissement (O4) : la mesure détruit ce qui permettrait de l'examiner.
+
+### Le reste
+
+`container_monitor.rs` est sain — ports respectés, insert groupé, clé Redis à TTL, pas de croissance non bornée. `redis_log_stream.rs` aussi : la catégorie compose une clé (`logs:{cat}`) et non une commande, donc rien d'injectable ; la portée d'une suppression reste bornée au préfixe `logs:`. Une remarque mineure et non traitée : l'instantané des conteneurs de l'hôte est publié sur le Redis **commun**, donc lisible par tout porteur de `REDIS_URL` — le même cercle de confiance que le reste du bus.
+
+### Ce qui reste non couvert
+
+Les validations de `severity` et `cooldown_secs` existent (liste fermée, minimum 60 s) ; la **catégorie de logs** n'est validée par aucune liste blanche — seule la catégorie `discord` est protégée de la suppression. Impact borné, non corrigé.
 
 Sur ce qui a été vérifié : les `format!` SQL de `security_log_repository.rs` et `security_audit_repository.rs` n'interpolent que des entiers typés et des constantes — aucun vecteur d'injection. La file de bans est durcie contre l'injection de ligne (`ban_queue.rs`), et les chemins des sondes viennent d'un enum fermé, donc pas de traversée.
 

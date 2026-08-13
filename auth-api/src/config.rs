@@ -34,6 +34,25 @@ impl AppConfig {
             tracing::warn!(
                 "SUPERADMIN_USER_IDS vide — aucun compte Discord ne pourra entrer dans le back-office"
             );
+        } else if superadmins.len() > 1 {
+            // DECLENCHEUR de S2 (cf. SECURITE-POINTS-OUVERTS.md).
+            //
+            // Le verrou mono-serveur ne lit que l'URL : une trentaine de
+            // handlers recoivent leur `guild_id` dans le CORPS et passent donc
+            // sans etre confrontes a la configuration. Tant qu'un seul humain
+            // entre dans le back-office, il n'y a rien a cloisonner — il ne
+            // peut se proteger que de lui-meme. A plusieurs, le point devient
+            // reel : chacun peut ecrire au nom d'un `guild_id` qu'il n'a pas
+            // choisi dans l'interface.
+            //
+            // Signale ICI plutot que laisse a la memoire : le document decrit
+            // le declencheur, il ne previent personne le jour ou il survient.
+            tracing::error!(
+                comptes = superadmins.len(),
+                "SUPERADMIN_USER_IDS compte plusieurs administrateurs — le point \
+                 S2 (guild_id de corps hors du verrou mono-serveur) n'est plus \
+                 theorique. Voir SECURITE-POINTS-OUVERTS.md"
+            );
         }
 
         Self {

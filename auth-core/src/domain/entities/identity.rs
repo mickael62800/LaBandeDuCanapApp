@@ -65,6 +65,18 @@ impl SuperadminPolicy {
     pub fn is_empty(&self) -> bool {
         self.allowed.is_empty()
     }
+
+    /// Nombre de comptes autorises, apres nettoyage.
+    ///
+    /// Sert de DECLENCHEUR au point S2 de `SECURITE-POINTS-OUVERTS.md` : le
+    /// verrou mono-serveur ne lit que l'URL, et une trentaine de handlers
+    /// recoivent leur `guild_id` dans le corps de la requete. C'est sans
+    /// consequence tant qu'un seul humain entre dans le back-office — il ne
+    /// peut se cloisonner que de lui-meme. Des qu'ils sont plusieurs, le point
+    /// devient reel et demande un extracteur type.
+    pub fn len(&self) -> usize {
+        self.allowed.len()
+    }
 }
 
 #[cfg(test)]

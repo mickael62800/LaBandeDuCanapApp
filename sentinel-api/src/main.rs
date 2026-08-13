@@ -46,6 +46,7 @@ async fn main() {
     // ── Connexions infrastructure ──
     let pg_pool = bootstrap::connect_pg(&config).await;
     run_migrations(&pg_pool).await;
+    verifier_mono_serveur(&pg_pool).await;
 
     let redis_client = bootstrap::connect_redis(&config).await;
 
@@ -95,6 +96,49 @@ async fn run_migrations(pool: &PgPool) {
         .await
         .expect("Erreur lors des migrations");
     info!("Migrations appliquées");
+}
+
+/// Declencheur du point S2 (`SECURITE-POINTS-OUVERTS.md`), verifie au boot.
+///
+/// POURQUOI CETTE REQUETE EXISTE
+///
+/// Le verrou mono-serveur (`middleware/single_guild.rs`) ne lit que l'URL :
+/// une trentaine de handlers recoivent leur `guild_id` dans le CORPS et passent
+/// donc sans etre confrontes a `GUILD_ID`. C'est un arbitrage assume, et il
+/// tient a UNE condition : l'installation ne sert qu'une guilde, donc un
+/// `guild_id` etranger dans un corps ne designe aucune donnee existante.
+///
+/// Cette condition est ecrite dans le document d'audit — mais un document ne
+/// previent personne le jour ou elle cesse d'etre vraie. Cette requete, elle,
+/// le dit au premier redemarrage.
+///
+/// Une seule requete, au demarrage, sur une table qui compte quelques lignes.
+/// Son echec n'empeche PAS de demarrer : c'est une sonde, pas une dependance —
+/// refuser de servir parce qu'un compte de controle n'a pas abouti serait une
+/// panne creee par le garde-fou lui-meme.
+async fn verifier_mono_serveur(pool: &PgPool) {
+    let guildes: Option<i64> = match sqlx::query_scalar("SELECT COUNT(*) FROM guilds")
+        .fetch_one(pool)
+        .await
+    {
+        Ok(n) => Some(n),
+        Err(e) => {
+            warn!(error = %e, "verification mono-serveur impossible (sonde S2)");
+            None
+        }
+    };
+
+    if let Some(n) = guildes {
+        if n > 1 {
+            tracing::error!(
+                guildes = n,
+                "La base contient PLUSIEURS guildes : le point S2 (guild_id de \
+                 corps hors du verrou mono-serveur) n'est plus theorique. Une \
+                 trentaine de handlers acceptent un guild_id de corps sans le \
+                 confronter a la configuration. Voir SECURITE-POINTS-OUVERTS.md"
+            );
+        }
+    }
 }
 
 /// Phase 7A — gRPC interne (tonic) en parallele d'Axum.

@@ -147,7 +147,7 @@ pub fn build_router_with(state: AppState, config: HttpConfig) -> Router {
     // son trafic ne doit donc ni consommer ni etre gene par le quota des
     // appels internes.
     let public_limiter = RateLimiter::new(config.rate_limit_per_sec);
-    let bearer = platform_common_api::bearer_auth::OptionalBearerToken::new(state.api_key.clone());
+    let bearer = platform_common_api::bearer_auth::RequiredBearerToken::new(state.api_key.clone());
 
     let heavy = container_lifecycle_routes().route_layer(middleware::from_fn_with_state(
         heavy_limiter,
@@ -434,7 +434,7 @@ pub fn build_router_with(state: AppState, config: HttpConfig) -> Router {
         .merge(heavy)
         .layer(middleware::from_fn_with_state(
             bearer,
-            platform_common_api::bearer_auth::require_optional,
+            platform_common_api::bearer_auth::require,
         ))
         // Pose APRES l'auth donc traverse AVANT elle : une inondation de
         // requetes non authentifiees doit etre coupee sans consulter l'etat.

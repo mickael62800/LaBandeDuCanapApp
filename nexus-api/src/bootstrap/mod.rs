@@ -111,8 +111,12 @@ pub struct AppState {
     pub events: Arc<dyn EventPublisher>,
     pub discord_api:
         Arc<dyn nexus_core::ports::outbound::system::discord_api_repository::DiscordApiRepository>,
-    /// Si Some, toutes les routes /api exigent `Authorization: Bearer <key>`.
-    pub api_key: Option<String>,
+    /// Toutes les routes `/api` exigent `Authorization: Bearer <key>`.
+    ///
+    /// Non optionnel : le bootstrap refuse de demarrer sans cle (cf. la lecture
+    /// de `NEXUS_API_KEY`). Le type porte donc la garantie — il n'existe pas
+    /// d'etat « API servie sans authentification » a representer.
+    pub api_key: String,
     /// Si Some et non vide, `/metrics` exige `Authorization: Bearer <token>`.
     ///
     /// Vide = ouvert, ce qui convient tant que le port n'est joignable que
@@ -307,9 +311,30 @@ pub async fn build_state() -> Result<AppState, Box<dyn std::error::Error>> {
         ManageGameTemplatesService::new(game_template_repo.clone(), bot_config_repo.clone()),
     );
 
+    // Aligne sur `ops-api` : on refuse de demarrer plutot que de servir ouvert.
+    //
+    // Avant, une cle absente ou vide donnait `None`, et `require_optional`
+    // laissait alors passer TOUTES les routes `/api` — cycle de vie des
+    // conteneurs compris. Nexus est la seule API capable de lancer des
+    // conteneurs sur l'hote, et c'etait la seule des quatre a echouer en
+    // s'OUVRANT. Le compose aggravait le cas (`${NEXUS_API_KEY:-}`, defaut
+    // vide), et un `warn!` dans les logs ne protege rien.
+    //
+    // Le seuil de 16 caracteres est celui de `sentinel-api` : une cle courte
+    // est devinable, et la refuser au demarrage evite de decouvrir le probleme
+    // le jour ou quelqu'un la teste.
     let api_key = std::env::var("NEXUS_API_KEY")
         .ok()
-        .filter(|k| !k.is_empty());
+        .map(|k| k.trim().to_string())
+        .filter(|k| k.len() >= 16)
+        .unwrap_or_else(|| {
+            tracing::error!(
+                "NEXUS_API_KEY manquante, vide ou trop courte (16 caracteres minimum) — \
+                 arret : servir cette API sans authentification ouvrirait le cycle de vie \
+                 des conteneurs de l'hote"
+            );
+            std::process::exit(1)
+        });
     let metrics_token = std::env::var("NEXUS_METRICS_TOKEN")
         .ok()
         .filter(|t| !t.is_empty());
@@ -324,10 +349,6 @@ pub async fn build_state() -> Result<AppState, Box<dyn std::error::Error>> {
         Some(g) => tracing::info!(guild_id = %g, "mono-serveur : verrou actif"),
         None => tracing::warn!("PUBLIC_GUILD_ID absente — toutes les guildes sont acceptees"),
     }
-    if api_key.is_none() {
-        tracing::warn!("NEXUS_API_KEY absente — API SANS auth (dev uniquement)");
-    }
-
     Ok(AppState {
         grand_salon,
         play_wheel: service,

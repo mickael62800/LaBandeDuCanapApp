@@ -193,7 +193,7 @@ services:
       # discord_sentinel). L'API ne touche jamais postgres directement, et se
       # connecte avec le role `nexus` — pas le superuser du cluster.
       NEXUS_DATABASE_URL: postgres://nexus:${NEXUS_DB_PASSWORD:-nexus_secret}@nexus-pgbouncer:5432/nexus
-      NEXUS_API_KEY: ${NEXUS_API_KEY:-}
+      NEXUS_API_KEY: ${NEXUS_API_KEY:?NEXUS_API_KEY est requis}
       NEXUS_API_PORT: "3100"
       NEXUS_GRPC_PORT: "3101"
       # L'API Nexus appelle aussi Discord (gestion des salons de session).
@@ -268,7 +268,7 @@ services:
       # lit NEXUS_DISCORD_TOKEN ; conserver aussi ce fallback historique.
       NEXUS_DISCORD_TOKEN: ${NEXUS_BOT_TOKEN:-${NEXUS_DISCORD_TOKEN:-}}
       NEXUS_API_URL: http://nexus-api:3100
-      NEXUS_API_KEY: ${NEXUS_API_KEY:-}
+      NEXUS_API_KEY: ${NEXUS_API_KEY:?NEXUS_API_KEY est requis}
       # URL publique servant web/public/imgs, requise par Discord pour charger
       # les bannieres des cartes de session de jeu.
       WEB_FRONT_URL: ${WEB_FRONT_URL:-}
@@ -305,7 +305,7 @@ services:
     environment:
       <<: *nexus-light-worker-env
       NEXUS_API_URL: http://nexus-api:3100
-      NEXUS_API_KEY: ${NEXUS_API_KEY:-}
+      NEXUS_API_KEY: ${NEXUS_API_KEY:?NEXUS_API_KEY est requis}
       GAME_HEALTH_CHECK_INTERVAL_SECS: ${GAME_HEALTH_CHECK_INTERVAL_SECS:-30}
       GAME_IDLE_SHUTDOWN_CHECK_INTERVAL_SECS: ${GAME_IDLE_SHUTDOWN_CHECK_INTERVAL_SECS:-3600}
       GAME_RECONCILER_INTERVAL_SECS: ${GAME_RECONCILER_INTERVAL_SECS:-3600}

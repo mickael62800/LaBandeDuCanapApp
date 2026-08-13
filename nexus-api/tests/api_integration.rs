@@ -799,7 +799,13 @@ impl nexus_core::ports::outbound::grand_salon_repository::GrandSalonRepository
     }
 }
 
-fn create_test_app_state(api_key: Option<String>) -> AppState {
+/// Cle des tests. `nexus-api` n'a plus de mode « sans jeton » : le bootstrap
+/// refuse de demarrer sans cle d'au moins 16 caracteres, et l'etat la porte en
+/// `String`. Les tests exercent donc la meme posture que la production.
+const TEST_API_KEY: &str = "cle-de-test-nexus-32-caracteres";
+
+fn create_test_app_state(api_key: impl Into<String>) -> AppState {
+    let api_key = api_key.into();
     AppState {
         grand_salon: Arc::new(
             nexus_core::application::grand_salon_service::GrandSalonService::new(
@@ -841,7 +847,7 @@ fn create_test_app_state(api_key: Option<String>) -> AppState {
     }
 }
 
-fn setup_nexus_router(api_key: Option<String>) -> axum::Router {
+fn setup_nexus_router(api_key: impl Into<String>) -> axum::Router {
     static TEST_INIT: std::sync::Once = std::sync::Once::new();
     TEST_INIT.call_once(platform_common_api::metrics::init_prometheus);
     let state = create_test_app_state(api_key);
@@ -851,7 +857,19 @@ fn setup_nexus_router(api_key: Option<String>) -> axum::Router {
     build_router_with(state, config)
 }
 
+/// Requete authentifiee : le Bearer est pose par defaut, sinon chaque test
+/// mesurerait la posture d'authentification au lieu de ce qu'il vise.
+/// Pour l'exercer explicitement, voir `create_request_sans_auth`.
 fn create_request(method: &str, uri: &str, body: Body) -> Request<Body> {
+    let mut req = create_request_sans_auth(method, uri, body);
+    req.headers_mut().insert(
+        AUTHORIZATION,
+        format!("Bearer {TEST_API_KEY}").parse().unwrap(),
+    );
+    req
+}
+
+fn create_request_sans_auth(method: &str, uri: &str, body: Body) -> Request<Body> {
     let mut req = Request::builder()
         .method(method)
         .uri(uri)
@@ -866,7 +884,7 @@ fn create_request(method: &str, uri: &str, body: Body) -> Request<Body> {
 
 #[tokio::test]
 async fn test_nexus_health_endpoint() {
-    let app = setup_nexus_router(None);
+    let app = setup_nexus_router(TEST_API_KEY);
     let req = create_request("GET", "/health", Body::empty());
 
     let response = app.oneshot(req).await.unwrap();
@@ -874,8 +892,8 @@ async fn test_nexus_health_endpoint() {
 }
 
 #[tokio::test]
-async fn test_nexus_wallet_endpoint_no_auth_needed_when_api_key_none() {
-    let app = setup_nexus_router(None);
+async fn test_nexus_wallet_endpoint() {
+    let app = setup_nexus_router(TEST_API_KEY);
     let req = create_request("GET", "/api/wallet/guild123/user456", Body::empty());
 
     let response = app.oneshot(req).await.unwrap();
@@ -891,26 +909,32 @@ async fn test_nexus_wallet_endpoint_no_auth_needed_when_api_key_none() {
 }
 
 #[tokio::test]
-async fn test_nexus_auth_bearer_required_when_configured() {
-    let app = setup_nexus_router(Some("secret-nexus-key".into()));
-
-    // Sans token -> 401 Unauthorized
-    let req = create_request("GET", "/api/wallet/guild123/user456", Body::empty());
+async fn test_nexus_auth_bearer_toujours_exige() {
+    // Sans token -> 401. Il n'existe plus de configuration ou cette requete
+    // passerait : c'est ce que ce test verrouille.
+    let app = setup_nexus_router(TEST_API_KEY);
+    let req = create_request_sans_auth("GET", "/api/wallet/guild123/user456", Body::empty());
     let response = app.oneshot(req).await.unwrap();
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 
-    // Avec token -> 200 OK
-    let app = setup_nexus_router(Some("secret-nexus-key".into()));
-    let mut req = create_request("GET", "/api/wallet/guild123/user456", Body::empty());
+    // Mauvais token -> 401 egalement.
+    let app = setup_nexus_router(TEST_API_KEY);
+    let mut req = create_request_sans_auth("GET", "/api/wallet/guild123/user456", Body::empty());
     req.headers_mut()
-        .insert(AUTHORIZATION, "Bearer secret-nexus-key".parse().unwrap());
+        .insert(AUTHORIZATION, "Bearer mauvaise-cle".parse().unwrap());
+    let response = app.oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+    // Avec le bon token -> 200 OK
+    let app = setup_nexus_router(TEST_API_KEY);
+    let req = create_request("GET", "/api/wallet/guild123/user456", Body::empty());
     let response = app.oneshot(req).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
 }
 
 #[tokio::test]
 async fn test_nexus_bot_definitions_endpoint() {
-    let app = setup_nexus_router(None);
+    let app = setup_nexus_router(TEST_API_KEY);
     let req = create_request("GET", "/api/bots/definitions", Body::empty());
 
     let response = app.oneshot(req).await.unwrap();
@@ -919,7 +943,7 @@ async fn test_nexus_bot_definitions_endpoint() {
 
 #[tokio::test]
 async fn test_nexus_grpc_service_logs_and_stats_stream() {
-    let state = create_test_app_state(None);
+    let state = create_test_app_state(TEST_API_KEY);
     let grpc_service = NexusGrpcService {
         game_servers_uc: state.game_servers_uc.clone(),
     };
@@ -952,7 +976,7 @@ async fn test_nexus_grpc_service_logs_and_stats_stream() {
 
 #[tokio::test]
 async fn test_nexus_grpc_service_execute_rcon() {
-    let state = create_test_app_state(None);
+    let state = create_test_app_state(TEST_API_KEY);
     let grpc_service = NexusGrpcService {
         game_servers_uc: state.game_servers_uc.clone(),
     };
@@ -972,7 +996,7 @@ async fn test_nexus_grpc_service_execute_rcon() {
 
 #[tokio::test]
 async fn test_nexus_sse_stream_logs_endpoint() {
-    let app = setup_nexus_router(None);
+    let app = setup_nexus_router(TEST_API_KEY);
     let id = Uuid::new_v4();
     let uri = format!("/api/games/servers/{id}/stream-logs?lines=10");
     let req = create_request("GET", &uri, Body::empty());
@@ -990,7 +1014,7 @@ async fn test_nexus_sse_stream_logs_endpoint() {
 
 #[tokio::test]
 async fn test_nexus_sse_stream_stats_endpoint() {
-    let app = setup_nexus_router(None);
+    let app = setup_nexus_router(TEST_API_KEY);
     let id = Uuid::new_v4();
     let uri = format!("/api/games/servers/{id}/stream-stats");
     let req = create_request("GET", &uri, Body::empty());

@@ -15,15 +15,6 @@ impl RequiredBearerToken {
     }
 }
 
-#[derive(Clone)]
-pub struct OptionalBearerToken(Option<String>);
-
-impl OptionalBearerToken {
-    pub fn new(token: Option<String>) -> Self {
-        Self(token)
-    }
-}
-
 /// Verifie strictement `Authorization: Bearer <token>`.
 ///
 /// **Un jeton attendu vide ne valide rien.** Sans cette garde, `matches(h, "")`
@@ -64,19 +55,17 @@ pub async fn require(
         .into_response()
 }
 
-/// Variante pour les APIs qui autorisent explicitement un mode developpement
-/// sans jeton configure.
-pub async fn require_optional(
-    State(expected): State<OptionalBearerToken>,
-    request: Request,
-    next: Next,
-) -> Result<Response, StatusCode> {
-    match expected.0.as_deref() {
-        None => Ok(next.run(request).await),
-        Some(token) if matches(request.headers(), token) => Ok(next.run(request).await),
-        Some(_) => Err(StatusCode::UNAUTHORIZED),
-    }
-}
+// `OptionalBearerToken` / `require_optional` ont ete supprimes.
+//
+// C'etait la variante « mode developpement sans jeton configure » : jeton
+// absent = toutes les routes passent. `nexus-api` en etait l'unique porteur,
+// et l'a paye — cle vide au compose, `None` en memoire, et le cycle de vie des
+// conteneurs de l'hote servi sans authentification. Il exige desormais sa cle
+// au demarrage, ce qui ne laissait plus d'appelant a ce middleware.
+//
+// Ne pas le reintroduire : un socle qui offre un mode fail-open finit par etre
+// utilise en production, et l'appelant qui s'en sert ne le dit nulle part.
+// Une API qui veut demarrer sans secret doit l'assumer chez elle, visiblement.
 
 #[cfg(test)]
 mod tests {
@@ -163,34 +152,5 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(allowed.status(), StatusCode::OK);
-    }
-
-    #[tokio::test]
-    async fn jeton_optionnel_autorise_uniquement_le_mode_sans_configuration() {
-        let route = || Router::new().route("/", get(|| async { StatusCode::OK }));
-        let open = route().route_layer(axum::middleware::from_fn_with_state(
-            OptionalBearerToken::new(None),
-            require_optional,
-        ));
-        assert_eq!(
-            open.oneshot(Request::new(axum::body::Body::empty()))
-                .await
-                .unwrap()
-                .status(),
-            StatusCode::OK
-        );
-
-        let protected = route().route_layer(axum::middleware::from_fn_with_state(
-            OptionalBearerToken::new(Some("secret".into())),
-            require_optional,
-        ));
-        assert_eq!(
-            protected
-                .oneshot(Request::new(axum::body::Body::empty()))
-                .await
-                .unwrap()
-                .status(),
-            StatusCode::UNAUTHORIZED
-        );
     }
 }

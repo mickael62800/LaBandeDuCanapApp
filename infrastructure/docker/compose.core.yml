@@ -321,7 +321,7 @@ services:
       # jamais nexus-api : il passe par sentinel-api, seul composant a
       # savoir QUI est connecte. La cle ne quitte donc pas le reseau interne.
       NEXUS_API_URL: http://nexus-api:3100
-      NEXUS_API_KEY: ${NEXUS_API_KEY:-}
+      NEXUS_API_KEY: ${NEXUS_API_KEY:?NEXUS_API_KEY est requis}
       # Acces au daemon Docker : plus de socket ici, on passe par l'agent.
       DOCKER_AGENT_URL: http://docker-agent:8095
       DOCKER_AGENT_TOKEN: ${DOCKER_AGENT_TOKEN:?DOCKER_AGENT_TOKEN est requis}
@@ -746,7 +746,7 @@ services:
       # /docker-entrypoint.d/30-nexus-key.sh. Ne transite JAMAIS jusqu'au
       # navigateur : nexus-api n'a qu'une cle statique, la divulguer donnerait
       # un acces admin complet a la plateforme jeux.
-      NEXUS_API_KEY: ${NEXUS_API_KEY:-}
+      NEXUS_API_KEY: ${NEXUS_API_KEY:?NEXUS_API_KEY est requis}
       # Meme principe pour le proxy /atrium-api/, injecte par
       # /docker-entrypoint.d/31-atrium-key.sh. atrium-api n'est pas publie sur
       # l'hote : cette passerelle est le SEUL chemin du back-office vers lui.

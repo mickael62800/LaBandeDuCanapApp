@@ -154,9 +154,19 @@ struct Handler {
     /// On enregistre sans consulter le seuil : le lire a l'arrivee ajouterait
     /// un aller-retour gRPC sur un chemin chaud pour une decision qui ne se
     /// prend qu'au depart, lequel n'arrive presque jamais.
-    welcomes:
-        std::sync::Mutex<std::collections::HashMap<(u64, u64), (std::time::Instant, MessageId)>>,
+    ///
+    /// `Arc` parce que l'accueil n'est plus poste depuis une methode de
+    /// `Handler` : il part de `handle_calming_event`, une fonction associee
+    /// appelee depuis la boucle d'evenements Redis, sans `self`. Sans ce
+    /// partage la map restait vide et le retrait au depart eclair ne pouvait
+    /// jamais se declencher — le code de suppression existait sans effet.
+    welcomes: WelcomeTracker,
 }
+
+/// Voir `Handler::welcomes`.
+type WelcomeTracker = Arc<
+    std::sync::Mutex<std::collections::HashMap<(u64, u64), (std::time::Instant, MessageId)>>,
+>;
 
 impl Handler {
     /// Fenetre de depart eclair du serveur, en minutes (0 = desactive).
@@ -200,6 +210,7 @@ impl Handler {
         config: Arc<Config>,
         channel: Channel,
         primary_guild: Arc<tokio::sync::RwLock<Option<GuildId>>>,
+        welcomes: WelcomeTracker,
         payload: String,
     ) {
         let Ok(event) = serde_json::from_str::<CalmingEvent>(&payload) else {
@@ -249,7 +260,7 @@ impl Handler {
                 );
                 // Seul le nouveau membre est mentionnable : c'est le bot qui
                 // pose ce `<@...>`, pas le modele.
-                if let Err(error) = publier_texte_modele(
+                match publier_texte_modele(
                     &ctx.http,
                     config.general_channel_id,
                     message,
@@ -257,7 +268,19 @@ impl Handler {
                 )
                 .await
                 {
-                    tracing::warn!(%error, "message d'accueil Atrium non envoye");
+                    Err(error) => tracing::warn!(%error, "message d'accueil Atrium non envoye"),
+                    // Retenu pour pouvoir retirer le mot d'accueil si le membre
+                    // repart dans la foulee (cf. `guild_member_removal`), comme
+                    // Sentinel retire sa card. Rien de retenu = rien a retirer :
+                    // un envoi echoue ne laisse pas d'entree fantome.
+                    Ok(sent) => {
+                        if let Ok(mut map) = welcomes.lock() {
+                            map.insert(
+                                (guild_num, user_num),
+                                (std::time::Instant::now(), sent.id),
+                            );
+                        }
+                    }
                 }
             }
             return;
@@ -545,6 +568,7 @@ impl EventHandler for Handler {
             // Canal gRPC vers atrium-api, cloné une fois : `Channel` est un
             // handle partagé (multiplexé), pas une nouvelle connexion par event.
             let channel = self.channel.clone();
+            let welcomes = Arc::clone(&self.welcomes);
             tokio::spawn(async move {
                 SENTINEL_EVENTS
                     .listen_stream_group("atrium-bot".to_string(), consumer, move |payload| {
@@ -552,12 +576,14 @@ impl EventHandler for Handler {
                         let config = Arc::clone(&config);
                         let channel = channel.clone();
                         let primary_guild = Arc::clone(&primary_guild);
+                        let welcomes = Arc::clone(&welcomes);
                         async move {
                             Handler::handle_calming_event(
                                 ctx,
                                 config,
                                 channel,
                                 primary_guild,
+                                welcomes,
                                 payload,
                             )
                             .await
@@ -706,7 +732,7 @@ async fn main() {
             primary_guild,
             calming_consumer_started: Arc::new(AtomicBool::new(false)),
             directory_cache: std::sync::RwLock::new(None),
-            welcomes: std::sync::Mutex::new(std::collections::HashMap::new()),
+            welcomes: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
         })
         .await
         .expect("creation client Discord");

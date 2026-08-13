@@ -547,8 +547,20 @@ services:
       # Resolution GeoIP : transfert d'adresses IP a un tiers, donc opt-in
       # explicite. Cf. .env.example pour la portee RGPD et le point sur le
       # http:// du palier gratuit.
+      # Resolution GeoIP : ce sont des ADRESSES IP DE VISITEURS envoyees a un
+      # tiers, donc une donnee personnelle. Desactivee par defaut.
       OPS_GEOIP_ENABLED: ${OPS_GEOIP_ENABLED:-false}
       OPS_GEOIP_URL: ${OPS_GEOIP_URL:-http://ip-api.com/batch}
+      # Le defaut ci-dessus est en http:// — le palier gratuit d'ip-api n'expose
+      # pas de TLS. Activer la resolution ne suffit donc plus : envoyer ces IP
+      # EN CLAIR demande sa propre declaration. Sans elle, ops-api journalise un
+      # avertissement au demarrage et laisse la resolution eteinte, plutot que
+      # de degrader silencieusement vers le transfert en clair.
+      #
+      # Pour s'en passer : pointer OPS_GEOIP_URL sur un service TLS (palier
+      # payant, ou instance auto-hebergee), ou une base locale type GeoLite2 —
+      # qui supprimerait le transfert lui-meme.
+      OPS_GEOIP_ALLOW_PLAINTEXT: ${OPS_GEOIP_ALLOW_PLAINTEXT:-false}
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD est requis}@redis:6379
       # Journal des logins reussis : la table appartient a la base de
       # l'identite, l'ecran « Securite de l'hote » la lit par HTTP. Meme

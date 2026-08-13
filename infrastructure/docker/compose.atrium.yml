@@ -49,7 +49,15 @@ services:
       ATRIUM_GRPC_BIND_ADDR: 0.0.0.0:8091
       ATRIUM_API_TOKEN: ${ATRIUM_API_TOKEN:?ATRIUM_API_TOKEN est requis}
       ATRIUM_GRPC_TOKEN: ${ATRIUM_GRPC_TOKEN:?ATRIUM_GRPC_TOKEN est requis}
-      DEEPSEEK_API_KEY: ${ATRIUM_DEEPSEEK_API_KEY:-${DEEPSEEK_API_KEY:-}}
+      # `:?` sur le DERNIER repli, comme les deux lignes au-dessus : la chaine
+      # se terminait sur une valeur vide, et l'echec survenait alors au
+      # demarrage du binaire (« variable DEEPSEEK_API_KEY vide ») plutot qu'au
+      # montage du compose. Le message nomme desormais la variable sans qu'il
+      # faille ouvrir les logs du conteneur.
+      # `ATRIUM_DEEPSEEK_API_KEY` reste la surcharge par plateforme ; quand elle
+      # est definie, le repli n'est pas evalue et `DEEPSEEK_API_KEY` n'est pas
+      # exigee.
+      DEEPSEEK_API_KEY: ${ATRIUM_DEEPSEEK_API_KEY:-${DEEPSEEK_API_KEY:?DEEPSEEK_API_KEY est requis}}
       DEEPSEEK_MODEL: ${ATRIUM_DEEPSEEK_MODEL:-${DEEPSEEK_MODEL:-deepseek-v4-flash}}
       ATRIUM_API_RATE_LIMIT_PER_SEC: ${ATRIUM_API_RATE_LIMIT_PER_SEC:-5}
       ATRIUM_USER_COOLDOWN_SECS: ${ATRIUM_USER_COOLDOWN_SECS:-10}

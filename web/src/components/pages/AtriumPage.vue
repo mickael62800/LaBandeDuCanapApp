@@ -11,7 +11,7 @@
 // a la regle du depot. Un serveur qui n'a rien regle retombe sur les valeurs
 // d'environnement — l'ecran indique laquelle des deux s'applique.
 
-import { computed, onMounted, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import AdminPageShell from "../layouts/AdminPageShell.vue";
 import AppToggle from "../atoms/AppToggle.vue";
 import AppButton from "../atoms/AppButton.vue";
@@ -286,7 +286,12 @@ function formatDate(iso: string): string {
   });
 }
 
-onMounted(load);
+// Au rechargement complet, le store restaure la guilde selectionnee apres le
+// montage de la page. `onMounted(load)` partait alors avec un ID vide, quittait
+// sans requete et laissait tous les formulaires a leur valeur initiale. La
+// watcher immediate couvre a la fois l'arrivee tardive de l'ID et un changement
+// de serveur depuis le selecteur.
+watch(selectedGuildId, load, { immediate: true });
 </script>
 
 <template>

@@ -1,6 +1,6 @@
 # À tester — changements du 13/08/2026
 
-Onze changements, expliqués simplement, avec ce qu'il faut vérifier pour chacun.
+Douze changements, expliqués simplement, avec ce qu'il faut vérifier pour chacun.
 
 **Commencer par le point 10** : il exige de compléter le `.env` et, sans ça, plus rien ne démarre.
 
@@ -210,6 +210,24 @@ docker compose config >/dev/null && echo OK
 
 ---
 
+## 12. Effacer la mémoire d'un membre, sur demande (A1)
+
+**Le problème.** Atrium savait déjà effacer tout ce qu'il a retenu d'une personne — la fonction existait dans le code — mais **aucune route, aucun bouton, aucune commande** ne permettait de l'appeler. Répondre à une demande d'effacement supposait donc un `DELETE` manuel dans la base, c'est-à-dire en pratique que la demande restait sans suite. Ni le compilateur ni les outils d'analyse ne signalent une fonction publique sans appelant.
+
+**Le changement.** Une route d'administration, appelée par un bouton en bas de l'écran **Accueil IA**. Qui a demandé l'effacement est écrit dans les logs — un effacement sans trace de son auteur pose le même problème qu'une action anonyme.
+
+**À vérifier**, dans **Accueil IA** (univers Atrium), section « Effacer la mémoire d'un membre » :
+
+1. Coller un identifiant Discord contenant des lettres → le bouton reste inactif et un message l'explique.
+2. Coller l'identifiant d'un membre ayant déjà discuté avec Atrium → une confirmation s'affiche, rappelant l'identifiant concerné.
+3. Confirmer → un message indique le nombre de messages effacés.
+4. Recommencer avec le même identifiant → « Aucun message retenu pour ce membre ». C'est la bonne réponse, pas une erreur : il n'y a plus rien à effacer.
+5. `docker compose logs atrium-api | grep "Memoire d'un membre"` → la ligne cite le serveur, le membre, l'auteur et le nombre.
+
+> Ce qui n'est **pas** effacé, volontairement : la base de connaissances et les résumés d'ambiance quotidiens. Seuls les échanges du membre le sont.
+
+---
+
 ## Récapitulatif des fichiers modifiés
 
 | Changement | Fichier | Service à reconstruire |
@@ -225,6 +243,7 @@ docker compose config >/dev/null && echo OK
 | 9 — dépendances | `web/package-lock.json` | `web` |
 | 10 — secrets sans défaut | les 5 fichiers `compose.*.yml`, `infrastructure/scripts/verifier-secrets.sh` | aucune (config) |
 | 11 — rôle restreint ops | `sentinel-api/migrations/034_*.sql`, `compose.core.yml` | `ops-api`, `ops-worker` |
+| 12 — effacement mémoire | `atrium-api/src/{admin,lib}.rs`, `web/src/{api,services,components}` | `atrium-api`, `web` |
 
 Vérifications automatiques déjà passées : `cargo clippy --workspace --all-targets`, `npm run lint`, `npm run build`, et les 89 tests web. Elles ne prouvent que la compilation et le comportement en test — les points ci-dessus demandent un vrai essai.
 

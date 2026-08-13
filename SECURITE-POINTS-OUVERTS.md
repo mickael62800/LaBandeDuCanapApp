@@ -9,7 +9,7 @@ Ce qui reste après les audits des plateformes `sentinel-*`, `atrium-*`, `ops-*`
 
 > ### ✅ Corrigés le 13/08/2026
 >
-> **N1, N2, A4, W1, O4, S1**, et **O1 partiellement**.
+> **N1, N2, A4, W1, O4, S1, A1**, et **O1 partiellement**.
 >
 > S1 est corrigé **dans le dépôt** : plus aucun mot de passe n'a de valeur de repli publiée. Le travail côté serveur reste entier — compléter le `.env`, puis faire tourner les secrets qui valaient encore le défaut. Ajouter la variable ne remplace pas la rotation.
 >
@@ -30,7 +30,7 @@ Ce qui reste après les audits des plateformes `sentinel-*`, `atrium-*`, `ops-*`
 
 | # | Sujet | Pourquoi c'est encore ouvert |
 |---|---|---|
-| A1 | `forget_member` existe mais n'est joignable par aucune route | **Dette introduite pendant le correctif** — la capacité a été écrite, pas exposée |
+| ~~A1~~ | ~~`forget_member` existe mais n'est joignable par aucune route~~ | ✅ **Corrigé le 13/08** — route `DELETE …/members/{id}/memory`, auteur journalisé, bouton dans l'écran Atrium |
 | A2 | `atrium_calming_requested` n'est pas signé | Le signer demande un secret partagé inter-plateformes qui n'existe pas encore |
 | A3 | Contenu des membres envoyé à DeepSeek | Choix de produit, pas défaut de code — mais sans information ni base légale explicite |
 | ~~A4~~ | ~~`DEEPSEEK_API_KEY` garde un défaut vide dans le compose~~ | ✅ **Corrigé le 13/08** — `:?` sur le dernier repli |
@@ -299,7 +299,7 @@ C'est le produit : un accueil assisté par IA suppose d'envoyer les messages à 
 
 1. **Informer** — une mention dans le règlement ou le message d'accueil : « Atrium utilise un service d'IA externe pour répondre ». Coût quasi nul, et c'est le minimum attendu.
 2. **Réduire la portée du résumé** — `get_recent_activity` est le seul flux qui expose des tiers. Le restreindre aux échanges *avec Atrium* (`role = 'atrium'` et son message appairé) supprimerait la collecte de propos non concernés, au prix d'un résumé moins riche.
-3. **Permettre le retrait** — une clé `bot_guild_config` par membre, ou un opt-out sur simple commande, en s'appuyant sur A1 une fois la route d'effacement en place.
+3. **Permettre le retrait** — une clé `bot_guild_config` par membre, ou un opt-out sur simple commande. **La route d'effacement existe désormais (A1)** : il reste à la rendre atteignable par le membre lui-même, aujourd'hui elle suppose un administrateur.
 4. **Rapatrier le modèle** — Ollama tourne déjà dans le stack pour les embeddings (`atrium-ollama`). Un modèle de génération local supprimerait tout transfert, contre une qualité moindre et de la RAM.
 
 ### Rétention, pour mémoire

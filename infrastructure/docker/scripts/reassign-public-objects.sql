@@ -10,7 +10,6 @@ SELECT format(
     CASE c.relkind
         WHEN 'r' THEN 'TABLE'
         WHEN 'p' THEN 'TABLE'
-        WHEN 'S' THEN 'SEQUENCE'
         WHEN 'v' THEN 'VIEW'
         WHEN 'm' THEN 'MATERIALIZED VIEW'
         WHEN 'f' THEN 'FOREIGN TABLE'
@@ -22,22 +21,11 @@ SELECT format(
 FROM pg_catalog.pg_class AS c
 JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace
 WHERE n.nspname = 'public'
-  AND c.relkind IN ('r', 'p', 'S', 'v', 'm', 'f')
-  -- Une sequence SERIAL/IDENTITY est liee a sa colonne par une dependance
-  -- AUTO/INTERNAL. PostgreSQL interdit de changer son proprietaire
-  -- directement ; ALTER TABLE ... OWNER la transfere avec sa table.
-  -- Les sequences autonomes, elles, doivent toujours etre traitees ici.
-  AND NOT (
-      c.relkind = 'S'
-      AND EXISTS (
-          SELECT 1
-          FROM pg_catalog.pg_depend AS owned
-          WHERE owned.classid = 'pg_catalog.pg_class'::regclass
-            AND owned.objid = c.oid
-            AND owned.refclassid = 'pg_catalog.pg_class'::regclass
-            AND owned.deptype IN ('a', 'i')
-      )
-  )
+  -- Ne jamais emettre ALTER SEQUENCE OWNER ici. Les migrations n'ont aucune
+  -- sequence autonome : toutes proviennent de SERIAL/IDENTITY et sont liees a
+  -- une colonne. PostgreSQL les transfere avec ALTER TABLE ... OWNER et refuse
+  -- explicitement toute tentative de changement direct.
+  AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
   AND NOT EXISTS (
       SELECT 1
       FROM pg_catalog.pg_depend AS d

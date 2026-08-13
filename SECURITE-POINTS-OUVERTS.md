@@ -32,7 +32,7 @@ Ce qui reste après les audits des plateformes `sentinel-*`, `atrium-*`, `ops-*`
 |---|---|---|
 | ~~A1~~ | ~~`forget_member` existe mais n'est joignable par aucune route~~ | ✅ **Corrigé le 13/08** — route `DELETE …/members/{id}/memory`, auteur journalisé, bouton dans l'écran Atrium |
 | A2 | `atrium_calming_requested` n'est pas signé | Le signer demande un secret partagé inter-plateformes qui n'existe pas encore |
-| A3 | Contenu des membres envoyé à DeepSeek | Choix de produit, pas défaut de code — mais sans information ni base légale explicite |
+| A3 | Contenu des membres envoyé à DeepSeek | Choix de produit, pas défaut de code. ⚠️ **Réduit le 13/08** : les membres sont informés, la rétention est déclarée, et la portée réelle était surestimée (voir plus bas). Reste ouvert : base légale, et l'opt-out par le membre lui-même |
 | ~~A4~~ | ~~`DEEPSEEK_API_KEY` garde un défaut vide dans le compose~~ | ✅ **Corrigé le 13/08** — `:?` sur le dernier repli |
 
 ## Exploitation (ops)
@@ -292,9 +292,13 @@ Vers `https://api.deepseek.com/chat/completions` (`atrium-api/src/lib.rs:40`) :
 | Message du membre | `member_message`, jusqu'à 1 500 caractères | La personne qui écrit |
 | Pseudonyme affiché | `member_display_name` | idem |
 | Historique conversationnel | `ConversationMemory::history`, 10 derniers messages | idem |
-| **Activité récente du serveur** | `get_recent_activity(guild_id, 50)` | **50 derniers messages, tous membres confondus** |
+| **Activité récente du serveur** | `get_recent_activity(guild_id, 50)` | **50 dernières lignes, plusieurs membres confondus** |
 
-La dernière ligne est la plus large : la « météo d'ambiance » quotidienne (`job_generate_summary`) envoie les propos de membres qui n'ont jamais interagi avec Atrium et n'ont aucun moyen de le savoir.
+**Correction du 13/08 — la portée était surestimée ici.** La table lue par `get_recent_activity` (`atrium_conversation_messages`) n'est alimentée que par `remember_exchange`, appelé au seul retour d'une réponse d'Atrium. Elle ne contient donc **que des échanges avec Atrium** : message du membre et réponse du bot. Les propos de membres qui n'ont jamais interagi avec Atrium n'y entrent pas, et ne partent pas.
+
+Ce qui reste vrai, et c'est le point : la « météo d'ambiance » quotidienne (`job_generate_summary`) agrège les échanges de **plusieurs** membres. Les mots d'une personne quittent donc l'infrastructure dans un contexte qu'elle n'a pas déclenché — même s'ils avaient bien été adressés à Atrium.
+
+La piste 2 ci-dessous (« restreindre aux échanges avec Atrium ») était donc **déjà en place** : elle n'est pas un travail restant.
 
 DeepSeek est un fournisseur hors UE. Les conditions d'utilisation de l'API déterminent si ces contenus servent à l'entraînement — à vérifier plutôt qu'à supposer.
 
@@ -304,14 +308,14 @@ C'est le produit : un accueil assisté par IA suppose d'envoyer les messages à 
 
 ### Pistes, par coût croissant
 
-1. **Informer** — une mention dans le règlement ou le message d'accueil : « Atrium utilise un service d'IA externe pour répondre ». Coût quasi nul, et c'est le minimum attendu.
-2. **Réduire la portée du résumé** — `get_recent_activity` est le seul flux qui expose des tiers. Le restreindre aux échanges *avec Atrium* (`role = 'atrium'` et son message appairé) supprimerait la collecte de propos non concernés, au prix d'un résumé moins riche.
-3. **Permettre le retrait** — une clé `bot_guild_config` par membre, ou un opt-out sur simple commande. **La route d'effacement existe désormais (A1)** : il reste à la rendre atteignable par le membre lui-même, aujourd'hui elle suppose un administrateur.
+1. ~~**Informer**~~ — ✅ **fait le 13/08.** Une mention fixe (`MENTION_IA`, `atrium-bot/src/main.rs`) est posée en petit sous le mot d'accueil : service d'IA externe, conservation limitée, suppression possible sur demande. Posée là et nulle part ailleurs — au moment où le membre découvre le bot, avant son premier message ; la répéter à chaque réponse la rendrait invisible à force d'être lue. Texte non configurable : un réglage vide par défaut n'informerait personne.
+2. ~~**Réduire la portée du résumé**~~ — **déjà le cas** (cf. correction ci-dessus) : la table ne contient que des échanges avec Atrium. Ce qui resterait à décider, si on voulait aller plus loin : que le résumé ne mélange pas les membres, ou qu'il travaille sur des propos anonymisés. Les deux dégradent la « météo d'ambiance », qui est précisément une lecture d'ensemble.
+3. **Permettre le retrait** — une clé `bot_guild_config` par membre, ou un opt-out sur simple commande. **La route d'effacement existe désormais (A1)** : il reste à la rendre atteignable par le membre lui-même, aujourd'hui elle suppose un administrateur. C'est la piste la plus rentable des trois restantes, puisque le mécanisme est déjà écrit.
 4. **Rapatrier le modèle** — Ollama tourne déjà dans le stack pour les embeddings (`atrium-ollama`). Un modèle de génération local supprimerait tout transfert, contre une qualité moindre et de la RAM.
 
 ### Rétention, pour mémoire
 
-Traité : `purge_old` efface messages et résumés au-delà de 90 jours (`ATRIUM_MEMORY_RETENTION_DAYS`), via le job quotidien. Cette variable n'est **pas déclarée dans `compose.atrium.yml`** — elle retombe sur 90 en dur. L'ajouter au compose la rendrait visible à l'exploitant plutôt que découvrable dans le code.
+Traité : `purge_old` efface messages et résumés au-delà de 90 jours (`ATRIUM_MEMORY_RETENTION_DAYS`), via le job quotidien. ✅ **La variable est déclarée dans `compose.atrium.yml` depuis le 13/08**, avec le même défaut que le code : une durée de conservation de données personnelles qui ne se lit nulle part est une durée que personne ne peut ni vérifier ni justifier.
 
 ---
 

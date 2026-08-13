@@ -1,6 +1,6 @@
 # À tester — changements du 13/08/2026
 
-Dix-huit changements, expliqués simplement, avec ce qu'il faut vérifier pour chacun.
+Dix-neuf changements, expliqués simplement, avec ce qu'il faut vérifier pour chacun.
 
 **Commencer par le point 10** : il exige de compléter le `.env` et, sans ça, plus rien ne démarre.
 
@@ -327,6 +327,22 @@ La protection du navigateur en production (CSP) empêchait l'exécution, mais ce
 
 ---
 
+## 19. Atrium dit maintenant qu'il utilise une IA externe (A3)
+
+**Le contexte.** Les messages adressés à Atrium partent vers un service d'IA hors UE pour être traités — c'est le fonctionnement du produit, pas un défaut. Mais rien ne le disait aux membres, qui n'avaient donc aucun moyen de le savoir ni de s'y opposer.
+
+**Le changement.** Une mention en petit caractère est ajoutée **sous le mot d'accueil** : service d'IA externe, conservation limitée, suppression possible sur demande auprès d'un administrateur. Elle apparaît là et nulle part ailleurs — au moment où le membre découvre le bot. La répéter à chaque réponse la rendrait invisible à force d'être lue.
+
+**Une correction au passage** : l'audit affirmait que le résumé quotidien envoyait « les propos de membres qui n'ont jamais interagi avec Atrium ». C'est **faux** — vérifié dans le code : la table lue ne contient que les échanges *avec* Atrium. La portée réelle est plus étroite que ce qui était écrit, et le document est corrigé.
+
+**À vérifier** avec un compte de test :
+
+1. Rejoindre, valider le règlement → le mot d'accueil d'Atrium s'affiche, suivi de la ligne « Pour discuter avec moi… » puis de la mention en petit.
+2. Mentionner Atrium dans le salon général → la réponse **ne** répète **pas** la mention. C'est voulu.
+3. `docker compose exec atrium-api env | grep RETENTION` → `ATRIUM_MEMORY_RETENTION_DAYS=90` (la valeur était déjà celle-là, mais elle n'était visible que dans le code).
+
+---
+
 ## Récapitulatif des fichiers modifiés
 
 | Changement | Fichier | Service à reconstruire |
@@ -349,6 +365,7 @@ La protection du navigateur en production (CSP) empêchait l'exécution, mais ce
 | 16 — acteur d'audit Nexus | `nexus-api/.../game/servers.rs`, `web/nginx.conf`, `web/src/services/nexusGamesService.ts` | `nexus-api`, `web` |
 | 17 — GeoIP en clair | `ops-api/src/adapters/geoip.rs`, `compose.core.yml` | `ops-api` |
 | 18 — sondes S2 | `sentinel-api/src/main.rs`, `auth-api/src/config.rs`, `auth-core/.../identity.rs` | `api`, `auth-api` |
+| 19 — mention IA | `atrium-bot/src/main.rs`, `compose.atrium.yml` | `atrium-bot`, `atrium-api` |
 
 Vérifications automatiques déjà passées : `cargo clippy --workspace --all-targets`, `npm run lint`, `npm run build`, et les 89 tests web. Elles ne prouvent que la compilation et le comportement en test — les points ci-dessus demandent un vrai essai.
 

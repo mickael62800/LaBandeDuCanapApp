@@ -9,7 +9,7 @@ Ce qui reste après les audits des plateformes `sentinel-*`, `atrium-*`, `ops-*`
 
 > ### ✅ Corrigés le 13/08/2026
 >
-> **N1, N2, A4, W1, O4, S1, A1, W4, W3, W2**, et **O1 partiellement**. La section Web est entièrement traitée.
+> **N1, N2, N3, A4, W1, O4, S1, A1, W4, W3, W2**, et **O1 partiellement**. Les sections Web et Nexus sont traitées — N4 mis à part, redescendu à un choix de produit.
 >
 > S1 est corrigé **dans le dépôt** : plus aucun mot de passe n'a de valeur de repli publiée. Le travail côté serveur reste entier — compléter le `.env`, puis faire tourner les secrets qui valaient encore le défaut. Ajouter la variable ne remplace pas la rotation.
 >
@@ -66,7 +66,7 @@ Contrairement aux sections précédentes, ces quatre points ne sont pas des arbi
 |---|---|---|
 | ~~N1~~ | ~~`/nexus-public/` relaie toute l'API avec la clé injectée~~ | ✅ **Corrigé le 13/08** — préfixe descendu à `/api/public/` |
 | ~~N2~~ | ~~`nexus-api` s'ouvre entièrement si `NEXUS_API_KEY` est vide~~ | ✅ **Corrigé le 13/08** — `exit(1)`, `:?` au compose, mode fail-open supprimé du socle |
-| N3 | L'acteur de l'audit est un paramètre d'URL | Moyenne — traçabilité falsifiable |
+| ~~N3~~ | ~~L'acteur de l'audit est un paramètre d'URL~~ | ✅ **Corrigé le 13/08** — identité posée par la passerelle (`X-Actor-Id`), paramètre d'URL ignoré pour tout ce qui vient du web |
 | N4 | RCON transmis sans liste blanche | Redescendue à un choix de produit depuis la correction de N1 : la commande n'est plus accessible sans authentification |
 
 ---

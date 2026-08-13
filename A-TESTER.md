@@ -1,6 +1,6 @@
 # À tester — changements du 13/08/2026
 
-Quinze changements, expliqués simplement, avec ce qu'il faut vérifier pour chacun.
+Seize changements, expliqués simplement, avec ce qu'il faut vérifier pour chacun.
 
 **Commencer par le point 10** : il exige de compléter le `.env` et, sans ça, plus rien ne démarre.
 
@@ -279,6 +279,21 @@ La protection du navigateur en production (CSP) empêchait l'exécution, mais ce
 
 ---
 
+## 16. On ne peut plus signer une action Nexus du nom d'un autre (N3)
+
+**Le problème.** Le journal d'audit de Nexus notait l'auteur d'une action à partir d'un **paramètre dans l'adresse**. Ajouter `?actor_id=<quelqu'un d'autre>` suffisait donc à attribuer une commande RCON, un arrêt ou la suppression d'un serveur à une autre personne. La traçabilité était falsifiable par le plus simple des moyens.
+
+**Le changement.** Pour tout ce qui vient du site, l'identité est posée par la passerelle depuis la session déjà vérifiée, et le paramètre d'adresse est **ignoré**. Le bot Discord, lui, continue de nommer l'utilisateur qui a lancé la commande : il est le seul à le connaître, et il n'est pas joignable depuis un navigateur.
+
+**À vérifier**, dans **Nexus → un serveur de jeu** :
+
+1. Démarrer, arrêter, modifier la configuration → les actions fonctionnent normalement.
+2. **Opérations système** (univers Exploitation) ou le journal Nexus → les lignes citent bien **votre** compte Discord.
+3. Depuis Discord, une action sur un serveur → le journal cite le membre qui a lancé la commande, pas le propriétaire du serveur.
+4. Le cas qui doit échouer : rejouer une action en ajoutant `?actor_id=123456` à l'adresse → l'action est tracée à **votre** nom, pas `123456`.
+
+---
+
 ## Récapitulatif des fichiers modifiés
 
 | Changement | Fichier | Service à reconstruire |
@@ -298,6 +313,7 @@ La protection du navigateur en production (CSP) empêchait l'exécution, mais ce
 | 13 — clé API retirée du SPA | `web/src/api/{config,http}.ts`, `types/index.ts`, `main.ts` | `web` |
 | 14 — callback OAuth fail-closed | `web/src/components/pages/auth/AuthCallbackPage.vue` | `web` |
 | 15 — aperçu d'embed | `web/src/utils/discordMarkdown.ts` | `web` |
+| 16 — acteur d'audit Nexus | `nexus-api/.../game/servers.rs`, `web/nginx.conf`, `web/src/services/nexusGamesService.ts` | `nexus-api`, `web` |
 
 Vérifications automatiques déjà passées : `cargo clippy --workspace --all-targets`, `npm run lint`, `npm run build`, et les 89 tests web. Elles ne prouvent que la compilation et le comportement en test — les points ci-dessus demandent un vrai essai.
 

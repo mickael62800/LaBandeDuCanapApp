@@ -1,15 +1,38 @@
 <script setup lang="ts">
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import SectionIcon from "../atoms/SectionIcon.vue";
 import { useDashboardSections } from "../../composables/useDashboardSections";
 import { useSidebar } from "../../composables/useSidebar";
 import { useUniverse } from "../../composables/useUniverse";
+import { UNIVERSES, type UniverseKey } from "@/universes";
 
 const route = useRoute();
+const router = useRouter();
 // La barre laterale ne montre que l'univers courant.
-const { universe, definition, homePath } = useUniverse();
+const { universe, definition, homePath, setUniverse } = useUniverse();
 const { groups } = useDashboardSections(universe);
+const { availableUniverses } = useDashboardSections();
 const { open, close, isCollapsed, toggleGroup } = useSidebar();
+
+// Bascule d'univers, repliquee ici pour les petits ecrans UNIQUEMENT (elle est
+// masquee au-dessus de 700px, ou la barre du haut la porte deja).
+//
+// Sans elle, un telephone n'avait aucun moyen de changer d'univers : la barre
+// du haut masque `.universe-switch` sous 700px faute de place, et la barre
+// laterale ne liste que l'univers courant. L'utilisateur restait donc enferme
+// dans celui de sa page d'arrivee — Sentinel — sans que rien ne signale que
+// Nexus, Atrium et Exploitation existaient. Le tiroir est l'endroit logique :
+// c'est deja la ou vit la navigation sur mobile, et la largeur y permet des
+// libelles lisibles, contrairement a la barre du haut.
+function switchUniverse(target: UniverseKey) {
+  if (target === universe.value) {
+    close();
+    return;
+  }
+  setUniverse(target);
+  router.push(UNIVERSES[target].home);
+  close();
+}
 
 // L'accent vient de l'UNIVERS, plus d'une couleur par groupe de menu, et il
 // est pose par `MainLayout` sur la coque (`--universe-accent`) : la barre
@@ -48,6 +71,27 @@ function onNavigate() {
     class="sidebar"
     :class="{ 'is-open': open }"
   >
+    <!-- Bascule d'univers du tiroir mobile (cf. `switchUniverse`). -->
+    <div
+      v-if="availableUniverses.length > 1"
+      class="universe-switch"
+      role="group"
+      aria-label="Changer d'univers"
+    >
+      <button
+        v-for="u in availableUniverses"
+        :key="u.key"
+        type="button"
+        class="universe-btn"
+        :class="{ active: universe === u.key }"
+        :style="{ '--u-accent': u.accent }"
+        :aria-current="universe === u.key ? 'true' : undefined"
+        @click="switchUniverse(u.key)"
+      >
+        {{ u.brand.name }}
+      </button>
+    </div>
+
     <nav class="sidebar-nav" aria-label="Navigation principale">
       <router-link
         :to="homePath"
@@ -210,6 +254,57 @@ function onNavigate() {
 
 .sidebar-overlay {
   display: none;
+}
+
+/* ── Bascule d'univers (tiroir mobile uniquement) ──
+   Masquee par defaut : au-dessus de 700px, c'est `TopBar` qui la porte, et
+   deux bascules simultanees a l'ecran donneraient deux etats a comparer. */
+.universe-switch {
+  display: none;
+}
+
+@media (max-width: 700px) {
+  .universe-switch {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .universe-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    /* Cible tactile : 44px est le minimum confortable au pouce. */
+    min-height: 44px;
+    padding: 0 10px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    text-align: left;
+    cursor: pointer;
+  }
+  /* Pastille a la couleur de l'univers, comme dans la barre du haut : la
+     bascule se lit d'un coup d'oeil au lieu d'un simple onglet actif. */
+  .universe-btn::before {
+    content: "";
+    flex-shrink: 0;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--u-accent, var(--accent));
+  }
+  .universe-btn.active {
+    background: var(--u-accent, var(--accent));
+    border-color: var(--u-accent, var(--accent));
+    color: #fff;
+  }
+  .universe-btn.active::before {
+    background: #fff;
+  }
 }
 
 /* ── Mobile : sidebar en drawer off-canvas ── */

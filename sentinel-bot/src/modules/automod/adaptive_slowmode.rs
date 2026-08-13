@@ -4,4 +4,6 @@
 use serenity::model::id::ChannelId;
 
 pub type SlowmodeTracker =
-    sentinel_core::domain::services::automod::adaptive_slowmode::SlowmodeTracker<ChannelId>;
+    platform_core::sentinel::domain::services::automod::adaptive_slowmode::SlowmodeTracker<
+        ChannelId,
+    >;

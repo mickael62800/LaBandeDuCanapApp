@@ -5,7 +5,6 @@ edition = "2021"
 description = "Gateway de la plateforme jeux Nexus — point d'entree reseau (scaffold)"
 
 [dependencies]
-nexus-core = { path = "../nexus-core" }
 tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }

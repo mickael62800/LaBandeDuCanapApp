@@ -3,27 +3,18 @@ resolver = "2"
 members = [
     "platform-common",
     "platform-common-api",
-    "sentinel-proto",
-    "sentinel-core",
-    "sentinel-api",
+    "platform-core",
+    "platform-proto",
+    "platform-api",
     "sentinel-gateway",
-    "sentinel-worker",
+    "platform-scheduler",
     "sentinel-bot",
-    "nexus-proto",
-    "nexus-core",
-    "nexus-api",
     "nexus-gateway",
-    "nexus-worker",
     "nexus-bot",
-    "atrium-api",
-    "atrium-core",
-    "atrium-proto",
     "atrium-bot",
-    "atrium-worker", "platform-common-bot", "platform-common-worker",
-    "ops-core",
+    "platform-common-bot",
     "ops-adapters",
-    "ops-api",
-    "ops-worker",
+    "ops-agent",
     # Identite : OAuth2 Discord, sessions web, gate superadmin. Extraite de
     # sentinel-api pour que les trois plateformes la consomment a egalite.
     "auth-core",
@@ -91,20 +82,17 @@ redis = { version = "0.27", features = ["tokio-comp", "aio", "streams", "connect
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono", "json", "macros", "migrate"] }
 
 # Internes (paths)
-sentinel-proto = { path = "sentinel-proto" }
-ops-core = { path = "ops-core" }
+platform-proto = { path = "platform-proto" }
 ops-adapters = { path = "ops-adapters" }
-ops-api = { path = "ops-api" }
 auth-core = { path = "auth-core" }
 auth-api = { path = "auth-api" }
-sentinel-core = { path = "sentinel-core" }
 # Socle partage par les deux plateformes. `platform-common` n'a aucune
 # dependance framework (Redis pur) ; `platform-common-api` tire axum/tower-http
 # et n'est donc consomme que par les APIs, jamais par les bots.
 platform-common = { path = "platform-common" }
 platform-common-api = { path = "platform-common-api" }
-atrium-core = { path = "atrium-core" }
-atrium-proto = { path = "atrium-proto" }
+platform-core = { path = "platform-core" }
+platform-api = { path = "platform-api" }
 
 # ── Lints partagés (à activer dans chaque crate via `[lints] workspace = true`) ──
 [workspace.lints.clippy]

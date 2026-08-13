@@ -314,7 +314,7 @@ pub(super) async fn create_temp_channel(
                 .await
                 .unwrap_or_default();
             cfg.get("panel_post_enabled")
-                .map(|v| sentinel_core::domain::entities::system::config_parsers::parse_bool_str(v))
+                .map(|v| platform_core::sentinel::domain::entities::system::config_parsers::parse_bool_str(v))
                 .unwrap_or(true)
         } else {
             true

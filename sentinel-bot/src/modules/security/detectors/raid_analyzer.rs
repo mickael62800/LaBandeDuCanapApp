@@ -3,7 +3,7 @@
 
 use serenity::model::id::GuildId;
 
-pub use sentinel_core::domain::services::security::raid_analyzer::JoinInfo;
+pub use platform_core::sentinel::domain::services::security::raid_analyzer::JoinInfo;
 
 pub type RecentJoinsTracker =
-    sentinel_core::domain::services::security::raid_analyzer::RecentJoinsTracker<GuildId>;
+    platform_core::sentinel::domain::services::security::raid_analyzer::RecentJoinsTracker<GuildId>;

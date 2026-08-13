@@ -4,7 +4,7 @@
 //! configuré. Les autres messages sont ignorés afin qu'Atrium ne se comporte
 //! pas comme un chatbot global par défaut.
 
-use atrium_proto::welcome::v1::ConversationScope;
+use platform_proto::atrium::welcome::v1::ConversationScope;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MessageHandling {

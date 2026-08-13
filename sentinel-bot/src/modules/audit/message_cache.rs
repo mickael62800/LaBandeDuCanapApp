@@ -4,7 +4,10 @@
 
 use serenity::model::id::{GuildId, MessageId};
 
-pub use sentinel_core::domain::services::audit::message_cache::CachedMessage;
+pub use platform_core::sentinel::domain::services::audit::message_cache::CachedMessage;
 
 pub type MessageCache =
-    sentinel_core::domain::services::audit::message_cache::MessageCache<GuildId, MessageId>;
+    platform_core::sentinel::domain::services::audit::message_cache::MessageCache<
+        GuildId,
+        MessageId,
+    >;

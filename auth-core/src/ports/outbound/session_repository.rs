@@ -33,6 +33,10 @@ pub trait SessionRepository: Send + Sync {
 
     async fn delete(&self, id: Uuid) -> Result<(), DomainError>;
 
+    /// Supprime toutes les sessions dont l'echeance absolue est depassee.
+    /// Retourne le nombre de lignes supprimees pour l'observabilite.
+    async fn purge_expired(&self) -> Result<u64, DomainError>;
+
     /// Trace best-effort : un échec d'écriture ne doit jamais faire échouer un
     /// login par ailleurs valide. C'est l'appelant qui absorbe l'erreur.
     async fn record_login(&self, trace: &LoginTrace) -> Result<(), DomainError>;

@@ -1,0 +1,28 @@
+[package]
+name = "platform-core"
+version.workspace = true
+edition.workspace = true
+description = "Coeur metier unifie de la plateforme, separe par contexte fonctionnel"
+
+[dependencies]
+async-trait = { workspace = true }
+chrono = { workspace = true }
+dashmap = { workspace = true }
+image = { workspace = true }
+ndarray = { workspace = true }
+platform-common = { workspace = true }
+rand = { workspace = true }
+regex = "1.13.1"
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = "0.10"
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+
+[lints]
+workspace = true

@@ -12,30 +12,32 @@ variable "TAG" { default = "latest" }
 
 group "default" {
   targets = [
-    "api", "web", "auth-api", "docker-agent", "ops-api", "ops-worker",
-    "gateway", "sentinel-bot", "sentinel-worker",
-    "atrium-api", "atrium-bot", "atrium-worker",
-    "nexus-api", "nexus-bot", "nexus-worker",
+    "api", "web", "auth-api", "docker-agent", "ops-api", "ops-agent",
+    "platform-scheduler",
+    "gateway", "sentinel-bot",
+    "atrium-api", "atrium-bot",
+    "nexus-api", "nexus-bot",
   ]
 }
 
 group "core" {
   targets = [
-    "api", "web", "auth-api", "docker-agent", "ops-api", "ops-worker",
-    "gateway", "sentinel-bot", "sentinel-worker",
+    "api", "web", "auth-api", "docker-agent", "ops-api", "ops-agent",
+    "platform-scheduler",
+    "gateway", "sentinel-bot",
   ]
 }
 
 group "workers" {
-  targets = ["sentinel-worker", "ops-worker", "atrium-worker", "nexus-worker"]
+  targets = ["platform-scheduler", "ops-agent"]
 }
 
 group "atrium" {
-  targets = ["atrium-api", "atrium-bot", "atrium-worker"]
+  targets = ["atrium-api", "atrium-bot"]
 }
 
 group "nexus" {
-  targets = ["nexus-api", "nexus-bot", "nexus-worker"]
+  targets = ["nexus-api", "nexus-bot"]
 }
 
 target "_alpine-base" {
@@ -70,10 +72,10 @@ target "rust-app" {
   inherits = ["_alpine-base"]
   matrix = {
     app = [
-      "auth-api", "docker-agent", "ops-api", "ops-worker",
-      "sentinel-bot", "sentinel-worker",
-      "atrium-api", "atrium-bot", "atrium-worker",
-      "nexus-api", "nexus-bot", "nexus-worker",
+      "auth-api", "docker-agent", "ops-api", "ops-agent", "platform-scheduler",
+      "sentinel-bot",
+      "atrium-api", "atrium-bot",
+      "nexus-api", "nexus-bot",
     ]
   }
   name = "${app}"

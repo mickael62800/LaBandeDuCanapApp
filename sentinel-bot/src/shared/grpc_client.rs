@@ -28,6 +28,7 @@
 
 use std::sync::Arc;
 use std::time::Duration;
+use std::{io, path::Path};
 
 use serenity::prelude::TypeMapKey;
 use tonic::codec::CompressionEncoding;
@@ -38,30 +39,30 @@ use tonic::transport::{Channel, Endpoint};
 use tonic::{Request, Status};
 use tracing::{error, info, warn};
 
-use sentinel_proto::age_gate::v1::age_gate_service_client::AgeGateServiceClient;
-use sentinel_proto::ai_dataset::v1::ai_dataset_service_client::AiDatasetServiceClient;
-use sentinel_proto::announcements::v1::announcements_service_client::AnnouncementsServiceClient;
-use sentinel_proto::audit::v1::audit_service_client::AuditServiceClient;
-use sentinel_proto::automod::v1::automod_service_client::AutomodServiceClient;
-use sentinel_proto::automod_review::v1::automod_review_service_client::AutomodReviewServiceClient;
-use sentinel_proto::community::v1::community_service_client::CommunityServiceClient;
-use sentinel_proto::confessions::v1::confessions_service_client::ConfessionsServiceClient;
-use sentinel_proto::discord_messages::v1::discord_action_messages_service_client::DiscordActionMessagesServiceClient;
-use sentinel_proto::embeds::v1::embeds_service_client::EmbedsServiceClient;
-use sentinel_proto::guild_backup::v1::guild_backup_service_client::GuildBackupServiceClient;
-use sentinel_proto::ideas::v1::ideas_service_client::IdeasServiceClient;
-use sentinel_proto::members::v1::members_service_client::MembersServiceClient;
-use sentinel_proto::moderation::v1::moderation_service_client::ModerationServiceClient;
-use sentinel_proto::progression::v1::progression_service_client::ProgressionServiceClient;
-use sentinel_proto::purge::v1::purge_service_client::PurgeServiceClient;
-use sentinel_proto::roles::v1::role_panels_service_client::RolePanelsServiceClient;
-use sentinel_proto::security::v1::security_service_client::SecurityServiceClient;
-use sentinel_proto::security_state::v1::security_state_service_client::SecurityStateServiceClient;
-use sentinel_proto::stats::v1::stats_service_client::StatsServiceClient;
-use sentinel_proto::sursis::v1::sursis_service_client::SursisServiceClient;
-use sentinel_proto::tickets::v1::tickets_service_client::TicketsServiceClient;
-use sentinel_proto::voice::v1::voice_channels_service_client::VoiceChannelsServiceClient;
-use sentinel_proto::welcome::v1::welcome_service_client::WelcomeServiceClient;
+use platform_proto::sentinel::age_gate::v1::age_gate_service_client::AgeGateServiceClient;
+use platform_proto::sentinel::ai_dataset::v1::ai_dataset_service_client::AiDatasetServiceClient;
+use platform_proto::sentinel::announcements::v1::announcements_service_client::AnnouncementsServiceClient;
+use platform_proto::sentinel::audit::v1::audit_service_client::AuditServiceClient;
+use platform_proto::sentinel::automod::v1::automod_service_client::AutomodServiceClient;
+use platform_proto::sentinel::automod_review::v1::automod_review_service_client::AutomodReviewServiceClient;
+use platform_proto::sentinel::community::v1::community_service_client::CommunityServiceClient;
+use platform_proto::sentinel::confessions::v1::confessions_service_client::ConfessionsServiceClient;
+use platform_proto::sentinel::discord_messages::v1::discord_action_messages_service_client::DiscordActionMessagesServiceClient;
+use platform_proto::sentinel::embeds::v1::embeds_service_client::EmbedsServiceClient;
+use platform_proto::sentinel::guild_backup::v1::guild_backup_service_client::GuildBackupServiceClient;
+use platform_proto::sentinel::ideas::v1::ideas_service_client::IdeasServiceClient;
+use platform_proto::sentinel::members::v1::members_service_client::MembersServiceClient;
+use platform_proto::sentinel::moderation::v1::moderation_service_client::ModerationServiceClient;
+use platform_proto::sentinel::progression::v1::progression_service_client::ProgressionServiceClient;
+use platform_proto::sentinel::purge::v1::purge_service_client::PurgeServiceClient;
+use platform_proto::sentinel::roles::v1::role_panels_service_client::RolePanelsServiceClient;
+use platform_proto::sentinel::security::v1::security_service_client::SecurityServiceClient;
+use platform_proto::sentinel::security_state::v1::security_state_service_client::SecurityStateServiceClient;
+use platform_proto::sentinel::stats::v1::stats_service_client::StatsServiceClient;
+use platform_proto::sentinel::sursis::v1::sursis_service_client::SursisServiceClient;
+use platform_proto::sentinel::tickets::v1::tickets_service_client::TicketsServiceClient;
+use platform_proto::sentinel::voice::v1::voice_channels_service_client::VoiceChannelsServiceClient;
+use platform_proto::sentinel::welcome::v1::welcome_service_client::WelcomeServiceClient;
 
 use super::circuit_breaker::CircuitBreaker;
 
@@ -74,6 +75,20 @@ pub enum GrpcCallError {
     Status(#[from] Status),
     #[error("erreur transport : {0}")]
     Transport(#[from] tonic::transport::Error),
+}
+
+/// Erreur de construction du canal gRPC. Lorsque TLS est configure, toute
+/// erreur de certificat est fatale afin de ne jamais retomber en clair.
+#[derive(Debug, thiserror::Error)]
+pub enum GrpcClientInitError {
+    #[error("erreur transport gRPC : {0}")]
+    Transport(#[from] tonic::transport::Error),
+    #[error("impossible de lire la configuration mTLS dans {dir}: {source}")]
+    TlsFiles {
+        dir: String,
+        #[source]
+        source: io::Error,
+    },
 }
 
 /// Convertit un `GrpcCallError` en message **destine a l'utilisateur Discord**,
@@ -200,7 +215,7 @@ impl SentinelGrpcClient {
     /// Construit un client a partir des variables d'environnement :
     /// - `GRPC_API_URL` (defaut : `http://127.0.0.1:50051`)
     /// - `API_KEY` (optionnelle, injectee dans `authorization`)
-    pub async fn from_env() -> Result<Self, tonic::transport::Error> {
+    pub async fn from_env() -> Result<Self, GrpcClientInitError> {
         let url =
             std::env::var("GRPC_API_URL").unwrap_or_else(|_| "http://127.0.0.1:50051".to_string());
         let api_key = std::env::var("SENTINEL_API_KEY").unwrap_or_default();
@@ -208,62 +223,13 @@ impl SentinelGrpcClient {
     }
 
     /// Construit un client en pointant explicitement une URL gRPC.
-    pub async fn connect(url: &str, api_key: &str) -> Result<Self, tonic::transport::Error> {
-        // Si mTLS active, force https:// dans l'URL. tonic exige https
-        // pour declencher le handshake TLS lors du connect.
-        let effective_url = if sentinel_proto::tls::tls_dir().is_some() {
-            if let Some(rest) = url.strip_prefix("http://") {
-                format!("https://{rest}")
-            } else if !url.starts_with("https://") {
-                format!("https://{url}")
-            } else {
-                url.to_string()
-            }
-        } else {
-            url.to_string()
-        };
+    pub async fn connect(url: &str, api_key: &str) -> Result<Self, GrpcClientInitError> {
+        let tls_dir = platform_proto::sentinel::tls::tls_dir();
+        let endpoint = build_endpoint(url, tls_dir.as_deref())?;
 
-        let endpoint = Endpoint::from_shared(effective_url)?
-            // Phase 7A — tunings raisonnables. Le multiplexage HTTP/2 evite
-            // de multiplier les connexions ; un seul Channel suffit pour tous
-            // les RPC concurrents d'un meme bot.
-            .connect_timeout(Duration::from_secs(5))
-            .timeout(Duration::from_secs(30))
-            .tcp_keepalive(Some(Duration::from_secs(60)))
-            .http2_keep_alive_interval(Duration::from_secs(30))
-            .keep_alive_timeout(Duration::from_secs(10))
-            .keep_alive_while_idle(true);
-
-        // mTLS optionnel : active si GRPC_TLS_DIR defini en env.
-        // Domaine SAN du cert serveur = "api" (cf. gen-grpc-certs.sh).
-        let endpoint = match sentinel_proto::tls::tls_dir() {
-            Some(dir) => {
-                let domain = url
-                    .strip_prefix("http://")
-                    .or_else(|| url.strip_prefix("https://"))
-                    .unwrap_or(url)
-                    .split(':')
-                    .next()
-                    .unwrap_or("api");
-                match sentinel_proto::tls::client_tls_config(&dir, domain) {
-                    Ok(tls) => match endpoint.clone().tls_config(tls) {
-                        Ok(e) => {
-                            info!(domain = %domain, "gRPC client TLS active (mTLS)");
-                            e
-                        }
-                        Err(e) => {
-                            info!(error = %e, "Echec config TLS client gRPC, fallback plain");
-                            endpoint
-                        }
-                    },
-                    Err(e) => {
-                        info!(error = %e, "Echec lecture certs TLS gRPC, fallback plain");
-                        endpoint
-                    }
-                }
-            }
-            None => endpoint,
-        };
+        if let Some(dir) = tls_dir {
+            info!(dir = %dir.display(), "gRPC client TLS active (mTLS)");
+        }
 
         let channel = endpoint.connect_lazy();
         info!(url = %url, "SentinelGrpcClient initialise (lazy connect)");
@@ -274,7 +240,58 @@ impl SentinelGrpcClient {
             breaker: Arc::new(CircuitBreaker::new(5, Duration::from_secs(10))),
         })
     }
+}
 
+fn build_endpoint(url: &str, tls_dir: Option<&Path>) -> Result<Endpoint, GrpcClientInitError> {
+    // Si mTLS active, force https:// dans l'URL. tonic exige https
+    // pour declencher le handshake TLS lors du connect.
+    let effective_url = if tls_dir.is_some() {
+        if let Some(rest) = url.strip_prefix("http://") {
+            format!("https://{rest}")
+        } else if !url.starts_with("https://") {
+            format!("https://{url}")
+        } else {
+            url.to_string()
+        }
+    } else {
+        url.to_string()
+    };
+
+    let endpoint = Endpoint::from_shared(effective_url)?
+        // Phase 7A — tunings raisonnables. Le multiplexage HTTP/2 evite
+        // de multiplier les connexions ; un seul Channel suffit pour tous
+        // les RPC concurrents d'un meme bot.
+        .connect_timeout(Duration::from_secs(5))
+        .timeout(Duration::from_secs(30))
+        .tcp_keepalive(Some(Duration::from_secs(60)))
+        .http2_keep_alive_interval(Duration::from_secs(30))
+        .keep_alive_timeout(Duration::from_secs(10))
+        .keep_alive_while_idle(true);
+
+    // mTLS optionnel : active si GRPC_TLS_DIR defini en env.
+    // Domaine SAN du cert serveur = "api" (cf. gen-grpc-certs.sh).
+    match tls_dir {
+        Some(dir) => {
+            let domain = url
+                .strip_prefix("http://")
+                .or_else(|| url.strip_prefix("https://"))
+                .unwrap_or(url)
+                .split(':')
+                .next()
+                .unwrap_or("api");
+            let tls = platform_proto::sentinel::tls::client_tls_config(dir, domain).map_err(
+                |source| GrpcClientInitError::TlsFiles {
+                    dir: dir.display().to_string(),
+                    source,
+                },
+            )?;
+            Ok(endpoint.tls_config(tls)?)
+        }
+        None => Ok(endpoint),
+    }
+}
+
+impl SentinelGrpcClient {
     // ── Helpers de service ──
     //
     // Phase 7A optimisations : chaque client annonce l'envoi et l'acceptation
@@ -603,5 +620,39 @@ mod tests {
         let err = GrpcCallError::Unavailable;
         let msg = format!("{err}");
         assert!(msg.contains("indisponible") || msg.contains("circuit breaker"));
+    }
+
+    #[test]
+    fn missing_tls_configuration_allows_plain_http2() {
+        assert!(build_endpoint("http://127.0.0.1:50051", None).is_ok());
+    }
+
+    #[test]
+    fn configured_but_unreadable_tls_directory_is_rejected() {
+        let missing =
+            std::env::temp_dir().join(format!("sentinel-bot-missing-tls-{}", std::process::id()));
+
+        let error = build_endpoint("http://api:50051", Some(&missing)).unwrap_err();
+
+        assert!(matches!(error, GrpcClientInitError::TlsFiles { .. }));
+        assert!(error.to_string().contains(&missing.display().to_string()));
+    }
+
+    #[test]
+    fn configured_but_invalid_tls_certificates_are_rejected() {
+        let dir = std::env::temp_dir().join(format!(
+            "sentinel-bot-invalid-tls-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        for file in ["client.pem", "client.key", "ca.pem"] {
+            std::fs::write(dir.join(file), b"not a PEM certificate").unwrap();
+        }
+
+        let error = build_endpoint("http://api:50051", Some(&dir)).unwrap_err();
+
+        assert!(matches!(error, GrpcClientInitError::Transport(_)));
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }

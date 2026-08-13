@@ -97,9 +97,10 @@ async fn tick(ctx: &Context) -> Result<(), String> {
             .get("timezone_offset")
             .and_then(|v| v.trim().parse::<i64>().ok())
             .unwrap_or(0);
-        let target_utc = sentinel_core::domain::services::system::scheduling::local_hour_to_utc(
-            post_hour, offset,
-        );
+        let target_utc =
+            platform_core::sentinel::domain::services::system::scheduling::local_hour_to_utc(
+                post_hour, offset,
+            );
         if now_hour != target_utc {
             continue;
         }

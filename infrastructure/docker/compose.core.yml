@@ -83,13 +83,92 @@ x-worker-networks-with-internet: &worker-networks-with-internet
 
 services:
 
+  # Planificateur HTTP commun. Aucun acces DB, Redis, Docker, /proc ou Discord.
+  # Les domaines restent opt-in pendant la migration pour garantir qu'un job
+  # ne tourne jamais a la fois ici et dans son ancien worker.
+  platform-scheduler:
+    <<: *rust-base
+    build:
+      <<: *build-alpine
+      args:
+        BIN_NAME: platform-scheduler
+    environment:
+      RUST_LOG: ${RUST_LOG:-info}
+      SCHEDULER_ATRIUM_ENABLED: ${SCHEDULER_ATRIUM_ENABLED:-false}
+      ATRIUM_API_URL: http://atrium-api:8090
+      ATRIUM_API_TOKEN: ${ATRIUM_SCHEDULER_TOKEN:?ATRIUM_SCHEDULER_TOKEN est requis}
+      ATRIUM_PRIMARY_GUILD_ID: ${PUBLIC_GUILD_ID:-}
+      ATRIUM_SUMMARY_INTERVAL_SECS: ${ATRIUM_SUMMARY_INTERVAL_SECS:-86400}
+      ATRIUM_RETENTION_INTERVAL_SECS: ${ATRIUM_RETENTION_INTERVAL_SECS:-86400}
+      SCHEDULER_NEXUS_ENABLED: ${SCHEDULER_NEXUS_ENABLED:-false}
+      NEXUS_API_URL: http://nexus-api:3100
+      NEXUS_API_TOKEN: ${NEXUS_SCHEDULER_TOKEN:?NEXUS_SCHEDULER_TOKEN est requis}
+      GAME_HEALTH_CHECK_INTERVAL_SECS: ${GAME_HEALTH_CHECK_INTERVAL_SECS:-30}
+      GAME_IDLE_SHUTDOWN_CHECK_INTERVAL_SECS: ${GAME_IDLE_SHUTDOWN_CHECK_INTERVAL_SECS:-3600}
+      GAME_RECONCILER_INTERVAL_SECS: ${GAME_RECONCILER_INTERVAL_SECS:-3600}
+      GAME_IMAGE_CLEANUP_INTERVAL_SECS: ${GAME_IMAGE_CLEANUP_INTERVAL_SECS:-86400}
+      GAME_REVEAL_IP_INTERVAL_SECS: ${GAME_REVEAL_IP_INTERVAL_SECS:-300}
+      GAME_DAILY_PING_INTERVAL_SECS: ${GAME_DAILY_PING_INTERVAL_SECS:-3600}
+      GAME_AUTO_START_INTERVAL_SECS: ${GAME_AUTO_START_INTERVAL_SECS:-60}
+      SCHEDULER_SENTINEL_ENABLED: ${SCHEDULER_SENTINEL_ENABLED:-true}
+      SENTINEL_API_URL: http://api:3000
+      SENTINEL_API_TOKEN: ${SENTINEL_SCHEDULER_TOKEN:?SENTINEL_SCHEDULER_TOKEN est requis}
+      SENTINEL_SURSIS_EXPIRE_INTERVAL_SECS: ${SENTINEL_SURSIS_EXPIRE_INTERVAL_SECS:-60}
+      DAILY_SNAPSHOT_INTERVAL: ${DAILY_SNAPSHOT_INTERVAL:-1}
+      HOURLY_SNAPSHOT_INTERVAL: ${HOURLY_SNAPSHOT_INTERVAL:-60}
+      ANALYTICS_RETENTION_CHECK: ${ANALYTICS_RETENTION_CHECK:-86400}
+      TOP_USERS_PUBLISH_CHECK: ${TOP_USERS_PUBLISH_CHECK:-3600}
+      MONTHLY_RANKING_CHECK_SECS: ${MONTHLY_RANKING_CHECK_SECS:-3600}
+      AUTOMOD_CLEANUP_CARDS_SECS: ${AUTOMOD_CLEANUP_CARDS_SECS:-86400}
+      AUTOMOD_CLOSE_VOTES_SECS: ${AUTOMOD_CLOSE_VOTES_SECS:-60}
+      ANNOUNCEMENTS_RETENTION_CHECK: ${ANNOUNCEMENTS_RETENTION_CHECK:-86400}
+      ANNOUNCEMENT_PUBLISH_INTERVAL_SECS: ${ANNOUNCEMENT_PUBLISH_INTERVAL_SECS:-3600}
+      ANNOUNCEMENTS_FETCH_LIMIT_GLOBAL: ${ANNOUNCEMENTS_FETCH_LIMIT_GLOBAL:-200}
+      CLEANUP_INTERVAL_HOURS: ${CLEANUP_INTERVAL_HOURS:-1}
+      VACUUM_ENABLED: ${VACUUM_ENABLED:-true}
+      VACUUM_INTERVAL_HOURS: ${VACUUM_INTERVAL_HOURS:-24}
+      ANALYTICS_REFRESH_INTERVAL: ${ANALYTICS_REFRESH_INTERVAL:-300}
+      DASHBOARD_REFRESH_INTERVAL: ${DASHBOARD_REFRESH_INTERVAL:-600}
+      VOICE_STATS_REFRESH_INTERVAL: ${VOICE_STATS_REFRESH_INTERVAL:-3600}
+      LEADERBOARDS_REFRESH_INTERVAL: ${LEADERBOARDS_REFRESH_INTERVAL:-300}
+      USER_CACHE_SYNC_INTERVAL: ${USER_CACHE_SYNC_INTERVAL:-900}
+      PARTITION_MANAGER_INTERVAL: ${PARTITION_MANAGER_INTERVAL:-86400}
+      AUDIT_CACHE_REFRESH_INTERVAL: ${AUDIT_CACHE_REFRESH_INTERVAL:-60}
+      BAN_CLEANUP_INTERVAL: ${BAN_CLEANUP_INTERVAL:-1}
+      SEND_REMINDERS_INTERVAL: ${SEND_REMINDERS_INTERVAL:-30}
+      AGE_UNBAN_INTERVAL: ${AGE_UNBAN_INTERVAL:-2592000}
+      QUARANTINE_KICK_CHECK_SECS: ${QUARANTINE_KICK_CHECK_SECS:-15}
+      LOCKDOWN_EXPIRE_CHECK_SECS: ${LOCKDOWN_EXPIRE_CHECK_SECS:-15}
+      SLOWMODE_EXPIRE_CHECK_SECS: ${SLOWMODE_EXPIRE_CHECK_SECS:-15}
+      TEMP_ROLES_SCAN_INTERVAL: ${TEMP_ROLES_SCAN_INTERVAL:-60}
+      GUILD_BACKUP_AUTO_CHECK_INTERVAL: ${GUILD_BACKUP_AUTO_CHECK_INTERVAL:-1800}
+      APPEAL_SLA_SCAN_INTERVAL: ${APPEAL_SLA_SCAN_INTERVAL:-120}
+      EXPORT_SCAN_INTERVAL: ${EXPORT_SCAN_INTERVAL:-5}
+      AUDIT_SYNC_INTERVAL: ${AUDIT_SYNC_INTERVAL:-300}
+      AI_POLL_INTERVAL: ${AI_POLL_INTERVAL:-2}
+      TICKETS_SLA_CHECK_INTERVAL: ${TICKETS_SLA_CHECK_INTERVAL:-300}
+      TICKETS_CLOSE_INACTIVE_INTERVAL: ${TICKETS_CLOSE_INACTIVE_INTERVAL:-1800}
+      SCHEDULER_OPS_ENABLED: ${SCHEDULER_OPS_ENABLED:-true}
+      OPS_API_URL: http://ops-api:3200
+      OPS_API_TOKEN: ${OPS_SCHEDULER_TOKEN:?OPS_SCHEDULER_TOKEN est requis}
+      SECURITY_ALERTS_INTERVAL_SECS: ${SECURITY_ALERTS_INTERVAL_SECS:-300}
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - internal
+    depends_on:
+      api:
+        condition: service_healthy
+      ops-api:
+        condition: service_healthy
+
   # ──────────────────────────────────────────────────────────────────────────
   # Init mTLS gRPC : genere une CA + cert serveur + cert client partages.
   # Idempotent (ne regenere pas si deja present). Volume shared en read-only
   # avec l'API (server) et les clients gRPC (workers + bot).
   # ──────────────────────────────────────────────────────────────────────────
   grpc-certs-init:
-    image: alpine:3.20
+    image: alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
     container_name: sentinel-grpc-certs-init
     environment:
       CERT_DIR: /grpc-certs
@@ -112,7 +191,7 @@ services:
   # ──────────────────────────────────────────────────────────────────────────
 
   postgres:
-    image: pgvector/pgvector:pg16
+    image: pgvector/pgvector:pg16@sha256:a36250871de0833b8757561c72f2477ef1ddd1101afa4e617fb552e0de514c6b
     container_name: sentinel-postgres
     restart: unless-stopped
     logging: *default-logging
@@ -166,7 +245,7 @@ services:
   # One-shot : role applicatif NON-SUPERUSER pour la base de Sentinel.
   #
   # SECURITE — `POSTGRES_USER: sentinel` est le superuser du cluster, et un
-  # superuser IGNORE tous les GRANT. Tant que sentinel-api, sentinel-worker et
+  # superuser IGNORE tous les GRANT. Tant que sentinel-api et
   # ops-api s'y connectaient, leurs identifiants ouvraient AUSSI les bases
   # `nexus`, `atrium` et surtout `auth` — celle qui contient les access et
   # refresh tokens Discord des administrateurs. Le cloisonnement des trois
@@ -174,7 +253,7 @@ services:
   #
   # `sentinel_app` possede `discord_sentinel` et rien d'autre.
   sentinel-db-init:
-    image: postgres:16-alpine
+    image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
     environment:
       PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD est requis}
       SENTINEL_DB_PASSWORD: ${SENTINEL_DB_PASSWORD:?SENTINEL_DB_PASSWORD est requis}
@@ -259,7 +338,7 @@ services:
   # Meme motif que `nexus-pgbouncer` et `atrium-pgbouncer` : un pool par role,
   # bi-network pour faire le pont vers `data`, et l'API reste hors de `data`.
   ops-pgbouncer:
-    image: edoburu/pgbouncer:latest
+    image: edoburu/pgbouncer:latest@sha256:4c1ca296ef525f108f5d3552cc337c0c09587cf8dae7f0067fd93349e47dc1cd
     container_name: sentinel-ops-pgbouncer
     restart: unless-stopped
     logging: *default-logging
@@ -283,7 +362,7 @@ services:
       - internal
 
   pgbouncer:
-    image: edoburu/pgbouncer:latest
+    image: edoburu/pgbouncer:latest@sha256:4c1ca296ef525f108f5d3552cc337c0c09587cf8dae7f0067fd93349e47dc1cd
     container_name: sentinel-pgbouncer
     restart: unless-stopped
     logging: *default-logging
@@ -310,7 +389,7 @@ services:
       - internal
 
   redis:
-    image: redis:7-alpine
+    image: redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2
     container_name: sentinel-redis
     restart: unless-stopped
     logging: *default-logging
@@ -344,10 +423,6 @@ services:
       args:
         BIN_NAME: sentinel-api
         MIGRATIONS_SRC: sentinel-api/migrations
-    # SECURITE — `pid: host` partage le namespace PID de l'host avec le
-    # conteneur pour que sysinfo remonte le CPU/RAM reel (endpoint /api/system/info).
-    # Mitigations : `no-new-privileges` bloque toute escalade.
-    pid: host
     security_opt:
       - no-new-privileges:true
     # SECURITE — l'API est reachable depuis l'exterieur UNIQUEMENT via le
@@ -382,6 +457,16 @@ services:
       # savoir QUI est connecte. La cle ne quitte donc pas le reseau interne.
       NEXUS_API_URL: http://nexus-api:3100
       NEXUS_API_KEY: ${NEXUS_API_KEY:?NEXUS_API_KEY est requis}
+      VOICE_SESSIONS_RETENTION_DAYS: ${VOICE_SESSIONS_RETENTION_DAYS:-90}
+      LOGS_RETENTION_DAYS: ${LOGS_RETENTION_DAYS:-30}
+      CLOSED_TICKETS_RETENTION_DAYS: ${CLOSED_TICKETS_RETENTION_DAYS:-180}
+      WATCHED_USERS_QUERY_LIMIT: ${WATCHED_USERS_QUERY_LIMIT:-10000}
+      SENTINEL_API_URL: http://127.0.0.1:3000
+      GRPC_API_URL: http://127.0.0.1:50051
+      MAX_ROWS_PER_EXPORT: ${MAX_ROWS_PER_EXPORT:-50000}
+      EXPORT_PROCESSING_TIMEOUT_SECS: ${EXPORT_PROCESSING_TIMEOUT_SECS:-300}
+      AI_JOB_TIMEOUT: ${AI_JOB_TIMEOUT:-120}
+      AI_BATCH_SIZE: ${AI_BATCH_SIZE:-5}
       # Acces au daemon Docker : plus de socket ici, on passe par l'agent.
       DOCKER_AGENT_URL: http://docker-agent:8095
       DOCKER_AGENT_TOKEN: ${DOCKER_AGENT_TOKEN:?DOCKER_AGENT_TOKEN est requis}
@@ -393,6 +478,7 @@ services:
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD est requis}@redis:6379
       SENTINEL_API_KEY: ${SENTINEL_API_KEY:-}
       SENTINEL_REQUIRE_API_KEY: ${SENTINEL_REQUIRE_API_KEY:-true}
+      SENTINEL_SCHEDULER_TOKEN: ${SENTINEL_SCHEDULER_TOKEN:?SENTINEL_SCHEDULER_TOKEN est requis}
       # Consommateur de l'identite : le gate superadmin ne resout plus
       # l'identite lui-meme, il demande son verdict a auth-api.
       AUTH_API_URL: http://auth-api:8096
@@ -439,6 +525,7 @@ services:
       # Pour l'endpoint /api/security/tls-cert : domaine du cert Let's Encrypt
       # a lire dans /etc/letsencrypt/live/{WEB_DOMAIN}/cert.pem
       WEB_DOMAIN: ${WEB_DOMAIN:-localhost}
+      SECURITY_ALERTS_WEBHOOK: ${SECURITY_ALERTS_WEBHOOK:-}
     volumes:
       - ../../sentinel-ml/vision/exports:/models/vision:ro
       - ../../sentinel-ml/text/exports:/models/text:ro
@@ -510,6 +597,15 @@ services:
       # conteneur, `postgres` et `auth-api` compris.
       DOCKER_AGENT_TOKEN: ${DOCKER_AGENT_TOKEN:?DOCKER_AGENT_TOKEN est requis}
       DOCKER_AGENT_GAME_TOKEN: ${DOCKER_AGENT_GAME_TOKEN:?DOCKER_AGENT_GAME_TOKEN est requis}
+      DOCKER_AGENT_GAME_IMAGES: ${DOCKER_AGENT_GAME_IMAGES:-itzg/minecraft-server:latest@sha256:23f417bcccfc5b96fad0c7898e1a9f6472a97d28450975a7c53a666722baeef3,lloesche/valheim-server:latest@sha256:20fde516ce311e6084f82f295c9eb6934af57b357c657937a04f62bdf5946149,factoriotools/factorio:stable@sha256:c21d798e75a8333ddca2f7029290325b3f2085841c72ab31cc64f7a916872841,thijsvanloef/palworld-server-docker:latest@sha256:401d3eb5c053bcd72949e1ede8c4e38be5e5ad66be7272ac37940706df0aeb2f,hermsi/ark-server:latest@sha256:e18189505c76187366714a2d297bbe8462937f6e43690311f71b20f9cd87b14e,vinanrra/7dtd-server:latest@sha256:c3b2073b4519b80437ec2b1841cf8b3bfb9dea6eef5078fb13b607fa86333ed6,ryshe/terraria:tshock-1.4.5.6-6.1.0@sha256:b1c89f7f359abfe1171db454101853c3812b581eecd0f4eeabb9e9f77da240ef}
+      DOCKER_AGENT_GAME_ROOT_IMAGES: ${DOCKER_AGENT_GAME_ROOT_IMAGES:-lloesche/valheim-server:latest@sha256:20fde516ce311e6084f82f295c9eb6934af57b357c657937a04f62bdf5946149,factoriotools/factorio:stable@sha256:c21d798e75a8333ddca2f7029290325b3f2085841c72ab31cc64f7a916872841,thijsvanloef/palworld-server-docker:latest@sha256:401d3eb5c053bcd72949e1ede8c4e38be5e5ad66be7272ac37940706df0aeb2f,hermsi/ark-server:latest@sha256:e18189505c76187366714a2d297bbe8462937f6e43690311f71b20f9cd87b14e,vinanrra/7dtd-server:latest@sha256:c3b2073b4519b80437ec2b1841cf8b3bfb9dea6eef5078fb13b607fa86333ed6,ryshe/terraria:tshock-1.4.5.6-6.1.0@sha256:b1c89f7f359abfe1171db454101853c3812b581eecd0f4eeabb9e9f77da240ef}
+      DOCKER_AGENT_GAME_COMMAND_IMAGES: ${DOCKER_AGENT_GAME_COMMAND_IMAGES:-ryshe/terraria:tshock-1.4.5.6-6.1.0@sha256:b1c89f7f359abfe1171db454101853c3812b581eecd0f4eeabb9e9f77da240ef}
+      DOCKER_AGENT_GAME_NETWORK: ${DOCKER_AGENT_GAME_NETWORK:-sentinel-games}
+      DOCKER_AGENT_GAME_CONTAINER_USER: ${DOCKER_AGENT_GAME_CONTAINER_USER:-1000:1000}
+      DOCKER_AGENT_GAME_PORT_START: ${DOCKER_AGENT_GAME_PORT_START:-25500}
+      DOCKER_AGENT_GAME_PORT_END: ${DOCKER_AGENT_GAME_PORT_END:-25599}
+      DOCKER_AGENT_RCON_PORT_START: ${DOCKER_AGENT_RCON_PORT_START:-25700}
+      DOCKER_AGENT_RCON_PORT_END: ${DOCKER_AGENT_RCON_PORT_END:-25799}
     # GID du groupe `docker` de l'host, proprietaire du socket. Sans lui, le
     # user non-root du conteneur ne peut pas l'ouvrir.
     # Override : DOCKER_GID=$(stat -c '%g' /var/run/docker.sock) dans .env.
@@ -558,6 +654,7 @@ services:
       OPS_API_TOKEN: ${OPS_API_TOKEN:?OPS_API_TOKEN est requis}
       # Surcharge facultative ; a defaut, le jeton commun aux quatre API.
       OPS_METRICS_TOKEN: ${OPS_METRICS_TOKEN:-${METRICS_TOKEN:?METRICS_TOKEN est requis}}
+      OPS_SCHEDULER_TOKEN: ${OPS_SCHEDULER_TOKEN:?OPS_SCHEDULER_TOKEN est requis}
       # Resolution GeoIP : transfert d'adresses IP a un tiers, donc opt-in
       # explicite. Cf. .env.example pour la portee RGPD et le point sur le
       # http:// du palier gratuit.
@@ -621,43 +718,41 @@ services:
       timeout: 3s
       retries: 3
 
-  # Worker Exploitation : surveillance Docker et evaluation des alertes.
-  # Le snapshot courant est publie dans Redis puis servi par ops-api.
-  ops-worker:
+  # Agent de collecte hote. Lui seul lit /proc et interroge docker-agent ; le
+  # scheduler commun et le dispatcher d'alertes ne portent pas ces privileges.
+  ops-agent:
     <<: *rust-base
     build:
       <<: *build-alpine
       args:
-        BIN_NAME: ops-worker
+        BIN_NAME: ops-agent
     healthcheck: *worker-healthcheck
     environment:
       <<: *light-worker-env
-      # Role RESTREINT (cf. migration 034) via son pool dedie : l'exploitation
-      # ne se connecte plus avec le proprietaire de la base. Elle porte le
-      # jeton d'administration de l'hote ; lui laisser en plus tout
-      # `discord_sentinel` faisait d'un seul processus compromis la machine ET
-      # les donnees de la communaute.
       OPS_DATABASE_URL: postgres://sentinel_ops:${OPS_DB_PASSWORD:?OPS_DB_PASSWORD est requis}@ops-pgbouncer:5432/discord_sentinel
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD est requis}@redis:6379
       DOCKER_AGENT_URL: http://docker-agent:8095
       DOCKER_AGENT_TOKEN: ${DOCKER_AGENT_TOKEN:?DOCKER_AGENT_TOKEN est requis}
-      SECURITY_ALERTS_WEBHOOK: ${SECURITY_ALERTS_WEBHOOK:-}
-      SECURITY_ALERTS_INTERVAL_SECS: ${SECURITY_ALERTS_INTERVAL_SECS:-300}
+      HOST_METRICS_INTERVAL_SECS: ${HOST_METRICS_INTERVAL_SECS:-30}
+      SENTINEL_API_URL: http://api:3000
+      SENTINEL_API_KEY: ${SENTINEL_API_KEY:-}
+      MONITOR_CHECK_INTERVAL: ${MONITOR_CHECK_INTERVAL:-30}
     security_opt:
       - no-new-privileges:true
     volumes:
       - /var/lib/sentinel:/var/lib/sentinel:ro
+      - /proc:/host/proc:ro
     depends_on:
-      # Meme pool restreint qu'ops-api : il ne lit que `logs` et `alert_rules`.
       ops-pgbouncer:
         condition: service_started
       redis:
         condition: service_healthy
       docker-agent:
         condition: service_started
+      api:
+        condition: service_healthy
     networks:
       - internal
-      - default
 
   gateway:
     <<: *rust-base
@@ -707,50 +802,6 @@ services:
     networks:
       - internal
       - default
-
-  # ──────────────────────────────────────────────────────────────────────────
-  # sentinel-worker : binaire unique qui orchestre tous les jobs
-  # periodiques (ex 15 workers fusionnes en avril 2026). Organise par
-  # domaine en interne : `src/domains/{domain}/{job}.rs`.
-  #
-  # Toutes les variables d'env de tous les domaines + acces internet
-  # (Discord pour les jobs ai/audit-sync/announcement) + grpc-certs
-  # pour le job export.
-  # ──────────────────────────────────────────────────────────────────────────
-  sentinel-worker:
-    <<: *rust-base
-    build:
-      <<: *build-alpine
-      args:
-        BIN_NAME: sentinel-worker
-    healthcheck: *worker-healthcheck
-    environment:
-      <<: *worker-env
-      # gRPC pour le job export
-      GRPC_API_URL: http://api:50051
-      GRPC_TLS_DIR: /grpc-certs
-      # Discord (audit-sync, announcement)
-      SENTINEL_DISCORD_TOKEN: ${SENTINEL_BOT_TOKEN:-${SENTINEL_DISCORD_TOKEN:-${DISCORD_TOKEN:-}}}
-      # Cleanup
-      VOICE_SESSIONS_RETENTION_DAYS: ${VOICE_SESSIONS_RETENTION_DAYS:-90}
-      LOGS_RETENTION_DAYS: ${LOGS_RETENTION_DAYS:-30}
-      CLOSED_TICKETS_RETENTION_DAYS: ${CLOSED_TICKETS_RETENTION_DAYS:-180}
-      CLEANUP_INTERVAL_HOURS: ${CLEANUP_INTERVAL_HOURS:-1}
-      VACUUM_ENABLED: ${VACUUM_ENABLED:-true}
-      VACUUM_INTERVAL_HOURS: ${VACUUM_INTERVAL_HOURS:-24}
-    volumes:
-      - grpc_certs:/grpc-certs:ro
-    depends_on:
-      pgbouncer:
-        condition: service_started
-      grpc-certs-init:
-        condition: service_completed_successfully
-      redis:
-        condition: service_healthy
-      api:
-        condition: service_healthy
-    # Acces internet (Discord) + interne (Postgres/Redis/API).
-    networks: *worker-networks-with-internet
 
   # ──────────────────────────────────────────────────────────────────────────
   # Bot unifie

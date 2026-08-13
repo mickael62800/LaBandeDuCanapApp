@@ -9,7 +9,7 @@ use std::sync::Arc;
 use crate::shared::grpc_client::SentinelGrpcClient;
 use serde::{Deserialize, Serialize};
 
-use sentinel_proto::tickets::v1 as proto;
+use platform_proto::sentinel::tickets::v1 as proto;
 
 // ── DTOs publics ──
 

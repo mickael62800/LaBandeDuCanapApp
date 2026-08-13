@@ -22,7 +22,9 @@ use serenity::all::{
 };
 use tracing::{info, warn};
 
-use sentinel_core::domain::entities::guild_backup::snapshot::{GuildSnapshot, SnapshotChannel};
+use platform_core::sentinel::domain::entities::guild_backup::snapshot::{
+    GuildSnapshot, SnapshotChannel,
+};
 
 use super::api_client::PendingRoleGrant;
 use super::progress::ProgressSink;

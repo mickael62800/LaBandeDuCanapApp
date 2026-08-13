@@ -1,5 +1,11 @@
 //! Module automod — detection spam/insultes/liens/phishing + slowmode adaptatif.
-//! Migre depuis automod-bot.
+//! Flux : message, filtrage, detecteurs du core, puis action immediate ou
+//! creation d'une `AutomodReview`. Les decisions persistantes passent par
+//! l'API afin de rester visibles sur le web et de survivre au redemarrage.
+//! Le bot applique les effets Discord ; il ne redefinit pas les regles metier.
+//!
+//! Les caches locaux servent a la performance et a l'idempotence. Ils ne
+//! remplacent jamais la verification d'etat realisee par l'API et la base.
 
 pub const MODULE_BOT_NAME: &str = "automod-bot";
 
@@ -11,7 +17,7 @@ mod config;
 // Détecteurs automod : la logique (règles pures) vit désormais dans le core
 // hexagonal partagé. Le bot ne fait que la ré-exposer sous le même chemin
 // (`super::detectors::…`) pour rester un adaptateur mince.
-pub use sentinel_core::domain::services::automod as detectors;
+pub use platform_core::sentinel::domain::services::automod as detectors;
 mod message_handler;
 mod review;
 mod vote;

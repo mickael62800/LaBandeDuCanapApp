@@ -8,7 +8,7 @@ description = "Bot Discord d'accueil IA Atrium"
 serenity = { workspace = true }
 tokio = { workspace = true }
 tonic = { workspace = true }
-atrium-proto = { workspace = true }
+platform-proto = { workspace = true }
 dotenvy = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }

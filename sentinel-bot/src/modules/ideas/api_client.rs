@@ -8,7 +8,7 @@
 use std::sync::Arc;
 
 use crate::shared::grpc_client::{grpc_err_to_string, GrpcCallError, SentinelGrpcClient};
-use sentinel_proto::ideas::v1 as proto;
+use platform_proto::sentinel::ideas::v1 as proto;
 
 /// Idee telle que le bot la manipule. Miroir du sous-ensemble expose par le
 /// service gRPC : les horodatages et l'identifiant du decideur restent cote

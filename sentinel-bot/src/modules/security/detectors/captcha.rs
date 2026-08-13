@@ -1,6 +1,6 @@
 //! Captcha — ADAPTATEUR Discord. La logique pure (génération du challenge,
 //! suivi des captchas en attente avec TTL) vit dans le core hexagonal
-//! (`sentinel_core::domain::services::security::captcha`) ; ce module ne garde
+//! (`platform_core::sentinel::domain::services::security::captcha`) ; ce module ne garde
 //! que l'envoi en DM et le rendu des boutons.
 
 use serenity::builder::{CreateActionRow, CreateButton, CreateMessage};
@@ -11,11 +11,11 @@ use tracing::{error, info, warn};
 use crate::shared::embeds::info_embed;
 
 /// Génération du challenge math : logique pure, réexportée du core.
-pub use sentinel_core::domain::services::security::captcha::generate_math_challenge;
+pub use platform_core::sentinel::domain::services::security::captcha::generate_math_challenge;
 
 /// Suivi des captchas en attente, clé `(GuildId, UserId)`. Logique dans le core.
 pub type CaptchaPending =
-    sentinel_core::domain::services::security::captcha::CaptchaPending<(GuildId, UserId)>;
+    platform_core::sentinel::domain::services::security::captcha::CaptchaPending<(GuildId, UserId)>;
 
 /// Prefixe du bouton de verification captcha simple. Le custom_id encode le
 /// guild_id : "{PREFIX}{guild_id}" -> le handler agit sur CE serveur uniquement.

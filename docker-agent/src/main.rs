@@ -44,15 +44,15 @@ use axum::extract::{Extension, Path, Query};
 use axum::http::{header::AUTHORIZATION, HeaderMap, StatusCode};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use ops_core::domain::entities::docker_host::{
+use platform_core::ops::domain::entities::docker_host::{
     ContainerSummary, DiskUsage, DockerVersionInfo, ImageSummary, NetworkSummary, PruneOutcome,
     VolumeSummary,
 };
-use ops_core::domain::entities::game_runtime::{
+use platform_core::ops::domain::entities::game_runtime::{
     ContainerSpec, ContainerStats, ContainerStatus, ManagedContainer,
 };
-use ops_core::ports::outbound::docker_host::DockerHost;
-use ops_core::ports::outbound::game_runtime::GameContainerRuntime;
+use platform_core::ops::ports::outbound::docker_host::DockerHost;
+use platform_core::ops::ports::outbound::game_runtime::GameContainerRuntime;
 use serde::Deserialize;
 use subtle::ConstantTimeEq;
 
@@ -201,10 +201,19 @@ impl axum::response::IntoResponse for AgentError {
     }
 }
 
-impl From<ops_core::domain::errors::DomainError> for AgentError {
-    fn from(error: ops_core::domain::errors::DomainError) -> Self {
+impl From<platform_core::ops::domain::errors::DomainError> for AgentError {
+    fn from(error: platform_core::ops::domain::errors::DomainError) -> Self {
         tracing::warn!(%error, "Operation Docker en echec");
-        AgentError(StatusCode::BAD_GATEWAY, error.to_string())
+        let status = match &error {
+            platform_core::ops::domain::errors::DomainError::Forbidden(_) => StatusCode::FORBIDDEN,
+            platform_core::ops::domain::errors::DomainError::NotFound(_) => StatusCode::NOT_FOUND,
+            platform_core::ops::domain::errors::DomainError::Validation(_)
+            | platform_core::ops::domain::errors::DomainError::ValidationError(_) => {
+                StatusCode::UNPROCESSABLE_ENTITY
+            }
+            _ => StatusCode::BAD_GATEWAY,
+        };
+        AgentError(status, error.to_string())
     }
 }
 

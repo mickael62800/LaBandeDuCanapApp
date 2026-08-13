@@ -14,6 +14,7 @@ serde_json = { workspace = true }
 platform-common = { path = "../platform-common" }
 # Client de l'API d'identite (auth_client).
 reqwest = { workspace = true }
+sqlx = { workspace = true }
 
 # Observabilite
 metrics = "0.24"

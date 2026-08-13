@@ -32,8 +32,8 @@ global:
 # serait pire que l'endpoint ouvert. Il est ecrit au demarrage par le service
 # `prometheus-token-init` dans un volume, et lu par `credentials_file`.
 #
-# Les workers (`sentinel-worker:9100`) n'ont pas de jeton : leur serveur de
-# metriques vient de `platform-common-worker` et n'en gere pas. Ils exposent des
+# Les agents (`ops-agent:9100`) n'ont pas de jeton : leur serveur de
+# metriques est local a `ops-agent` et n'en gere pas. Il expose des
 # compteurs de jobs, pas la surface HTTP publique. C'est un reste assume.
 scrape_configs:
   # ── API ──
@@ -97,14 +97,12 @@ scrape_configs:
           component: 'backend'
 
   # ── Worker unifie ──
-  # Les workers par domaine ont ete fusionnes dans le binaire `sentinel-worker`
-  # (meta-scheduler, cf. sentinel-worker/src/scheduler.rs). Une seule cible
-  # remplace donc les 11 anciennes, qui ne resolvaient plus.
-  - job_name: 'sentinel-workers'
+  # Collecte hote, surveillance Docker et transitions online/offline.
+  - job_name: 'ops-agent'
     metrics_path: '/metrics'
     static_configs:
       - targets:
-          - 'sentinel-worker:9100'
+          - 'ops-agent:9100'
         labels:
           component: 'worker'
     relabel_configs:

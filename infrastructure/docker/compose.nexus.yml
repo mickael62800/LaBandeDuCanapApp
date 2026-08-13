@@ -14,17 +14,6 @@ x-nexus-build-alpine: &nexus-build-alpine
   context: ../..
   dockerfile: infrastructure/docker/Dockerfile.rust-alpine
 
-x-nexus-light-worker-env: &nexus-light-worker-env
-  METRICS_PORT: "9100"
-  RUST_LOG: ${RUST_LOG:-info}
-
-x-nexus-worker-healthcheck: &nexus-worker-healthcheck
-  test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:9100/metrics || exit 1"]
-  interval: 30s
-  timeout: 3s
-  retries: 3
-  start_period: 15s
-
 services:
 
   # Redis DEDIE a la plateforme jeux.
@@ -46,7 +35,7 @@ services:
   #   - Persistance activee (`appendonly`). Un redemarrage de l'instance
   #     commune perdait ces reservations, avec le meme risque.
   nexus-redis:
-    image: redis:7-alpine
+    image: redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2
     restart: unless-stopped
     logging: *nexus-default-logging
     command: >-
@@ -84,7 +73,7 @@ services:
   # demande de traiter leurs `CREATE EXTENSION` (pgvector cote Atrium n'est pas
   # une extension « trusted », elle exige le superuser) — chantier distinct.
   nexus-db-init:
-    image: postgres:16-alpine
+    image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
     environment:
       PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD est requis}
       NEXUS_DB_PASSWORD: ${NEXUS_DB_PASSWORD:?NEXUS_DB_PASSWORD est requis}
@@ -140,7 +129,7 @@ services:
   # bi-network ») et donnait a l'API des jeux une route directe vers l'instance
   # qui heberge aussi discord_sentinel.
   nexus-pgbouncer:
-    image: edoburu/pgbouncer:latest
+    image: edoburu/pgbouncer:latest@sha256:4c1ca296ef525f108f5d3552cc337c0c09587cf8dae7f0067fd93349e47dc1cd
     restart: unless-stopped
     logging: *nexus-default-logging
     environment:
@@ -194,6 +183,7 @@ services:
       # connecte avec le role `nexus` — pas le superuser du cluster.
       NEXUS_DATABASE_URL: postgres://nexus:${NEXUS_DB_PASSWORD:?NEXUS_DB_PASSWORD est requis}@nexus-pgbouncer:5432/nexus
       NEXUS_API_KEY: ${NEXUS_API_KEY:?NEXUS_API_KEY est requis}
+      NEXUS_SCHEDULER_TOKEN: ${NEXUS_SCHEDULER_TOKEN:?NEXUS_SCHEDULER_TOKEN est requis}
       NEXUS_API_PORT: "3100"
       NEXUS_GRPC_PORT: "3101"
       # L'API Nexus appelle aussi Discord (gestion des salons de session).
@@ -230,6 +220,15 @@ services:
       # DOCKER_AGENT_TOKEN : il ouvre l'arret et la purge de tous les
       # conteneurs de l'hote.
       DOCKER_AGENT_GAME_TOKEN: ${DOCKER_AGENT_GAME_TOKEN:?DOCKER_AGENT_GAME_TOKEN est requis}
+      DOCKER_AGENT_GAME_IMAGES: ${DOCKER_AGENT_GAME_IMAGES:-itzg/minecraft-server:latest@sha256:23f417bcccfc5b96fad0c7898e1a9f6472a97d28450975a7c53a666722baeef3,lloesche/valheim-server:latest@sha256:20fde516ce311e6084f82f295c9eb6934af57b357c657937a04f62bdf5946149,factoriotools/factorio:stable@sha256:c21d798e75a8333ddca2f7029290325b3f2085841c72ab31cc64f7a916872841,thijsvanloef/palworld-server-docker:latest@sha256:401d3eb5c053bcd72949e1ede8c4e38be5e5ad66be7272ac37940706df0aeb2f,hermsi/ark-server:latest@sha256:e18189505c76187366714a2d297bbe8462937f6e43690311f71b20f9cd87b14e,vinanrra/7dtd-server:latest@sha256:c3b2073b4519b80437ec2b1841cf8b3bfb9dea6eef5078fb13b607fa86333ed6,ryshe/terraria:tshock-1.4.5.6-6.1.0@sha256:b1c89f7f359abfe1171db454101853c3812b581eecd0f4eeabb9e9f77da240ef}
+      DOCKER_AGENT_GAME_ROOT_IMAGES: ${DOCKER_AGENT_GAME_ROOT_IMAGES:-lloesche/valheim-server:latest@sha256:20fde516ce311e6084f82f295c9eb6934af57b357c657937a04f62bdf5946149,factoriotools/factorio:stable@sha256:c21d798e75a8333ddca2f7029290325b3f2085841c72ab31cc64f7a916872841,thijsvanloef/palworld-server-docker:latest@sha256:401d3eb5c053bcd72949e1ede8c4e38be5e5ad66be7272ac37940706df0aeb2f,hermsi/ark-server:latest@sha256:e18189505c76187366714a2d297bbe8462937f6e43690311f71b20f9cd87b14e,vinanrra/7dtd-server:latest@sha256:c3b2073b4519b80437ec2b1841cf8b3bfb9dea6eef5078fb13b607fa86333ed6,ryshe/terraria:tshock-1.4.5.6-6.1.0@sha256:b1c89f7f359abfe1171db454101853c3812b581eecd0f4eeabb9e9f77da240ef}
+      DOCKER_AGENT_GAME_COMMAND_IMAGES: ${DOCKER_AGENT_GAME_COMMAND_IMAGES:-ryshe/terraria:tshock-1.4.5.6-6.1.0@sha256:b1c89f7f359abfe1171db454101853c3812b581eecd0f4eeabb9e9f77da240ef}
+      DOCKER_AGENT_GAME_NETWORK: ${DOCKER_AGENT_GAME_NETWORK:-sentinel-games}
+      DOCKER_AGENT_GAME_CONTAINER_USER: ${DOCKER_AGENT_GAME_CONTAINER_USER:-1000:1000}
+      DOCKER_AGENT_GAME_PORT_START: ${DOCKER_AGENT_GAME_PORT_START:-25500}
+      DOCKER_AGENT_GAME_PORT_END: ${DOCKER_AGENT_GAME_PORT_END:-25599}
+      DOCKER_AGENT_RCON_PORT_START: ${DOCKER_AGENT_RCON_PORT_START:-25700}
+      DOCKER_AGENT_RCON_PORT_END: ${DOCKER_AGENT_RCON_PORT_END:-25799}
       RUST_LOG: ${RUST_LOG:-info}
     # NI `group_add: docker` NI montage du socket : ce service n'a plus rien a
     # faire avec le daemon Docker. Le socket equivaut a un acces root sur
@@ -290,33 +289,3 @@ services:
       - nexus
       - full
 
-  # Jobs periodiques game-portal : health-check des containers, extinction des
-  # serveurs inactifs, reconciliation etat DB/Docker, nettoyage des images,
-  # revelation d'IP et ping quotidien. Le worker ne touche NI la DB NI Docker :
-  # il appelle les endpoints internes de nexus-api.
-  nexus-worker:
-    <<: *nexus-rust-base
-    build:
-      <<: *nexus-build-alpine
-      args:
-        BIN_NAME: nexus-worker
-    healthcheck: *nexus-worker-healthcheck
-    environment:
-      <<: *nexus-light-worker-env
-      NEXUS_API_URL: http://nexus-api:3100
-      NEXUS_API_KEY: ${NEXUS_API_KEY:?NEXUS_API_KEY est requis}
-      GAME_HEALTH_CHECK_INTERVAL_SECS: ${GAME_HEALTH_CHECK_INTERVAL_SECS:-30}
-      GAME_IDLE_SHUTDOWN_CHECK_INTERVAL_SECS: ${GAME_IDLE_SHUTDOWN_CHECK_INTERVAL_SECS:-3600}
-      GAME_RECONCILER_INTERVAL_SECS: ${GAME_RECONCILER_INTERVAL_SECS:-3600}
-      GAME_IMAGE_CLEANUP_INTERVAL_SECS: ${GAME_IMAGE_CLEANUP_INTERVAL_SECS:-86400}
-      GAME_REVEAL_IP_INTERVAL_SECS: ${GAME_REVEAL_IP_INTERVAL_SECS:-300}
-      GAME_DAILY_PING_INTERVAL_SECS: ${GAME_DAILY_PING_INTERVAL_SECS:-3600}
-    depends_on:
-      nexus-api:
-        condition: service_healthy
-    # Pas d'internet : ne parle qu'a nexus-api.
-    networks:
-      - internal
-    profiles:
-      - nexus
-      - full

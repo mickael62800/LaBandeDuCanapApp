@@ -13,7 +13,7 @@ use std::collections::BTreeMap;
 use serenity::all::{ChannelType, Context, GuildId, PermissionOverwriteType};
 use tracing::{info, warn};
 
-use sentinel_core::domain::entities::guild_backup::snapshot::{
+use platform_core::sentinel::domain::entities::guild_backup::snapshot::{
     GuildSettings, GuildSnapshot, SnapshotBan, SnapshotCategory, SnapshotChannel, SnapshotEmoji,
     SnapshotMeta, SnapshotOverwrite, SnapshotRole, SCHEMA_VERSION,
 };

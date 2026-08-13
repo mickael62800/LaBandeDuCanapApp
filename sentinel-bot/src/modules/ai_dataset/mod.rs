@@ -28,7 +28,7 @@ use tracing::warn;
 use crate::shared::discord_helpers::is_module_enabled;
 use crate::shared::grpc_client::GrpcClientKey;
 
-use sentinel_proto::ai_dataset::v1 as proto;
+use platform_proto::sentinel::ai_dataset::v1 as proto;
 
 pub const MODULE_BOT_NAME: &str = "ai-dataset-bot";
 

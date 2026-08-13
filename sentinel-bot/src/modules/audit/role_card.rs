@@ -12,7 +12,7 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-use sentinel_core::domain::services::audit::role_card::{
+use platform_core::sentinel::domain::services::audit::role_card::{
     clamp_role_log_window, visible_movements, RoleMovement,
 };
 use serenity::all::{
@@ -23,7 +23,7 @@ use serenity::prelude::TypeMapKey;
 use crate::shared::heartbeat::ApiClientKey;
 
 pub type RoleCardTracker =
-    sentinel_core::domain::services::audit::role_card::RoleCardTracker<(String, String)>;
+    platform_core::sentinel::domain::services::audit::role_card::RoleCardTracker<(String, String)>;
 
 pub struct RoleCardTrackerKey;
 impl TypeMapKey for RoleCardTrackerKey {
@@ -193,7 +193,7 @@ fn format_roles(roles: &[&str]) -> String {
 }
 
 fn format_duration(seconds: u64) -> String {
-    if seconds % 60 == 0 {
+    if seconds.is_multiple_of(60) {
         format!("{} min", seconds / 60)
     } else {
         format!("{seconds} s")

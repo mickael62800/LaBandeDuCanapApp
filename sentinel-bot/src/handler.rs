@@ -19,7 +19,7 @@ use tracing::{info, warn};
 
 use crate::shared::grpc_client::{grpc_err_to_string, GrpcClientKey};
 use crate::shared::heartbeat::{register_guilds, ApiClientKey};
-use sentinel_proto::members::v1 as proto_members;
+use platform_proto::sentinel::members::v1 as proto_members;
 
 use crate::modules;
 

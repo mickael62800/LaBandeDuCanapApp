@@ -206,10 +206,14 @@ pub fn immunity_message(role_id: u64, action_label: &str) -> String {
 
 /// Verifie que l'appelant a les permissions de moderation requises.
 pub fn has_mod_permission(command: &CommandInteraction, required: Permissions) -> bool {
-    command
-        .member
-        .as_ref()
-        .and_then(|m| m.permissions)
+    has_permission(
+        command.member.as_ref().and_then(|m| m.permissions),
+        required,
+    )
+}
+
+fn has_permission(permissions: Option<Permissions>, required: Permissions) -> bool {
+    permissions
         .map(|p| p.contains(required) || p.contains(Permissions::ADMINISTRATOR))
         .unwrap_or(false)
 }
@@ -286,3 +290,37 @@ pub fn all() -> Vec<CreateCommand> {
 }
 
 pub mod ban_sursis;
+
+#[cfg(test)]
+mod permission_tests {
+    use super::*;
+
+    #[test]
+    fn signalement_accepte_moderateur_et_administrateur() {
+        assert!(has_permission(
+            Some(Permissions::MODERATE_MEMBERS),
+            Permissions::MODERATE_MEMBERS
+        ));
+        assert!(has_permission(
+            Some(Permissions::ADMINISTRATOR),
+            Permissions::MODERATE_MEMBERS
+        ));
+    }
+
+    #[test]
+    fn template_refuse_un_moderateur_non_administrateur() {
+        assert!(!has_permission(
+            Some(Permissions::MODERATE_MEMBERS),
+            Permissions::ADMINISTRATOR
+        ));
+        assert!(has_permission(
+            Some(Permissions::ADMINISTRATOR),
+            Permissions::ADMINISTRATOR
+        ));
+    }
+
+    #[test]
+    fn permissions_absentes_sont_refusees() {
+        assert!(!has_permission(None, Permissions::MODERATE_MEMBERS));
+    }
+}

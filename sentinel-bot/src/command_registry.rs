@@ -48,7 +48,6 @@ pub(crate) fn module_commands(bot_name: &str) -> Vec<CreateCommand> {
 /// au boot pour iterer.
 pub const BOT_NAMES_WITH_COMMANDS: &[&str] = &[
     "cleanup",
-    "bump-bot",
     "community-bot",
     "audit-bot",
     "progression-bot",
@@ -65,8 +64,8 @@ pub const BOT_NAMES_WITH_COMMANDS: &[&str] = &[
 
 /// Calcule la liste des commandes a enregistrer pour cette guild en
 /// fonction de l'etat enabled de chaque module dans bot_guild_config.
-/// Si la cle "enabled" n'est pas definie, le module est considere
-/// active (defaut).
+/// Si la cle "enabled" n'est pas definie, le module reste desactive
+/// conformément à la politique fail-closed du dépôt.
 async fn compute_guild_commands(api: &BaseApiClient, guild_id: &str) -> Vec<CreateCommand> {
     // Socle : commandes d'INSTALLATION, publiees quel que soit l'etat des
     // modules.
@@ -78,7 +77,7 @@ async fn compute_guild_commands(api: &BaseApiClient, guild_id: &str) -> Vec<Crea
     let mut commands = vec![crate::modules::logs_setup::register()];
 
     for bot_name in BOT_NAMES_WITH_COMMANDS {
-        // is_bot_enabled retourne true par defaut (pas de cle = active).
+        // is_bot_enabled applique la politique fail-closed commune.
         let enabled = crate::shared::discord_helpers::is_bot_enabled(api, guild_id, bot_name).await;
         if enabled {
             commands.extend(module_commands(bot_name));

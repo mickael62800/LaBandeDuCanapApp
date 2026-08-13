@@ -32,15 +32,15 @@ use bollard::network::CreateNetworkOptions;
 use bollard::volume::CreateVolumeOptions;
 use bollard::Docker;
 use futures_util::StreamExt;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use ops_core::domain::entities::game_runtime::{
+use platform_core::ops::domain::entities::game_runtime::{
     ContainerSpec, ContainerState, ContainerStats, ContainerStatus, ManagedContainer, PortProtocol,
     RestartPolicy,
 };
-use ops_core::domain::errors::DomainError;
-use ops_core::ports::outbound::game_runtime::GameContainerRuntime;
+use platform_core::ops::domain::errors::DomainError;
+use platform_core::ops::ports::outbound::game_runtime::GameContainerRuntime;
 
 /// Label canonique du portail de jeux. `nexus.*` et plus `sentinel.*` : les
 /// serveurs de jeu ont quitte Sentinel au portage, le prefixe historique ne
@@ -74,6 +74,208 @@ fn nano_cpus(cpu_limit: Option<f64>) -> i64 {
 const CONTAINER_PIDS_LIMIT: i64 = 512;
 /// Plafond du nombre de file descriptors ouverts (nofile).
 const CONTAINER_NOFILE_LIMIT: i64 = 4096;
+const MIN_MEMORY_BYTES: u64 = 512 * 1024 * 1024;
+const MAX_MEMORY_BYTES: u64 = 24 * 1024 * 1024 * 1024;
+const MAX_CPU_LIMIT: f64 = 6.0;
+const MAX_PORT_MAPPINGS: usize = 4;
+const MAX_ENV_VARS: usize = 128;
+const MAX_ENV_VALUE_BYTES: usize = 8 * 1024;
+const MAX_COMMAND_ARGS: usize = 32;
+const MAX_COMMAND_ARG_BYTES: usize = 4 * 1024;
+
+const DEFAULT_GAME_IMAGES: &[&str] = &[
+    "itzg/minecraft-server:latest@sha256:23f417bcccfc5b96fad0c7898e1a9f6472a97d28450975a7c53a666722baeef3",
+    "lloesche/valheim-server:latest@sha256:20fde516ce311e6084f82f295c9eb6934af57b357c657937a04f62bdf5946149",
+    "factoriotools/factorio:stable@sha256:c21d798e75a8333ddca2f7029290325b3f2085841c72ab31cc64f7a916872841",
+    "thijsvanloef/palworld-server-docker:latest@sha256:401d3eb5c053bcd72949e1ede8c4e38be5e5ad66be7272ac37940706df0aeb2f",
+    "hermsi/ark-server:latest@sha256:e18189505c76187366714a2d297bbe8462937f6e43690311f71b20f9cd87b14e",
+    "vinanrra/7dtd-server:latest@sha256:c3b2073b4519b80437ec2b1841cf8b3bfb9dea6eef5078fb13b607fa86333ed6",
+    "ryshe/terraria:tshock-1.4.5.6-6.1.0@sha256:b1c89f7f359abfe1171db454101853c3812b581eecd0f4eeabb9e9f77da240ef",
+];
+
+const DEFAULT_ROOT_IMAGES: &[&str] = &[
+    "lloesche/valheim-server:latest@sha256:20fde516ce311e6084f82f295c9eb6934af57b357c657937a04f62bdf5946149",
+    "factoriotools/factorio:stable@sha256:c21d798e75a8333ddca2f7029290325b3f2085841c72ab31cc64f7a916872841",
+    "thijsvanloef/palworld-server-docker:latest@sha256:401d3eb5c053bcd72949e1ede8c4e38be5e5ad66be7272ac37940706df0aeb2f",
+    "hermsi/ark-server:latest@sha256:e18189505c76187366714a2d297bbe8462937f6e43690311f71b20f9cd87b14e",
+    "vinanrra/7dtd-server:latest@sha256:c3b2073b4519b80437ec2b1841cf8b3bfb9dea6eef5078fb13b607fa86333ed6",
+    "ryshe/terraria:tshock-1.4.5.6-6.1.0@sha256:b1c89f7f359abfe1171db454101853c3812b581eecd0f4eeabb9e9f77da240ef",
+];
+
+#[derive(Debug, Clone)]
+struct GameRuntimePolicy {
+    allowed_images: HashSet<String>,
+    root_images: HashSet<String>,
+    command_images: HashSet<String>,
+    network: String,
+    container_user: String,
+    game_port_start: u16,
+    game_port_end: u16,
+    rcon_port_start: u16,
+    rcon_port_end: u16,
+}
+
+impl GameRuntimePolicy {
+    fn from_env() -> Self {
+        Self {
+            allowed_images: csv_set("DOCKER_AGENT_GAME_IMAGES", DEFAULT_GAME_IMAGES),
+            root_images: csv_set("DOCKER_AGENT_GAME_ROOT_IMAGES", DEFAULT_ROOT_IMAGES),
+            command_images: csv_set(
+                "DOCKER_AGENT_GAME_COMMAND_IMAGES",
+                &["ryshe/terraria:tshock-1.4.5.6-6.1.0@sha256:b1c89f7f359abfe1171db454101853c3812b581eecd0f4eeabb9e9f77da240ef"],
+            ),
+            network: env_or("DOCKER_AGENT_GAME_NETWORK", "sentinel-games"),
+            container_user: env_or("DOCKER_AGENT_GAME_CONTAINER_USER", "1000:1000"),
+            game_port_start: env_u16("DOCKER_AGENT_GAME_PORT_START", 25500),
+            game_port_end: env_u16("DOCKER_AGENT_GAME_PORT_END", 25599),
+            rcon_port_start: env_u16("DOCKER_AGENT_RCON_PORT_START", 25700),
+            rcon_port_end: env_u16("DOCKER_AGENT_RCON_PORT_END", 25799),
+        }
+    }
+
+    fn validate_spec(&self, spec: &ContainerSpec) -> Result<(), DomainError> {
+        self.require_image(&spec.image)?;
+        if spec.network != self.network {
+            return validation("reseau Docker non autorise");
+        }
+        if !valid_resource_name(&spec.name, "sentinel-game-", 32) {
+            return validation("nom de conteneur Nexus invalide");
+        }
+        if !(MIN_MEMORY_BYTES..=MAX_MEMORY_BYTES).contains(&spec.memory_bytes) {
+            return validation("limite memoire hors bornes agent");
+        }
+        if spec
+            .cpu_limit
+            .is_some_and(|cpu| !cpu.is_finite() || !(0.5..=MAX_CPU_LIMIT).contains(&cpu))
+        {
+            return validation("limite CPU hors bornes agent");
+        }
+        if spec.port_mappings.len() > MAX_PORT_MAPPINGS {
+            return validation("trop de ports exposes");
+        }
+        for port in &spec.port_mappings {
+            let game = (self.game_port_start..=self.game_port_end).contains(&port.host_port)
+                && port.host_ip == "0.0.0.0";
+            let rcon = (self.rcon_port_start..=self.rcon_port_end).contains(&port.host_port)
+                && port.host_ip == "127.0.0.1";
+            if !game && !rcon {
+                return validation("port ou adresse d'ecoute non autorise");
+            }
+        }
+        if spec.volumes.len() > 1
+            || spec.volumes.iter().any(|volume| {
+                !valid_resource_name(&volume.volume_name, "sentinel-game-vol-", 32)
+                    || volume.container_path.is_empty()
+                    || !volume.container_path.starts_with('/')
+                    || volume.container_path.contains("..")
+            })
+        {
+            return validation("montage de volume non autorise");
+        }
+        if spec.env.len() > MAX_ENV_VARS
+            || spec.env.iter().any(|(key, value)| {
+                key.is_empty()
+                    || key.len() > 128
+                    || !key.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+                    || value.len() > MAX_ENV_VALUE_BYTES
+                    || value.contains('\0')
+            })
+        {
+            return validation("variables d'environnement hors politique");
+        }
+        match &spec.user {
+            Some(user) if user == &self.container_user => {}
+            None if self.root_images.contains(&spec.image) => {}
+            _ => return validation("utilisateur de conteneur non autorise"),
+        }
+        if !matches!(spec.restart_policy, RestartPolicy::None) {
+            return validation("politique de redemarrage geree uniquement par Nexus");
+        }
+        if let Some(command) = &spec.command {
+            if !self.command_images.contains(&spec.image)
+                || command.is_empty()
+                || command.len() > MAX_COMMAND_ARGS
+                || command.iter().any(|argument| {
+                    argument.len() > MAX_COMMAND_ARG_BYTES || argument.contains('\0')
+                })
+            {
+                return validation("commande personnalisee hors politique");
+            }
+        }
+        if !identity_labels_match_name(&spec.name, &spec.labels) {
+            return validation("labels d'identite Nexus absents ou incoherents");
+        }
+        Ok(())
+    }
+
+    fn require_image(&self, image: &str) -> Result<(), DomainError> {
+        if self.allowed_images.contains(image) {
+            Ok(())
+        } else {
+            validation("image Docker absente de la liste blanche de l'agent")
+        }
+    }
+}
+
+fn csv_set(key: &str, defaults: &[&str]) -> HashSet<String> {
+    std::env::var(key)
+        .ok()
+        .map(|value| {
+            value
+                .split(',')
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_owned)
+                .collect()
+        })
+        .filter(|values: &HashSet<String>| !values.is_empty())
+        .unwrap_or_else(|| defaults.iter().map(|value| (*value).to_owned()).collect())
+}
+
+fn env_or(key: &str, default: &str) -> String {
+    std::env::var(key)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| default.to_owned())
+}
+
+fn env_u16(key: &str, default: u16) -> u16 {
+    std::env::var(key)
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(default)
+}
+
+fn validation<T>(message: &str) -> Result<T, DomainError> {
+    Err(DomainError::ValidationError(message.to_owned()))
+}
+
+fn valid_resource_name(value: &str, prefix: &str, suffix_len: usize) -> bool {
+    value.strip_prefix(prefix).is_some_and(|suffix| {
+        suffix.len() == suffix_len && suffix.bytes().all(|b| b.is_ascii_hexdigit())
+    })
+}
+
+fn identity_labels_match_name(name: &str, labels: &HashMap<String, String>) -> bool {
+    let Some(server_id) = labels.get("nexus.server_id") else {
+        return false;
+    };
+    let compact_id: String = server_id
+        .chars()
+        .filter(|character| *character != '-')
+        .collect();
+    valid_resource_name(name, "sentinel-game-", 32)
+        && name.ends_with(&compact_id)
+        && labels
+            .get("nexus.guild_id")
+            .is_some_and(|value| !value.is_empty() && value.bytes().all(|b| b.is_ascii_digit()))
+        && labels
+            .get("nexus.template_slug")
+            .is_some_and(|value| !value.is_empty())
+        && labels
+            .get("nexus.owner")
+            .is_some_and(|value| !value.is_empty() && value.bytes().all(|b| b.is_ascii_digit()))
+}
 
 /// Construit le client Docker (socket par defaut). Singleton via Arc.
 pub fn make_docker_client() -> Result<Arc<Docker>, DomainError> {
@@ -84,12 +286,78 @@ pub fn make_docker_client() -> Result<Arc<Docker>, DomainError> {
 
 pub struct DockerContainerRuntime {
     docker: Arc<Docker>,
+    policy: GameRuntimePolicy,
 }
 
 impl DockerContainerRuntime {
     pub fn new(docker: Arc<Docker>) -> Self {
-        Self { docker }
+        Self {
+            docker,
+            policy: GameRuntimePolicy::from_env(),
+        }
     }
+
+    async fn require_managed_container(&self, container_id: &str) -> Result<(), DomainError> {
+        let container = self
+            .docker
+            .inspect_container(container_id, None)
+            .await
+            .map_err(|e| DomainError::Internal(format!("inspect container ownership: {e}")))?;
+        let labels = container.config.and_then(|config| config.labels);
+        require_managed_labels("conteneur", container_id, labels.as_ref())
+    }
+
+    async fn require_managed_volume(&self, name: &str) -> Result<(), DomainError> {
+        let volume = self
+            .docker
+            .inspect_volume(name)
+            .await
+            .map_err(|e| DomainError::Internal(format!("inspect volume ownership: {e}")))?;
+        require_managed_labels("volume", name, Some(&volume.labels))
+    }
+
+    async fn require_managed_network(&self, name: &str) -> Result<(), DomainError> {
+        let network = self
+            .docker
+            .inspect_network(
+                name,
+                None::<bollard::network::InspectNetworkOptions<String>>,
+            )
+            .await
+            .map_err(|e| DomainError::Internal(format!("inspect network ownership: {e}")))?;
+        require_managed_labels("reseau", name, network.labels.as_ref())
+    }
+}
+
+fn is_managed(labels: Option<&HashMap<String, String>>) -> bool {
+    labels.is_some_and(|labels| {
+        [MANAGED_LABEL_KEY, LEGACY_MANAGED_LABEL_KEY]
+            .iter()
+            .any(|key| {
+                labels
+                    .get(*key)
+                    .is_some_and(|value| value == MANAGED_LABEL_VALUE)
+            })
+    })
+}
+
+fn require_managed_labels(
+    resource_kind: &str,
+    resource_id: &str,
+    labels: Option<&HashMap<String, String>>,
+) -> Result<(), DomainError> {
+    if is_managed(labels) {
+        return Ok(());
+    }
+
+    tracing::warn!(
+        resource_kind,
+        resource_id,
+        "acces jeu refuse a une ressource Docker non geree par Nexus"
+    );
+    Err(DomainError::Forbidden(format!(
+        "{resource_kind} Docker '{resource_id}' non gere par Nexus"
+    )))
 }
 
 fn map_state(s: Option<&str>) -> ContainerState {
@@ -142,14 +410,27 @@ fn compute_cpu_percent(s: &BollardStats) -> f64 {
 #[async_trait]
 impl GameContainerRuntime for DockerContainerRuntime {
     async fn ensure_network(&self, name: &str) -> Result<(), DomainError> {
+        if name != self.policy.network {
+            return validation("nom de reseau Docker non autorise");
+        }
         let existing = self
             .docker
             .list_networks::<String>(None)
             .await
             .map_err(|e| DomainError::Internal(format!("list networks: {e}")))?;
         if existing.iter().any(|n| n.name.as_deref() == Some(name)) {
-            return Ok(());
+            return self.require_managed_network(name).await;
         }
+        let labels = HashMap::from([
+            (
+                MANAGED_LABEL_KEY.to_string(),
+                MANAGED_LABEL_VALUE.to_string(),
+            ),
+            (
+                LEGACY_MANAGED_LABEL_KEY.to_string(),
+                MANAGED_LABEL_VALUE.to_string(),
+            ),
+        ]);
         self.docker
             .create_network(CreateNetworkOptions {
                 name: name.to_string(),
@@ -157,6 +438,7 @@ impl GameContainerRuntime for DockerContainerRuntime {
                 check_duplicate: true,
                 internal: false,
                 attachable: true,
+                labels,
                 ..Default::default()
             })
             .await
@@ -165,7 +447,21 @@ impl GameContainerRuntime for DockerContainerRuntime {
     }
 
     async fn ensure_volume(&self, name: &str) -> Result<(), DomainError> {
-        // create_volume idempotent si meme nom (Docker retourne le volume existant).
+        if !valid_resource_name(name, "sentinel-game-vol-", 32) {
+            return validation("nom de volume Nexus invalide");
+        }
+        match self.docker.inspect_volume(name).await {
+            Ok(volume) => {
+                return require_managed_labels("volume", name, Some(&volume.labels));
+            }
+            Err(error) if !error.to_string().contains("404") => {
+                return Err(DomainError::Internal(format!(
+                    "inspect volume ownership: {error}"
+                )));
+            }
+            Err(_) => {}
+        }
+
         let mut labels: HashMap<&str, &str> = HashMap::new();
         labels.insert(MANAGED_LABEL_KEY, MANAGED_LABEL_VALUE);
         labels.insert(LEGACY_MANAGED_LABEL_KEY, MANAGED_LABEL_VALUE);
@@ -182,6 +478,7 @@ impl GameContainerRuntime for DockerContainerRuntime {
     }
 
     async fn pull_image_if_missing(&self, image: &str) -> Result<(), DomainError> {
+        self.policy.require_image(image)?;
         // Check si l'image existe deja localement.
         let mut filters = HashMap::new();
         filters.insert("reference".to_string(), vec![image.to_string()]);
@@ -210,6 +507,12 @@ impl GameContainerRuntime for DockerContainerRuntime {
     }
 
     async fn create_container(&self, spec: &ContainerSpec) -> Result<String, DomainError> {
+        self.policy.validate_spec(spec)?;
+        self.require_managed_network(&spec.network).await?;
+        for volume in &spec.volumes {
+            self.require_managed_volume(&volume.volume_name).await?;
+        }
+
         // ── Construction des port bindings ─────────────────────────────
         let mut exposed_ports: HashMap<String, HashMap<(), ()>> = HashMap::new();
         let mut port_bindings: HashMap<String, Option<Vec<PortBinding>>> = HashMap::new();
@@ -322,6 +625,7 @@ impl GameContainerRuntime for DockerContainerRuntime {
     }
 
     async fn start_container(&self, container_id: &str) -> Result<(), DomainError> {
+        self.require_managed_container(container_id).await?;
         self.docker
             .start_container(container_id, None::<StartContainerOptions<String>>)
             .await
@@ -335,6 +639,7 @@ impl GameContainerRuntime for DockerContainerRuntime {
         path: &str,
         content: &str,
     ) -> Result<(), DomainError> {
+        self.require_managed_container(container_id).await?;
         // bollard attend un tar pose sur un chemin du container. On poste
         // a "/" et on inclut le chemin COMPLET dans l'entry tar (les
         // repertoires intermediaires sont implicitement materialises par
@@ -412,6 +717,7 @@ impl GameContainerRuntime for DockerContainerRuntime {
         container_id: &str,
         timeout_secs: u32,
     ) -> Result<(), DomainError> {
+        self.require_managed_container(container_id).await?;
         self.docker
             .stop_container(
                 container_id,
@@ -429,6 +735,7 @@ impl GameContainerRuntime for DockerContainerRuntime {
         container_id: &str,
         timeout_secs: u32,
     ) -> Result<(), DomainError> {
+        self.require_managed_container(container_id).await?;
         self.docker
             .restart_container(
                 container_id,
@@ -442,6 +749,7 @@ impl GameContainerRuntime for DockerContainerRuntime {
     }
 
     async fn remove_container(&self, container_id: &str) -> Result<(), DomainError> {
+        self.require_managed_container(container_id).await?;
         self.docker
             .remove_container(
                 container_id,
@@ -457,6 +765,10 @@ impl GameContainerRuntime for DockerContainerRuntime {
     }
 
     async fn remove_volume(&self, name: &str) -> Result<(), DomainError> {
+        if !valid_resource_name(name, "sentinel-game-vol-", 32) {
+            return validation("nom de volume Nexus invalide");
+        }
+        self.require_managed_volume(name).await?;
         self.docker
             .remove_volume(name, None)
             .await
@@ -465,6 +777,7 @@ impl GameContainerRuntime for DockerContainerRuntime {
     }
 
     async fn remove_image(&self, image: &str, force: bool) -> Result<bool, DomainError> {
+        self.policy.require_image(image)?;
         let opts = bollard::image::RemoveImageOptions {
             force,
             noprune: false,
@@ -489,6 +802,7 @@ impl GameContainerRuntime for DockerContainerRuntime {
     }
 
     async fn inspect(&self, container_id: &str) -> Result<Option<ContainerStatus>, DomainError> {
+        self.require_managed_container(container_id).await?;
         let resp = match self.docker.inspect_container(container_id, None).await {
             Ok(r) => r,
             Err(e) => {
@@ -517,6 +831,7 @@ impl GameContainerRuntime for DockerContainerRuntime {
     }
 
     async fn stats(&self, container_id: &str) -> Result<ContainerStats, DomainError> {
+        self.require_managed_container(container_id).await?;
         let mut stream = self.docker.stats(
             container_id,
             Some(StatsOptions {
@@ -550,6 +865,7 @@ impl GameContainerRuntime for DockerContainerRuntime {
     }
 
     async fn logs(&self, container_id: &str, lines: u32) -> Result<Vec<String>, DomainError> {
+        self.require_managed_container(container_id).await?;
         let mut stream = self.docker.logs(
             container_id,
             Some(LogsOptions::<String> {
@@ -614,5 +930,147 @@ impl GameContainerRuntime for DockerContainerRuntime {
         }
 
         Ok(seen.into_values().collect())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use platform_core::ops::domain::entities::game_runtime::{PortMapping, VolumeMount};
+
+    fn policy() -> GameRuntimePolicy {
+        GameRuntimePolicy {
+            allowed_images: DEFAULT_GAME_IMAGES
+                .iter()
+                .map(|value| (*value).to_owned())
+                .collect(),
+            root_images: DEFAULT_ROOT_IMAGES
+                .iter()
+                .map(|value| (*value).to_owned())
+                .collect(),
+            command_images: HashSet::from(["ryshe/terraria:tshock-1.4.5.6-6.1.0@sha256:b1c89f7f359abfe1171db454101853c3812b581eecd0f4eeabb9e9f77da240ef".to_owned()]),
+            network: "sentinel-games".to_owned(),
+            container_user: "1000:1000".to_owned(),
+            game_port_start: 25500,
+            game_port_end: 25599,
+            rcon_port_start: 25700,
+            rcon_port_end: 25799,
+        }
+    }
+
+    fn valid_spec() -> ContainerSpec {
+        let id = "550e8400-e29b-41d4-a716-446655440000";
+        ContainerSpec {
+            image: "itzg/minecraft-server:latest@sha256:23f417bcccfc5b96fad0c7898e1a9f6472a97d28450975a7c53a666722baeef3".to_owned(),
+            name: "sentinel-game-550e8400e29b41d4a716446655440000".to_owned(),
+            env: HashMap::from([("EULA".to_owned(), "TRUE".to_owned())]),
+            port_mappings: vec![PortMapping {
+                host_port: 25510,
+                container_port: 25565,
+                protocol: PortProtocol::Tcp,
+                host_ip: "0.0.0.0".to_owned(),
+            }],
+            volumes: vec![VolumeMount {
+                volume_name: "sentinel-game-vol-550e8400e29b41d4a716446655440000".to_owned(),
+                container_path: "/data".to_owned(),
+                read_only: false,
+            }],
+            memory_bytes: 2 * 1024 * 1024 * 1024,
+            cpu_limit: Some(2.0),
+            network: "sentinel-games".to_owned(),
+            user: Some("1000:1000".to_owned()),
+            restart_policy: RestartPolicy::None,
+            labels: HashMap::from([
+                ("nexus.server_id".to_owned(), id.to_owned()),
+                ("nexus.guild_id".to_owned(), "123456789012345678".to_owned()),
+                (
+                    "nexus.template_slug".to_owned(),
+                    "minecraft-vanilla".to_owned(),
+                ),
+                ("nexus.owner".to_owned(), "234567890123456789".to_owned()),
+            ]),
+            command: None,
+        }
+    }
+
+    #[test]
+    fn accepte_le_label_nexus_canonique() {
+        let labels = HashMap::from([(
+            MANAGED_LABEL_KEY.to_string(),
+            MANAGED_LABEL_VALUE.to_string(),
+        )]);
+        assert!(is_managed(Some(&labels)));
+    }
+
+    #[test]
+    fn accepte_le_label_historique_pour_la_flotte_existante() {
+        let labels = HashMap::from([(
+            LEGACY_MANAGED_LABEL_KEY.to_string(),
+            MANAGED_LABEL_VALUE.to_string(),
+        )]);
+        assert!(is_managed(Some(&labels)));
+    }
+
+    #[test]
+    fn refuse_une_ressource_sans_label_nexus_exact() {
+        let labels = HashMap::from([
+            (MANAGED_LABEL_KEY.to_string(), "autre-valeur".to_string()),
+            ("service".to_string(), "postgres".to_string()),
+        ]);
+        assert!(!is_managed(Some(&labels)));
+        assert!(matches!(
+            require_managed_labels("conteneur", "postgres", Some(&labels)),
+            Err(DomainError::Forbidden(_))
+        ));
+        assert!(!is_managed(None));
+    }
+
+    #[test]
+    fn accepte_une_spec_nexus_bornee() {
+        assert!(policy().validate_spec(&valid_spec()).is_ok());
+    }
+
+    #[test]
+    fn refuse_les_principaux_contournements_de_creation() {
+        let cases = [
+            {
+                let mut spec = valid_spec();
+                spec.image = "alpine:latest".to_owned();
+                spec
+            },
+            {
+                let mut spec = valid_spec();
+                spec.network = "internal".to_owned();
+                spec
+            },
+            {
+                let mut spec = valid_spec();
+                spec.volumes[0].volume_name = "sentinel-postgres-data".to_owned();
+                spec
+            },
+            {
+                let mut spec = valid_spec();
+                spec.port_mappings[0].host_port = 25710;
+                spec.port_mappings[0].host_ip = "0.0.0.0".to_owned();
+                spec
+            },
+            {
+                let mut spec = valid_spec();
+                spec.memory_bytes = 0;
+                spec
+            },
+            {
+                let mut spec = valid_spec();
+                spec.command = Some(vec!["sh".to_owned(), "-c".to_owned()]);
+                spec
+            },
+        ];
+
+        for spec in cases {
+            assert!(matches!(
+                policy().validate_spec(&spec),
+                Err(DomainError::ValidationError(_))
+            ));
+        }
     }
 }

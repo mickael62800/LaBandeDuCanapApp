@@ -13,8 +13,8 @@ use std::sync::Arc;
 use serde::Deserialize;
 
 use crate::shared::grpc_client::{grpc_err_to_string, SentinelGrpcClient};
-use sentinel_core::domain::entities::guild_backup::snapshot::GuildSnapshot;
-use sentinel_proto::guild_backup::v1 as proto;
+use platform_core::sentinel::domain::entities::guild_backup::snapshot::GuildSnapshot;
+use platform_proto::sentinel::guild_backup::v1 as proto;
 
 /// Identifiant d'une sauvegarde stockee (UUID renvoye par l'API).
 pub type SnapshotId = String;

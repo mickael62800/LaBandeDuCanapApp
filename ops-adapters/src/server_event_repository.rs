@@ -5,13 +5,15 @@ use async_trait::async_trait;
 use sqlx::PgPool;
 
 use crate::pg_err;
-use ops_core::domain::entities::server_event::{NewServerEvent, ServerEvent, ServerEventFilter};
-use ops_core::domain::errors::DomainError;
+use platform_core::ops::domain::entities::server_event::{
+    NewServerEvent, ServerEvent, ServerEventFilter,
+};
+use platform_core::ops::domain::errors::DomainError;
 
 /// Taille max d'un lot d'insertion. Au-dela (recreation massive de conteneurs),
 /// on decoupe pour ne pas construire une requete demesuree.
 const BATCH_CHUNK: usize = 500;
-use ops_core::ports::outbound::server_event_repository::ServerEventRepository;
+use platform_core::ops::ports::outbound::server_event_repository::ServerEventRepository;
 
 pub struct PgServerEventRepository {
     pool: PgPool,

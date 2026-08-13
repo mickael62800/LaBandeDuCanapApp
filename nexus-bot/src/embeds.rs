@@ -164,7 +164,7 @@ pub fn build_coussin_challenge_embed(attacker_id: u64, defender_id: u64, mise: i
 /// Le catalogue est celui du domaine : dupliquer les libelles ici les aurait
 /// laisses diverger de la boutique des la premiere retouche.
 fn nom_objet(cle: &str) -> String {
-    nexus_core::domain::entities::coussin_shop::item(cle)
+    platform_core::nexus::domain::entities::coussin_shop::item(cle)
         .map(|i| i.name.to_string())
         .unwrap_or_else(|| cle.to_string())
 }
@@ -172,7 +172,7 @@ fn nom_objet(cle: &str) -> String {
 /// Libelle de la classe, emoji compris. L'API renvoie la cle technique
 /// (`ecraseur`) ; l'afficher telle quelle donnerait « Maniere : ecraseur ».
 fn nom_classe(cle: &str) -> String {
-    nexus_core::domain::entities::coussin::PlayerClass::parse(cle)
+    platform_core::nexus::domain::entities::coussin::PlayerClass::parse(cle)
         .map(|c| c.label().to_string())
         .unwrap_or_else(|| "🧍 Debout".to_string())
 }

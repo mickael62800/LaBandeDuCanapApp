@@ -1,7 +1,7 @@
 import { httpGet, httpPost, httpDelete } from "@/api/http";
 
 /// Types de salons créables depuis le constructeur. Miroir de
-/// `PlannedChannelKind` (sentinel-core/domain/entities/system/channel_plan.rs).
+/// `PlannedChannelKind` (platform-core/src/sentinel/domain/entities/system/channel_plan.rs).
 export type PlannedKind = "category" | "text" | "voice" | "announcement" | "stage" | "forum";
 
 /// Salon déjà présent sur le serveur (contexte affiché à gauche du constructeur).
@@ -23,7 +23,7 @@ export interface LiveRole {
 }
 
 /// Ce qu'un rôle a le droit de faire dans un salon. Miroir de `AccessMode`
-/// (sentinel-core/domain/entities/system/channel_access.rs), qui traduit ces
+/// (platform-core/src/sentinel/domain/entities/system/channel_access.rs), qui traduit ces
 /// intentions en bits de permission Discord.
 export type AccessMode = "denied" | "read" | "write" | "moderate";
 

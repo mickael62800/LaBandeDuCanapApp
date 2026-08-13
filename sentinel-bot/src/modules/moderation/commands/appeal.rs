@@ -12,8 +12,8 @@ use tracing::{info, warn};
 use crate::shared::discord_helpers::reply_ephemeral;
 use crate::shared::grpc_client::{grpc_err_to_string, GrpcClientKey};
 use crate::shared::heartbeat::ApiClientKey;
-use sentinel_proto::moderation::v1 as proto_mod;
-use sentinel_proto::tickets::v1 as proto_tickets;
+use platform_proto::sentinel::moderation::v1 as proto_mod;
+use platform_proto::sentinel::tickets::v1 as proto_tickets;
 
 pub const APPEAL_PREFIX: &str = "sentinel_mod_appeal_";
 /// Bouton modo « Voter pour annuler » : `mod_appeal_votecancel_{action_id}`.

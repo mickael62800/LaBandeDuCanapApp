@@ -219,8 +219,7 @@ async fn on_restore_requested(ctx: &Context, data: &serde_json::Value) {
     // seule la signature atteste que la demande vient bien de l'API.
     // `wipe` est dans le message signe -> impossible de rejouer une restauration
     // legitime en basculant le drapeau.
-    let message =
-        event_signing::guild_backup_restore_message(&gid, &snapshot_id, wipe_first);
+    let message = event_signing::guild_backup_restore_message(&gid, &snapshot_id, wipe_first);
     if !event_signing::verifie(data, &message) {
         warn!(
             guild = %gid,

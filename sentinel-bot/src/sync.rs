@@ -16,7 +16,7 @@ use uuid::Uuid;
 
 use crate::grpc_call;
 use crate::shared::grpc_client::{grpc_err_to_string, SentinelGrpcClient};
-use sentinel_proto::discord_messages::v1 as proto;
+use platform_proto::sentinel::discord_messages::v1 as proto;
 
 /// Conventions de `kind` partagees avec le domain API
 /// (sentinel-api/src/domain/entities/discord_action_message.rs::kinds).

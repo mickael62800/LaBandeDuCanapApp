@@ -2,7 +2,7 @@
 //!
 //! La logique pure (strip/parse des prefixes `[NN]`, emojis staff, troncature
 //! 32 chars) vit dans le core hexagonal
-//! (`sentinel_core::domain::services::progression::nickname`) avec ses tests.
+//! (`platform_core::sentinel::domain::services::progression::nickname`) avec ses tests.
 //! Ce module ne garde que l'orchestration Discord : fetch member, config
 //! guild, positions de roles depuis le cache, et le rename via `EditMember`.
 
@@ -17,7 +17,7 @@ use crate::shared::heartbeat::ApiClientKey;
 
 use super::MODULE_BOT_NAME;
 
-pub use sentinel_core::domain::services::progression::nickname::{
+pub use platform_core::sentinel::domain::services::progression::nickname::{
     build_nickname_full, parse_role_emojis, pick_emoji, strip_all_prefixes,
 };
 

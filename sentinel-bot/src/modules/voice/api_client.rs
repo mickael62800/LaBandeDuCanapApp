@@ -10,8 +10,8 @@ use std::sync::Arc;
 use crate::shared::grpc_client::SentinelGrpcClient;
 use serde::{Deserialize, Serialize};
 
-use sentinel_proto::moderation::v1 as proto_mod;
-use sentinel_proto::voice::v1 as proto;
+use platform_proto::sentinel::moderation::v1 as proto_mod;
+use platform_proto::sentinel::voice::v1 as proto;
 
 // ── Request DTOs (surface inchangee) ──
 

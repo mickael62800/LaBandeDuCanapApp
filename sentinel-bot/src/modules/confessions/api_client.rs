@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use crate::shared::grpc_client::{grpc_err_to_string, SentinelGrpcClient};
-use sentinel_proto::confessions::v1 as proto;
+use platform_proto::sentinel::confessions::v1 as proto;
 
 /// Vue bot d'une confession (sous-ensemble consomme).
 #[derive(Debug, Clone, Default)]

@@ -4,7 +4,7 @@
 //!
 //! Ces deux fonctions décident si un module tourne sur un serveur. Elles ont
 //! longtemps vécu dans `sentinel-core`, ce qui obligeait quiconque en avait
-//! besoin — jusqu'à `platform-common-worker`, socle des trois plateformes — à
+//! besoin — auparavant jusque dans le socle des workers des trois plateformes — à
 //! dépendre du domaine de Sentinel. Résultat : `nexus-worker` et
 //! `atrium-worker` compilaient tout `sentinel-core` pour deux `matches!`.
 //!
@@ -13,7 +13,7 @@
 //! divergence que la règle d'or 5 du dépôt interdit. Une règle qui doit être
 //! identique partout appartient au socle, pas à une plateforme.
 //!
-//! `sentinel-core::domain::entities::system::config_parsers` les ré-exporte :
+//! `platform_core::sentinel::domain::entities::system::config_parsers` les ré-exporte :
 //! les appelants Sentinel et la documentation qui les y désigne restent
 //! valides.
 
@@ -35,6 +35,13 @@ pub fn parse_bool_str(v: &str) -> bool {
 /// depuis la page Composants pour reprendre du service.
 pub fn parse_enabled_flag(value: Option<&str>) -> bool {
     value.map(parse_bool_str).unwrap_or(false)
+}
+
+/// Identifie les anciens services batch à partir de leur convention de nom.
+/// Cette classification est partagée par la supervision et le domaine
+/// Sentinel ; elle n'appartient donc à aucune entité fonctionnelle.
+pub fn is_worker_service(name: &str) -> bool {
+    name.contains("worker")
 }
 
 #[cfg(test)]

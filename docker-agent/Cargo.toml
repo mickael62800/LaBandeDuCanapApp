@@ -28,7 +28,7 @@ futures-util = { workspace = true }
 tar = { workspace = true }
 # Uniquement pour les types de domaine (`DockerHost`, `ContainerSummary`, ...) :
 # l'agent et son appelant partagent le meme vocabulaire, sans DTO miroir.
-ops-core = { workspace = true }
+platform-core = { workspace = true }
 hyper = "1.11.0"
 hyper-util = "0.1.20"
 http-body-util = "0.1.4"

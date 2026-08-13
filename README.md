@@ -1,11 +1,13 @@
 # DiscordSentinel
 
-Monorepo Rust hébergeant **deux plateformes Discord** qui partagent la même infrastructure, le même dashboard web et les mêmes conventions d'architecture :
+Monorepo Rust hébergeant quatre contextes fonctionnels qui partagent la même infrastructure, le même dashboard web et un cœur métier unifié :
 
 - **Sentinel** — modération, sécurité et animation de serveurs Discord (bot unifié + API + worker + gateway).
-- **Nexus** — plateforme de **serveurs de jeux** (provisioning Docker, templates, catalogue) et de mini-jeux / casino.
+- **Nexus** — plateforme de serveurs de jeux, économie et animations.
+- **Atrium** — accueil et assistance IA.
+- **Ops** — supervision et sécurité de l'hôte.
 
-Architecture **hexagonale** dans les deux cas : un crate `*-core` pur (domain / application / ports), des crates `*-api`, `*-bot`, `*-worker`, `*-gateway` qui n'en sont que des adaptateurs.
+Architecture **hexagonale** : `platform-core` contient les contextes `sentinel`, `nexus`, `atrium` et `ops`. Les crates `*-api`, `*-bot`, `*-gateway`, `platform-scheduler` et les agents sont des adaptateurs ou processus spécialisés.
 
 ---
 
@@ -15,27 +17,27 @@ Architecture **hexagonale** dans les deux cas : un crate `*-core` pur (domain / 
 DiscordSentinel/
 ├── platform-common/     # Socle partagé — bus d'événements Redis Streams (aucun framework)
 ├── platform-common-api/ # Middlewares HTTP partagés — rate limit, métriques, CORS, en-têtes
+├── platform-core/       # Cœur hexagonal unifié — atrium / nexus / sentinel / ops
+├── platform-scheduler/  # Planificateur HTTP thin commun
 │
-├── sentinel-core/       # Cœur hexagonal Sentinel — domain / application / ports (aucune dep infra)
 ├── sentinel-api/        # API Axum 0.8 — adapters inbound (HTTP + gRPC) & outbound (Postgres, Redis, Discord)
 ├── sentinel-bot/        # Bot Discord unifié (Serenity 0.12) — 25 modules, un seul process
-├── sentinel-worker/     # Meta-scheduler Tokio — 16 domaines périodiques
 ├── sentinel-gateway/    # Relay Redis Streams → WebSocket
 ├── sentinel-proto/      # Définitions gRPC (tonic + prost)
 │
-├── nexus-core/          # Cœur hexagonal Nexus — jeux, serveurs de jeux, casino, wallet
 ├── nexus-api/           # API HTTP Nexus (axum) + runtime Docker des serveurs de jeux
 ├── nexus-bot/           # Bot Discord Nexus (portail de jeux, roue, coussin)
-├── nexus-worker/        # Jobs de fond Nexus
 ├── nexus-gateway/       # Point d'entrée réseau Nexus (stub)
 ├── nexus-proto/         # Protos gRPC Nexus (stub)
+├── atrium-api/ / atrium-bot/ / atrium-proto/
+├── ops-api/ / ops-agent/ / docker-agent/
 │
 ├── web/                 # Dashboard Vue 3 + TS + Vite + Pinia (partagé Sentinel/Nexus, multi-marque)
 ├── infrastructure/      # docker/ (compose, bake, Dockerfiles), grafana/, prometheus/, scripts/
 ├── sentinel-ml/         # Configs d'entraînement YAML + points de montage des exports ONNX
 ├── persona/             # 17 fiches de personas markdown (utilisées par la skill /party-mode)
-├── docs/                # Documentation ponctuelle
-└── Cargo.toml           # Workspace Rust — 14 crates
+├── DOC/                 # Documentation fonctionnelle, technique et référence IA
+└── Cargo.toml           # Workspace Rust
 ```
 
 ### Poids relatif des composants
@@ -44,14 +46,12 @@ DiscordSentinel/
 |---|---:|---:|---|
 | `sentinel-api` | 837 | ~93 k | 21 fichiers de routes, 108 handlers, adapters Postgres/Redis |
 | `sentinel-bot` | 202 | ~48 k | 25 modules Discord |
-| `sentinel-core` | 466 | ~42 k | domain + ~70 services applicatifs |
+| `platform-core` | 608 | — | domaines Atrium, Nexus, Sentinel et Ops |
 | `web` | 410 | ~44 k | dashboard Vue 3 (atomic design) |
-| `nexus-core` | 90 | ~7,8 k | jeux, serveurs, casino |
 | `nexus-api` | 77 | ~7,4 k | HTTP + `game_runtime` (bollard) |
 | `nexus-bot` | 7 | ~3,8 k | portail de jeux, roue, coussin |
-| `sentinel-worker` | 60 | ~5,6 k | 16 domaines périodiques |
 | `sentinel-gateway` | 7 | ~0,8 k | broadcaster WebSocket |
-| `nexus-worker` / `nexus-gateway` / `*-proto` | — | < 0,3 k | jobs + stubs |
+| `platform-scheduler` | — | — | déclenchement HTTP des jobs de tous les contextes |
 
 ---
 
@@ -112,7 +112,7 @@ DiscordSentinel/
    └──────────────────────────────────────────────────────────────────┘
 ```
 
-**Philosophie** : `*-core` = les règles métier · API = adaptateurs + IA + persistance · Bot = interface Discord légère · Gateway = temps réel découplé · Worker = jobs DB-bound périodiques · Web = administration.
+**Philosophie** : `platform-core::<entité>` = règles métier · API = adaptateurs + IA + persistance · Bot = interface Discord légère · Gateway = temps réel découplé · Scheduler = minuteries HTTP sans métier · Web = administration.
 
 **Asymétries réelles, à ne pas lire comme des oublis du schéma** :
 
@@ -128,10 +128,10 @@ DiscordSentinel/
 | Composant | Technologie | Détails |
 |---|---|---|
 | Socles partagés | Rust pur / axum | `platform-common` (bus Redis) et `platform-common-api` (middlewares), séparés par surface de dépendances |
-| Cœur métier | Rust pur | `sentinel-core` : `domain/{entities,enums,services}`, `application/*`, `ports/{inbound,outbound}` + `uow.rs` |
+| Cœur métier | Rust pur | `platform-core/src/{sentinel,nexus,atrium,ops}` avec `domain`, `application` et `ports` |
 | API backend | Rust / Axum 0.8 / Tokio / sqlx 0.8 | `sentinel-api` réduit aux adapters : `adapters/inbound/{http,grpc}`, `adapters/outbound/{postgres,ws,audit,batching,host_security,system}`, `bootstrap/` |
 | Bot Discord | Rust / Serenity 0.12 | Process unique, 25 modules chargés selon la config per-guild ; helpers dans `src/shared/` (api_client, circuit_breaker, event_bus, grpc_client, shard_launcher, …) |
-| Worker | Rust / Tokio / sqlx | 1 binaire `sentinel-worker` (`scheduler.rs` + `domains/`), heartbeat + métriques Prometheus |
+| Scheduler | Rust / Tokio / HTTP | `platform-scheduler`, sans accès métier direct ni base |
 | Gateway | Rust / Axum / Redis | Relay `XREAD $` → WebSocket, auto-reconnect exponential backoff |
 | gRPC | `tonic` 0.13 + `prost` 0.13 | Crate `sentinel-proto`, serveur dans `adapters/inbound/grpc/` |
 | PostgreSQL | Postgres 16 + **PgBouncer** | 17 migrations Sentinel + 24 migrations Nexus, partitionnement RANGE mensuel, vues matérialisées |
@@ -244,7 +244,7 @@ Publie chaque jour l'APOD de la NASA dans un salon configuré, traduite en fran�
 
 ## Nexus — plateforme de jeux
 
-`nexus-core` suit la même structure hexagonale que `sentinel-core` (`domain/{entities,enums,services}`, `application/`, `ports/`).
+Le contexte `platform-core/src/nexus` suit la structure hexagonale commune (`domain`, `application`, `ports`).
 
 ### Serveurs de jeux (`application/game`)
 
@@ -534,13 +534,13 @@ bash infrastructure/scripts/run-tests.sh        # (ou run-tests.ps1 sous Windows
 cd web && npm run test                          # Vitest
 ```
 
-Couverture principale : services applicatifs et value objects de `sentinel-core`, middlewares et repositories de `sentinel-api` (`adapters/outbound/tests/`, `adapters/inbound/http/tests/`), détecteurs automod et modules du bot, helpers du worker, broadcaster de la gateway, `nexus-core/src/application/tests`. Stack de tests dédiée : `infrastructure/docker/docker-compose.test.yml`. CI : `.github/workflows/ci.yml`.
+Couverture principale : services applicatifs et value objects de `platform-core`, middlewares et repositories des APIs, modules des bots, scheduler et agents. Stack de tests dédiée : `infrastructure/docker/docker-compose.test.yml`. CI : `.github/workflows/ci.yml`.
 
 ---
 
 ## Bonnes pratiques du projet
 
-- **Le métier vit dans `*-core`** — `sentinel-api` / `sentinel-bot` / `sentinel-worker` sont des adaptateurs ; aucune règle métier ne doit y être écrite.
+- **Le métier vit dans `platform-core::<entité>`** — APIs, bots, scheduler et agents sont des adaptateurs ; aucune règle métier ne doit y être écrite.
 - **Architecture hexagonale stricte** — `domain` ne dépend de rien, `application` ne dépend que des `ports`, les adapters implémentent les ports.
 - **Bot = interface légère** — décisions et persistance côté API, jamais dans les modules du bot.
 - **Workers = jobs périodiques DB-bound** — via `spawn_periodic` + Redis Streams, pas de gateway Discord (exception : `discord_audit_sync`).

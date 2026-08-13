@@ -40,8 +40,8 @@ impl SessionRepository for PgSessionRepository {
         sqlx::query(
             "INSERT INTO web_oauth_sessions \
              (id, discord_user_id, username, global_name, avatar, access_token, \
-              refresh_token, access_expires_at) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+               refresh_token, access_expires_at, expires_at) \
+              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
         )
         .bind(s.id)
         .bind(&s.discord_user_id)
@@ -51,6 +51,7 @@ impl SessionRepository for PgSessionRepository {
         .bind(&s.access_token)
         .bind(&s.refresh_token)
         .bind(s.access_expires_at)
+        .bind(s.expires_at)
         .execute(&self.pool)
         .await
         .map(|_| ())
@@ -60,8 +61,8 @@ impl SessionRepository for PgSessionRepository {
     async fn find_by_id(&self, id: Uuid) -> Result<Option<OAuthSession>, DomainError> {
         let row = sqlx::query(
             "SELECT id, discord_user_id, username, global_name, avatar, access_token, \
-                    refresh_token, access_expires_at \
-             FROM web_oauth_sessions WHERE id = $1",
+                    refresh_token, access_expires_at, expires_at \
+             FROM web_oauth_sessions WHERE id = $1 AND expires_at > now()",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -77,6 +78,7 @@ impl SessionRepository for PgSessionRepository {
             access_token: r.get("access_token"),
             refresh_token: r.get("refresh_token"),
             access_expires_at: r.get::<DateTime<Utc>, _>("access_expires_at"),
+            expires_at: r.get::<DateTime<Utc>, _>("expires_at"),
         }))
     }
 
@@ -113,6 +115,14 @@ impl SessionRepository for PgSessionRepository {
             .await
             .map(|_| ())
             .map_err(db_err("suppression de session impossible"))
+    }
+
+    async fn purge_expired(&self) -> Result<u64, DomainError> {
+        sqlx::query("DELETE FROM web_oauth_sessions WHERE expires_at <= now()")
+            .execute(&self.pool)
+            .await
+            .map(|result| result.rows_affected())
+            .map_err(db_err("purge des sessions expirees impossible"))
     }
 
     async fn record_login(&self, t: &LoginTrace) -> Result<(), DomainError> {

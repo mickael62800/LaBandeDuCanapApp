@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use auth_core::application::manage_session_service::ManageSessionService;
 use auth_core::application::resolve_access_service::ResolveAccessService;
+use auth_core::ports::outbound::session_repository::SessionRepository;
 use sqlx::postgres::PgPoolOptions;
 
 mod adapters;
@@ -84,6 +85,23 @@ async fn main() {
 
     let sessions = Arc::new(PgSessionRepository::new(pool));
 
+    // Le filtre SQL refuse deja une session expiree au moment ou elle est
+    // presentee. Cette tache traite aussi celles qui ne seront plus jamais
+    // presentees et empeche la table de croitre indefiniment.
+    let cleanup_sessions = sessions.clone();
+    tokio::spawn(async move {
+        loop {
+            match cleanup_sessions.purge_expired().await {
+                Ok(count) if count > 0 => {
+                    tracing::info!(count, "sessions OAuth expirees supprimees");
+                }
+                Ok(_) => {}
+                Err(error) => tracing::warn!(%error, "purge des sessions OAuth impossible"),
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+        }
+    });
+
     let state = Arc::new(http::AppState {
         sessions: Arc::new(ManageSessionService {
             sessions: sessions.clone(),
@@ -111,7 +129,12 @@ async fn main() {
     };
     tracing::info!(addr = %config.bind_addr, "auth-api demarre");
 
-    if let Err(error) = axum::serve(listener, http::router(state)).await {
+    if let Err(error) = axum::serve(
+        listener,
+        http::router(state).into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .await
+    {
         tracing::error!(%error, "serveur arrete");
         std::process::exit(1);
     }

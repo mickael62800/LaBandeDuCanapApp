@@ -3,4 +3,5 @@
 
 use serenity::model::id::UserId;
 
-pub type AfkTracker = sentinel_core::domain::services::voice::afk_tracker::AfkTracker<UserId>;
+pub type AfkTracker =
+    platform_core::sentinel::domain::services::voice::afk_tracker::AfkTracker<UserId>;

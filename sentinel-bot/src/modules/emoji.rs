@@ -27,7 +27,7 @@ pub fn parse_reaction_type(raw: &str) -> Option<ReactionType> {
 fn parse_custom(s: &str) -> Option<ReactionType> {
     // Le décodage `<:name:id>` / `<a:name:id>` vit dans le core ; seul le
     // mapping vers le type Serenity reste ici.
-    let r = sentinel_core::domain::services::system::discord_naming::parse_emoji_ref(s)?;
+    let r = platform_core::sentinel::domain::services::system::discord_naming::parse_emoji_ref(s)?;
     Some(ReactionType::Custom {
         animated: r.animated,
         id: EmojiId::new(r.id),

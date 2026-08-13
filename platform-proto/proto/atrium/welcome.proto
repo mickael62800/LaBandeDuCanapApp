@@ -1,0 +1,96 @@
+syntax = "proto3";
+package atrium.welcome.v1;
+
+service WelcomeService {
+  // Génère une réponse pour un accueil, un message privé ou une mention.
+  rpc GenerateReply(GenerateReplyRequest) returns (GenerateReplyResponse);
+}
+
+service RagService {
+  // Recherche sémantique dans la base vectorielle de connaissances.
+  rpc SearchKnowledge(SearchKnowledgeRequest) returns (SearchKnowledgeResponse);
+}
+
+service BotControlService {
+  rpc GetState(BotStateRequest) returns (BotStateResponse);
+  rpc SetState(SetBotStateRequest) returns (BotStateResponse);
+  // Reglages du serveur (bot_guild_config), pour les rares cas ou le bot doit
+  // decider lui-meme : Atrium n'a pas d'acces base. Renvoie les cles brutes ;
+  // c'est a l'appelant d'appliquer son defaut, comme le fait `config_or` chez
+  // Sentinel.
+  rpc GetGuildConfig(BotStateRequest) returns (GuildConfigResponse);
+}
+
+// Rappel apaisant publié dans un salon en tension (« conflit »). Déclenché par
+// l'événement Sentinel `atrium_calming_requested`, consommé par atrium-bot.
+service CalmingService {
+  rpc GenerateCalming(GenerateCalmingRequest) returns (GenerateCalmingResponse);
+}
+
+message GenerateCalmingRequest {
+  string guild_id = 1;
+  string channel_id = 2;
+  // Nature de la tension : flood, toxicity, phishing/unsafe_link, ou vide.
+  string kind = 3;
+}
+
+message GenerateCalmingResponse {
+  string reply = 1;
+  bool generated_by_ai = 2;
+}
+
+enum ConversationScope { GENERAL = 0; DIRECT = 1; }
+
+message GenerateReplyRequest {
+  // Identifiants Discord du contexte de la demande.
+  string guild_id = 1;
+  string member_id = 2;
+  string member_display_name = 3;
+  string channel_id = 4;
+  ConversationScope scope = 5;
+  // Texte du membre ; validé et limité par le domaine.
+  string member_message = 6;
+  // Faits approuvés fournis par le bot et complétés par le RAG.
+  string server_context = 7;
+}
+
+message GenerateReplyResponse {
+  // Texte directement publiable par atrium-bot.
+  string reply = 1;
+  // Indique si le fournisseur IA a effectivement généré le texte.
+  bool generated_by_ai = 2;
+}
+
+message SearchKnowledgeRequest {
+  string query = 1;
+  uint32 limit = 2;
+  string guild_id = 3;
+}
+
+message SearchKnowledgeChunk {
+  string source = 1;
+  string content = 2;
+  double similarity = 3;
+}
+
+message SearchKnowledgeResponse {
+  repeated SearchKnowledgeChunk chunks = 1;
+}
+
+message BotStateRequest {
+  string guild_id = 1;
+}
+
+message SetBotStateRequest {
+  string guild_id = 1;
+  bool enabled = 2;
+  string actor_id = 3;
+}
+
+message BotStateResponse {
+  bool enabled = 1;
+}
+
+message GuildConfigResponse {
+  map<string, string> values = 1;
+}

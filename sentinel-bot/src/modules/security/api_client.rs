@@ -11,9 +11,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::shared::grpc_client::SentinelGrpcClient;
 
-use sentinel_proto::members::v1 as proto_members;
-use sentinel_proto::security::v1 as proto_security;
-use sentinel_proto::security_state::v1 as proto_state;
+use platform_proto::sentinel::members::v1 as proto_members;
+use platform_proto::sentinel::security::v1 as proto_security;
+use platform_proto::sentinel::security_state::v1 as proto_state;
 
 #[derive(Debug, Serialize)]
 pub struct SecurityEvent {

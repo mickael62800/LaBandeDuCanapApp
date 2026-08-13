@@ -28,6 +28,7 @@ pub mod bearer_auth;
 pub mod docker_agent_client;
 pub mod errors;
 pub mod http;
+pub mod job_lock;
 pub mod metrics;
 pub mod rate_limit;
 

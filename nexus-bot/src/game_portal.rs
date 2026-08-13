@@ -1,7 +1,7 @@
-//! Module Game Portal (bot) — cycle de vie des salons de session.
+//! Game Portal : projection Discord d'un serveur de jeu.
 //!
-//! Porte depuis sentinel-bot (modules/game_portal). Pilote par les evenements
-//! publies par nexus-api sur la stream Redis `nexus:events` :
+//! Le module est piloté par les événements publiés par `nexus-api` sur la
+//! stream Redis `nexus:events` :
 //!   - `game_server_scheduled` : ouverture programmee — cree les memes salons et
 //!     le panneau que `game_server_started`, mais le conteneur reste eteint (le
 //!     worker le demarre ~5 min avant l'ouverture) ;
@@ -439,7 +439,7 @@ async fn handle_event(ctx: &Context, api: &ApiClient, payload_json: &str) {
         return;
     };
 
-    use nexus_core::ports::outbound::events::game_events as ev;
+    use platform_core::nexus::ports::outbound::events::game_events as ev;
     match event {
         // Programmation ET demarrage creent les salons/panneau. La programmation
         // ouvre les inscriptions a l'avance ; le garde anti-doublon de

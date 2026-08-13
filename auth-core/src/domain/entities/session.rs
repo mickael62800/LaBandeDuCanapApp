@@ -7,6 +7,9 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+/// Duree de vie absolue d'une session web persistante.
+pub const SESSION_MAX_AGE_SECS: i64 = 30 * 24 * 3600;
+
 /// Trace best-effort d'un login OAuth reussi (journal `successful_logins`).
 ///
 /// Écrite par le flux d'authentification, lue par l'écran « Sécurité de
@@ -43,6 +46,7 @@ pub struct NewOAuthSession {
     pub access_token: String,
     pub refresh_token: String,
     pub access_expires_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
 }
 
 /// Session web persistante telle que relue depuis le stockage.
@@ -56,6 +60,7 @@ pub struct OAuthSession {
     pub access_token: String,
     pub refresh_token: String,
     pub access_expires_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
 }
 
 /// Mise a jour des tokens d'une session apres un refresh Discord.

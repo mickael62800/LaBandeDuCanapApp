@@ -5,7 +5,7 @@ use serenity::prelude::*;
 
 use crate::shared::embeds::{critical_embed, danger_embed, info_embed, warn_embed};
 use crate::shared::grpc_client::{grpc_err_to_string, GrpcClientKey};
-use sentinel_proto::audit::v1 as proto_audit;
+use platform_proto::sentinel::audit::v1 as proto_audit;
 
 use tracing::warn;
 

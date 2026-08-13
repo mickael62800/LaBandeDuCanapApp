@@ -70,7 +70,9 @@ pub fn load_env_string(key: &str, default: &str) -> String {
 /// insensible a la casse — sémantique de vérité unique du core).
 pub fn load_env_bool(key: &str, default: bool) -> bool {
     match std::env::var(key) {
-        Ok(v) => sentinel_core::domain::entities::system::config_parsers::parse_bool_str(&v),
+        Ok(v) => {
+            platform_core::sentinel::domain::entities::system::config_parsers::parse_bool_str(&v)
+        }
         Err(_) => default,
     }
 }

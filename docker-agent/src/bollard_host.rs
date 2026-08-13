@@ -19,13 +19,13 @@ use bollard::volume::ListVolumesOptions;
 use bollard::Docker;
 use futures_util::StreamExt;
 
-use ops_core::domain::entities::docker_host::{
+use platform_core::ops::domain::entities::docker_host::{
     BuildCacheEntry, ContainerDiskUsage, ContainerPort, ContainerSummary, DiskUsage,
     DockerVersionInfo, ImageDiskUsage, ImageSummary, NetworkSummary, PruneOutcome, VolumeDiskUsage,
     VolumeSummary,
 };
-use ops_core::domain::errors::DomainError;
-use ops_core::ports::outbound::docker_host::DockerHost;
+use platform_core::ops::domain::errors::DomainError;
+use platform_core::ops::ports::outbound::docker_host::DockerHost;
 
 /// Singleton du client Docker. Bollard ouvre une connexion lazy au socket.
 static DOCKER: OnceLock<Docker> = OnceLock::new();

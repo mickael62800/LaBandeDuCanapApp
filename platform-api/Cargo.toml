@@ -1,0 +1,80 @@
+[package]
+name = "platform-api"
+version.workspace = true
+edition.workspace = true
+description = "API unifiee de la plateforme, organisee par entite"
+
+[[bin]]
+name = "atrium-api"
+path = "src/bin/atrium-api.rs"
+
+[[bin]]
+name = "nexus-api"
+path = "src/bin/nexus-api.rs"
+
+[[bin]]
+name = "ops-api"
+path = "src/bin/ops-api.rs"
+
+[[bin]]
+name = "sentinel-api"
+path = "src/bin/sentinel-api.rs"
+
+[dependencies]
+async-trait = { workspace = true }
+async-stream = "0.3"
+axum = { version = "0.8", features = ["multipart"] }
+base64 = "0.22"
+chrono = { workspace = true }
+dashmap = { workspace = true }
+dotenvy = { workspace = true }
+futures-util = { workspace = true }
+hmac = "0.12"
+metrics = "0.24"
+metrics-exporter-prometheus = { version = "0.16", default-features = false }
+ndarray = "0.17"
+ort = "2.0.0-rc.12"
+platform-common-api = { workspace = true }
+platform-common = { workspace = true }
+platform-core = { workspace = true }
+platform-proto = { workspace = true }
+ops-adapters = { workspace = true }
+redis = { workspace = true }
+reqwest = { workspace = true, features = ["json", "multipart"] }
+rand = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = "0.10"
+sqlx = { workspace = true }
+subtle = "2"
+sysinfo = { version = "0.33", default-features = false, features = ["system"] }
+tar = "0.4"
+tokio = { workspace = true, features = ["process"] }
+tokio-stream = "0.1"
+tokio-metrics = { version = "0.4", default-features = false, features = ["rt"] }
+tokenizers = { version = "0.21", default-features = false, features = ["fancy-regex"] }
+tonic = { workspace = true }
+tonic-health = "0.13"
+tower-http = { version = "0.6", features = ["cors", "trace", "limit", "request-id", "propagate-header", "set-header", "compression-zstd", "compression-gzip"] }
+tower = { version = "0.5", features = ["limit", "load-shed"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+uuid = { workspace = true }
+x509-parser = "0.16"
+
+[target.'cfg(not(target_env = "msvc"))'.dependencies]
+tikv-jemallocator = "0.6"
+
+[target.'cfg(unix)'.dependencies]
+hyper = { version = "1", features = ["client", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+http-body-util = "0.1"
+
+[dev-dependencies]
+http-body-util = "0.1"
+tokio-stream = { version = "0.1", features = ["net"] }
+tokio = { workspace = true, features = ["test-util"] }
+tower = { version = "0.5", features = ["util", "limit", "load-shed"] }
+
+[lints]
+workspace = true

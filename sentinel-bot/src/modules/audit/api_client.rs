@@ -9,7 +9,7 @@ use std::sync::Arc;
 use serde::Deserialize;
 
 use crate::shared::grpc_client::{grpc_err_to_string, GrpcCallError, SentinelGrpcClient};
-use sentinel_proto::audit::v1 as proto;
+use platform_proto::sentinel::audit::v1 as proto;
 
 /// Rapport hebdomadaire agrege server-side (fenetre 7 jours).
 /// Le bot ne fait que rendre l'embed a partir de ces compteurs.

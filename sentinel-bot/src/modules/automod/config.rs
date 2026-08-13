@@ -98,13 +98,13 @@ pub(super) fn build_embed_colors(
 
 /// Parse une couleur hex (avec ou sans #) vers u32. Retourne `default` si
 /// invalide. Implémentation unique du core (trim les espaces).
-use sentinel_core::domain::services::system::discord_naming::parse_role_color_hex as parse_color;
+use platform_core::sentinel::domain::services::system::discord_naming::parse_role_color_hex as parse_color;
 
 /// Verifie si l'heure actuelle est dans la plage de nuit. La règle (fenêtre
 /// passant minuit) vit dans le core ; le bot ne fournit que l'horloge.
 pub(super) fn is_night_mode(start: u8, end: u8) -> bool {
     let hour = time::OffsetDateTime::now_utc().hour();
-    sentinel_core::domain::services::automod::night_mode::is_night_hour(hour, start, end)
+    platform_core::sentinel::domain::services::automod::night_mode::is_night_hour(hour, start, end)
 }
 
-pub(super) use sentinel_core::domain::services::automod::night_mode::apply_night_mode;
+pub(super) use platform_core::sentinel::domain::services::automod::night_mode::apply_night_mode;

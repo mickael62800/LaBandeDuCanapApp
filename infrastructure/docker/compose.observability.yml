@@ -16,7 +16,7 @@ services:
   # ──────────────────────────────────────────────────────────────────────────
 
   pgadmin:
-    image: dpage/pgadmin4:latest
+    image: dpage/pgadmin4:latest@sha256:2f4ce946ddf8360680d7eff4eaba1d91859eb6b4003e6623bad5c63a322c2f4d
     container_name: sentinel-pgadmin
     restart: unless-stopped
     logging: *observability-default-logging
@@ -39,7 +39,7 @@ services:
       - full
 
   redis-commander:
-    image: rediscommander/redis-commander:latest
+    image: rediscommander/redis-commander:latest@sha256:19cd0c49f418779fa2822a0496c5e6516d0c792effc39ed20089e6268477e40a
     container_name: sentinel-redis-commander
     restart: unless-stopped
     logging: *observability-default-logging
@@ -76,7 +76,7 @@ services:
   # `prom/prometheus` est une image minimale dont le shell n'est pas garanti :
   # on n'y execute donc rien, c'est alpine qui ecrit dans le volume partage.
   prometheus-token-init:
-    image: alpine:3.20
+    image: alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
     container_name: sentinel-prometheus-token-init
     environment:
       METRICS_TOKEN: ${METRICS_TOKEN:?METRICS_TOKEN est requis}
@@ -98,7 +98,7 @@ services:
       - full
 
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:latest@sha256:508729e0e2d18e11fd742a5a5ca70e557b940a93948c3c95fd0123a6fd538b69
     container_name: sentinel-prometheus
     restart: unless-stopped
     logging: *observability-default-logging
@@ -125,7 +125,7 @@ services:
       - full
 
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:latest@sha256:ab5cb380e3ff3172d6c8bd2e7cfd31cce977d2881b260e1f5bc089bf0b759b43
     container_name: sentinel-grafana
     restart: unless-stopped
     logging: *observability-default-logging

@@ -481,4 +481,4 @@ pub async fn handle_massban(ctx: &Context, command: &CommandInteraction) {
 }
 
 // La logique de parsing vit dans le core hexagonal (avec ses tests).
-pub use sentinel_core::domain::services::moderation::user_id_parsing::parse_user_ids;
+pub use platform_core::sentinel::domain::services::moderation::user_id_parsing::parse_user_ids;

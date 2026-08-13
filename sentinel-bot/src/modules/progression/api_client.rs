@@ -16,11 +16,11 @@ use serde::Deserialize;
 
 use crate::shared::grpc_client::{GrpcCallError, SentinelGrpcClient};
 
-use sentinel_proto::common::v1 as proto_common;
-use sentinel_proto::community::v1 as proto_community;
-use sentinel_proto::moderation::v1 as proto_mod;
-use sentinel_proto::progression::v1 as proto_prog;
-use sentinel_proto::stats::v1 as proto_stats;
+use platform_proto::sentinel::common::v1 as proto_common;
+use platform_proto::sentinel::community::v1 as proto_community;
+use platform_proto::sentinel::moderation::v1 as proto_mod;
+use platform_proto::sentinel::progression::v1 as proto_prog;
+use platform_proto::sentinel::stats::v1 as proto_stats;
 
 // ── Response DTOs (surface publique inchangee) ──
 

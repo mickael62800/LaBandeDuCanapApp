@@ -3,13 +3,13 @@ use std::sync::{
     Arc,
 };
 
-use atrium_proto::welcome::v1::{
+use platform_common::EventBus;
+use platform_proto::atrium::welcome::v1::{
     bot_control_service_client::BotControlServiceClient,
     calming_service_client::CalmingServiceClient, welcome_service_client::WelcomeServiceClient,
     BotStateRequest, ConversationScope, GenerateCalmingRequest, GenerateReplyRequest,
     SetBotStateRequest,
 };
-use platform_common::EventBus;
 use serde::Deserialize;
 use serenity::{
     all::{
@@ -96,7 +96,12 @@ async fn publier_texte_modele(
         .all_users(false)
         .users(destinataires.to_vec());
     salon
-        .send_message(http, CreateMessage::new().content(contenu).allowed_mentions(mentions))
+        .send_message(
+            http,
+            CreateMessage::new()
+                .content(contenu)
+                .allowed_mentions(mentions),
+        )
         .await
 }
 
@@ -192,9 +197,8 @@ struct Handler {
 }
 
 /// Voir `Handler::welcomes`.
-type WelcomeTracker = Arc<
-    std::sync::Mutex<std::collections::HashMap<(u64, u64), (std::time::Instant, MessageId)>>,
->;
+type WelcomeTracker =
+    Arc<std::sync::Mutex<std::collections::HashMap<(u64, u64), (std::time::Instant, MessageId)>>>;
 
 impl Handler {
     /// Fenetre de depart eclair du serveur, en minutes (0 = desactive).
@@ -259,10 +263,7 @@ impl Handler {
             // doit couter ni une requete payante ni un message public.
             if !platform_event_signing::verifie(
                 &event.data.sig,
-                &platform_event_signing::welcome_message(
-                    &event.data.guild_id,
-                    &event.data.user_id,
-                ),
+                &platform_event_signing::welcome_message(&event.data.guild_id, &event.data.user_id),
             ) {
                 tracing::warn!(
                     guild_id = %event.data.guild_id,
@@ -318,10 +319,7 @@ impl Handler {
                     // un envoi echoue ne laisse pas d'entree fantome.
                     Ok(sent) => {
                         if let Ok(mut map) = welcomes.lock() {
-                            map.insert(
-                                (guild_num, user_num),
-                                (std::time::Instant::now(), sent.id),
-                            );
+                            map.insert((guild_num, user_num), (std::time::Instant::now(), sent.id));
                         }
                     }
                 }
@@ -432,9 +430,7 @@ impl Handler {
             }
             Err(_) => config.general_channel_id,
         };
-        if let Err(error) =
-            publier_texte_modele(&ctx.http, target_channel, message, &[]).await
-        {
+        if let Err(error) = publier_texte_modele(&ctx.http, target_channel, message, &[]).await {
             tracing::warn!(%error, "rappel apaisant Atrium non envoye");
         } else {
             tracing::info!(guild_id = %event.data.guild_id, channel_id = %target_channel, kind = %event.data.kind, "rappel apaisant Atrium envoye");

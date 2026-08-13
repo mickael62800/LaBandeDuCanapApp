@@ -13,7 +13,7 @@ use tracing::{info, warn};
 use crate::shared::discord_helpers::is_module_enabled;
 use crate::shared::grpc_client::{grpc_err_to_string, GrpcClientKey};
 use crate::shared::heartbeat::ApiClientKey;
-use sentinel_proto::age_gate::v1 as proto_age;
+use platform_proto::sentinel::age_gate::v1 as proto_age;
 
 use super::api_client::WelcomeApiClient;
 use super::template;

@@ -79,7 +79,7 @@ mod tests {
     #[test]
     fn defaults_when_empty() {
         let c = cfg(&[]);
-        assert!(c.enabled());
+        assert!(!c.enabled());
         assert_eq!(c.snapshot_quota(), 10);
     }
 

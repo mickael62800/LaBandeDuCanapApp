@@ -9,8 +9,8 @@ use std::sync::Arc;
 
 use crate::shared::grpc_client::{GrpcCallError, SentinelGrpcClient};
 
-use sentinel_proto::members::v1 as proto_members;
-use sentinel_proto::welcome::v1 as proto_welcome;
+use platform_proto::sentinel::members::v1 as proto_members;
+use platform_proto::sentinel::welcome::v1 as proto_welcome;
 
 #[derive(Debug)]
 /// Miroir de la config welcome renvoyee par l'API.

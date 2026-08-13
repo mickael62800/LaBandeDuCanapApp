@@ -138,6 +138,7 @@ const CATEGORIES: &[Section] = &[
         "💬 Communauté",
         &[
             ("community-bot", "💬 Communauté"),
+            ("idea-bot", "💡 Idées"),
             ("progression-bot", "📈 Progression"),
             ("voice-bot", "🔊 Vocal"),
         ],

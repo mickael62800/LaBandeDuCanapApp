@@ -22,11 +22,11 @@ L'identité a aussi **son propre Redis** (`auth-redis`), sans persistance et en 
 
 ## Règles d'or
 
-1. **Le métier va dans `sentinel-core` / `nexus-core` / `atrium-core`.** `*-api`, `*-bot`, `*-worker`, `*-gateway` ne sont que des adaptateurs. Si tu écris une règle de décision dans un handler HTTP ou dans un module du bot, c'est au mauvais endroit.
+1. **Le métier va dans le module d'entité correspondant de `platform-core`.** Atrium est déjà natif dans `platform_core::atrium`; Sentinel, Nexus et Ops y sont réexportés pendant leur migration. `*-api`, `*-bot`, `platform-scheduler` et `*-gateway` restent des adaptateurs. Si tu écris une règle de décision dans un handler HTTP ou dans un module du bot, c'est au mauvais endroit.
 2. **Sens des dépendances** : `domain` ← `application` ← `ports` ← adapters. `domain/` ne dépend d'aucune infra (pas de `sqlx`, pas de `serenity`, pas de `reqwest`).
 3. **Le bot est une interface légère.** Il rend, il écoute, il appelle l'API. Il ne décide pas et n'a **pas d'accès DB**.
 4. **Un adaptateur inbound ne fait pas d'I/O sortante.** Pas de `reqwest::Client` dans un handler : passer par le port (`DiscordApi::send_channel_embed`, `get_user_me`, …). Un handler qui appelle le réseau lui-même est intestable sans réseau, et chaque appelant réimplémente les contrôles de sécurité — c'est ainsi que la validation du snowflake s'est retrouvée copiée dans trois fichiers. Seule exception documentée : l'échange de jetons OAuth2 (`handlers/system/oauth.rs`), indissociable du flux CSRF/cookies.
-5. **Config par serveur d'abord.** Un nouveau réglage se déclare dans `bot_definitions.config_schema` et se lit dans `bot_guild_config` — pas en variable d'env. Les env vars sont des fallbacks / réglages globaux lus au démarrage. La sémantique de référence est `sentinel-core/src/domain/entities/system/config_parsers.rs` : `parse_bool_str` (`true`/`1`/`yes`, insensible à la casse) et surtout **`parse_enabled_flag` : clé absente = module DÉSACTIVÉ** (fail-closed, miroir de `parseBoolConfig` côté web). Ne pas réécrire ces parsers ailleurs. `nexus-core` a longtemps porté une copie inline au défaut inversé (absent = activé) ; elle a été supprimée (cf. en-tête de `nexus-core/.../system/bot_config.rs`), le `cfg_bool` restant est appelé fail-closed. Ne pas la réintroduire.
+5. **Config par serveur d'abord.** Un nouveau réglage se déclare dans `bot_definitions.config_schema` et se lit dans `bot_guild_config` — pas en variable d'env. Les env vars sont des fallbacks / réglages globaux lus au démarrage. La sémantique de référence est `platform-core/src/sentinel/domain/entities/system/config_parsers.rs` : `parse_bool_str` (`true`/`1`/`yes`, insensible à la casse) et surtout **`parse_enabled_flag` : clé absente = module DÉSACTIVÉ** (fail-closed, miroir de `parseBoolConfig` côté web). Ne pas réécrire ces parsers ailleurs. Nexus a longtemps porté une copie inline au défaut inversé (absent = activé) ; elle a été supprimée (cf. `platform-core/src/nexus/domain/entities/system/bot_config.rs`), le `cfg_bool` restant est appelé fail-closed. Ne pas la réintroduire.
 6. **Filtre fermant sur tout ce qui est public.** En cas de doute sur une permission Discord (cache froid, guilde inconnue), on ne publie pas. Voir `sentinel-bot/src/modules/presence`.
 7. **Le ban n'est jamais automatique.** Toute évolution de l'automod doit préserver ça : seul un administrateur finalise un ban.
 
@@ -63,17 +63,17 @@ cd web && npm run lint && npm run build   # build = vue-tsc --noEmit + vite buil
 
 | Tu veux… | Va dans |
 |---|---|
-| Ajouter une règle métier Sentinel | `sentinel-core/src/application/<domaine>/<verbe>_service.rs` |
+| Ajouter une règle métier Sentinel | `platform-core/src/sentinel/application/<domaine>/<verbe>_service.rs` |
 | Exposer ça en HTTP | `sentinel-api/src/adapters/inbound/http/{routes,handlers,dto}/` |
-| Persister | `sentinel-core/src/ports/outbound/` (trait) + `sentinel-api/src/adapters/outbound/postgres/` (impl) |
+| Persister | `platform-core/src/sentinel/ports/outbound/` (trait) + `sentinel-api/src/adapters/outbound/postgres/` (impl) |
 | Câbler un nouveau port dans l'API | le sous-état de son domaine dans `sentinel-api/src/bootstrap/state/` |
 | Ajouter une commande slash | `sentinel-bot/src/modules/<module>/` + `sentinel-bot/src/command_registry.rs` |
 | Un job périodique | `sentinel-worker/src/domains/<domaine>/` + `scheduler.rs` |
 | Un écran d'admin | `web/src/components/pages/` + store Pinia + `web/src/api/http.ts` (ou `nexusHttp.ts`), route dans `router/adminRoutes.ts` sous son univers, entrée dans `useDashboardSections` |
 | Un réglage éditable par serveur | migration `config_schema` + lecture via `bot_guild_config` |
-| Toucher aux serveurs de jeux | `nexus-core/src/application/game/` + `nexus-api/src/adapters/outbound/game_runtime/` |
+| Toucher aux serveurs de jeux | `platform-core/src/nexus/application/game/` + `nexus-api/src/adapters/outbound/game_runtime/` |
 
-Domaines de `sentinel-core/src/application/` : `ai`, `audit`, `community`, `guild_backup`, `moderation`, `system` (le métier `ops` vit désormais dans le crate `ops-core`, cf. plus bas).
+Domaines de `platform-core/src/sentinel/application/` : `ai`, `audit`, `community`, `guild_backup`, `moderation`, `system` (le métier `ops` vit dans le contexte Ops, cf. plus bas).
 
 **Le socket Docker n'est monté que par `docker-agent`.** `/var/run/docker.sock` équivaut à un accès root sur l'hôte ; il n'a rien à faire dans une API qui sert aussi l'OAuth, la modération ou la vitrine publique du portail de jeux. `docker-agent` est un crate minimal — pas de base, pas de session, pas de route nginx, joignable seulement sur le réseau `internal` avec `DOCKER_AGENT_TOKEN`.
 
@@ -81,8 +81,8 @@ Il expose **deux surfaces**, toutes deux en liste blanche stricte, jamais un pas
 
 | Surface | Port | Implémentation | Client |
 |---|---|---|---|
-| `/version`, `/containers`, `/prune/*`… | `ops_core::DockerHost` | `bollard_host.rs` | `ops-api` → `HttpDockerHost` |
-| `/game/*` (cycle de vie des serveurs de jeu) | `ops_core::GameContainerRuntime` | `bollard_game.rs` | `nexus-api` → `HttpGameRuntime` |
+| `/version`, `/containers`, `/prune/*`… | `platform_core::ops::DockerHost` | `bollard_host.rs` | `ops-api` → `HttpDockerHost` |
+| `/game/*` (cycle de vie des serveurs de jeu) | `platform_core::ops::GameContainerRuntime` | `bollard_game.rs` | `nexus-api` → `HttpGameRuntime` |
 
 Les deux clients sont de simples adaptateurs : les handlers et les use cases ignorent que Docker est passé de l'autre côté d'un appel réseau. C'est tout l'intérêt d'avoir eu un port plutôt qu'un client bollard appelé directement.
 
@@ -90,13 +90,13 @@ Les deux clients sont de simples adaptateurs : les handlers et les use cases ign
 
 **Ne pas remonter le socket ailleurs**, et ne pas ajouter `bollard` (ni `tar`, qui ne sert qu'à `upload_file_to_container`) à un autre crate : le mapping bollard → domaine n'existe qu'une fois, dans `docker-agent/`. `cargo tree -e normal -i bollard` doit toujours ne montrer qu'un seul dépendant. Nexus a longtemps été la contre-épreuve — il portait `bollard`, montait le socket, et dupliquait un second mapping de 537 lignes.
 
-Corollaire de rangement : le port du cycle de vie vit dans `ops-core` (domaine neutre de la machine hôte), pas dans `nexus-core` — c'est une opération sur le daemon de l'hôte, pas une règle du portail. `nexus-core` le ré-exporte sous le nom court `ContainerRuntime`.
+Corollaire de rangement : le port du cycle de vie vit dans le contexte Ops (domaine neutre de la machine hôte), pas dans le domaine Nexus — c'est une opération sur le daemon de l'hôte, pas une règle du portail. `platform_core::nexus` le réexporte sous le nom court `ContainerRuntime`.
 
 **Le nommage `sentinel.*` de Nexus : ce qui a bougé et ce qui ne bougera pas.** Les **labels** sont passés à `nexus.*` — écrits dans les deux générations, lus dans les deux (`list_managed_containers` fait deux passes, Docker combinant les filtres `label` en ET et non en OU). La sortie de transition se fait quand `docker ps -a --filter label=sentinel.managed=game-portal` ne renvoie plus rien.
 
 Les **noms** restent : `sentinel-game-{id}` (persisté en base, comparé par le reconciler), `sentinel-game-vol-{id}` (Docker ne renomme pas un volume — changer la formule monterait un volume neuf et vide, le monde de jeu paraîtrait effacé), `sentinel-games` et `/var/lib/sentinel/games` (défauts décrivant l'installation en place). Ce sont des identifiants portant des données, pas des étiquettes. Les renommer demande une migration explicite, jamais une édition de ligne.
 
-**`ops` vs `system`** — la frontière est « est-ce que ça parle de Discord ? ». `ops` couvre la **machine hôte** : sondes système, conteneurs Docker, logs techniques des services, sécurité de l'hôte (TLS, IP bannies, journal d'administration), règles d'alerte. Cette machine héberge aussi Nexus et Atrium : ces écrans ne sont pas « du Sentinel », ils sont transverses. `system` garde le métier de la plateforme : tickets, OAuth, reset de guilde, lockdown, slowmode, quarantaine, exports. Le métier `ops` **a été extrait en plateforme autonome** — `ops-core` (domaine + ports, aucune dépendance de plateforme) et `ops-api` (adapters + gateway nginx, façon nexus/atrium). `sentinel-api` n'en garde qu'un **consommateur** : le sous-état `OpsState` (`bootstrap/state/ops.rs`) branché sur les ports `ops-core` (sondes santé, registre des services, logs). Il n'y a plus de `application/ops/`, `ports/ops/` ni `domain/entities/ops/` dans `sentinel-core`. L'univers « Exploitation » du back-office est la contrepartie web.
+**`ops` vs `system`** — la frontière est « est-ce que ça parle de Discord ? ». `ops` couvre la **machine hôte** : sondes système, conteneurs Docker, logs techniques des services, sécurité de l'hôte (TLS, IP bannies, journal d'administration), règles d'alerte. Cette machine héberge aussi Nexus et Atrium : ces écrans ne sont pas « du Sentinel », ils sont transverses. `system` garde le métier de la plateforme : tickets, OAuth, reset de guilde, lockdown, slowmode, quarantaine, exports. Le métier Ops vit dans `platform-core/src/ops`; `ops-api`, `ops-agent` et `docker-agent` gardent leurs adaptateurs et privilèges séparés. `sentinel-api` n'en garde qu'un **consommateur** : le sous-état `OpsState` (`bootstrap/state/ops.rs`) branché sur les ports `platform_core::ops` (sondes santé, registre des services, logs). L'univers « Exploitation » du back-office est la contrepartie web.
 Domaines de `sentinel-worker/src/domains/` (16) : `ai`, `analytics`, `announcements`, `appeal_sla`, `audit_cache`, `automod`, `cache`, `cleanup`, `discord_audit_sync`, `export`, `guild_backup`, `moderation`, `monitoring`, `security`, `temp_roles`, `tickets`.
 
 ## État de l'API : sous-états par domaine

@@ -1,14 +1,14 @@
 //! Attribution des roles de palier — ADAPTATEUR Discord.
 //!
 //! La decision (quels roles ajouter, lesquels retirer) vit dans le core
-//! (`sentinel_core::domain::services::progression::role_tiers`) avec ses tests.
+//! (`platform_core::sentinel::domain::services::progression::role_tiers`) avec ses tests.
 //! Ce module ne fait que l'orchestration : lire la config, lire les roles
 //! actuels du membre, et n'appeler Discord que pour les differences.
 
 use serenity::all::{Context, GuildId, RoleId, UserId};
 use tracing::{info, warn};
 
-use sentinel_core::domain::services::progression::role_tiers::{
+use platform_core::sentinel::domain::services::progression::role_tiers::{
     analyser_paliers, roles_pour_niveau, ModePalier,
 };
 

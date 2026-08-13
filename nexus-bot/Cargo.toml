@@ -5,7 +5,7 @@ edition = "2021"
 description = "Bot Discord (serenity) de la plateforme jeux Nexus — commande /roue via nexus-api"
 
 [dependencies]
-nexus-core = { path = "../nexus-core" }
+platform-core = { workspace = true }
 platform-common = { workspace = true }
 serenity.workspace = true
 tokio = { workspace = true }

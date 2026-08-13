@@ -11,12 +11,15 @@ use serenity::all::{
 };
 use tracing::warn;
 
+const REQUIRED_PERMISSION: serenity::all::Permissions =
+    serenity::all::Permissions::MODERATE_MEMBERS;
+
 pub fn register() -> CreateCommand {
     CreateCommand::new("signalement")
         .description(
             "Signaler un message : cree une carte de vote moderateurs (avec contexte avant/apres)",
         )
-        .default_member_permissions(serenity::all::Permissions::MODERATE_MEMBERS)
+        .default_member_permissions(REQUIRED_PERMISSION)
         .add_option(
             CreateCommandOption::new(
                 CommandOptionType::String,
@@ -49,6 +52,25 @@ pub fn register() -> CreateCommand {
 }
 
 pub async fn handle(ctx: &Context, command: &CommandInteraction) {
+    if !super::has_mod_permission(command, REQUIRED_PERMISSION) {
+        let _ = command
+            .create_response(
+                &ctx.http,
+                CreateInteractionResponse::Message(
+                    CreateInteractionResponseMessage::new()
+                        .content("Permission MODERATE_MEMBERS requise pour /signalement.")
+                        .ephemeral(true),
+                ),
+            )
+            .await;
+        warn!(
+            user = %command.user.name,
+            user_id = %command.user.id,
+            "Tentative /signalement sans permission"
+        );
+        return;
+    }
+
     if let Err(e) = command
         .create_response(
             &ctx.http,

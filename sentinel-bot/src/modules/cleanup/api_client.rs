@@ -7,7 +7,7 @@
 use std::sync::Arc;
 
 use crate::shared::grpc_client::{grpc_err_to_string, SentinelGrpcClient};
-use sentinel_proto::purge::v1 as proto;
+use platform_proto::sentinel::purge::v1 as proto;
 
 pub struct ApiClient {
     grpc: Arc<SentinelGrpcClient>,

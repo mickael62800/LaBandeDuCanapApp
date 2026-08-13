@@ -2,7 +2,7 @@
  * Lecture des flags booléens de `bot_guild_config`.
  *
  * Miroir EXACT de `parse_bool_str` côté Rust
- * (sentinel-core/src/domain/entities/system/config_parsers.rs) : insensible à
+ * (platform-core/src/sentinel/domain/entities/system/config_parsers.rs) : insensible à
  * la casse, et `yes` compte comme vrai. Sans ça, une valeur `"True"` ou
  * `"yes"` faisait afficher un module « OFF » dans le dashboard alors que le
  * bot, lui, le considérait actif et continuait de tourner.

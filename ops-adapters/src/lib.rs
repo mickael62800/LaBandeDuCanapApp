@@ -13,7 +13,7 @@
 pub mod http_docker_host;
 pub mod server_event_repository;
 
-use ops_core::domain::errors::DomainError;
+use platform_core::ops::domain::errors::DomainError;
 
 /// Traduction des erreurs sqlx en `DomainError`. Le detail technique reste dans
 /// les logs : le remonter a l'appelant ne renseignerait que sur le schema.

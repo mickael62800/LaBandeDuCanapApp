@@ -17,13 +17,13 @@
 //! bollard -> domaine dans le depot.
 
 use async_trait::async_trait;
-use ops_core::domain::entities::docker_host::{
+use platform_common_api::docker_agent_client::{DockerAgentClient, DockerAgentError};
+use platform_core::ops::domain::entities::docker_host::{
     ContainerSummary, DiskUsage, DockerVersionInfo, ImageSummary, NetworkSummary, PruneOutcome,
     VolumeSummary,
 };
-use ops_core::domain::errors::DomainError;
-use ops_core::ports::outbound::docker_host::DockerHost;
-use platform_common_api::docker_agent_client::{DockerAgentClient, DockerAgentError};
+use platform_core::ops::domain::errors::DomainError;
+use platform_core::ops::ports::outbound::docker_host::DockerHost;
 use serde::de::DeserializeOwned;
 
 pub struct HttpDockerHost {

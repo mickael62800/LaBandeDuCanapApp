@@ -5,7 +5,7 @@ use serenity::all::{
     CreateCommandOption,
 };
 
-use crate::shared::discord_helpers::reply_ephemeral_embed;
+use crate::shared::discord_helpers::{has_manage_guild, reply_ephemeral_embed};
 use crate::shared::embeds::{critical_embed, info_embed, success_embed};
 
 use super::{LockdownKey, QuarantineKey, RaidDetectorKey, RecentJoinsKey, SecurityApiKey};
@@ -69,6 +69,23 @@ pub async fn handle(ctx: &Context, command: &CommandInteraction) {
 /// (SEND_MESSAGES refuse pour @everyone), de facon entierement reversible
 /// (permissions d'origine sauvegardees, restaurees par /calm ou a l'expiration).
 async fn handle_panic(ctx: &Context, command: &CommandInteraction) {
+    if !has_manage_guild(command) {
+        reply_ephemeral_embed(
+            ctx,
+            command,
+            critical_embed("Permission refusee").description(
+                "La permission MANAGE_GUILD est requise pour activer le mode panique.",
+            ),
+        )
+        .await;
+        tracing::warn!(
+            user = %command.user.name,
+            user_id = %command.user.id,
+            "Tentative /security panic sans permission"
+        );
+        return;
+    }
+
     let guild_id = match command.guild_id {
         Some(id) => id,
         None => return,

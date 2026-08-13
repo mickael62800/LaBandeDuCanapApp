@@ -84,7 +84,7 @@ pub(crate) async fn post_vote_card(
     //    existante au lieu d'en poster une nouvelle.
     let deadline = chrono::Utc::now()
         + chrono::Duration::hours(
-            sentinel_core::domain::entities::moderation::review::automod::clamp_vote_deadline_hours(
+            platform_core::sentinel::domain::entities::moderation::review::automod::clamp_vote_deadline_hours(
                 deadline_hours,
             ),
         );
@@ -265,7 +265,7 @@ pub(crate) async fn post_manual_vote_card(
     // score 0 et flags vides car signalement humain, pas IA).
     let deadline = chrono::Utc::now()
         + chrono::Duration::hours(
-            sentinel_core::domain::entities::moderation::review::automod::clamp_vote_deadline_hours(
+            platform_core::sentinel::domain::entities::moderation::review::automod::clamp_vote_deadline_hours(
                 deadline_hours,
             ),
         );

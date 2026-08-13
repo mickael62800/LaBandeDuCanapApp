@@ -26,6 +26,7 @@ use serenity::all::{
 use tracing::warn;
 
 use crate::shared::api_client::BaseApiClient;
+use crate::shared::discord_helpers::{has_manage_guild, reply_ephemeral};
 use crate::shared::heartbeat::ApiClientKey;
 
 /// Nom de la categorie creee si elle n'existe pas encore.
@@ -137,6 +138,21 @@ enum Issue {
 }
 
 pub async fn handle(ctx: &Context, cmd: &CommandInteraction) {
+    if !has_manage_guild(cmd) {
+        reply_ephemeral(
+            ctx,
+            cmd,
+            "La permission MANAGE_GUILD est requise pour initialiser les salons de logs.",
+        )
+        .await;
+        tracing::warn!(
+            user = %cmd.user.name,
+            user_id = %cmd.user.id,
+            "Tentative /logs-init sans permission"
+        );
+        return;
+    }
+
     let Some(guild_id) = cmd.guild_id else {
         return;
     };

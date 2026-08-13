@@ -17,7 +17,9 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::domain::entities::identity::{SuperadminPolicy, TokenPair};
-use crate::domain::entities::session::{NewOAuthSession, SessionTokenUpdate, SuccessfulLogin};
+use crate::domain::entities::session::{
+    NewOAuthSession, SessionTokenUpdate, SuccessfulLogin, SESSION_MAX_AGE_SECS,
+};
 use crate::domain::errors::DomainError;
 use crate::ports::inbound::manage_session::{
     EstablishedSession, LoginContext, ManageSessionUseCase,
@@ -108,6 +110,7 @@ impl ManageSessionUseCase for ManageSessionService {
                     access_token: tokens.access_token.clone(),
                     refresh_token: tokens.refresh_token.clone(),
                     access_expires_at: Self::expires_at(&tokens),
+                    expires_at: Utc::now() + Duration::seconds(SESSION_MAX_AGE_SECS),
                 })
                 .await;
             match created {
@@ -138,6 +141,13 @@ impl ManageSessionUseCase for ManageSessionService {
             .find_by_id(session_id)
             .await?
             .ok_or_else(|| DomainError::Forbidden("session inconnue".into()))?;
+
+        // Defense en profondeur : le depot Postgres filtre deja cette ligne,
+        // mais toute implementation future du port doit rester fail-closed.
+        if session.expires_at <= Utc::now() {
+            let _ = self.sessions.delete(session_id).await;
+            return Err(DomainError::Forbidden("session expiree".into()));
+        }
 
         let established = |access_token: String| EstablishedSession {
             session_id: Some(session_id),

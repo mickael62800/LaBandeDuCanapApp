@@ -4,7 +4,7 @@
 // # Un seul portefeuille
 //
 // Rien n'est calculé ici. Le tirage, le quota quotidien et les mouvements de
-// coins vivent dans nexus-core, appelé par le même chemin que le bot Discord.
+// coins vivent dans platform-core::nexus, appelé par le même chemin que le bot Discord.
 // Le solde affiché EST celui de Discord — pas une copie synchronisée, le même.
 // Avoir déjà tiré sur Discord fait échouer le tirage ici, et réciproquement.
 //

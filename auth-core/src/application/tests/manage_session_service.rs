@@ -28,6 +28,7 @@ impl SessionRepository for FakeSessions {
                 access_token: s.access_token.clone(),
                 refresh_token: s.refresh_token.clone(),
                 access_expires_at: s.access_expires_at,
+                expires_at: s.expires_at,
             },
         );
         Ok(())
@@ -50,6 +51,10 @@ impl SessionRepository for FakeSessions {
     async fn delete(&self, id: Uuid) -> Result<(), DomainError> {
         self.stored.lock().unwrap().remove(&id);
         Ok(())
+    }
+
+    async fn purge_expired(&self) -> Result<u64, DomainError> {
+        Ok(0)
     }
     async fn record_login(&self, _t: &LoginTrace) -> Result<(), DomainError> {
         *self.traces.lock().unwrap() += 1;
@@ -82,6 +87,10 @@ impl SessionRepository for BrokenTraceSessions {
     }
     async fn delete(&self, id: Uuid) -> Result<(), DomainError> {
         self.0.delete(id).await
+    }
+
+    async fn purge_expired(&self) -> Result<u64, DomainError> {
+        self.0.purge_expired().await
     }
     async fn record_login(&self, _t: &LoginTrace) -> Result<(), DomainError> {
         Err(DomainError::Internal("journal hs".into()))
@@ -292,6 +301,35 @@ async fn un_token_valide_est_rendu_sans_appeler_discord() {
     assert_eq!(refreshed.access_token, "access-1");
     assert_eq!(*discord.refresh_calls.lock().unwrap(), 0);
     assert_eq!(*sessions.touched.lock().unwrap(), 1);
+}
+
+#[tokio::test]
+async fn une_session_expiree_est_supprimee_sans_contacter_discord() {
+    let sessions = Arc::new(FakeSessions::default());
+    let discord = Arc::new(FakeDiscord::default());
+    let states = Arc::new(FakeStates::default());
+    let svc = service(sessions.clone(), discord.clone(), states, &["42"]);
+    svc.start_login().await.unwrap();
+    let id = svc
+        .complete_login("code", "state-fixe", LoginContext::default())
+        .await
+        .unwrap()
+        .session_id
+        .unwrap();
+    sessions
+        .stored
+        .lock()
+        .unwrap()
+        .get_mut(&id)
+        .unwrap()
+        .expires_at = Utc::now() - Duration::seconds(1);
+
+    assert!(matches!(
+        svc.refresh(id).await,
+        Err(DomainError::Forbidden(_))
+    ));
+    assert!(sessions.find_by_id(id).await.unwrap().is_none());
+    assert_eq!(*discord.refresh_calls.lock().unwrap(), 0);
 }
 
 /// Token expire : on rafraichit, et la session porte le nouveau couple.

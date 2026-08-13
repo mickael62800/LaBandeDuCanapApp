@@ -31,7 +31,6 @@ const PROFILES: LogsProfile[] = [
     services: [
       { title: "API", service: "nexus-api" },
       { title: "Bot", service: "nexus-bot" },
-      { title: "Worker", service: "nexus-worker" },
     ],
   },
   {
@@ -41,7 +40,6 @@ const PROFILES: LogsProfile[] = [
     services: [
       { title: "API", service: "atrium-api" },
       { title: "Bot", service: "atrium-bot" },
-      { title: "Worker", service: "atrium-worker" },
       { title: "Ollama", service: "atrium-ollama" },
     ],
   },
@@ -51,7 +49,6 @@ const PROFILES: LogsProfile[] = [
     description: "Exploitation, agent Docker et exposition Web",
     services: [
       { title: "API", service: "ops-api" },
-      { title: "Worker", service: "ops-worker" },
       { title: "Docker", service: "docker-agent" },
       { title: "Web", service: "web" },
     ],

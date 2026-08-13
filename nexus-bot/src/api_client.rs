@@ -1,4 +1,9 @@
-//! Client HTTP minimal vers nexus-api (modele BaseApiClient simplifie).
+//! Client HTTP du bot vers `nexus-api`.
+//!
+//! Le bot utilise ce client pour le portefeuille, la roue, le Coussin Piégé,
+//! les jeux mentionnables et le portail de serveurs. Il ne lit jamais la base
+//! directement et transforme les erreurs HTTP en messages exploitables par
+//! les commandes Discord.
 
 use serde::Deserialize;
 use serde::Serialize;

@@ -39,7 +39,7 @@ fn extract_role_ids(s: &str) -> Vec<RoleId> {
 use tracing::{info, warn};
 
 use crate::shared::grpc_client::{grpc_err_to_string, GrpcClientKey, SentinelGrpcClient};
-use sentinel_proto::announcements::v1 as proto_ann;
+use platform_proto::sentinel::announcements::v1 as proto_ann;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 struct RenderedEmbed {

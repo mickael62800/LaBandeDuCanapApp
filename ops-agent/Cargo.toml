@@ -1,0 +1,27 @@
+[package]
+name = "ops-agent"
+version.workspace = true
+edition.workspace = true
+description = "Agent isole de collecte des metriques hote et de surveillance Docker"
+
+[dependencies]
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+redis = { workspace = true }
+tracing = { workspace = true }
+dotenvy = { workspace = true }
+chrono = { workspace = true }
+ops-adapters = { workspace = true }
+platform-core = { workspace = true }
+platform-common = { workspace = true }
+reqwest = { workspace = true }
+sqlx = { workspace = true }
+tracing-subscriber = { workspace = true }
+metrics = "0.24"
+metrics-exporter-prometheus = { version = "0.16", default-features = false }
+tokio-metrics = { version = "0.4", default-features = false, features = ["rt"] }
+axum = "0.8"
+
+[lints]
+workspace = true

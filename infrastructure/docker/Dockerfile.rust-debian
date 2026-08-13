@@ -18,7 +18,7 @@
 # Alternative : `cgr.dev/chainguard/glibc-dynamic` qui fournit glibc 2.39+.
 # ============================================================================
 
-ARG CHEF_IMAGE=lukemathwalker/cargo-chef:latest-rust-slim-trixie
+ARG CHEF_IMAGE=lukemathwalker/cargo-chef:latest-rust-slim-trixie@sha256:c7569b097797bc1f3d86a8b6f8a056dc336d05c6f57dd81eb0486948f986dccd
 FROM ${CHEF_IMAGE} AS chef
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl build-essential pkg-config libssl-dev ca-certificates g++ \
@@ -51,12 +51,14 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=private \
     fi
 
 # ----- Runtime -----
-FROM debian:trixie-slim AS runtime
+FROM debian:trixie-slim@sha256:3a39a0592364683e6bab97937b72cad5a8fa6dcbbee90edb3bb48c7f8e94f258 AS runtime
 ARG GRPC_HEALTH_PROBE_VERSION=v0.4.24
+ARG GRPC_HEALTH_PROBE_SHA256=7e564681110ee4563637457b91e42f62f96b79618a835bb05ae2305acdcc3db0
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates libssl3t64 libstdc++6 openssl wget \
     && wget -q -O /usr/local/bin/grpc_health_probe \
        "https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/${GRPC_HEALTH_PROBE_VERSION}/grpc_health_probe-linux-amd64" \
+    && echo "${GRPC_HEALTH_PROBE_SHA256}  /usr/local/bin/grpc_health_probe" | sha256sum -c - \
     && chmod +x /usr/local/bin/grpc_health_probe \
     && apt-get purge -y wget \
     && apt-get autoremove -y \

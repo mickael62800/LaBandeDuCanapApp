@@ -14,17 +14,6 @@ x-atrium-build-alpine: &atrium-build-alpine
   context: ../..
   dockerfile: infrastructure/docker/Dockerfile.rust-alpine
 
-x-atrium-light-worker-env: &atrium-light-worker-env
-  METRICS_PORT: "9100"
-  RUST_LOG: ${RUST_LOG:-info}
-
-x-atrium-worker-healthcheck: &atrium-worker-healthcheck
-  test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:9100/metrics || exit 1"]
-  interval: 30s
-  timeout: 3s
-  retries: 3
-  start_period: 15s
-
 services:
 
   # ──────────────────────────────────────────────────────────────────────────
@@ -48,6 +37,7 @@ services:
       ATRIUM_API_BIND_ADDR: 0.0.0.0:8090
       ATRIUM_GRPC_BIND_ADDR: 0.0.0.0:8091
       ATRIUM_API_TOKEN: ${ATRIUM_API_TOKEN:?ATRIUM_API_TOKEN est requis}
+      ATRIUM_SCHEDULER_TOKEN: ${ATRIUM_SCHEDULER_TOKEN:?ATRIUM_SCHEDULER_TOKEN est requis}
       ATRIUM_GRPC_TOKEN: ${ATRIUM_GRPC_TOKEN:?ATRIUM_GRPC_TOKEN est requis}
       # `:?` sur le DERNIER repli, comme les deux lignes au-dessus : la chaine
       # se terminait sur une valeur vide, et l'echec survenait alors au
@@ -94,35 +84,11 @@ services:
       - atrium
       - full
 
-  # Generation periodique du resume d'activite du serveur. Comme nexus-worker,
-  # il delegue toute la logique metier a l'API et reste sur le reseau interne.
-  atrium-worker:
-    <<: *atrium-rust-base
-    build:
-      <<: *atrium-build-alpine
-      args:
-        BIN_NAME: atrium-worker
-    healthcheck: *atrium-worker-healthcheck
-    environment:
-      <<: *atrium-light-worker-env
-      ATRIUM_API_URL: http://atrium-api:8090
-      ATRIUM_API_TOKEN: ${ATRIUM_API_TOKEN:?ATRIUM_API_TOKEN est requis}
-      ATRIUM_PRIMARY_GUILD_ID: ${PUBLIC_GUILD_ID:-}
-      ATRIUM_SUMMARY_INTERVAL_SECS: ${ATRIUM_SUMMARY_INTERVAL_SECS:-86400}
-    depends_on:
-      atrium-api:
-        condition: service_healthy
-    networks:
-      - internal
-    profiles:
-      - atrium
-      - full
-
   # Embeddings RAG locaux : pas de cle API ni de cout par requete.
   # Le modele est telecharge une fois dans le volume persistant puis reste
   # limite pour ne pas affamer Sentinel, Nexus et PostgreSQL.
   atrium-ollama:
-    image: ollama/ollama:latest
+    image: ollama/ollama:latest@sha256:1685741456770df6e3cceb2a945a5f75e020f658d1701509668d6f4688f1dd3f
     restart: unless-stopped
     logging: *atrium-default-logging
     mem_limit: 2g
@@ -153,7 +119,7 @@ services:
   # Le pull est separe du serveur Ollama : le healthcheck du serveur peut
   # devenir vert avant le telechargement, mais Atrium ne demarre qu'apres.
   atrium-ollama-init:
-    image: ollama/ollama:latest
+    image: ollama/ollama:latest@sha256:1685741456770df6e3cceb2a945a5f75e020f658d1701509668d6f4688f1dd3f
     command: ["pull", "nomic-embed-text"]
     environment:
       # Le client Ollama du job doit joindre le serveur du conteneur voisin,
@@ -225,7 +191,7 @@ services:
   # droit ; le `CREATE EXTENSION IF NOT EXISTS vector` de la migration 001
   # devient alors un no-op et passe sous un role ordinaire.
   atrium-db-init:
-    image: postgres:16-alpine
+    image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
     environment:
       PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD est requis}
       ATRIUM_DB_PASSWORD: ${ATRIUM_DB_PASSWORD:?ATRIUM_DB_PASSWORD est requis}
@@ -265,7 +231,7 @@ services:
   # Pool dedie : atrium-api reste sur le reseau interne et ne joint jamais
   # PostgreSQL directement.
   atrium-pgbouncer:
-    image: edoburu/pgbouncer:latest
+    image: edoburu/pgbouncer:latest@sha256:4c1ca296ef525f108f5d3552cc337c0c09587cf8dae7f0067fd93349e47dc1cd
     restart: unless-stopped
     logging: *atrium-default-logging
     environment:

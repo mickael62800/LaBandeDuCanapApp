@@ -4,4 +4,4 @@
 use serenity::model::id::UserId;
 
 pub type CooldownTracker =
-    sentinel_core::domain::services::voice::cooldown_tracker::CooldownTracker<UserId>;
+    platform_core::sentinel::domain::services::voice::cooldown_tracker::CooldownTracker<UserId>;

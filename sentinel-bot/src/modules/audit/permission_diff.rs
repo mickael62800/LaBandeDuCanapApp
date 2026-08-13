@@ -4,8 +4,10 @@
 
 use serenity::model::permissions::Permissions;
 
-use sentinel_core::domain::services::audit::permission_diff::diff_flags;
-pub use sentinel_core::domain::services::audit::permission_diff::{format_diff, PermissionChange};
+use platform_core::sentinel::domain::services::audit::permission_diff::diff_flags;
+pub use platform_core::sentinel::domain::services::audit::permission_diff::{
+    format_diff, PermissionChange,
+};
 
 /// Liste de toutes les permissions avec leur flag et nom lisible.
 const PERMISSION_FLAGS: &[(Permissions, &str)] = &[

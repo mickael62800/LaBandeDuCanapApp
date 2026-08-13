@@ -1,0 +1,70 @@
+use chrono::DateTime;
+use chrono::Utc;
+use serde::Deserialize;
+use serde::Serialize;
+use uuid::Uuid;
+
+use crate::sentinel::domain::entities::system::discord_ids::ChannelId;
+use crate::sentinel::domain::entities::system::discord_ids::GuildId;
+use crate::sentinel::domain::enums::moderation::moderation_gravity::ModerationGravity;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModerationAction {
+    /// Identifiant stable de l'action et de son entree d'audit.
+    pub id: Uuid,
+    /// Guild dans laquelle la sanction est executee.
+    pub guild_id: GuildId,
+    /// Salon d'origine ou de journalisation.
+    pub channel_id: ChannelId,
+    /// Moderateur ou composant ayant demande l'action.
+    pub moderator_id: String,
+    pub moderator_name: String,
+    pub target_id: String,
+    pub target_name: String,
+    /// Pseudo serveur (nickname) actuel de la cible si elle est encore dans
+    /// la guild. Lu via LEFT JOIN guild_members.display_name. Optionnel.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_display_name: Option<String>,
+    /// Valeur canonique (`warn`, `mute`, `ban`, etc.).
+    pub action_type: String,
+    /// Justification conservee dans l'historique.
+    pub reason: String,
+    /// Gravite normalisee, lorsqu'elle est connue.
+    pub gravity: Option<ModerationGravity>,
+    /// Duree en secondes ; `None` pour une action permanente ou sans duree.
+    pub duration: Option<u64>,
+    pub created_at: DateTime<Utc>,
+}
+
+impl ModerationAction {
+    pub const AUDIT_EVENT_PREFIX: &'static str = "mod_";
+
+    /// Type d'evenement canonique persiste dans `audit_logs`.
+    pub fn audit_event_type(&self) -> String {
+        format!("{}{}", Self::AUDIT_EVENT_PREFIX, self.action_type)
+    }
+
+    /// Payload canonique des champs propres a une action de moderation.
+    pub fn audit_details(&self) -> serde_json::Value {
+        serde_json::json!({
+            "reason": self.reason,
+            "gravity": self.gravity.as_ref().map(|gravity| gravity.as_str()),
+            "duration_secs": self.duration,
+            "action_id": self.id.to_string(),
+        })
+    }
+
+    pub fn action_type_from_audit_event(event_type: &str) -> Option<&str> {
+        event_type.strip_prefix(Self::AUDIT_EVENT_PREFIX)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserModerationHistory {
+    pub target_id: String,
+    pub target_name: String,
+    pub total_warns: u32,
+    pub total_mutes: u32,
+    pub total_bans: u32,
+    pub actions: Vec<ModerationAction>,
+}

@@ -31,10 +31,12 @@ Vérifié par `grep` sur tout le code Rust : **aucun** worker ni le bot n'utilis
 uniquement vers Postgres/Redis/stdout. Le passage à `USER sentinel` (uid 1000)
 ne casse rien.
 
-### 3. API non-root avec `pid: host`
-L'endpoint `/api/system/info` lit `/proc/stat`, `/proc/meminfo`, `/proc/PID/status`
-de l'host. Ces fichiers sont `world-readable` → l'uid 1000 dans le conteneur peut
-les lire. Pas de régression attendue.
+### 3. Metriques hote isolees dans Ops
+`sentinel-api` ne partage plus le namespace PID de l'hote. `ops-agent` monte
+`/proc` sous `/host/proc` en lecture seule, collecte CPU/RAM puis publie un
+snapshot ephemere dans Redis (`ops:host-metrics`). L'endpoint
+`/api/system/info` lit ce snapshot et conserve seulement la mesure locale de
+son propre processus.
 
 ### 4. Healthchecks workers via `/metrics`
 `worker-common::spawn_metrics_server` expose `/metrics` sur le port 9100

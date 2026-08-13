@@ -14,8 +14,8 @@ use std::sync::Arc;
 use crate::shared::grpc_client::SentinelGrpcClient;
 use serde::{Deserialize, Serialize};
 
-use sentinel_proto::community::v1 as proto_community;
-use sentinel_proto::roles::v1 as proto;
+use platform_proto::sentinel::community::v1 as proto_community;
+use platform_proto::sentinel::roles::v1 as proto;
 
 // ── DTOs (surface inchangee) ──
 

@@ -4,4 +4,7 @@
 use serenity::model::id::{ChannelId, UserId};
 
 pub type FloodTracker =
-    sentinel_core::domain::services::voice::flood_tracker::FloodTracker<ChannelId, UserId>;
+    platform_core::sentinel::domain::services::voice::flood_tracker::FloodTracker<
+        ChannelId,
+        UserId,
+    >;

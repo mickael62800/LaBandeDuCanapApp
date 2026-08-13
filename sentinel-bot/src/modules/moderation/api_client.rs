@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use crate::shared::api_client::BaseApiClient;
 use crate::shared::grpc_client::SentinelGrpcClient;
 
-use sentinel_proto::moderation::v1 as proto_mod;
-use sentinel_proto::sursis::v1 as proto_sursis;
+use platform_proto::sentinel::moderation::v1 as proto_mod;
+use platform_proto::sentinel::sursis::v1 as proto_sursis;
 
 /// Action de moderation envoyee au backend.
 #[derive(Debug, Serialize)]

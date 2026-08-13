@@ -11,10 +11,11 @@
 //!   porteurs de `AUTH_API_TOKEN` : nginx pour l'`auth_request`, sentinel-api
 //!   et ops-api comme consommateurs.
 
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 
 use axum::{
-    extract::{Extension, Query},
+    extract::{ConnectInfo, Extension, Query},
     http::{header, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -23,6 +24,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use auth_core::domain::entities::session::SESSION_MAX_AGE_SECS;
 use auth_core::domain::errors::DomainError;
 use auth_core::ports::inbound::manage_session::{LoginContext, ManageSessionUseCase};
 use auth_core::ports::inbound::resolve_access::ResolveAccessUseCase;
@@ -37,7 +39,6 @@ pub struct AppState {
 }
 
 const SESSION_COOKIE: &str = "ds_session";
-const SESSION_MAX_AGE_SECS: i64 = 30 * 24 * 3600;
 const DISCORD_TOKEN_HEADER: &str = "x-discord-token";
 
 pub fn router(state: Arc<AppState>) -> Router {
@@ -133,30 +134,39 @@ fn front_error(state: &AppState, reason: &str) -> Response {
 /// cas symetrique ; celui-ci refuse de servir.
 fn authorize_service(headers: &HeaderMap, state: &AppState) -> Result<(), StatusCode> {
     if state.config.api_token.is_empty() {
-        tracing::error!(
-            "AUTH_API_TOKEN absent : route de service refusee (voir .env.example)"
-        );
+        tracing::error!("AUTH_API_TOKEN absent : route de service refusee (voir .env.example)");
         return Err(StatusCode::SERVICE_UNAVAILABLE);
     }
-    let expected = format!("Bearer {}", state.config.api_token);
-    let supplied = headers
-        .get(header::AUTHORIZATION)
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or_default();
-    // Constant-time, comme partout ailleurs sur un secret partage
-    // (sentinel-api/middleware/auth.rs, gateway/handler.rs, interceptor gRPC).
-    if bool::from(subtle::ConstantTimeEq::ct_eq(
-        supplied.as_bytes(),
-        expected.as_bytes(),
-    )) {
+    if service_token_matches(headers, state) {
         Ok(())
     } else {
         Err(StatusCode::UNAUTHORIZED)
     }
 }
 
-/// IP réelle derrière le reverse proxy, pour la trace de login.
-fn client_ip(headers: &HeaderMap) -> String {
+fn service_token_matches(headers: &HeaderMap, state: &AppState) -> bool {
+    if state.config.api_token.is_empty() {
+        return false;
+    }
+    let expected = format!("Bearer {}", state.config.api_token);
+    let supplied = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default();
+    // Constant-time, comme partout ailleurs sur un secret partage.
+    bool::from(subtle::ConstantTimeEq::ct_eq(
+        supplied.as_bytes(),
+        expected.as_bytes(),
+    ))
+}
+
+/// IP reelle pour la trace de login. Les en-tetes de forwarding ne sont lus
+/// que si le jeton interne authentifie la passerelle nginx.
+fn client_ip(headers: &HeaderMap, peer_ip: IpAddr, trusted_proxy: bool) -> String {
+    if !trusted_proxy {
+        return peer_ip.to_string();
+    }
+
     headers
         .get("x-forwarded-for")
         .and_then(|v| v.to_str().ok())
@@ -169,7 +179,7 @@ fn client_ip(headers: &HeaderMap) -> String {
                 .map(|s| s.to_string())
         })
         .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "-".to_string())
+        .unwrap_or_else(|| peer_ip.to_string())
 }
 
 // ── Flux OAuth ────────────────────────────────────────────────────────────
@@ -204,6 +214,7 @@ pub struct CallbackQuery {
 }
 
 async fn callback(
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
     Extension(state): Extension<Arc<AppState>>,
     headers: HeaderMap,
     Query(q): Query<CallbackQuery>,
@@ -223,7 +234,7 @@ async fn callback(
     };
 
     let context = LoginContext {
-        client_ip: client_ip(&headers),
+        client_ip: client_ip(&headers, peer.ip(), service_token_matches(&headers, &state)),
         user_agent: headers
             .get(header::USER_AGENT)
             .and_then(|v| v.to_str().ok())
@@ -436,5 +447,48 @@ async fn purge_logins(
             tracing::warn!(%error, "purge des logins impossible");
             (StatusCode::SERVICE_UNAVAILABLE, "indisponible").into_response()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn headers(values: &[(&str, &str)]) -> HeaderMap {
+        let mut headers = HeaderMap::new();
+        for (name, value) in values {
+            headers.insert(
+                header::HeaderName::from_bytes(name.as_bytes()).unwrap(),
+                header::HeaderValue::from_str(value).unwrap(),
+            );
+        }
+        headers
+    }
+
+    #[test]
+    fn untrusted_caller_cannot_spoof_forwarded_ip() {
+        let peer: IpAddr = "10.0.0.8".parse().unwrap();
+        let supplied = headers(&[
+            ("x-forwarded-for", "203.0.113.99"),
+            ("x-real-ip", "203.0.113.98"),
+        ]);
+
+        assert_eq!(client_ip(&supplied, peer, false), "10.0.0.8");
+    }
+
+    #[test]
+    fn trusted_proxy_forwarded_ip_is_used() {
+        let peer: IpAddr = "10.0.0.8".parse().unwrap();
+        let supplied = headers(&[("x-forwarded-for", "203.0.113.99")]);
+
+        assert_eq!(client_ip(&supplied, peer, true), "203.0.113.99");
+    }
+
+    #[test]
+    fn trusted_proxy_with_invalid_header_falls_back_to_peer() {
+        let peer: IpAddr = "10.0.0.8".parse().unwrap();
+        let supplied = headers(&[("x-forwarded-for", "")]);
+
+        assert_eq!(client_ip(&supplied, peer, true), "10.0.0.8");
     }
 }

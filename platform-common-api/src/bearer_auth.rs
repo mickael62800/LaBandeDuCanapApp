@@ -7,11 +7,14 @@ use axum::response::{IntoResponse, Response};
 use axum::Json;
 
 #[derive(Clone)]
-pub struct RequiredBearerToken(String);
+pub struct RequiredBearerToken { primary: String, scheduler: String }
 
 impl RequiredBearerToken {
     pub fn new(token: impl Into<String>) -> Self {
-        Self(token.into())
+        Self { primary: token.into(), scheduler: String::new() }
+    }
+    pub fn with_scheduler(mut self, token: impl Into<String>) -> Self {
+        self.scheduler = token.into(); self
     }
 }
 
@@ -45,7 +48,11 @@ pub async fn require(
     request: Request,
     next: Next,
 ) -> Response {
-    if matches(request.headers(), &expected.0) {
+    let primary = matches(request.headers(), &expected.primary);
+    let scheduler = request.method() == axum::http::Method::POST
+        && is_scheduler_path(request.uri().path())
+        && matches(request.headers(), &expected.scheduler);
+    if primary || scheduler {
         return next.run(request).await;
     }
     (
@@ -53,6 +60,14 @@ pub async fn require(
         Json(serde_json::json!({ "error": "jeton API invalide" })),
     )
         .into_response()
+}
+
+pub fn is_scheduler_path(path: &str) -> bool {
+    path.contains("/internal/") || path.contains("/jobs/")
+        || matches!(path,
+            "/api/analytics/snapshot/daily" | "/api/analytics/snapshot/hourly"
+            | "/api/analytics/retention-cleanup" | "/api/analytics/publish-top-users"
+            | "/api/analytics/publish-monthly-ranking" | "/api/automod/cleanup-expired-cards")
 }
 
 // `OptionalBearerToken` / `require_optional` ont ete supprimes.
@@ -103,6 +118,14 @@ mod tests {
         let mut quelconque = HeaderMap::new();
         quelconque.insert(AUTHORIZATION, "Bearer nimporte".parse().unwrap());
         assert!(!matches(&quelconque, ""));
+    }
+
+    #[test]
+    fn scheduler_scope_is_closed() {
+        assert!(is_scheduler_path("/api/internal/jobs/cleanup"));
+        assert!(is_scheduler_path("/admin/jobs/retention"));
+        assert!(!is_scheduler_path("/docker/containers/x/stop"));
+        assert!(!is_scheduler_path("/api/moderation/ban"));
     }
 
     #[tokio::test]

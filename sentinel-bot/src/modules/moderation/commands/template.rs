@@ -14,11 +14,12 @@ use crate::shared::discord_helpers::edit_response_text;
 
 const CONFIG_KEY: &str = "reason_templates";
 const BOT_NAME: &str = "moderation-bot";
+const REQUIRED_PERMISSION: serenity::all::Permissions = serenity::all::Permissions::ADMINISTRATOR;
 
 pub fn register() -> CreateCommand {
     CreateCommand::new("template")
         .description("Gerer les templates de raisons de moderation (senior mods)")
-        .default_member_permissions(serenity::all::Permissions::ADMINISTRATOR)
+        .default_member_permissions(REQUIRED_PERMISSION)
         .add_option(CreateCommandOption::new(
             CommandOptionType::SubCommand,
             "list",
@@ -61,18 +62,22 @@ pub fn register() -> CreateCommand {
 }
 
 pub async fn handle(ctx: &Context, command: &CommandInteraction) {
-    if !super::has_mod_permission(command, serenity::all::Permissions::MODERATE_MEMBERS) {
+    if !super::has_mod_permission(command, REQUIRED_PERMISSION) {
         let _ = command
             .create_response(
                 &ctx.http,
                 CreateInteractionResponse::Message(
                     CreateInteractionResponseMessage::new()
-                        .content("❌ Permission de moderation requise pour /template.")
+                        .content("Permission ADMINISTRATOR requise pour /template.")
                         .ephemeral(true),
                 ),
             )
             .await;
-        warn!(user = %command.user.name, "Tentative /template sans permission");
+        warn!(
+            user = %command.user.name,
+            user_id = %command.user.id,
+            "Tentative /template sans permission administrateur"
+        );
         return;
     }
 

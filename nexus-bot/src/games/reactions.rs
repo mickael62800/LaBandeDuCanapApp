@@ -1,5 +1,5 @@
 use super::*;
-use nexus_core::ports::outbound::events::game_events;
+use platform_core::nexus::ports::outbound::events::game_events;
 
 // ── Emoji ──
 

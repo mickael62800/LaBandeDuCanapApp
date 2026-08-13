@@ -17,7 +17,7 @@ use serenity::prelude::*;
 use tracing::{info, warn};
 
 use crate::shared::grpc_client::{grpc_err_to_string, GrpcClientKey};
-use sentinel_proto::embeds::v1 as proto_embeds;
+use platform_proto::sentinel::embeds::v1 as proto_embeds;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 struct EmbedField {

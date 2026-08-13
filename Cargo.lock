@@ -176,38 +176,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 
 [[package]]
-name = "atrium-api"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "atrium-core",
- "atrium-proto",
- "axum",
- "chrono",
- "dotenvy",
- "platform-common-api",
- "reqwest",
- "serde",
- "serde_json",
- "sqlx",
- "subtle",
- "tokio",
- "tonic",
- "tower",
- "tracing",
- "tracing-subscriber",
- "uuid",
-]
-
-[[package]]
 name = "atrium-bot"
 version = "0.1.0"
 dependencies = [
- "atrium-proto",
  "dotenvy",
  "hmac",
  "platform-common",
  "platform-common-bot",
+ "platform-proto",
  "redis",
  "serde",
  "serde_json",
@@ -217,35 +193,6 @@ dependencies = [
  "tonic",
  "tracing",
  "tracing-subscriber",
-]
-
-[[package]]
-name = "atrium-core"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "thiserror 2.0.18",
- "tokio",
-]
-
-[[package]]
-name = "atrium-proto"
-version = "0.1.0"
-dependencies = [
- "prost",
- "protoc-bin-vendored",
- "tonic",
- "tonic-build",
-]
-
-[[package]]
-name = "atrium-worker"
-version = "0.1.0"
-dependencies = [
- "platform-common-worker",
- "serde",
- "tokio",
- "tracing",
 ]
 
 [[package]]
@@ -379,12 +326,6 @@ name = "base64"
 version = "0.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
-
-[[package]]
-name = "base64"
-version = "0.23.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac07cdecf99051d9a5238b80f35af32cdeba5b336e55d957b318b50137e18da5"
 
 [[package]]
 name = "base64ct"
@@ -691,9 +632,9 @@ dependencies = [
 
 [[package]]
 name = "crossbeam-epoch"
-version = "0.9.18"
+version = "0.9.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b82ac4a3c2ca9c3460964f020e1402edd5753411d7737aa39c3714ad1b5420e"
+checksum = "2d6914041f254d6e9176c01941b21115dcfb7089e55135a35411081bd106ef3f"
 dependencies = [
  "crossbeam-utils",
 ]
@@ -918,7 +859,7 @@ dependencies = [
  "http-body-util",
  "hyper",
  "hyper-util",
- "ops-core",
+ "platform-core",
  "serde",
  "serde_json",
  "subtle",
@@ -2170,44 +2111,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "nexus-api"
-version = "0.1.0"
-dependencies = [
- "async-stream",
- "async-trait",
- "axum",
- "base64 0.23.1",
- "chrono",
- "dotenvy",
- "futures-util",
- "nexus-core",
- "nexus-proto",
- "platform-common-api",
- "redis",
- "reqwest",
- "serde",
- "serde_json",
- "sqlx",
- "tokio",
- "tokio-stream",
- "tonic",
- "tower",
- "tower-http",
- "tracing",
- "tracing-subscriber",
- "uuid",
-]
-
-[[package]]
 name = "nexus-bot"
 version = "0.1.0"
 dependencies = [
  "chrono",
  "dotenvy",
  "futures-util",
- "nexus-core",
  "platform-common",
  "platform-common-bot",
+ "platform-core",
  "rand 0.8.6",
  "redis",
  "reqwest",
@@ -2220,52 +2132,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "nexus-core"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "chrono",
- "ops-core",
- "platform-common",
- "rand 0.8.6",
- "regex",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "uuid",
-]
-
-[[package]]
 name = "nexus-gateway"
 version = "0.1.0"
 dependencies = [
- "nexus-core",
  "tokio",
  "tracing",
  "tracing-subscriber",
-]
-
-[[package]]
-name = "nexus-proto"
-version = "0.1.0"
-dependencies = [
- "prost",
- "protoc-bin-vendored",
- "tonic",
- "tonic-build",
-]
-
-[[package]]
-name = "nexus-worker"
-version = "0.1.0"
-dependencies = [
- "platform-common-worker",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
 ]
 
 [[package]]
@@ -2432,8 +2304,8 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "chrono",
- "ops-core",
  "platform-common-api",
+ "platform-core",
  "reqwest",
  "serde",
  "serde_json",
@@ -2442,58 +2314,26 @@ dependencies = [
 ]
 
 [[package]]
-name = "ops-api"
+name = "ops-agent"
 version = "0.1.0"
 dependencies = [
- "async-trait",
  "axum",
  "chrono",
  "dotenvy",
+ "metrics",
+ "metrics-exporter-prometheus",
  "ops-adapters",
- "ops-core",
  "platform-common",
- "platform-common-api",
+ "platform-core",
  "redis",
  "reqwest",
  "serde",
  "serde_json",
  "sqlx",
  "tokio",
+ "tokio-metrics",
  "tracing",
  "tracing-subscriber",
- "uuid",
- "x509-parser",
-]
-
-[[package]]
-name = "ops-core"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "chrono",
- "platform-common",
- "serde",
- "serde_json",
- "uuid",
-]
-
-[[package]]
-name = "ops-worker"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "dotenvy",
- "ops-adapters",
- "ops-core",
- "platform-common-worker",
- "redis",
- "reqwest",
- "serde",
- "serde_json",
- "sqlx",
- "sysinfo",
- "tokio",
- "tracing",
 ]
 
 [[package]]
@@ -2655,6 +2495,56 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
 
 [[package]]
+name = "platform-api"
+version = "0.1.0"
+dependencies = [
+ "async-stream",
+ "async-trait",
+ "axum",
+ "base64 0.22.1",
+ "chrono",
+ "dashmap 6.1.0",
+ "dotenvy",
+ "futures-util",
+ "hmac",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "metrics",
+ "metrics-exporter-prometheus",
+ "ndarray",
+ "ops-adapters",
+ "ort",
+ "platform-common",
+ "platform-common-api",
+ "platform-core",
+ "platform-proto",
+ "rand 0.8.6",
+ "redis",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sqlx",
+ "subtle",
+ "sysinfo",
+ "tar",
+ "tikv-jemallocator",
+ "tokenizers",
+ "tokio",
+ "tokio-metrics",
+ "tokio-stream",
+ "tonic",
+ "tonic-health",
+ "tower",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+ "x509-parser",
+]
+
+[[package]]
 name = "platform-common"
 version = "0.1.0"
 dependencies = [
@@ -2677,6 +2567,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "sqlx",
  "subtle",
  "tokio",
  "tokio-metrics",
@@ -2698,26 +2589,49 @@ dependencies = [
 ]
 
 [[package]]
-name = "platform-common-worker"
+name = "platform-core"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "dashmap 6.1.0",
+ "image",
+ "ndarray",
+ "platform-common",
+ "rand 0.8.6",
+ "regex",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "platform-proto"
+version = "0.1.0"
+dependencies = [
+ "prost",
+ "protoc-bin-vendored",
+ "tonic",
+ "tonic-build",
+]
+
+[[package]]
+name = "platform-scheduler"
 version = "0.1.0"
 dependencies = [
  "axum",
- "chrono",
- "dotenvy",
- "futures-util",
  "metrics",
  "metrics-exporter-prometheus",
- "platform-common",
- "redis",
  "reqwest",
  "serde",
  "serde_json",
- "sqlx",
  "tokio",
- "tokio-metrics",
  "tracing",
  "tracing-subscriber",
- "uuid",
 ]
 
 [[package]]
@@ -2969,9 +2883,9 @@ dependencies = [
 
 [[package]]
 name = "quinn-proto"
-version = "0.11.14"
+version = "0.11.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "434b42fec591c96ef50e21e886936e66d3cc3f737104fdb9b737c40ffb94c098"
+checksum = "4fcb935c5bec503c2f0e306bdd3e58bb9029dcb14fa8d9ac76e3a5256ac0763e"
 dependencies = [
  "bytes",
  "getrandom 0.3.4",
@@ -3557,55 +3471,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a7852d02fc848982e0c167ef163aaff9cd91dc640ba85e263cb1ce46fae51cd"
 
 [[package]]
-name = "sentinel-api"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "axum",
- "base64 0.22.1",
- "chrono",
- "dashmap 6.1.0",
- "dotenvy",
- "futures-util",
- "hmac",
- "http-body-util",
- "hyper",
- "hyper-util",
- "metrics",
- "metrics-exporter-prometheus",
- "ndarray",
- "ops-core",
- "ort",
- "platform-common-api",
- "prost",
- "rand 0.8.6",
- "redis",
- "reqwest",
- "sentinel-core",
- "sentinel-proto",
- "serde",
- "serde_json",
- "sha2",
- "sqlx",
- "subtle",
- "sysinfo",
- "tar",
- "tikv-jemallocator",
- "tokenizers",
- "tokio",
- "tokio-metrics",
- "tokio-stream",
- "tonic",
- "tonic-health",
- "tower",
- "tower-http",
- "tracing",
- "tracing-subscriber",
- "uuid",
- "x509-parser",
-]
-
-[[package]]
 name = "sentinel-bot"
 version = "0.1.0"
 dependencies = [
@@ -3619,14 +3484,14 @@ dependencies = [
  "once_cell",
  "platform-common",
  "platform-common-bot",
+ "platform-core",
+ "platform-proto",
  "prost",
  "rand 0.8.6",
  "redis",
  "regex",
  "reqwest",
  "resvg",
- "sentinel-core",
- "sentinel-proto",
  "serde",
  "serde_json",
  "serenity",
@@ -3639,27 +3504,6 @@ dependencies = [
  "tonic",
  "tracing",
  "tracing-subscriber",
- "uuid",
-]
-
-[[package]]
-name = "sentinel-core"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "chrono",
- "dashmap 6.1.0",
- "image",
- "ndarray",
- "platform-common",
- "rand 0.8.6",
- "regex",
- "serde",
- "serde_json",
- "sha2",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
  "uuid",
 ]
 
@@ -3679,45 +3523,6 @@ dependencies = [
  "tower-http",
  "tracing",
  "tracing-subscriber",
-]
-
-[[package]]
-name = "sentinel-proto"
-version = "0.1.0"
-dependencies = [
- "prost",
- "protoc-bin-vendored",
- "tonic",
- "tonic-build",
-]
-
-[[package]]
-name = "sentinel-worker"
-version = "0.1.0"
-dependencies = [
- "axum",
- "chrono",
- "dotenvy",
- "hmac",
- "metrics",
- "metrics-exporter-prometheus",
- "platform-common-worker",
- "rand 0.8.6",
- "redis",
- "reqwest",
- "sentinel-core",
- "sentinel-proto",
- "serde",
- "serde_json",
- "sha2",
- "sqlx",
- "tikv-jemallocator",
- "tokio",
- "tokio-metrics",
- "tonic",
- "tracing",
- "tracing-subscriber",
- "uuid",
 ]
 
 [[package]]

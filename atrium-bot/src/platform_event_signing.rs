@@ -90,7 +90,10 @@ mod tests {
         // Ces deux chaines sont le CONTRAT. Les changer ici sans les changer
         // dans `sentinel-bot` fait rejeter tous les events — sens de
         // defaillance correct, mais visible seulement dans ces logs.
-        assert_eq!(calming_message("42", "7", "tension"), "atrium_calming:42:7:tension");
+        assert_eq!(
+            calming_message("42", "7", "tension"),
+            "atrium_calming:42:7:tension"
+        );
         assert_eq!(welcome_message("42", "7"), "atrium_welcome:42:7");
     }
 
@@ -98,8 +101,14 @@ mod tests {
     fn signature_valide_acceptee_et_signature_fausse_refusee() {
         let message = calming_message("42", "7", "tension");
         let bonne = sign("s3cret", &message);
-        assert!(egalite_temps_constant(bonne.as_bytes(), sign("s3cret", &message).as_bytes()));
-        assert!(!egalite_temps_constant(bonne.as_bytes(), sign("autre", &message).as_bytes()));
+        assert!(egalite_temps_constant(
+            bonne.as_bytes(),
+            sign("s3cret", &message).as_bytes()
+        ));
+        assert!(!egalite_temps_constant(
+            bonne.as_bytes(),
+            sign("autre", &message).as_bytes()
+        ));
     }
 
     #[test]

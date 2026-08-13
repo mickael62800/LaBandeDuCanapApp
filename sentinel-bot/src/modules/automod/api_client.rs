@@ -19,8 +19,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::shared::grpc_client::SentinelGrpcClient;
 
-use sentinel_proto::automod::v1 as proto;
-use sentinel_proto::automod_review::v1 as proto_review;
+use platform_proto::sentinel::automod::v1 as proto;
+use platform_proto::sentinel::automod_review::v1 as proto_review;
 
 use super::detectors::DetectionFlags;
 

@@ -3,6 +3,7 @@
 use serenity::all::{
     ChannelId, Colour, CommandInteraction, ComponentInteraction, Context, CreateEmbed,
     CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, ModalInteraction,
+    Permissions,
 };
 use tracing::warn;
 
@@ -10,6 +11,26 @@ pub use platform_common_bot::discord_helpers::{
     defer_ephemeral, edit_response_embed, edit_response_feedback, edit_response_text,
     followup_ephemeral_embed, reply_ephemeral, reply_ephemeral_embed, require_guild_id,
 };
+
+/// Revalide une permission sensible depuis l'interaction recue, sans faire
+/// confiance au simple filtre d'affichage `default_member_permissions`.
+pub fn has_manage_guild(command: &CommandInteraction) -> bool {
+    has_manage_guild_permissions(
+        command
+            .member
+            .as_ref()
+            .and_then(|member| member.permissions),
+    )
+}
+
+fn has_manage_guild_permissions(permissions: Option<Permissions>) -> bool {
+    permissions
+        .map(|permissions| {
+            permissions.contains(Permissions::MANAGE_GUILD)
+                || permissions.contains(Permissions::ADMINISTRATOR)
+        })
+        .unwrap_or(false)
+}
 
 /// Verifie si le module est active pour un guild. Charge la config sous le
 /// `bot_name` du module (ex: "automod-bot") et check la cle "enabled".
@@ -357,5 +378,32 @@ pub async fn post_sanction_summary_card(
         .await
     {
         warn!(error = %e, guild_id = %guild_id, "Echec envoi card de sanction de masse");
+    }
+}
+
+#[cfg(test)]
+mod permission_tests {
+    use super::*;
+
+    #[test]
+    fn manage_guild_est_accepte() {
+        assert!(has_manage_guild_permissions(Some(
+            Permissions::MANAGE_GUILD
+        )));
+    }
+
+    #[test]
+    fn administrator_est_accepte() {
+        assert!(has_manage_guild_permissions(Some(
+            Permissions::ADMINISTRATOR
+        )));
+    }
+
+    #[test]
+    fn permission_absente_ou_insuffisante_est_refusee() {
+        assert!(!has_manage_guild_permissions(None));
+        assert!(!has_manage_guild_permissions(Some(
+            Permissions::SEND_MESSAGES
+        )));
     }
 }

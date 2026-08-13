@@ -1,6 +1,6 @@
 # À tester — changements du 13/08/2026
 
-Seize changements, expliqués simplement, avec ce qu'il faut vérifier pour chacun.
+Dix-sept changements, expliqués simplement, avec ce qu'il faut vérifier pour chacun.
 
 **Commencer par le point 10** : il exige de compléter le `.env` et, sans ça, plus rien ne démarre.
 
@@ -294,6 +294,22 @@ La protection du navigateur en production (CSP) empêchait l'exécution, mais ce
 
 ---
 
+## 17. Les adresses IP ne partent plus en clair sans qu'on l'ait dit (O3)
+
+**Le problème.** L'écran Sécurité peut afficher le pays d'une adresse IP en la faisant résoudre par un service externe. Cette résolution est déjà désactivée par défaut — ce sont des données personnelles. Mais **si on l'activait**, l'adresse du service par défaut est en `http://` (le service gratuit n'offre pas de connexion chiffrée) : les IP des visiteurs partaient donc en clair sur le réseau, sans que rien ne le signale.
+
+**Le changement.** Activer la résolution ne suffit plus. Envoyer ces adresses en clair demande une **seconde déclaration** explicite, `OPS_GEOIP_ALLOW_PLAINTEXT=true`. Sans elle, la résolution reste éteinte et un avertissement nommant la variable apparaît au démarrage — plutôt qu'un envoi silencieux.
+
+**À vérifier** — seulement si vous utilisez ou comptez utiliser cette fonction :
+
+1. Sans rien changer : `docker compose logs ops-api | grep -i geoip` → aucun avertissement, les IP s'affichent sans pays. C'est l'état normal.
+2. Mettre `OPS_GEOIP_ENABLED=true` seul, redémarrer `ops-api` → un avertissement explique que la résolution reste désactivée et nomme `OPS_GEOIP_ALLOW_PLAINTEXT`. Les IP s'affichent toujours sans pays.
+3. Ajouter `OPS_GEOIP_ALLOW_PLAINTEXT=true` → la résolution fonctionne, les pays apparaissent.
+
+> Ce n'est pas un correctif complet, et c'est assumé : ça rend l'exposition **délibérée**, ça ne la supprime pas. Pour la supprimer, il faut un service en `https://` (offre payante ou auto-hébergée) ou une base locale type GeoLite2, qui éviterait tout transfert.
+
+---
+
 ## Récapitulatif des fichiers modifiés
 
 | Changement | Fichier | Service à reconstruire |
@@ -314,6 +330,7 @@ La protection du navigateur en production (CSP) empêchait l'exécution, mais ce
 | 14 — callback OAuth fail-closed | `web/src/components/pages/auth/AuthCallbackPage.vue` | `web` |
 | 15 — aperçu d'embed | `web/src/utils/discordMarkdown.ts` | `web` |
 | 16 — acteur d'audit Nexus | `nexus-api/.../game/servers.rs`, `web/nginx.conf`, `web/src/services/nexusGamesService.ts` | `nexus-api`, `web` |
+| 17 — GeoIP en clair | `ops-api/src/adapters/geoip.rs`, `compose.core.yml` | `ops-api` |
 
 Vérifications automatiques déjà passées : `cargo clippy --workspace --all-targets`, `npm run lint`, `npm run build`, et les 89 tests web. Elles ne prouvent que la compilation et le comportement en test — les points ci-dessus demandent un vrai essai.
 

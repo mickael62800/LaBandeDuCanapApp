@@ -43,7 +43,7 @@ Audit de `ops-api` / `ops-core`. Onze points relevés, huit corrigés dans la fo
 |---|---|---|
 | O1 | ~~`ops-api` cumule la base Sentinel **complète**~~ et le jeton d'administration de l'hôte | ⚠️ **Réduit le 13/08** — rôle `sentinel_ops` restreint + pool dédié (migration 034). Le cumul avec l'hôte demeure : c'est le périmètre du produit |
 | O2 | `/metrics` ouvert par défaut | Comportement identique sur les quatre APIs ; le changer pour ops seul casserait la cohérence sans gain |
-| O3 | GeoIP en clair si on l'active | Le palier gratuit d'ip-api n'accepte que `http://` — le correctif est un changement de fournisseur, pas de code |
+| O3 | GeoIP en clair si on l'active | ⚠️ **Réduit le 13/08** — le transfert en clair exige désormais sa propre déclaration (`OPS_GEOIP_ALLOW_PLAINTEXT`). Supprimer l'exposition reste un changement de fournisseur, pas de code |
 | ~~O4~~ | ~~`deleted_logs` vaut désormais toujours `0`~~ | ✅ **Corrigé le 13/08** — champ, message et port morts retirés |
 | O5 | Quatre modules non audités | Périmètre non couvert, pas un défaut constaté |
 
@@ -369,7 +369,9 @@ La résolution est désormais **désactivée par défaut** (`OPS_GEOIP_ENABLED=f
 
 Ce qui reste : **si on l'active**, le défaut `OPS_GEOIP_URL=http://ip-api.com/batch` est en HTTP simple. Requête et réponse circulent en clair, donc un observateur du réseau voit quelles adresses l'administrateur enquête. Ce n'est pas corrigeable dans le code : le palier gratuit d'ip-api n'expose pas de TLS.
 
-Trois sorties, par coût croissant :
+**Ce qui a été fait le 13/08** : le transfert en clair n'est plus un effet de bord d'`OPS_GEOIP_ENABLED`. Il demande sa propre déclaration, `OPS_GEOIP_ALLOW_PLAINTEXT=true`. Sans elle, une URL non-TLS **désactive** la résolution (avertissement au démarrage nommant la variable) au lieu d'envoyer les IP en clair. « Je veux enrichir les IP » et « j'accepte qu'elles circulent en clair jusqu'à un tiers » sont deux décisions distinctes, dont la seconde a une portée RGPD.
+
+Le point reste ouvert parce que ça ne supprime pas l'exposition — ça la rend délibérée. Trois sorties, par coût croissant :
 
 1. Laisser désactivé — l'écran Sécurité affiche les IP sans pays, il ne casse pas.
 2. Pointer `OPS_GEOIP_URL` sur un service TLS (palier payant d'ip-api, ou une instance auto-hébergée).

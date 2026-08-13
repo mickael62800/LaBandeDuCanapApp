@@ -9,7 +9,9 @@ Ce qui reste après les audits des plateformes `sentinel-*`, `atrium-*`, `ops-*`
 
 > ### ✅ Corrigés le 13/08/2026
 >
-> **N1, N2, N3, A4, A2, A1, W1, W2, W3, W4, O4, S1**, et **O1 partiellement**. Web, Nexus et Atrium sont traités ; N4, O3, A3 et S2 sont durcis mais restent ouverts par décision.
+> **N1, N2, N3, A1, A2, A4, W1, W2, W3, W4, O2, O4, S1**, et **O1 partiellement**. Web, Nexus et Atrium sont traités. N4, O3, A3 et S2 sont durcis mais restent ouverts **par décision**, pas par manque de temps : leurs déclencheurs sont écrits, et deux d'entre eux sont désormais surveillés au démarrage.
+>
+> **Ne reste réellement à faire que O5** — la relecture de quatre modules jamais audités.
 >
 > S1 est corrigé **dans le dépôt** : plus aucun mot de passe n'a de valeur de repli publiée. Le travail côté serveur reste entier — compléter le `.env`, puis faire tourner les secrets qui valaient encore le défaut. Ajouter la variable ne remplace pas la rotation.
 >
@@ -42,7 +44,7 @@ Audit de `ops-api` / `ops-core`. Onze points relevés, huit corrigés dans la fo
 | # | Sujet | Pourquoi c'est encore ouvert |
 |---|---|---|
 | O1 | ~~`ops-api` cumule la base Sentinel **complète**~~ et le jeton d'administration de l'hôte | ⚠️ **Réduit le 13/08** — rôle `sentinel_ops` restreint + pool dédié (migration 034). Le cumul avec l'hôte demeure : c'est le périmètre du produit |
-| O2 | `/metrics` ouvert par défaut | Comportement identique sur les quatre APIs ; le changer pour ops seul casserait la cohérence sans gain |
+| ~~O2~~ | ~~`/metrics` ouvert par défaut~~ | ✅ **Corrigé le 13/08** — Bearer exigé sur les **quatre** API, jeton lu par Prometheus depuis un fichier monté |
 | O3 | GeoIP en clair si on l'active | ⚠️ **Réduit le 13/08** — le transfert en clair exige désormais sa propre déclaration (`OPS_GEOIP_ALLOW_PLAINTEXT`). Supprimer l'exposition reste un changement de fournisseur, pas de code |
 | ~~O4~~ | ~~`deleted_logs` vaut désormais toujours `0`~~ | ✅ **Corrigé le 13/08** — champ, message et port morts retirés |
 | O5 | Quatre modules non audités | Périmètre non couvert, pas un défaut constaté |
@@ -381,7 +383,14 @@ Le jour où l'exploitation est déléguée à quelqu'un qui ne doit pas voir les
 
 C'est **le même comportement sur les quatre APIs** : Prometheus scrape sans authentification sur le réseau interne, où il est le seul à pouvoir atteindre le port. Fermer ops-api seul créerait une exception à retenir sans supprimer l'exposition ailleurs.
 
-Le correctif, si on le veut, est global et tient en deux gestes : définir `OPS_METRICS_TOKEN` (et ses équivalents) dans le `.env`, puis ajouter le même jeton au job Prometheus correspondant dans `infrastructure/prometheus/prometheus.yml`. À traiter avec S1, dont c'est la même famille.
+**Fait le 13/08, et globalement — c'était la condition.** Fermer ops seul aurait créé une exception à retenir sans supprimer l'exposition ailleurs ; les quatre sont donc traitées ensemble.
+
+- **Un seul `METRICS_TOKEN`** alimente les quatre API, chacune gardant sa surcharge (`OPS_METRICS_TOKEN`, `NEXUS_METRICS_TOKEN`, `ATRIUM_METRICS_TOKEN`). Un jeton par service se justifie quand les **capacités** diffèrent — c'est le cas de `DOCKER_AGENT_TOKEN`, pas ici : les quatre exposent la même surface en lecture.
+- **`ATRIUM_METRICS_TOKEN` n'était déclarée nulle part** dans le compose : l'endpoint d'Atrium restait ouvert quoi qu'on mette dans le `.env`.
+- **Prometheus lit le jeton dans un fichier** (`credentials_file`), écrit au démarrage par `prometheus-token-init` dans un volume. Prometheus n'interpole pas les variables d'environnement dans sa configuration, et un secret en clair dans le dépôt serait pire que l'endpoint ouvert. Même motif que les snippets de clé nginx.
+- **`ops-api` n'était scrapé par personne** : son jeton protégeait un endpoint que rien ne lisait, et les métriques de l'exploitation n'existaient nulle part. La cible est ajoutée.
+
+Reste ouvert et assumé : les **workers** (`sentinel-worker:9100`) n'ont pas de jeton — leur serveur de métriques vient de `platform-common-worker`, qui n'en gère pas. Ils exposent des compteurs de jobs, pas la surface HTTP publique.
 
 ---
 

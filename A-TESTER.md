@@ -1,6 +1,6 @@
 # À tester — changements du 13/08/2026
 
-Vingt et un changements, expliqués simplement, avec ce qu'il faut vérifier pour chacun.
+Vingt-deux changements, expliqués simplement, avec ce qu'il faut vérifier pour chacun.
 
 **Commencer par le point 10** : il exige de compléter le `.env` et, sans ça, plus rien ne démarre.
 
@@ -383,6 +383,28 @@ echo "PLATFORM_EVENTS_HMAC_KEY=$(openssl rand -base64 32 | tr -d '/+=' | head -c
 
 ---
 
+## 22. ⚠️ Les métriques ne sont plus lisibles sans jeton (O2)
+
+**Le problème.** Les quatre API exposaient `/metrics` **sans authentification** : noms de routes, compteurs d'appels, latences — la carte de l'installation. Le port n'est joignable que depuis le réseau interne, mais c'est une propriété du *réseau*, pas de l'API.
+
+**Le changement.** Les quatre exigent maintenant un jeton. Prometheus le présente automatiquement : il le lit dans un fichier écrit au démarrage, pour qu'aucun secret ne traîne dans le dépôt.
+
+Trois choses trouvées en chemin : la variable d'Atrium **n'était déclarée nulle part** (son endpoint restait ouvert quoi qu'on mette dans le `.env`) ; `ops-api` **n'était scrapé par personne**, donc ses métriques n'existaient nulle part (la cible est ajoutée) ; et les **workers** n'ont toujours pas de jeton — leur serveur de métriques n'en gère pas. C'est assumé : ils exposent des compteurs de jobs, pas la surface HTTP.
+
+**⚠️ Nouvelle variable obligatoire : `METRICS_TOKEN`** (une seule pour les quatre API) :
+
+```bash
+echo "METRICS_TOKEN=$(openssl rand -base64 32 | tr -d '/+=' | head -c 32)" >> .env
+```
+
+**À vérifier** :
+
+1. `curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3000/metrics` depuis l'hôte → **401** (avant : 200 avec tout le contenu).
+2. Dans Prometheus (`http://localhost:9090/targets`) → les cinq cibles sont **UP**, y compris la nouvelle `ops-api`. Si une est `down` avec une erreur 401, le conteneur `prometheus-token-init` n'a pas tourné : `docker compose up -d prometheus-token-init prometheus`.
+3. Les tableaux de bord Grafana affichent toujours leurs courbes.
+
+---
+
 ## Récapitulatif des fichiers modifiés
 
 | Changement | Fichier | Service à reconstruire |
@@ -407,6 +429,7 @@ echo "PLATFORM_EVENTS_HMAC_KEY=$(openssl rand -base64 32 | tr -d '/+=' | head -c
 | 18 — sondes S2 | `sentinel-api/src/main.rs`, `auth-api/src/config.rs`, `auth-core/.../identity.rs` | `api`, `auth-api` |
 | 19 — mention IA | `atrium-bot/src/main.rs`, `compose.atrium.yml` | `atrium-bot`, `atrium-api` |
 | 20 — forme RCON | `nexus-core/.../manage_game_servers_service.rs` | `nexus-api`, `nexus-bot` |
+| 22 — /metrics protégé | `infrastructure/prometheus/prometheus.yml`, les 3 composes | `api`, `nexus-api`, `atrium-api`, `ops-api`, `prometheus` |
 | 21 — events signés | `sentinel-bot/src/shared/platform_event_signing.rs`, `atrium-bot/src/platform_event_signing.rs`, composes | `sentinel-bot`, `atrium-bot` |
 
 Vérifications automatiques déjà passées : `cargo clippy --workspace --all-targets`, `npm run lint`, `npm run build`, et les 89 tests web. Elles ne prouvent que la compilation et le comportement en test — les points ci-dessus demandent un vrai essai.

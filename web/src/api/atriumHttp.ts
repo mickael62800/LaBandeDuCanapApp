@@ -28,3 +28,8 @@ export const atriumGet = <T>(path: string) => request<T>("GET", path);
 
 export const atriumPut = <T>(path: string, body?: unknown) =>
   request<T>("PUT", path, { body });
+
+/// Le corps porte l'`actor_id` : l'API l'exige pour tracer qui a demande
+/// l'effacement. `DELETE` avec corps est accepte par fetch comme par axum.
+export const atriumDelete = <T>(path: string, body?: unknown) =>
+  request<T>("DELETE", path, { body });

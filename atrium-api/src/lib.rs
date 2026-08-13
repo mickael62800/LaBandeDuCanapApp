@@ -21,7 +21,7 @@ use axum::response::IntoResponse;
 use axum::{
     extract::Extension,
     http::{header::AUTHORIZATION, HeaderMap, StatusCode},
-    routing::{get, post},
+    routing::{delete, get, post},
     Json, Router,
 };
 use platform_common_api::{rate_limit_middleware, RateLimiter};
@@ -256,6 +256,12 @@ pub fn router_with_state(state: Arc<AppState>) -> Router {
         .route(
             "/admin/guilds/{guild_id}/knowledge",
             get(admin::get_knowledge),
+        )
+        // Effacement sur demande. `delete` et non `post` : la route designe la
+        // memoire d'un membre, et le verbe dit ce qu'on en fait.
+        .route(
+            "/admin/guilds/{guild_id}/members/{member_id}/memory",
+            delete(admin::forget_member),
         )
         .route(
             "/admin/guilds/{guild_id}/jobs/summary",

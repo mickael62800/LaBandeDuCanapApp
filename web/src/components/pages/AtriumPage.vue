@@ -23,6 +23,7 @@ import LoadingState from "../atoms/LoadingState.vue";
 import { useGuildSelector } from "@/composables/useGuildSelector";
 import { useAuth } from "@/composables/useAuth";
 import { useToast } from "@/composables/useToast";
+import { useConfirm } from "@/composables/useConfirm";
 import { errMsg } from "@/utils/errMsg";
 import {
   atriumService,
@@ -36,6 +37,7 @@ const CONTEXT_MAX = 2000;
 const { selectedGuildId } = useGuildSelector();
 const { user } = useAuth();
 const { success, error: toastError } = useToast();
+const { confirm } = useConfirm();
 
 const loading = ref(false);
 const loadError = ref<string | null>(null);
@@ -208,6 +210,50 @@ async function load() {
     loadError.value = errMsg(e);
   } finally {
     loading.value = false;
+  }
+}
+
+// ── Effacement de la memoire d'un membre ──
+const forgetMemberId = ref("");
+const forgetting = ref(false);
+
+// Meme regle que `valider_member_id` cote API : un identifiant Discord est un
+// entier decimal d'au plus 20 chiffres. Le verifier ici evite un aller-retour
+// pour une faute de frappe ; l'API reste l'autorite.
+const forgetMemberIdValide = computed(() => {
+  const v = forgetMemberId.value.trim();
+  return v.length > 0 && v.length <= 20 && /^\d+$/.test(v);
+});
+
+async function forgetMember() {
+  const guildId = selectedGuildId.value;
+  const memberId = forgetMemberId.value.trim();
+  if (!guildId || !user.value || !forgetMemberIdValide.value || forgetting.value) return;
+
+  const ok = await confirm({
+    title: "Effacer la mémoire de ce membre ?",
+    message:
+      `Tout ce qu'Atrium a retenu des échanges du membre ${memberId} sur ce ` +
+      `serveur sera supprimé. Cette action est immédiate et irréversible.`,
+  });
+  if (!ok) return;
+
+  forgetting.value = true;
+  try {
+    const res = await atriumService.forgetMember(guildId, memberId, user.value.id);
+    // Le decompte vient du serveur : « 0 message » est une reponse valable
+    // (membre qui n'a jamais parle a Atrium, ou effacement deja fait), et la
+    // dire evite de laisser croire a un echec.
+    success(
+      res.deleted === 0
+        ? "Aucun message retenu pour ce membre — rien à effacer."
+        : `${res.deleted} message${res.deleted > 1 ? "s" : ""} effacé${res.deleted > 1 ? "s" : ""}.`,
+    );
+    forgetMemberId.value = "";
+  } catch (e: unknown) {
+    toastError(errMsg(e));
+  } finally {
+    forgetting.value = false;
   }
 }
 
@@ -463,6 +509,37 @@ onMounted(load);
           </tbody>
         </table>
       </section>
+
+      <!-- Effacement sur demande. Volontairement en bas de page et sans
+           surlignage : c'est une action rare et irreversible, pas un reglage.
+           La confirmation rappelle le nombre de messages concernes plutot que
+           « etes-vous sur ? », qui n'apprend rien a personne. -->
+      <section class="card at-danger">
+        <h2>Effacer la mémoire d'un membre</h2>
+        <p class="at-note">
+          Supprime tout ce qu'Atrium a retenu des échanges d'un membre sur ce
+          serveur. Répond à une demande d'effacement : c'est immédiat et
+          définitif. La base de connaissances et les résumés d'ambiance ne sont
+          pas concernés.
+        </p>
+        <div class="at-forget">
+          <AppInput
+            v-model="forgetMemberId"
+            placeholder="Identifiant Discord du membre (18 à 20 chiffres)"
+            :disabled="forgetting"
+          />
+          <AppButton
+            variant="danger"
+            :disabled="!forgetMemberIdValide || forgetting"
+            @click="forgetMember"
+          >
+            {{ forgetting ? "Effacement…" : "Effacer" }}
+          </AppButton>
+        </div>
+        <p v-if="forgetMemberId && !forgetMemberIdValide" class="at-warn">
+          Un identifiant Discord ne contient que des chiffres.
+        </p>
+      </section>
     </template>
   </AdminPageShell>
 </template>
@@ -585,10 +662,32 @@ onMounted(load);
   font-weight: 700;
 }
 
+/* Bordure teintee plutot qu'un fond rouge : la section doit se distinguer sans
+   crier. Le rouge appuye est reserve au bouton, seul element qui agit. */
+.at-danger {
+  border-color: color-mix(in srgb, var(--danger, #e74c3c) 35%, var(--border));
+}
+.at-forget {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.at-forget :deep(input) {
+  flex: 1;
+  min-width: 260px;
+}
+
 @media (max-width: 700px) {
   .at-switch {
     flex-direction: column;
     align-items: flex-start;
+  }
+  /* Le bouton passe pleine largeur sous le champ : cote a cote, il devenait
+     une cible de quelques pixels a cote d'un champ long. */
+  .at-forget :deep(button) {
+    width: 100%;
   }
 }
 </style>

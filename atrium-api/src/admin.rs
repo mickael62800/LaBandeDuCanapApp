@@ -40,11 +40,20 @@ use crate::{budget::BudgetStats, guild_config, rag::IndexedDocument, ApiError, A
 /// configuration pour un « serveur » qui n'en est pas un, invisibles ensuite
 /// dans l'interface.
 fn valider_guild_id(guild_id: &str) -> Result<(), ApiError> {
-    if guild_id.is_empty()
-        || guild_id.len() > 20
-        || !guild_id.chars().all(|c| c.is_ascii_digit())
-    {
-        return Err(ApiError::bad_request("guild_id invalide"));
+    valider_snowflake(guild_id, "guild_id invalide")
+}
+
+/// Meme regle pour un identifiant de membre : un `member_id` non valide
+/// atteindrait la clause `WHERE` d'un DELETE sans jamais correspondre, et
+/// l'effacement repondrait « 0 message » au lieu de « cet identifiant n'en est
+/// pas un ». Sur une demande d'effacement, cette confusion se paie cher.
+fn valider_member_id(member_id: &str) -> Result<(), ApiError> {
+    valider_snowflake(member_id, "member_id invalide")
+}
+
+fn valider_snowflake(valeur: &str, message: &'static str) -> Result<(), ApiError> {
+    if valeur.is_empty() || valeur.len() > 20 || !valeur.chars().all(|c| c.is_ascii_digit()) {
+        return Err(ApiError::bad_request(message));
     }
     Ok(())
 }
@@ -269,6 +278,76 @@ pub async fn get_knowledge(
         ApiError::unavailable("lecture des documents impossible")
     })?;
     Ok(Json(documents))
+}
+
+#[derive(Deserialize)]
+pub struct ForgetMemberRequest {
+    /// Qui demande l'effacement. Exige comme pour `set_state` : un effacement
+    /// sans trace de son auteur pose le meme probleme qu'une bascule d'etat
+    /// anonyme — on constate que des donnees ont disparu, sans savoir sur
+    /// quelle demande.
+    pub actor_id: String,
+}
+
+#[derive(Serialize)]
+pub struct ForgetMemberResponse {
+    pub guild_id: String,
+    pub member_id: String,
+    /// Messages reellement supprimes. `0` est une reponse valable : le membre
+    /// n'avait rien dit, ou l'effacement a deja ete fait.
+    pub deleted: u64,
+}
+
+/// Efface tout ce qu'Atrium a retenu d'un membre, sur demande.
+///
+/// La capacite existait dans `memory.rs` mais n'etait exposee NULLE PART : ni
+/// route, ni commande. Le compilateur ne dit rien d'une methode publique sans
+/// appelant, clippy non plus. Repondre a une demande d'effacement supposait
+/// donc un `DELETE` manuel dans Postgres — c'est-a-dire, en pratique, que la
+/// demande restait sans suite.
+///
+/// A ne pas confondre avec la purge des 90 jours (`job_retention`) : celle-ci
+/// traite la RETENTION, pas l'effacement sur demande. L'une court toute seule,
+/// l'autre repond a une personne.
+pub async fn forget_member(
+    Extension(state): Extension<Arc<AppState>>,
+    Path((guild_id, member_id)): Path<(String, String)>,
+    Json(request): Json<ForgetMemberRequest>,
+) -> Result<Json<ForgetMemberResponse>, ApiError> {
+    valider_guild_id(&guild_id)?;
+    valider_member_id(&member_id)?;
+    let actor_id = request.actor_id.trim();
+    if actor_id.is_empty() {
+        return Err(ApiError::bad_request("actor_id requis"));
+    }
+
+    let memory = state
+        .memory
+        .as_ref()
+        .ok_or_else(|| ApiError::unavailable("memoire Atrium indisponible"))?;
+    let deleted = memory
+        .forget_member(&guild_id, &member_id)
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "Effacement de la memoire du membre impossible");
+            ApiError::unavailable("effacement impossible")
+        })?;
+
+    // Journalise APRES coup et au niveau `info` : c'est une action
+    // irreversible, et la seule trace qui en restera.
+    tracing::info!(
+        guild_id = %guild_id,
+        member_id = %member_id,
+        actor = %actor_id,
+        deleted,
+        "Memoire d'un membre effacee depuis le back-office"
+    );
+
+    Ok(Json(ForgetMemberResponse {
+        guild_id,
+        member_id,
+        deleted,
+    }))
 }
 
 #[derive(Serialize)]

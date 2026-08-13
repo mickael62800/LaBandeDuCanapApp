@@ -3,7 +3,7 @@
 // Miroir exact du contrat expose par `atrium-api/src/admin.rs`. Toute
 // evolution se fait des deux cotes en meme temps.
 
-import { atriumGet, atriumPut } from "@/api/atriumHttp";
+import { atriumDelete, atriumGet, atriumPut } from "@/api/atriumHttp";
 
 export interface AtriumState {
   guild_id: string;
@@ -68,4 +68,19 @@ export const atriumService = {
 
   knowledge: (guildId: string) =>
     atriumGet<AtriumDocument[]>(`/admin/guilds/${guildId}/knowledge`),
+
+  /// Efface tout ce qu'Atrium a retenu d'un membre (demande d'effacement).
+  /// Distinct de la purge des 90 jours, qui traite la retention et tourne
+  /// seule : celle-ci repond a une personne, et trace qui l'a demandee.
+  forgetMember: (guildId: string, memberId: string, actorId: string) =>
+    atriumDelete<AtriumForgetResult>(
+      `/admin/guilds/${guildId}/members/${memberId}/memory`,
+      { actor_id: actorId },
+    ),
 };
+
+export interface AtriumForgetResult {
+  guild_id: string;
+  member_id: string;
+  deleted: number;
+}

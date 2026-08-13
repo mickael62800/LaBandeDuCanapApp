@@ -410,8 +410,26 @@ async fn on_member_add_impl(ctx: &Context, new_member: &Member, rules_accepted: 
             .await
     };
 
+    // Deux reglements peuvent retenir l'accueil, et ils sont independants :
+    //
+    //   - `rules_enabled` : le bouton d'acceptation pose par Sentinel.
+    //   - `new_member.pending` : le filtrage d'adhesion NATIF de Discord
+    //     (« Ecran de regles »). Le membre est deja dans la guilde et
+    //     `guild_member_addition` se declenche, mais il n'a encore rien valide
+    //     et ne voit aucun salon.
+    //
+    // Seul le premier etait teste. Sur un serveur qui n'utilise QUE l'ecran de
+    // regles de Discord, `rules_enabled` est faux : la card, le DM et surtout
+    // l'accueil d'Atrium partaient donc des l'arrivee, avant toute validation —
+    // adresses a quelqu'un qui ne pouvait pas encore lire le salon.
+    //
+    // La suite du parcours est deja en place : `on_screening_complete` rejoue
+    // cette fonction avec `rules_accepted = true` quand `pending` retombe.
+    let accueil_differe = config.rules_enabled || new_member.pending;
+    let accueil_autorise = rules_accepted || !accueil_differe;
+
     // ── Message de bienvenue ──
-    if config.welcome_enabled && (!config.rules_enabled || rules_accepted) {
+    if config.welcome_enabled && accueil_autorise {
         if let Some(ch_id) = &config.welcome_channel_id {
             if let Ok(ch) = ch_id.parse::<u64>() {
                 let channel = ChannelId::new(ch);
@@ -500,7 +518,7 @@ async fn on_member_add_impl(ctx: &Context, new_member: &Member, rules_accepted: 
     }
 
     // ── DM de bienvenue ──
-    if config.welcome_dm_enabled && (!config.rules_enabled || rules_accepted) {
+    if config.welcome_dm_enabled && accueil_autorise {
         let dm_text = template::render(
             &config.welcome_dm_message,
             &user_id.to_string(),
@@ -532,7 +550,11 @@ async fn on_member_add_impl(ctx: &Context, new_member: &Member, rules_accepted: 
         .await;
     }
 
-    if !config.rules_enabled || rules_accepted {
+    // Atrium accueille le nouveau membre par IA dans le salon general. Meme
+    // condition que la card : tant que le reglement n'est pas valide, le membre
+    // ne voit pas ce salon — l'accueil serait perdu, et le rappel « mentionne-moi »
+    // avec lui.
+    if accueil_autorise {
         base.publish_event(
             "atrium_welcome_requested",
             serde_json::json!({
@@ -902,25 +924,28 @@ pub async fn on_screening_complete(
         Some(c) => c,
         None => return,
     };
-    if !config.rules_enabled {
-        return;
-    }
     // Verif d'age active : on NE donne PAS le role ici (le membre doit passer
-    // par le formulaire d'age). Il garde son role "Membre temporaire".
-    if config.age_check_enabled {
+    // par le formulaire d'age), et l'accueil attend le submit du modal.
+    if config.rules_enabled && config.age_check_enabled {
         return;
     }
-    let n = assign_roles_csv(ctx, guild_id, user_id, config.rules_role_id.as_deref()).await;
-    match Ok::<usize, String>(n) {
-        Ok(n) if n > 0 => {
+
+    // L'attribution de role reste conditionnee au bouton Sentinel : sans
+    // `rules_enabled`, aucun `rules_role_id` n'est configure.
+    if config.rules_enabled {
+        let n = assign_roles_csv(ctx, guild_id, user_id, config.rules_role_id.as_deref()).await;
+        if n > 0 {
             info!(user = %user_id, guild = %guild_id, roles = n, "Roles reglement attribues (filtrage Discord)");
-            send_welcome_after_rules(ctx, guild_id, user_id).await;
         }
-        Ok(_) => {}
-        // Desactive / non configure : silencieux (cas normal sur la plupart
-        // des serveurs). Les vraies erreurs d'assignation sont deja loggees.
-        Err(_) => {}
+        // n == 0 : desactive / non configure. Silencieux (cas normal sur la
+        // plupart des serveurs) ; les vraies erreurs sont deja loggees.
     }
+
+    // L'accueil, lui, part dans tous les cas — c'est ici et nulle part ailleurs
+    // que se termine le parcours d'un serveur qui n'utilise que l'ecran de
+    // regles de Discord. Le conditionner au nombre de roles attribues privait
+    // ces serveurs de toute bienvenue, Atrium compris.
+    send_welcome_after_rules(ctx, guild_id, user_id).await;
 }
 
 async fn handle_rules_accept(

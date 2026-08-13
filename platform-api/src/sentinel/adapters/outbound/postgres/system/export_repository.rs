@@ -181,7 +181,7 @@ impl ExportRepository for PgExportRepository {
 mod tests {
     use super::*;
 
-    #[sqlx::test(migrations = "../sentinel-api/migrations")]
+    #[sqlx::test(migrations = "./migrations/sentinel")]
     async fn moderation_export_reads_audit_log_payload(pool: PgPool) -> sqlx::Result<()> {
         let action_id = Uuid::new_v4();
         sqlx::query(

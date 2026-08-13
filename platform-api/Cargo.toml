@@ -5,6 +5,10 @@ edition.workspace = true
 description = "API unifiee de la plateforme, organisee par entite"
 
 [[bin]]
+name = "platform-api"
+path = "src/bin/platform-api.rs"
+
+[[bin]]
 name = "atrium-api"
 path = "src/bin/atrium-api.rs"
 
@@ -34,7 +38,6 @@ metrics = "0.24"
 metrics-exporter-prometheus = { version = "0.16", default-features = false }
 ndarray = "0.17"
 ort = "2.0.0-rc.12"
-platform-common-api = { workspace = true }
 platform-common = { workspace = true }
 platform-core = { workspace = true }
 platform-proto = { workspace = true }

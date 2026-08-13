@@ -1,8 +1,8 @@
 [package]
-name = "sentinel-gateway"
+name = "platform-gateway"
 version = "0.1.0"
 edition = "2021"
-description = "Gateway WebSocket dediee — relay temps reel entre l'API et les clients (desktop app, bots)"
+description = "Gateway WebSocket de la plateforme — relay temps reel entre les APIs et les clients"
 
 [dependencies]
 # Web / WebSocket

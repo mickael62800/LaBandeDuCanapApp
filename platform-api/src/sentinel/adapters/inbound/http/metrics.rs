@@ -18,43 +18,14 @@ use axum::http::Request;
 use axum::middleware::Next;
 use axum::response::IntoResponse;
 use axum::response::Response;
-use metrics_exporter_prometheus::PrometheusBuilder;
-use metrics_exporter_prometheus::PrometheusHandle;
-use std::sync::OnceLock;
-use std::time::Duration;
 use std::time::Instant;
-/// Handle global vers le recorder Prometheus.
-///
-/// Initialisé une seule fois via `init_prometheus()` au démarrage.
-static PROMETHEUS_HANDLE: OnceLock<PrometheusHandle> = OnceLock::new();
-
-/// Buckets pour l'histogramme de latence HTTP (en secondes).
-///
-/// Granularité fine sur 1ms-1s (cas normal API web), plus 2 buckets larges
-/// pour capturer les outliers (analyses IA, batch).
-const HTTP_LATENCY_BUCKETS: &[f64] = &[
-    0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0,
-];
 
 /// Installe le recorder Prometheus global.
 ///
 /// Doit être appelée **avant** d'enregistrer la moindre métrique. Idempotente :
 /// les appels suivants sont silencieusement ignorés.
 pub fn init_prometheus() {
-    if PROMETHEUS_HANDLE.get().is_some() {
-        return;
-    }
-
-    let handle = PrometheusBuilder::new()
-        .set_buckets_for_metric(
-            metrics_exporter_prometheus::Matcher::Full("http_request_duration_seconds".to_string()),
-            HTTP_LATENCY_BUCKETS,
-        )
-        .expect("buckets HTTP latency valides")
-        .install_recorder()
-        .expect("Prometheus recorder installé une seule fois");
-
-    let _ = PROMETHEUS_HANDLE.set(handle);
+    crate::shared::metrics::init_prometheus();
 }
 
 /// Handler Axum exposant `/metrics` au format texte Prometheus.
@@ -98,10 +69,7 @@ fn metrics_auth_ok(configured_token: &str, auth_header: Option<&str>) -> bool {
 
 /// Rend les metriques Prometheus (sans controle d'acces).
 fn render_metrics() -> Response {
-    match PROMETHEUS_HANDLE.get() {
-        Some(handle) => handle.render().into_response(),
-        None => String::new().into_response(),
-    }
+    crate::shared::metrics::render_metrics()
 }
 
 /// Middleware Axum qui enregistre :
@@ -163,35 +131,7 @@ pub async fn metrics_middleware(req: Request<axum::body::Body>, next: Next) -> R
 /// Doit être appelée depuis un context tokio actif (typiquement depuis `main`
 /// après `init_prometheus`).
 pub fn spawn_tokio_runtime_sampler() {
-    let monitor = tokio_metrics::RuntimeMonitor::new(&tokio::runtime::Handle::current());
-
-    tokio::spawn(async move {
-        let interval_secs: u64 = std::env::var("TOKIO_METRICS_INTERVAL_SECS")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(10);
-
-        let mut intervals = monitor.intervals();
-        loop {
-            tokio::time::sleep(Duration::from_secs(interval_secs)).await;
-
-            if let Some(snapshot) = intervals.next() {
-                metrics::gauge!("tokio_workers_count").set(snapshot.workers_count as f64);
-                metrics::gauge!("tokio_live_tasks_count").set(snapshot.live_tasks_count as f64);
-                metrics::gauge!("tokio_global_queue_depth").set(snapshot.global_queue_depth as f64);
-                metrics::gauge!("tokio_total_park_count").set(snapshot.total_park_count as f64);
-                metrics::gauge!("tokio_max_busy_duration_seconds")
-                    .set(snapshot.max_busy_duration.as_secs_f64());
-
-                // busy_ratio = busy_total / (workers * elapsed) sur la fenêtre
-                let busy = snapshot.total_busy_duration.as_secs_f64();
-                let elapsed = snapshot.elapsed.as_secs_f64();
-                let total = (snapshot.workers_count as f64) * elapsed.max(1e-6);
-                let ratio = if total > 0.0 { busy / total } else { 0.0 };
-                metrics::gauge!("tokio_busy_ratio").set(ratio);
-            }
-        }
-    });
+    crate::shared::metrics::spawn_tokio_runtime_sampler();
 }
 
 #[cfg(test)]
@@ -242,7 +182,8 @@ mod tests {
         ensure_init();
         // Le 2e appel via le guard OnceLock doit sortir immediatement (return precoce).
         init_prometheus();
-        assert!(PROMETHEUS_HANDLE.get().is_some());
+        let response = render_metrics();
+        assert_eq!(response.status(), StatusCode::OK);
     }
 
     #[tokio::test]
@@ -276,10 +217,9 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
 
         // Verifier qu'au moins une metrique http_requests_total a ete enregistree.
-        let render = match PROMETHEUS_HANDLE.get() {
-            Some(h) => h.render(),
-            None => String::new(),
-        };
+        let response = render_metrics();
+        let body = to_bytes(response.into_body(), 64 * 1024).await.unwrap();
+        let render = std::str::from_utf8(&body).unwrap();
         assert!(render.contains("http_requests_total"));
     }
 

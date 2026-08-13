@@ -77,29 +77,121 @@ pub fn start(config: DomainConfig) {
             "/api/announcements/internal/jobs/publish-due",
             env("ANNOUNCEMENT_PUBLISH_INTERVAL_SECS", 3_600),
         ),
-        ("sentinel.cleanup-old-data", "/api/internal/jobs/cleanup-old-data", env("CLEANUP_INTERVAL_HOURS", 1) * 3_600),
-        ("sentinel.warm-analytics", "/api/internal/jobs/warm-analytics", env("ANALYTICS_REFRESH_INTERVAL", 300)),
-        ("sentinel.warm-dashboard", "/api/internal/jobs/warm-dashboard", env("DASHBOARD_REFRESH_INTERVAL", 600)),
-        ("sentinel.warm-voice-stats", "/api/internal/jobs/warm-voice-stats", env("VOICE_STATS_REFRESH_INTERVAL", 3_600)),
-        ("sentinel.refresh-leaderboards", "/api/internal/jobs/refresh-leaderboards", env("LEADERBOARDS_REFRESH_INTERVAL", 300)),
-        ("sentinel.sync-user-cache", "/api/internal/jobs/sync-user-cache", env("USER_CACHE_SYNC_INTERVAL", 900)),
-        ("sentinel.manage-partitions", "/api/internal/jobs/manage-partitions", env("PARTITION_MANAGER_INTERVAL", 86_400)),
-        ("sentinel.refresh-watched-users", "/api/internal/jobs/refresh-watched-users", env("AUDIT_CACHE_REFRESH_INTERVAL", 60)),
-        ("sentinel.cleanup-bans", "/api/internal/jobs/cleanup-bans", env("BAN_CLEANUP_INTERVAL", 1) * 60),
-        ("sentinel.send-reminders", "/api/internal/jobs/send-reminders", env("SEND_REMINDERS_INTERVAL", 30)),
-        ("sentinel.expire-temp-bans", "/api/internal/jobs/expire-temp-bans", env("SEND_REMINDERS_INTERVAL", 30)),
-        ("sentinel.age-unban", "/api/internal/jobs/age-unban", env("AGE_UNBAN_INTERVAL", 2_592_000)),
-        ("sentinel.kick-expired-quarantine", "/api/internal/jobs/kick-expired-quarantine", env("QUARANTINE_KICK_CHECK_SECS", 15)),
-        ("sentinel.expire-lockdown", "/api/internal/jobs/expire-lockdown", env("LOCKDOWN_EXPIRE_CHECK_SECS", 15)),
-        ("sentinel.expire-slowmode", "/api/internal/jobs/expire-slowmode", env("SLOWMODE_EXPIRE_CHECK_SECS", 15)),
-        ("sentinel.expire-temp-roles", "/api/internal/jobs/expire-temp-roles", env("TEMP_ROLES_SCAN_INTERVAL", 60)),
-        ("sentinel.guild-backup-auto", "/api/internal/jobs/guild-backup-auto", env("GUILD_BACKUP_AUTO_CHECK_INTERVAL", 1_800)),
-        ("sentinel.escalate-appeal-sla", "/api/internal/jobs/escalate-appeal-sla", env("APPEAL_SLA_SCAN_INTERVAL", 120)),
-        ("sentinel.drain-export-jobs", "/api/internal/jobs/drain-export-jobs", env("EXPORT_SCAN_INTERVAL", 5)),
-        ("sentinel.sync-discord-audit-logs", "/api/internal/jobs/sync-discord-audit-logs", env("AUDIT_SYNC_INTERVAL", 300)),
-        ("sentinel.drain-ai-jobs", "/api/internal/jobs/drain-ai-jobs", env("AI_POLL_INTERVAL", 2)),
-        ("sentinel.escalate-ticket-sla", "/api/internal/jobs/escalate-ticket-sla", env("TICKETS_SLA_CHECK_INTERVAL", 300)),
-        ("sentinel.close-inactive-tickets", "/api/internal/jobs/close-inactive-tickets", env("TICKETS_CLOSE_INACTIVE_INTERVAL", 1_800)),
+        (
+            "sentinel.cleanup-old-data",
+            "/api/internal/jobs/cleanup-old-data",
+            env("CLEANUP_INTERVAL_HOURS", 1) * 3_600,
+        ),
+        (
+            "sentinel.warm-analytics",
+            "/api/internal/jobs/warm-analytics",
+            env("ANALYTICS_REFRESH_INTERVAL", 300),
+        ),
+        (
+            "sentinel.warm-dashboard",
+            "/api/internal/jobs/warm-dashboard",
+            env("DASHBOARD_REFRESH_INTERVAL", 600),
+        ),
+        (
+            "sentinel.warm-voice-stats",
+            "/api/internal/jobs/warm-voice-stats",
+            env("VOICE_STATS_REFRESH_INTERVAL", 3_600),
+        ),
+        (
+            "sentinel.refresh-leaderboards",
+            "/api/internal/jobs/refresh-leaderboards",
+            env("LEADERBOARDS_REFRESH_INTERVAL", 300),
+        ),
+        (
+            "sentinel.sync-user-cache",
+            "/api/internal/jobs/sync-user-cache",
+            env("USER_CACHE_SYNC_INTERVAL", 900),
+        ),
+        (
+            "sentinel.manage-partitions",
+            "/api/internal/jobs/manage-partitions",
+            env("PARTITION_MANAGER_INTERVAL", 86_400),
+        ),
+        (
+            "sentinel.refresh-watched-users",
+            "/api/internal/jobs/refresh-watched-users",
+            env("AUDIT_CACHE_REFRESH_INTERVAL", 60),
+        ),
+        (
+            "sentinel.cleanup-bans",
+            "/api/internal/jobs/cleanup-bans",
+            env("BAN_CLEANUP_INTERVAL", 1) * 60,
+        ),
+        (
+            "sentinel.send-reminders",
+            "/api/internal/jobs/send-reminders",
+            env("SEND_REMINDERS_INTERVAL", 30),
+        ),
+        (
+            "sentinel.expire-temp-bans",
+            "/api/internal/jobs/expire-temp-bans",
+            env("SEND_REMINDERS_INTERVAL", 30),
+        ),
+        (
+            "sentinel.age-unban",
+            "/api/internal/jobs/age-unban",
+            env("AGE_UNBAN_INTERVAL", 2_592_000),
+        ),
+        (
+            "sentinel.kick-expired-quarantine",
+            "/api/internal/jobs/kick-expired-quarantine",
+            env("QUARANTINE_KICK_CHECK_SECS", 15),
+        ),
+        (
+            "sentinel.expire-lockdown",
+            "/api/internal/jobs/expire-lockdown",
+            env("LOCKDOWN_EXPIRE_CHECK_SECS", 15),
+        ),
+        (
+            "sentinel.expire-slowmode",
+            "/api/internal/jobs/expire-slowmode",
+            env("SLOWMODE_EXPIRE_CHECK_SECS", 15),
+        ),
+        (
+            "sentinel.expire-temp-roles",
+            "/api/internal/jobs/expire-temp-roles",
+            env("TEMP_ROLES_SCAN_INTERVAL", 60),
+        ),
+        (
+            "sentinel.guild-backup-auto",
+            "/api/internal/jobs/guild-backup-auto",
+            env("GUILD_BACKUP_AUTO_CHECK_INTERVAL", 1_800),
+        ),
+        (
+            "sentinel.escalate-appeal-sla",
+            "/api/internal/jobs/escalate-appeal-sla",
+            env("APPEAL_SLA_SCAN_INTERVAL", 120),
+        ),
+        (
+            "sentinel.drain-export-jobs",
+            "/api/internal/jobs/drain-export-jobs",
+            env("EXPORT_SCAN_INTERVAL", 5),
+        ),
+        (
+            "sentinel.sync-discord-audit-logs",
+            "/api/internal/jobs/sync-discord-audit-logs",
+            env("AUDIT_SYNC_INTERVAL", 300),
+        ),
+        (
+            "sentinel.drain-ai-jobs",
+            "/api/internal/jobs/drain-ai-jobs",
+            env("AI_POLL_INTERVAL", 2),
+        ),
+        (
+            "sentinel.escalate-ticket-sla",
+            "/api/internal/jobs/escalate-ticket-sla",
+            env("TICKETS_SLA_CHECK_INTERVAL", 300),
+        ),
+        (
+            "sentinel.close-inactive-tickets",
+            "/api/internal/jobs/close-inactive-tickets",
+            env("TICKETS_CLOSE_INACTIVE_INTERVAL", 1_800),
+        ),
     ] {
         let client = config.client.clone();
         crate::schedule::spawn_interval(name, interval, move || {
@@ -120,7 +212,8 @@ pub fn start(config: DomainConfig) {
             move || {
                 let client = client.clone();
                 async move {
-                    let _: serde_json::Value = client.post_json("/api/internal/jobs/vacuum-tables").await?;
+                    let _: serde_json::Value =
+                        client.post_json("/api/internal/jobs/vacuum-tables").await?;
                     Ok(())
                 }
             },

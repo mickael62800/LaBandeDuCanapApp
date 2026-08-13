@@ -16,25 +16,23 @@ Architecture **hexagonale** : `platform-core` contient les contextes `sentinel`,
 ```
 DiscordSentinel/
 ├── platform-common/     # Socle partagé — bus d'événements Redis Streams (aucun framework)
-├── platform-common-api/ # Middlewares HTTP partagés — rate limit, métriques, CORS, en-têtes
 ├── platform-core/       # Cœur hexagonal unifié — atrium / nexus / sentinel / ops
 ├── platform-scheduler/  # Planificateur HTTP thin commun
 │
 ├── sentinel-api/        # API Axum 0.8 — adapters inbound (HTTP + gRPC) & outbound (Postgres, Redis, Discord)
 ├── sentinel-bot/        # Bot Discord unifié (Serenity 0.12) — 25 modules, un seul process
-├── sentinel-gateway/    # Relay Redis Streams → WebSocket
+├── platform-gateway/    # Relay Redis Streams → WebSocket
 ├── sentinel-proto/      # Définitions gRPC (tonic + prost)
 │
 ├── nexus-api/           # API HTTP Nexus (axum) + runtime Docker des serveurs de jeux
 ├── nexus-bot/           # Bot Discord Nexus (portail de jeux, roue, coussin)
-├── nexus-gateway/       # Point d'entrée réseau Nexus (stub)
 ├── nexus-proto/         # Protos gRPC Nexus (stub)
 ├── atrium-api/ / atrium-bot/ / atrium-proto/
 ├── ops-api/ / ops-agent/ / docker-agent/
 │
 ├── web/                 # Dashboard Vue 3 + TS + Vite + Pinia (partagé Sentinel/Nexus, multi-marque)
 ├── infrastructure/      # docker/ (compose, bake, Dockerfiles), grafana/, prometheus/, scripts/
-├── sentinel-ml/         # Configs d'entraînement YAML + points de montage des exports ONNX
+├── platform-ml/         # Configs d'entraînement YAML + points de montage des exports ONNX
 ├── persona/             # 17 fiches de personas markdown (utilisées par la skill /party-mode)
 ├── DOC/                 # Documentation fonctionnelle, technique et référence IA
 └── Cargo.toml           # Workspace Rust
@@ -50,7 +48,7 @@ DiscordSentinel/
 | `web` | 410 | ~44 k | dashboard Vue 3 (atomic design) |
 | `nexus-api` | 77 | ~7,4 k | HTTP + `game_runtime` (bollard) |
 | `nexus-bot` | 7 | ~3,8 k | portail de jeux, roue, coussin |
-| `sentinel-gateway` | 7 | ~0,8 k | broadcaster WebSocket |
+| `platform-gateway` | 7 | ~0,8 k | broadcaster WebSocket transverse |
 | `platform-scheduler` | — | — | déclenchement HTTP des jobs de tous les contextes |
 
 ---
@@ -94,8 +92,8 @@ DiscordSentinel/
         └────────────────────────┘       │          └────────────────────────────┘
                                          │
         ┌────────────────────────┐       │          ┌────────────────────────────┐
-        │ sentinel-gateway       │◄──────┘          │ nexus-gateway     (stub)   │
-        │ XREAD $ → WebSocket    │                  │ pas encore implémenté      │
+        │ platform-gateway       │◄──────┘          │ aucun gateway Nexus requis │
+        │ XREAD $ → WebSocket    │                  │ (ancien stub supprimé)       │
         └───────────┬────────────┘                  └────────────────────────────┘
                     │
         ════════════╪═══════════ PARTAGÉ ══════════════════════════════════
@@ -108,7 +106,7 @@ DiscordSentinel/
 
    ┌──────────────────────────────────────────────────────────────────┐
    │ platform-common      bus d'événements Redis Streams (sans infra) │
-   │ platform-common-api  rate limit · métriques · CORS · en-têtes    │
+   │ platform-api::shared rate limit · métriques · CORS · en-têtes    │
    └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -117,7 +115,7 @@ DiscordSentinel/
 **Asymétries réelles, à ne pas lire comme des oublis du schéma** :
 
 - **`sentinel-proto` est complet, `nexus-proto` est un stub vide** (7 lignes, aucun `.proto`). Seule la stack Sentinel parle gRPC ; `nexus-bot` appelle son API en HTTP via `reqwest`.
-- **`nexus-gateway` est un stub de 9 lignes.** Le relay temps réel n'existe que côté Sentinel.
+- **`platform-gateway` est l'unique gateway réseau.** Nexus n'avait qu'un stub sans listener, désormais supprimé.
 - **Le transport `sentinel-bot` → `sentinel-api` est majoritairement gRPC**, mais pas exclusivement : les modules sans service proto passent encore par HTTP. Le détail est dans [RESTE-A-FAIRE.md](RESTE-A-FAIRE.md).
 - **Le bot n'a jamais d'accès direct à la base.** Ni Sentinel ni Nexus : c'est l'API qui persiste, dans les deux stacks.
 
@@ -127,7 +125,7 @@ DiscordSentinel/
 
 | Composant | Technologie | Détails |
 |---|---|---|
-| Socles partagés | Rust pur / axum | `platform-common` (bus Redis) et `platform-common-api` (middlewares), séparés par surface de dépendances |
+| Socles partagés | Rust pur / axum | `platform-common` (sans framework) et `platform-api::shared` (middlewares HTTP) |
 | Cœur métier | Rust pur | `platform-core/src/{sentinel,nexus,atrium,ops}` avec `domain`, `application` et `ports` |
 | API backend | Rust / Axum 0.8 / Tokio / sqlx 0.8 | `sentinel-api` réduit aux adapters : `adapters/inbound/{http,grpc}`, `adapters/outbound/{postgres,ws,audit,batching,host_security,system}`, `bootstrap/` |
 | Bot Discord | Rust / Serenity 0.12 | Process unique, 25 modules chargés selon la config per-guild ; helpers dans `src/shared/` (api_client, circuit_breaker, event_bus, grpc_client, shard_launcher, …) |
@@ -341,7 +339,7 @@ Provisioning de serveurs de jeux dédiés en conteneurs Docker, piloté depuis l
 | Input | 224×224 normalisé ImageNet | Tokens (max 256) + attention mask |
 | Format | ONNX (opset 17) | ONNX + tokenizer HuggingFace (Rust) |
 
-Modèles chargés au démarrage de l'API, **mode dégradé** automatique s'ils sont absents (scoring règles seulement). Configs d'entraînement dans `sentinel-ml/{text,vision}/configs/`, exports attendus dans `sentinel-ml/{text,vision}/exports/` (montés en `/models/*`). Le pipeline d'entraînement est externe au repo.
+Modèles chargés au démarrage de l'API, **mode dégradé** automatique s'ils sont absents (scoring règles seulement). Configs d'entraînement dans `platform-ml/{text,vision}/configs/`, exports attendus dans `platform-ml/{text,vision}/exports/` (montés en `/models/*`). Le pipeline d'entraînement est externe au repo.
 
 **Mode async** : `POST /api/ai/jobs` retourne `202 Accepted` + `job_id` ; le domaine `ai` du worker dépile la file et publie sur Redis `ai_result:{job_id}` (TTL 600 s). Alternative au `POST /analyze` synchrone (timeout 5 s côté bot).
 
@@ -388,7 +386,7 @@ Tous les producers (API, workers) publient en `XADD MAXLEN ~ 10000`. Format d'en
 
 ### Gateway WebSocket
 
-Côté Sentinel uniquement — `nexus-gateway` n'est pas implémenté.
+Le relay est porté par l'unique processus `platform-gateway`.
 
 | Propriété | Valeur |
 |---|---|

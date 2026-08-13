@@ -61,21 +61,23 @@ platform-proto/
   src/
 ```
 
-### 2.2 Point important : crate unique, processus encore séparés
+### 2.2 Point important : runtime unifié préparé, rollback conservé
 
-`platform-api` est un seul crate Rust, mais il produit encore quatre binaires :
+`platform-api` produit désormais un binaire unifié `platform-api` qui supervise
+les quatre surfaces sur leurs ports historiques. Les quatre binaires suivants
+restent temporairement disponibles pour rollback :
 
 - `sentinel-api` ;
 - `nexus-api` ;
 - `atrium-api` ;
 - `ops-api`.
 
-Docker continue donc à lancer quatre services API. Cette compatibilité a été
-conservée volontairement pour migrer le code sans changer en même temps les
-ports, les healthchecks, nginx, les secrets et les dépendances Compose.
+L'image Docker unifiée est construite et les anciens services ne sont plus
+actifs par défaut : ils sont réservés au profil explicite `compat-api`. Les
+aliases DNS historiques sont conservés pendant la transition.
 
-La consolidation des crates API est terminée. La consolidation en **un seul
-processus API** ne l'est pas encore.
+La validation avec les secrets et dépendances de production reste nécessaire
+avant de supprimer définitivement ces compatibilités.
 
 ## 3. Responsabilités des crates consolidées
 
@@ -153,7 +155,7 @@ processus tout en conservant temporairement leurs ports actuels. Cela évite de
 modifier simultanément nginx, les bots, le scheduler et toutes les URL internes.
 Le passage à un port unique vient seulement après validation de cette étape.
 
-### Étape 1 - Créer un vrai binaire API unifié
+### Étape 1 - Créer un vrai binaire API unifié (terminé dans le code)
 
 Ajouter un binaire, par exemple `platform-api`, qui démarre les quatre domaines
 dans un seul processus. Deux options sont possibles :
@@ -176,7 +178,7 @@ Le processus unifié doit :
 - conserver les limites de taille, rate limits, middlewares d'authentification
   et en-têtes de sécurité propres à chaque surface.
 
-### Étape 2 - Basculer Docker sans changer les routes publiques
+### Étape 2 - Basculer Docker sans changer les routes publiques (préparé)
 
 Remplacer les quatre conteneurs API par un service `platform-api`, tout en
 conservant les noms DNS historiques avec des alias réseau si nécessaire :
@@ -259,12 +261,20 @@ Résultats des tests `platform-api` :
 - 13 tests SQLx nécessitent `DATABASE_URL` et une instance PostgreSQL de test ;
 - les tests Atrium, Nexus et Ops passent dans l'environnement local.
 
-Dette connue, antérieure à la consolidation :
+Dette d'architecture Sentinel corrigée : les jobs internes passent désormais
+par `RunInternalJobUseCase` et le handler HTTP n'accède plus directement à
+PostgreSQL ou Redis. `sentinel_architecture_state_test` passe (3 tests sur 3).
 
-- `platform-api/src/sentinel/adapters/inbound/http/handlers/system/internal_jobs.rs`
-  accède directement à `state.pg_pool` ;
-- le test `sentinel_architecture_state_test` le signale. Il faut déplacer cette
-  orchestration derrière un port/use case plutôt que désactiver le garde-fou.
+Validation Docker locale supplémentaire :
+
+- image `discordsentinel-platform-api:latest` construite sous Linux ;
+- entrypoint `/usr/local/bin/sentinel-app`, exécuté par l'utilisateur `sentinel` ;
+- migrations Sentinel, Nexus et Atrium présentes dans l'image ;
+- ports 3000, 3100, 3101, 3200, 50051, 8090 et 8091 exposés.
+
+Le démarrage Compose réel n'a pas pu être exécuté sur le poste de reprise :
+aucun `.env` de déploiement n'y est présent. Ne pas retirer `compat-api` avant
+ce smoke test avec les vrais secrets.
 
 ## 7. Commandes de reprise
 
@@ -312,25 +322,21 @@ unifier le démarrage, les listeners, Docker, Bake et progressivement nginx.
 
 ### 9.2 Gateways
 
-Deux gateways existent encore :
+La cartographie a montré qu'un seul gateway réel existait :
+`sentinel-gateway` portait le WebSocket longue durée et le tail Redis Streams,
+tandis que `nexus-gateway` était un scaffold sans listener ni consommateur.
 
-- `sentinel-gateway` ;
-- `nexus-gateway`.
-
-Avant de les fusionner, cartographier leurs connexions, protocoles, états et
-contraintes de disponibilité. Si elles sont seulement des adaptateurs réseau,
-elles peuvent devenir des modules d'un même crate ou processus. Si leur
-isolement protège une connexion longue durée ou limite l'impact d'un plantage,
-conserver des processus distincts mais mutualiser leur code commun.
-
-Atrium ne possède pas de gateway dédiée.
+Le processus fonctionnel est désormais le crate `platform-gateway`. Le scaffold
+Nexus a été supprimé. Le nom de service Docker `gateway` et la route nginx `/ws`
+restent stables afin de ne pas interrompre les connexions existantes. Atrium et
+Nexus ne possèdent pas de gateway réseau dédiée.
 
 ### 9.3 Composants communs
 
 Les crates suivantes restent à évaluer :
 
 - `platform-common` ;
-- `platform-common-api` ;
+- `platform-api::shared` pour l'infrastructure HTTP commune aux domaines API ;
 - `platform-common-bot`.
 
 Leur séparation est actuellement défendable car leurs graphes de dépendances
@@ -360,7 +366,7 @@ Après les migrations runtime :
 La validation de fin doit couvrir :
 
 - les tests PostgreSQL avec `DATABASE_URL` ;
-- la suppression de l'accès direct à `state.pg_pool` dans `internal_jobs.rs` ;
+- le smoke test du processus unifié avec les quatre domaines actifs ;
 - les routes HTTP publiques et internes ;
 - les services gRPC et leur mTLS ;
 - les trois bots Discord ;

@@ -12,7 +12,7 @@ impl GatewayLogger {
     pub fn new(api_url: String, api_key: String) -> Arc<Self> {
         Arc::new(Self {
             client: Client::builder()
-                .user_agent(concat!("sentinel-gateway/", env!("CARGO_PKG_VERSION")))
+                .user_agent(concat!("platform-gateway/", env!("CARGO_PKG_VERSION")))
                 .build()
                 .expect("creation client HTTP gateway impossible"),
             api_url,
@@ -24,7 +24,7 @@ impl GatewayLogger {
         let url = format!("{}/api/logs", self.api_url);
         let body = serde_json::json!({
             "level": level,
-            "bot": "sentinel-gateway",
+            "bot": "platform-gateway",
             "server": "",
             "message": message,
             "category": "websocket",

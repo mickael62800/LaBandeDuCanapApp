@@ -377,7 +377,7 @@ struct AnniversaryRow {
 mod tests {
     use super::*;
 
-    #[sqlx::test(migrations = "../sentinel-api/migrations")]
+    #[sqlx::test(migrations = "./migrations/sentinel")]
     async fn reset_member_preserves_moderation_audit_trail(pool: PgPool) -> sqlx::Result<()> {
         sqlx::query(
             "INSERT INTO audit_logs (id, guild_id, event_type, target_id, details) \

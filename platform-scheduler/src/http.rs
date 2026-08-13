@@ -90,6 +90,9 @@ mod tests {
 
     #[test]
     fn normalizes_job_header() {
-        assert_eq!(normalized_job_name("/api/internal/jobs/cleanup_old"), "api-internal-jobs-cleanup-old");
+        assert_eq!(
+            normalized_job_name("/api/internal/jobs/cleanup_old"),
+            "api-internal-jobs-cleanup-old"
+        );
     }
 }

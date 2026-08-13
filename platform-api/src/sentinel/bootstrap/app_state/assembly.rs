@@ -198,15 +198,18 @@ let shared = crate::sentinel::bootstrap::state::SharedState {
     api_key: config.api_key.clone(),
     guild_id: config.guild_id.clone(),
     metrics_token: config.metrics_token.clone(),
-    auth: Arc::new(platform_common_api::auth_client::AuthClient::new(
+    auth: Arc::new(crate::shared::auth_client::AuthClient::new(
         std::env::var("AUTH_API_URL").unwrap_or_else(|_| "http://auth-api:8096".into()),
         std::env::var("AUTH_API_TOKEN").unwrap_or_default(),
     )),
 };
 
 let jobs = crate::sentinel::bootstrap::state::InternalJobsState {
-    pg_pool: pg_pool.clone(),
-    redis_client: redis_client.clone(),
+    runner: Arc::new(crate::sentinel::jobs::internal_runner::InternalJobRunner::new(
+        pg_pool.clone(),
+        redis_client.clone(),
+    )),
+    job_lock_pool: pg_pool.clone(),
 };
 
 AppState {

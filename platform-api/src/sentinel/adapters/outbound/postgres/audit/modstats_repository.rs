@@ -180,7 +180,7 @@ impl ModstatsRepository for PgModstatsRepository {
 mod tests {
     use super::*;
 
-    #[sqlx::test(migrations = "../sentinel-api/migrations")]
+    #[sqlx::test(migrations = "./migrations/sentinel")]
     async fn top_moderators_reads_mod_events_from_audit_logs(pool: PgPool) -> sqlx::Result<()> {
         sqlx::query(
             "INSERT INTO audit_logs \

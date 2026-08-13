@@ -326,7 +326,7 @@ mod tests {
         assert_eq!(retry_backoff_secs(30), 300);
     }
 
-    #[sqlx::test(migrations = "../sentinel-api/migrations")]
+    #[sqlx::test(migrations = "./migrations/sentinel")]
     async fn successful_export_is_marked_done(pool: PgPool) -> sqlx::Result<()> {
         let id = insert_job(&pool, 0, 3).await?;
 
@@ -345,7 +345,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test(migrations = "../sentinel-api/migrations")]
+    #[sqlx::test(migrations = "./migrations/sentinel")]
     async fn transient_failure_returns_to_pending_with_backoff(pool: PgPool) -> sqlx::Result<()> {
         let id = insert_job(&pool, 0, 3).await?;
         let job = load_claimed_job(&pool, id).await?;
@@ -374,7 +374,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test(migrations = "../sentinel-api/migrations")]
+    #[sqlx::test(migrations = "./migrations/sentinel")]
     async fn exhausted_failure_is_marked_dead(pool: PgPool) -> sqlx::Result<()> {
         let id = insert_job(&pool, 2, 3).await?;
         let job = load_claimed_job(&pool, id).await?;
@@ -397,7 +397,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test(migrations = "../sentinel-api/migrations")]
+    #[sqlx::test(migrations = "./migrations/sentinel")]
     async fn claim_skips_job_until_backoff_expires(pool: PgPool) -> sqlx::Result<()> {
         let delayed_id = insert_job(&pool, 1, 3).await?;
         sqlx::query(

@@ -368,7 +368,7 @@ mod tests {
         }
     }
 
-    #[sqlx::test(migrations = "../sentinel-api/migrations")]
+    #[sqlx::test(migrations = "./migrations/sentinel")]
     async fn moderation_action_round_trips_through_audit_logs(pool: PgPool) -> sqlx::Result<()> {
         let repo = PgModerationRepository::new(pool.clone());
         let action = sample_action();

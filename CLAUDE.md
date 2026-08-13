@@ -6,11 +6,11 @@ Repères pour travailler dans ce dépôt. Le [README](README.md) décrit le prod
 
 Monorepo Rust : **trois plateformes hexagonales** — `sentinel-*` (modération Discord), `nexus-*` (serveurs de jeux + casino), `atrium-*` (parcours d'accueil assisté par IA) — partageant `web/` (Vue 3), `infrastructure/` (Docker/Grafana/Prometheus), Postgres et Redis.
 
-Chaque plateforme suit le même découpage : `-core` (métier), `-api`, `-bot`, `-worker`, `-proto`, et `-gateway` pour sentinel/nexus. Deux dossiers hors crates : `sentinel-ml/` (modèles ONNX `text/`, `vision/`) et `persona/` (fiches de rôle en Markdown pour la skill `party-mode`).
+Les briques applicatives sont consolidées sous les crates `platform-*`. Deux dossiers hors crates : `platform-ml/` (modèles ONNX `text/`, `vision/`) et `persona/` (fiches de rôle en Markdown pour la skill `party-mode`).
 
 Atrium est la plus jeune et la plus petite (≈30 fichiers) : elle n'a ni gateway ni sous-états d'API. Ne pas la prendre comme modèle de structure — la référence reste `sentinel-*`.
 
-**L'identité est une plateforme, pas une fonction de Sentinel.** `auth-core` + `auth-api` servent l'OAuth2 Discord, les sessions web et le gate superadmin, avec leur propre base (`auth`) et leur rôle Postgres dédié — c'est celle qui contient les access/refresh tokens des administrateurs. Les trois passerelles nginx (`/nexus-api/`, `/ops-api/`, `/atrium-api/`) interrogent `auth-api:8096/access`, et `sentinel-api` est un **consommateur comme les autres** via `platform_common_api::auth_client`. Avant, l'identité vivait dans `sentinel-api` : Nexus et Atrium ne savaient pas qui appelle, et Sentinel était la dépendance d'exécution qui, en tombant, fermait tout le back-office. Ne pas réintroduire de résolution d'identité locale — c'est le point où deux implémentations de la même règle divergent.
+**L'identité est une plateforme, pas une fonction de Sentinel.** `auth-core` + `auth-api` servent l'OAuth2 Discord, les sessions web et le gate superadmin, avec leur propre base (`auth`) et leur rôle Postgres dédié — c'est celle qui contient les access/refresh tokens des administrateurs. Les trois passerelles nginx (`/nexus-api/`, `/ops-api/`, `/atrium-api/`) interrogent `auth-api:8096/access`, et `platform-api` est un consommateur via `platform_api::shared::auth_client`. Ne pas réintroduire de résolution d'identité locale.
 
 `AccessOutcome::Unavailable` (→ **503**) est distinct de `Denied` (→ **403**) : confondre les deux fait passer une panne réseau pour une révocation de droits.
 
@@ -142,7 +142,7 @@ Quatre crates socles, séparés par **surface de dépendances** — un bot n'a a
 | Crate | Contenu | Consommé par | Dépendances |
 |---|---|---|---|
 | `platform-common` | Bus d'événements Redis Streams (`EventBus`, paramétré par la clé de stream), erreurs communes, `config_flags` (sémantique de référence de `enabled`) | les trois `-core`, les trois `-bot`, `platform-common-worker` | redis, tokio — aucun framework |
-| `platform-common-api` | Rate limit par IP, métriques Prometheus, CORS, en-têtes de sécurité, mapping d'erreurs HTTP | les trois `-api` | axum, tower-http, metrics |
+| `platform-api::shared` | Rate limit par IP, métriques Prometheus, CORS, en-têtes de sécurité, mapping d'erreurs HTTP | les quatre domaines API | axum, tower-http, metrics |
 | `platform-common-bot` | Embeds normalisés (`embeds.rs`) et helpers d'interaction Discord (`discord_helpers.rs` : `defer_ephemeral`, `option_str`, …) | les trois `-bot` | serenity |
 | `platform-common-worker` | Boucle de scheduler, client API, helpers Redis, métriques | les trois `-worker` | tokio, reqwest, sqlx — **aucune dépendance de plateforme** |
 

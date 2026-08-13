@@ -18,7 +18,7 @@
 //! bollard -> domaine dans le depot.
 
 use async_trait::async_trait;
-use platform_common_api::docker_agent_client::{DockerAgentClient, DockerAgentError};
+use ops_adapters::docker_agent_client::{DockerAgentClient, DockerAgentError};
 use serde::de::DeserializeOwned;
 
 use platform_core::nexus::domain::errors::DomainError;

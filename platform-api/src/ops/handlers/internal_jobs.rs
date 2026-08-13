@@ -5,7 +5,7 @@ use crate::ops::{jobs::alerts_dispatcher, ApiError, AppState};
 pub async fn dispatch_alerts(
     State(state): State<AppState>,
 ) -> Result<Json<alerts_dispatcher::DispatchReport>, ApiError> {
-    let report = platform_common_api::job_lock::run(&state.pg_pool, "ops:dispatch-alerts", || {
+    let report = crate::shared::job_lock::run(&state.pg_pool, "ops:dispatch-alerts", || {
         alerts_dispatcher::run(
             &state.pg_pool,
             &state.redis_client,

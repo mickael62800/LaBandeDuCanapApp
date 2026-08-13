@@ -209,7 +209,7 @@ pub async fn run(pool: &PgPool, config: &CleanupConfig) -> Result<(), String> {
 mod tests {
     use super::*;
 
-    #[sqlx::test(migrations = "../sentinel-api/migrations")]
+    #[sqlx::test(migrations = "./migrations/sentinel")]
     async fn deletes_only_logs_older_than_retention(pool: PgPool) -> sqlx::Result<()> {
         sqlx::query(
             "INSERT INTO logs (\"timestamp\", message) VALUES \

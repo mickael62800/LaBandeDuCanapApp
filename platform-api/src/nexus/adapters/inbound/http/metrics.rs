@@ -1,22 +1,22 @@
 //! Handler `/metrics` de nexus-api.
 //!
 //! Toute la mecanique (recorder, middleware de comptage, sampler tokio) vit
-//! dans `platform-common-api::metrics`, partagee avec `sentinel-api`. Seul le
+//! dans `platform-api::shared::metrics`, partagée par les domaines. Seul le
 //! handler reste ici : il lit le jeton dans l'etat applicatif, donc il ne peut
 //! pas etre generique sans abstraire cet etat pour rien.
 
+use crate::shared::metrics::{metrics_auth_ok, render_metrics};
 use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::response::Response;
-use platform_common_api::metrics::{metrics_auth_ok, render_metrics};
 
 use crate::nexus::bootstrap::AppState;
 
-pub use platform_common_api::metrics::init_prometheus;
-pub use platform_common_api::metrics::metrics_middleware;
-pub use platform_common_api::metrics::spawn_tokio_runtime_sampler;
+pub use crate::shared::metrics::init_prometheus;
+pub use crate::shared::metrics::metrics_middleware;
+pub use crate::shared::metrics::spawn_tokio_runtime_sampler;
 
 /// GET /metrics — format texte Prometheus.
 ///

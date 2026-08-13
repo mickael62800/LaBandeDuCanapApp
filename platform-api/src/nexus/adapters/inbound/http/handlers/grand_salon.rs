@@ -227,7 +227,7 @@ pub struct CloseReport {
 }
 
 pub async fn close_due(State(s): State<AppState>) -> Result<Json<CloseReport>, ApiError> {
-    match platform_common_api::job_lock::run(&s.job_pool, "nexus:close-motions", || async {
+    match crate::shared::job_lock::run(&s.job_pool, "nexus:close-motions", || async {
         s.grand_salon
             .close_due_motions(&[], Utc::now())
             .await

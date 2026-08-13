@@ -8,9 +8,8 @@ pub fn start(config: DomainConfig) {
         move || {
             let client = client.clone();
             async move {
-                let report: serde_json::Value = client
-                    .post_json("/internal/jobs/dispatch-alerts")
-                    .await?;
+                let report: serde_json::Value =
+                    client.post_json("/internal/jobs/dispatch-alerts").await?;
                 tracing::info!(%report, "alertes Ops evaluees");
                 Ok(())
             }

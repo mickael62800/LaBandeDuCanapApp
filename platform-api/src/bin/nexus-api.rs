@@ -3,8 +3,14 @@ use tokio::signal;
 
 #[tokio::main]
 async fn main() {
+    run().await;
+}
+
+pub async fn run() {
     dotenvy::dotenv().ok();
-    tracing_subscriber::fmt::init();
+    if std::env::var_os("PLATFORM_API_UNIFIED_RUNTIME").is_none() {
+        tracing_subscriber::fmt::init();
+    }
 
     adapters::inbound::http::metrics::init_prometheus();
     adapters::inbound::http::metrics::spawn_tokio_runtime_sampler();

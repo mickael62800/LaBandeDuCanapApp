@@ -5,3 +5,4 @@ pub mod manage_quarantine;
 pub mod manage_slowmode;
 pub mod manage_tickets;
 pub mod reset_guild;
+pub mod run_internal_job;

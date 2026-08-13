@@ -10,6 +10,7 @@
 //! build. Ces deux adaptateurs vivent desormais ici ; `ops-api` et `ops-worker`
 //! en dependent a egalite, et le Worker ne dépend plus de l'API.
 
+pub mod docker_agent_client;
 pub mod http_docker_host;
 pub mod server_event_repository;
 

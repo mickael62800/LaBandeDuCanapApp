@@ -33,8 +33,8 @@ use tower_http::request_id::SetRequestIdLayer;
 use tower_http::trace::TraceLayer;
 
 use crate::nexus::bootstrap::AppState;
-use platform_common_api::rate_limit_middleware;
-use platform_common_api::RateLimiter;
+use crate::shared::rate_limit_middleware;
+use crate::shared::RateLimiter;
 
 /// Reglages de la couche HTTP, lus une fois au demarrage.
 #[derive(Clone, Debug)]
@@ -147,7 +147,7 @@ pub fn build_router_with(state: AppState, config: HttpConfig) -> Router {
     // son trafic ne doit donc ni consommer ni etre gene par le quota des
     // appels internes.
     let public_limiter = RateLimiter::new(config.rate_limit_per_sec);
-    let bearer = platform_common_api::bearer_auth::RequiredBearerToken::new(state.api_key.clone())
+    let bearer = crate::shared::bearer_auth::RequiredBearerToken::new(state.api_key.clone())
         .with_scheduler(std::env::var("NEXUS_SCHEDULER_TOKEN").unwrap_or_default());
 
     let heavy = container_lifecycle_routes().route_layer(middleware::from_fn_with_state(
@@ -435,7 +435,7 @@ pub fn build_router_with(state: AppState, config: HttpConfig) -> Router {
         .merge(heavy)
         .layer(middleware::from_fn_with_state(
             bearer,
-            platform_common_api::bearer_auth::require,
+            crate::shared::bearer_auth::require,
         ))
         // Pose APRES l'auth donc traverse AVANT elle : une inondation de
         // requetes non authentifiees doit etre coupee sans consulter l'etat.
@@ -470,7 +470,7 @@ pub fn build_router_with(state: AppState, config: HttpConfig) -> Router {
         .merge(api)
         .layer(middleware::from_fn_with_state(
             state.job_pool.clone(),
-            platform_common_api::job_lock::middleware,
+            crate::shared::job_lock::middleware,
         ))
         // Verrou mono-serveur applique a TOUT le routeur, public compris.
         // Nexus expose sa propre surface : le verrou de sentinel-api, qui
@@ -514,8 +514,8 @@ pub fn build_router_with(state: AppState, config: HttpConfig) -> Router {
         )
         .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid));
 
-    platform_common_api::http::security_headers(routes)
-        .layer(platform_common_api::http::build_cors(
+    crate::shared::http::security_headers(routes)
+        .layer(crate::shared::http::build_cors(
             &config.allowed_origins,
             ORIGINES_DEV,
             &[],

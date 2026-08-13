@@ -6,7 +6,7 @@ pub mod grand_salon;
 pub mod wallet;
 pub mod wheel;
 
-pub use platform_common_api::errors::ApiError;
+pub use crate::shared::errors::ApiError;
 use platform_core::nexus::domain::errors::DomainError;
 
 /// Validation minimale d'un snowflake Discord (remplace le module

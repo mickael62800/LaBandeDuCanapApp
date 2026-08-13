@@ -25,7 +25,7 @@ pub struct SharedState {
     pub api_key: String,
     pub guild_id: String,
     pub metrics_token: String,
-    pub auth: Arc<platform_common_api::auth_client::AuthClient>,
+    pub auth: Arc<crate::shared::auth_client::AuthClient>,
 }
 
 impl FromRef<AppState> for SharedState {

@@ -31,12 +31,12 @@
 
 use std::sync::Arc;
 
+use crate::shared::{rate_limit_middleware, RateLimiter};
 use axum::extract::{FromRef, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::{Json, Router};
-use platform_common_api::{rate_limit_middleware, RateLimiter};
 use platform_core::ops::ports::inbound::manage_alert_rules::ManageAlertRulesUseCase;
 
 pub mod adapters;
@@ -118,21 +118,21 @@ impl From<platform_core::ops::domain::errors::DomainError> for ApiError {
         };
         Self(
             status,
-            platform_common_api::errors::public_message(status, &error),
+            crate::shared::errors::public_message(status, &error),
         )
     }
 }
 
 impl axum::response::IntoResponse for ApiError {
     fn into_response(self) -> axum::response::Response {
-        platform_common_api::errors::error_response(self.0, &self.1)
+        crate::shared::errors::error_response(self.0, &self.1)
     }
 }
 
 pub fn router(state: AppState) -> Router {
     let rate_limiter = RateLimiter::new(state.config.rate_limit_per_sec);
     let bearer =
-        platform_common_api::bearer_auth::RequiredBearerToken::new(state.config.api_token.clone())
+        crate::shared::bearer_auth::RequiredBearerToken::new(state.config.api_token.clone())
             .with_scheduler(std::env::var("OPS_SCHEDULER_TOKEN").unwrap_or_default());
 
     let protected = Router::new()
@@ -304,7 +304,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route_layer(axum::middleware::from_fn_with_state(
             bearer,
-            platform_common_api::bearer_auth::require,
+            crate::shared::bearer_auth::require,
         ));
 
     let router = Router::new()
@@ -314,18 +314,18 @@ pub fn router(state: AppState) -> Router {
         .merge(protected)
         .layer(axum::middleware::from_fn_with_state(
             state.pg_pool.clone(),
-            platform_common_api::job_lock::middleware,
+            crate::shared::job_lock::middleware,
         ))
         .with_state(state)
         .layer(axum::middleware::from_fn(
-            platform_common_api::metrics::metrics_middleware,
+            crate::shared::metrics::metrics_middleware,
         ))
         .route_layer(axum::middleware::from_fn_with_state(
             rate_limiter.clone(),
             rate_limit_middleware,
         ));
 
-    platform_common_api::http::security_headers(router).with_state(rate_limiter)
+    crate::shared::http::security_headers(router).with_state(rate_limiter)
 }
 
 /// Liveness : le processus tourne. Volontairement sans dependance externe — une

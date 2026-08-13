@@ -2,9 +2,15 @@ use platform_api::atrium::{self, AppConfig};
 
 #[tokio::main]
 async fn main() {
+    run().await;
+}
+
+pub async fn run() {
     dotenvy::dotenv().ok();
-    tracing_subscriber::fmt::init();
-    platform_common_api::metrics::init_prometheus();
+    if std::env::var_os("PLATFORM_API_UNIFIED_RUNTIME").is_none() {
+        tracing_subscriber::fmt::init();
+    }
+    platform_api::shared::metrics::init_prometheus();
 
     let config = AppConfig::from_env().expect("Configuration Atrium API invalide");
     let pool = atrium::connect_pool(&config).expect("Pool PostgreSQL Atrium invalide");
@@ -36,10 +42,29 @@ async fn main() {
         .await
         .expect("Impossible de binder Atrium API");
     tracing::info!(%addr, "Atrium API demarree depuis platform-api");
-    atrium::serve(
+    atrium::serve_with_shutdown(
         listener,
         atrium::router(config, pool, rag, budget, control, memory),
+        shutdown_signal(),
     )
     .await
     .expect("Erreur serveur Atrium API");
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async { tokio::signal::ctrl_c().await.expect("ecoute Ctrl+C") };
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("ecoute SIGTERM")
+            .recv()
+            .await;
+    };
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => tracing::info!("Ctrl+C recu"),
+        _ = terminate => tracing::info!("SIGTERM recu"),
+    }
 }

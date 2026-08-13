@@ -402,7 +402,7 @@ mod tests {
         assert_eq!(newest.as_deref(), Some(unsupported_id.as_str()));
     }
 
-    #[sqlx::test(migrations = "../sentinel-api/migrations")]
+    #[sqlx::test(migrations = "./migrations/sentinel")]
     async fn replay_is_idempotent_and_cursor_never_regresses(pool: PgPool) -> sqlx::Result<()> {
         let older_id = snowflake(1_700_000_000_000, 1);
         let newer_id = snowflake(1_700_000_001_000, 2);
@@ -446,7 +446,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test(migrations = "../sentinel-api/migrations")]
+    #[sqlx::test(migrations = "./migrations/sentinel")]
     async fn failed_batch_rolls_back_rows_and_cursor(pool: PgPool) -> sqlx::Result<()> {
         sqlx::query(
             "INSERT INTO discord_audit_sync_state (guild_id, last_entry_id) \

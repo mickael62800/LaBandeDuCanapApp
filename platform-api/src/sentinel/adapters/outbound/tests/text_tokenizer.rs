@@ -65,7 +65,7 @@ fn test_max_length_stored() {
 
 // ── Tests avec le vrai tokenizer ──
 
-const TOKENIZER_PATH: &str = "../../sentinel-ml/text/exports/tokenizer.json";
+const TOKENIZER_PATH: &str = "../../platform-ml/text/exports/tokenizer.json";
 
 fn load_real_tokenizer() -> Option<TextTokenizer> {
     let tok = TextTokenizer::new(Some(TOKENIZER_PATH), 256);

@@ -19,12 +19,18 @@ use tracing::warn;
 
 #[tokio::main]
 async fn main() {
+    run().await;
+}
+
+pub async fn run() {
     dotenvy::dotenv().ok();
 
     // Fixe le t0 pour l'uptime expose via /api/system/info.
     platform_api::sentinel::adapters::inbound::http::handlers::system::info::record_startup();
 
-    init_tracing();
+    if std::env::var_os("PLATFORM_API_UNIFIED_RUNTIME").is_none() {
+        init_tracing();
+    }
 
     // Phase 0 — Observabilité : installe le recorder Prometheus AVANT toute
     // émission de métriques. Doit être appelé avant `Router::build`.

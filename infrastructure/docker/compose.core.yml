@@ -159,8 +159,6 @@ services:
     depends_on:
       api:
         condition: service_healthy
-      ops-api:
-        condition: service_healthy
 
   # ──────────────────────────────────────────────────────────────────────────
   # Init mTLS gRPC : genere une CA + cert serveur + cert client partages.
@@ -421,8 +419,8 @@ services:
       context: ../..
       dockerfile: infrastructure/docker/Dockerfile.rust-debian
       args:
-        BIN_NAME: sentinel-api
-        MIGRATIONS_SRC: sentinel-api/migrations
+        BIN_NAME: platform-api
+        MIGRATIONS_SRC: platform-api/migrations
     security_opt:
       - no-new-privileges:true
     # SECURITE — l'API est reachable depuis l'exterieur UNIQUEMENT via le
@@ -457,6 +455,16 @@ services:
       # savoir QUI est connecte. La cle ne quitte donc pas le reseau interne.
       NEXUS_API_URL: http://nexus-api:3100
       NEXUS_API_KEY: ${NEXUS_API_KEY:?NEXUS_API_KEY est requis}
+      NEXUS_API_ENABLED: ${NEXUS_API_ENABLED:-false}
+      NEXUS_DATABASE_URL: ${NEXUS_DATABASE_URL:-postgres://nexus:${NEXUS_DB_PASSWORD:-disabled}@nexus-pgbouncer:5432/nexus}
+      NEXUS_REDIS_URL: ${NEXUS_REDIS_URL:-redis://:${NEXUS_REDIS_PASSWORD:-disabled}@nexus-redis:6379}
+      NEXUS_API_PORT: "3100"
+      NEXUS_GRPC_PORT: "3101"
+      NEXUS_SCHEDULER_TOKEN: ${NEXUS_SCHEDULER_TOKEN:-}
+      NEXUS_DISCORD_TOKEN: ${NEXUS_BOT_TOKEN:-${NEXUS_DISCORD_TOKEN:-}}
+      NEXUS_METRICS_TOKEN: ${NEXUS_METRICS_TOKEN:-${METRICS_TOKEN:?METRICS_TOKEN est requis}}
+      DOCKER_AGENT_GAME_TOKEN: ${DOCKER_AGENT_GAME_TOKEN:?DOCKER_AGENT_GAME_TOKEN est requis}
+      NEXUS_GAME_RUNTIME: ${NEXUS_GAME_RUNTIME:-noop}
       VOICE_SESSIONS_RETENTION_DAYS: ${VOICE_SESSIONS_RETENTION_DAYS:-90}
       LOGS_RETENTION_DAYS: ${LOGS_RETENTION_DAYS:-30}
       CLOSED_TICKETS_RETENTION_DAYS: ${CLOSED_TICKETS_RETENTION_DAYS:-180}
@@ -483,6 +491,27 @@ services:
       # l'identite lui-meme, il demande son verdict a auth-api.
       AUTH_API_URL: http://auth-api:8096
       AUTH_API_TOKEN: ${AUTH_API_TOKEN:?AUTH_API_TOKEN est requis}
+      OPS_API_BIND_ADDR: 0.0.0.0:3200
+      OPS_DATABASE_URL: postgres://sentinel_ops:${OPS_DB_PASSWORD:?OPS_DB_PASSWORD est requis}@ops-pgbouncer:5432/discord_sentinel
+      OPS_API_TOKEN: ${OPS_API_TOKEN:?OPS_API_TOKEN est requis}
+      OPS_METRICS_TOKEN: ${OPS_METRICS_TOKEN:-${METRICS_TOKEN:?METRICS_TOKEN est requis}}
+      OPS_SCHEDULER_TOKEN: ${OPS_SCHEDULER_TOKEN:?OPS_SCHEDULER_TOKEN est requis}
+      OPS_GEOIP_ENABLED: ${OPS_GEOIP_ENABLED:-false}
+      OPS_GEOIP_URL: ${OPS_GEOIP_URL:-http://ip-api.com/batch}
+      OPS_GEOIP_ALLOW_PLAINTEXT: ${OPS_GEOIP_ALLOW_PLAINTEXT:-false}
+      ATRIUM_API_ENABLED: ${ATRIUM_API_ENABLED:-false}
+      ATRIUM_API_BIND_ADDR: 0.0.0.0:8090
+      ATRIUM_GRPC_BIND_ADDR: 0.0.0.0:8091
+      ATRIUM_API_TOKEN: ${ATRIUM_API_TOKEN:-}
+      ATRIUM_SCHEDULER_TOKEN: ${ATRIUM_SCHEDULER_TOKEN:-}
+      ATRIUM_GRPC_TOKEN: ${ATRIUM_GRPC_TOKEN:-}
+      ATRIUM_RAG_DATABASE_URL: ${ATRIUM_RAG_DATABASE_URL:-postgres://atrium:${ATRIUM_DB_PASSWORD:-disabled}@atrium-pgbouncer:5432/atrium}
+      DEEPSEEK_API_KEY: ${ATRIUM_DEEPSEEK_API_KEY:-${DEEPSEEK_API_KEY:-}}
+      DEEPSEEK_MODEL: ${ATRIUM_DEEPSEEK_MODEL:-${DEEPSEEK_MODEL:-deepseek-v4-flash}}
+      ATRIUM_EMBEDDINGS_BASE_URL: ${ATRIUM_EMBEDDINGS_BASE_URL:-http://atrium-ollama:11434/v1}
+      ATRIUM_EMBEDDINGS_API_KEY: ${ATRIUM_EMBEDDINGS_API_KEY:-}
+      ATRIUM_EMBEDDINGS_MODEL: ${ATRIUM_EMBEDDINGS_MODEL:-nomic-embed-text}
+      ATRIUM_METRICS_TOKEN: ${ATRIUM_METRICS_TOKEN:-${METRICS_TOKEN:?METRICS_TOKEN est requis}}
       # Gate RBAC global fail-closed par route (defaut false). Mettre a "true"
       # active la deuxieme couche de defense en profondeur devant les gardes par
       # handler. Surchargeable via la var RBAC_GLOBAL_GATE du .env docker.
@@ -527,8 +556,8 @@ services:
       WEB_DOMAIN: ${WEB_DOMAIN:-localhost}
       SECURITY_ALERTS_WEBHOOK: ${SECURITY_ALERTS_WEBHOOK:-}
     volumes:
-      - ../../sentinel-ml/vision/exports:/models/vision:ro
-      - ../../sentinel-ml/text/exports:/models/text:ro
+      - ../../platform-ml/vision/exports:/models/vision:ro
+      - ../../platform-ml/text/exports:/models/text:ro
       # PLUS de socket Docker ici : il equivaut a un acces root sur l'hote et
       # n'a rien a faire dans le processus qui sert l'OAuth, la moderation et
       # les routes communautaires. Les endpoints /api/docker/* passent par le
@@ -560,12 +589,34 @@ services:
         condition: service_completed_successfully
       docker-agent:
         condition: service_started
+      ops-pgbouncer:
+        condition: service_started
+      nexus-pgbouncer:
+        condition: service_started
+        required: false
+      nexus-db-init:
+        condition: service_completed_successfully
+        required: false
+      nexus-redis:
+        condition: service_healthy
+        required: false
+      atrium-pgbouncer:
+        condition: service_started
+        required: false
+      atrium-ollama-init:
+        condition: service_completed_successfully
+        required: false
     # SECURITE — API a besoin d'internet (Discord OAuth, get_user_guilds).
     # internal : Redis + pgbouncer + autres services internes.
     # default : sortie internet (Discord).
     networks:
-      - internal
-      - default
+      internal:
+        aliases:
+          - sentinel-api
+          - nexus-api
+          - atrium-api
+          - ops-api
+      default: {}
 
   # ── Agent Docker ────────────────────────────────────────────────────────
   #
@@ -717,6 +768,8 @@ services:
       interval: 30s
       timeout: 3s
       retries: 3
+    profiles:
+      - compat-api
 
   # Agent de collecte hote. Lui seul lit /proc et interroge docker-agent ; le
   # scheduler commun et le dispatcher d'alertes ne portent pas ces privileges.
@@ -753,55 +806,6 @@ services:
         condition: service_healthy
     networks:
       - internal
-
-  gateway:
-    <<: *rust-base
-    build:
-      <<: *build-alpine
-      args:
-        BIN_NAME: sentinel-gateway
-    # SECURITE — gateway reachable via /ws du proxy nginx, pas de raison
-    # de l'exposer publiquement. 127.0.0.1 = acces local debug uniquement.
-    ports:
-      - "127.0.0.1:3001:3001"
-    healthcheck:
-      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:3001/health || exit 1"]
-      interval: 15s
-      timeout: 3s
-      retries: 3
-      start_period: 15s
-    environment:
-      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD est requis}@redis:6379
-      REDIS_CHANNEL: sentinel:events
-      # API_URL : utilise pour valider les tokens WS via /api/auth/check-access.
-      # Sans ca, fallback localhost:3000 -> appel vers gateway lui-meme -> WS rejete 401.
-      API_URL: http://api:3000
-      SENTINEL_API_KEY: ${SENTINEL_API_KEY:-${API_KEY:-}}
-      # Le navigateur ne peut pas ajouter X-Discord-Token au handshake WS.
-      # Le gateway transmet donc uniquement le cookie HttpOnly a auth-api,
-      # qui resout la session sans exposer de credential dans l'URL.
-      AUTH_API_URL: http://auth-api:8096
-      AUTH_API_TOKEN: ${AUTH_API_TOKEN:?AUTH_API_TOKEN est requis}
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
-      HOST: 0.0.0.0
-      PORT: "3001"
-      MAX_CONNECTIONS: "1000"
-      RUST_LOG: ${RUST_LOG:-info}
-    depends_on:
-      api:
-        condition: service_healthy
-      auth-api:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    # NOTE — gateway a besoin de default pour que le port publish 127.0.0.1:3001
-    # fonctionne (Docker requiert un reseau non-internal pour le NAT host).
-    # En pratique, gateway ne fait jamais d'outbound internet (juste Redis +
-    # WebSocket inbound). Sa security depend du firewall externe (port non
-    # ouvert) + auth du token WebSocket.
-    networks:
-      - internal
-      - default
 
   # ──────────────────────────────────────────────────────────────────────────
   # Bot unifie
@@ -941,14 +945,9 @@ services:
     depends_on:
       api:
         condition: service_healthy
-      gateway:
-        condition: service_started
       # Profil optionnel : quand Atrium est actif, ne publier le nouveau SPA
       # qu'une fois sa surface HTTP saine. Sans le profil, Compose ignore
       # proprement cette dependance.
-      atrium-api:
-        condition: service_healthy
-        required: false
     # NOTE — web (nginx) a besoin de default pour que le port publish 80/443
     # fonctionne (Docker requiert un reseau non-internal pour le NAT host).
     # internal donne acces aux upstreams (api, gateway). nginx ne fait jamais

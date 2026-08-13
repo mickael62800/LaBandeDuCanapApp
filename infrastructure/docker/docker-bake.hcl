@@ -12,19 +12,18 @@ variable "TAG" { default = "latest" }
 
 group "default" {
   targets = [
-    "api", "web", "auth-api", "docker-agent", "ops-api", "ops-agent",
+    "platform-api", "web", "auth-api", "docker-agent", "ops-agent",
     "platform-scheduler",
-    "gateway", "sentinel-bot",
-    "atrium-api", "atrium-bot",
-    "nexus-api", "nexus-bot",
+    "platform-gateway", "sentinel-bot",
+    "atrium-bot", "nexus-bot",
   ]
 }
 
 group "core" {
   targets = [
-    "api", "web", "auth-api", "docker-agent", "ops-api", "ops-agent",
+    "platform-api", "web", "auth-api", "docker-agent", "ops-agent",
     "platform-scheduler",
-    "gateway", "sentinel-bot",
+    "platform-gateway", "sentinel-bot",
   ]
 }
 
@@ -33,11 +32,11 @@ group "workers" {
 }
 
 group "atrium" {
-  targets = ["atrium-api", "atrium-bot"]
+  targets = ["platform-api", "atrium-bot"]
 }
 
 group "nexus" {
-  targets = ["nexus-api", "nexus-bot"]
+  targets = ["platform-api", "nexus-bot"]
 }
 
 target "_alpine-base" {
@@ -50,19 +49,19 @@ target "_debian-base" {
   dockerfile = "infrastructure/docker/Dockerfile.rust-debian"
 }
 
-target "api" {
-  inherits = ["_debian-base"]
-  args = {
-    BIN_NAME       = "sentinel-api"
-    MIGRATIONS_SRC = "sentinel-api/migrations"
-  }
-  tags = ["discordsentinel-api:${TAG}"]
+target "platform-gateway" {
+  inherits = ["_alpine-base"]
+  args     = { BIN_NAME = "platform-gateway" }
+  tags     = ["discordsentinel-platform-gateway:${TAG}"]
 }
 
-target "gateway" {
-  inherits = ["_alpine-base"]
-  args     = { BIN_NAME = "sentinel-gateway" }
-  tags     = ["discordsentinel-gateway:${TAG}"]
+target "platform-api" {
+  inherits = ["_debian-base"]
+  args = {
+    BIN_NAME       = "platform-api"
+    MIGRATIONS_SRC = "platform-api/migrations"
+  }
+  tags = ["discordsentinel-platform-api:${TAG}"]
 }
 
 # Toutes les autres applications Rust partagent le meme Dockerfile Alpine.
@@ -72,10 +71,9 @@ target "rust-app" {
   inherits = ["_alpine-base"]
   matrix = {
     app = [
-      "auth-api", "docker-agent", "ops-api", "ops-agent", "platform-scheduler",
+      "auth-api", "docker-agent", "ops-agent", "platform-scheduler",
       "sentinel-bot",
-      "atrium-api", "atrium-bot",
-      "nexus-api", "nexus-bot",
+      "atrium-bot", "nexus-bot",
     ]
   }
   name = "${app}"

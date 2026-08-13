@@ -269,27 +269,31 @@ pub async fn build_state() -> Result<AppState, Box<dyn std::error::Error>> {
 
     // Le client redis ne se connecte pas a l'open (lazy) : une URL par defaut
     // ne coute rien tant que l'allocation de port n'est pas sollicitee.
-    let redis_url = std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".into());
+    let redis_url = std::env::var("NEXUS_REDIS_URL")
+        .or_else(|_| std::env::var("REDIS_URL"))
+        .unwrap_or_else(|_| "redis://127.0.0.1:6379".into());
     let redis_client = redis::Client::open(redis_url.as_str())
         .map_err(|e| format!("REDIS_URL invalide ({redis_url}): {e}"))?;
     let port_allocator: Arc<dyn PortAllocator> = Arc::new(RedisPortAllocator::new(redis_client));
 
-    let events: Arc<dyn EventPublisher> = match std::env::var("REDIS_URL") {
-        Ok(url) if !url.is_empty() => match RedisEventPublisher::new(&url) {
-            Ok(p) => Arc::new(p),
-            Err(e) => {
-                tracing::warn!(error = %e, "REDIS_URL invalide — events desactives");
-                Arc::new(NoopEventPublisher)
-            }
-        },
-        _ => {
-            tracing::warn!(
-                "REDIS_URL absente — events desactives : le bot ne creera pas \
+    let events: Arc<dyn EventPublisher> = std::env::var("NEXUS_REDIS_URL")
+        .or_else(|_| std::env::var("REDIS_URL"))
+        .map_or_else(
+            |_| {
+                tracing::warn!(
+                    "NEXUS_REDIS_URL absente — events desactives : le bot ne creera pas \
                  les salons de session game-portal"
-            );
-            Arc::new(NoopEventPublisher)
-        }
-    };
+                );
+                Arc::new(NoopEventPublisher) as Arc<dyn EventPublisher>
+            },
+            |url| match RedisEventPublisher::new(&url) {
+                Ok(p) => Arc::new(p),
+                Err(e) => {
+                    tracing::warn!(error = %e, "NEXUS_REDIS_URL invalide — events desactives");
+                    Arc::new(NoopEventPublisher)
+                }
+            },
+        );
 
     let discord_token = std::env::var("NEXUS_DISCORD_TOKEN").unwrap_or_default();
     let discord_api: Arc<

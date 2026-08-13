@@ -12,7 +12,6 @@ sqlx = { workspace = true }
 tracing = { workspace = true }
 chrono = { workspace = true }
 reqwest = { workspace = true }
-platform-common-api = { workspace = true }
 platform-core = { workspace = true }
 
 [lints]

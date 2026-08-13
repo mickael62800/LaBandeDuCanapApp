@@ -1,8 +1,7 @@
-//! Middlewares HTTP partages par `sentinel-api` et `nexus-api`.
+//! Infrastructure HTTP partagée par les quatre domaines de `platform-api`.
 //!
-//! Crate separe de `platform-common` pour une raison de dependances : ce qui
-//! est ici tire axum, tower-http et le stack metrics. Un bot Discord n'a aucune
-//! raison de les compiler.
+//! Ce module reste séparé de `platform-common` : il tire Axum, Tower HTTP et
+//! la pile de métriques, dont les bots n'ont pas besoin.
 //!
 //! # Contenu
 //!
@@ -25,7 +24,6 @@
 
 pub mod auth_client;
 pub mod bearer_auth;
-pub mod docker_agent_client;
 pub mod errors;
 pub mod http;
 pub mod job_lock;

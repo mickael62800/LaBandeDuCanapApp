@@ -25,7 +25,7 @@ where
         Output = Result<JobReport, platform_core::nexus::domain::errors::DomainError>,
     >,
 {
-    match platform_common_api::job_lock::run(&state.job_pool, &format!("nexus:{name}"), || async {
+    match crate::shared::job_lock::run(&state.job_pool, &format!("nexus:{name}"), || async {
         operation().await.map_err(|error| error.to_string())
     })
     .await

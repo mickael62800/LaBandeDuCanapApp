@@ -6,6 +6,7 @@
 
 use std::{net::SocketAddr, sync::Arc};
 
+use crate::shared::{rate_limit_middleware, RateLimiter};
 use async_trait::async_trait;
 use axum::response::IntoResponse;
 use axum::{
@@ -14,7 +15,6 @@ use axum::{
     routing::{delete, get, post},
     Json, Router,
 };
-use platform_common_api::{rate_limit_middleware, RateLimiter};
 use platform_core::atrium::{
     application::{CalmingService, ServerSummaryService, WelcomeService},
     domain::{WelcomeError, WelcomePrompt},
@@ -177,7 +177,7 @@ pub async fn run_migrations(pool: &PgPool) -> Result<(), sqlx::Error> {
 /// Sert le routeur sur `listener`.
 ///
 /// **`into_make_service_with_connect_info` n'est pas optionnel** : le rate limit
-/// commun (`platform_common_api::rate_limit_middleware`) extrait
+/// commun (`crate::shared::rate_limit_middleware`) extrait
 /// `ConnectInfo<SocketAddr>` pour identifier le client. Sans cette extension,
 /// l'extracteur rejette et l'API repond 500 sur TOUTES ses routes, `/health`
 /// compris — donc le healthcheck du conteneur echoue, atrium-api n'est jamais
@@ -193,6 +193,24 @@ pub async fn serve(listener: tokio::net::TcpListener, router: Router) -> std::io
         listener,
         router.into_make_service_with_connect_info::<SocketAddr>(),
     )
+    .await
+}
+
+/// Variante de production permettant au superviseur d'arreter le listener sans
+/// interrompre les requetes deja acceptees.
+pub async fn serve_with_shutdown<F>(
+    listener: tokio::net::TcpListener,
+    router: Router,
+    shutdown: F,
+) -> std::io::Result<()>
+where
+    F: std::future::Future<Output = ()> + Send + 'static,
+{
+    axum::serve(
+        listener,
+        router.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown)
     .await
 }
 
@@ -240,7 +258,7 @@ pub fn router_with_state(state: Arc<AppState>) -> Router {
             .unwrap_or(5),
     );
     let bearer =
-        platform_common_api::bearer_auth::RequiredBearerToken::new(state.config.api_token.clone())
+        crate::shared::bearer_auth::RequiredBearerToken::new(state.config.api_token.clone())
             .with_scheduler(std::env::var("ATRIUM_SCHEDULER_TOKEN").unwrap_or_default());
     let protected = Router::new()
         .route(
@@ -269,7 +287,7 @@ pub fn router_with_state(state: Arc<AppState>) -> Router {
         .route("/admin/jobs/retention", post(admin::job_retention))
         .route_layer(axum::middleware::from_fn_with_state(
             bearer,
-            platform_common_api::bearer_auth::require,
+            crate::shared::bearer_auth::require,
         ));
 
     let router = Router::new()
@@ -278,7 +296,7 @@ pub fn router_with_state(state: Arc<AppState>) -> Router {
         .merge(protected)
         .layer(Extension(state.clone()))
         .layer(axum::middleware::from_fn(
-            platform_common_api::metrics::metrics_middleware,
+            crate::shared::metrics::metrics_middleware,
         ))
         .route_layer(axum::middleware::from_fn_with_state(
             rate_limiter.clone(),
@@ -287,13 +305,13 @@ pub fn router_with_state(state: Arc<AppState>) -> Router {
     let router = if let Some(pool) = state.config_pool.clone() {
         router.layer(axum::middleware::from_fn_with_state(
             pool,
-            platform_common_api::job_lock::middleware,
+            crate::shared::job_lock::middleware,
         ))
     } else {
         router
     };
 
-    platform_common_api::http::security_headers(router).with_state(rate_limiter)
+    crate::shared::http::security_headers(router).with_state(rate_limiter)
 }
 
 /// Passerelle DeepSeek partagée par l'accueil et l'apaisement : un seul
@@ -346,10 +364,10 @@ async fn metrics(headers: HeaderMap) -> axum::response::Response {
     let supplied = headers
         .get(AUTHORIZATION)
         .and_then(|value| value.to_str().ok());
-    if !platform_common_api::metrics::metrics_auth_ok(Some(configured), supplied) {
+    if !crate::shared::metrics::metrics_auth_ok(Some(configured), supplied) {
         return (StatusCode::UNAUTHORIZED, "jeton metrics invalide").into_response();
     }
-    platform_common_api::metrics::render_metrics()
+    crate::shared::metrics::render_metrics()
 }
 
 #[derive(Serialize)]
@@ -507,7 +525,7 @@ impl From<WelcomeError> for ApiError {
 }
 impl axum::response::IntoResponse for ApiError {
     fn into_response(self) -> axum::response::Response {
-        platform_common_api::errors::error_response(self.status, self.message)
+        crate::shared::errors::error_response(self.status, self.message)
     }
 }
 

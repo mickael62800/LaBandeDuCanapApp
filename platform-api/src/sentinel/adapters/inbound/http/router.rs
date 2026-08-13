@@ -215,8 +215,8 @@ pub fn build_for_test(state: AppState) -> Router {
         .merge(protected)
         .merge(public)
         .layer(middleware::from_fn_with_state(
-            state.jobs.pg_pool.clone(),
-            platform_common_api::job_lock::middleware,
+            state.jobs.job_lock_pool(),
+            crate::shared::job_lock::middleware,
         ))
         .with_state(state)
 }

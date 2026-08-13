@@ -248,8 +248,7 @@ services:
     networks:
       - internal
     profiles:
-      - nexus
-      - full
+      - compat-api
 
   nexus-bot:
     <<: *nexus-rust-base
@@ -274,10 +273,10 @@ services:
       # session game-portal). MEME instance que nexus-api : un bus dont le
       # producteur et le consommateur sont sur deux Redis differents ne
       # transporte rien, et l'echec est silencieux.
-      REDIS_URL: redis://:${NEXUS_REDIS_PASSWORD:?NEXUS_REDIS_PASSWORD est requis}@nexus-redis:6379
+      NEXUS_REDIS_URL: redis://:${NEXUS_REDIS_PASSWORD:?NEXUS_REDIS_PASSWORD est requis}@nexus-redis:6379
       RUST_LOG: ${RUST_LOG:-info}
     depends_on:
-      nexus-api:
+      api:
         condition: service_healthy
       nexus-redis:
         condition: service_healthy

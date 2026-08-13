@@ -96,7 +96,7 @@ impl EvidenceRepository for PgEvidenceRepository {
 mod tests {
     use super::*;
 
-    #[sqlx::test(migrations = "../sentinel-api/migrations")]
+    #[sqlx::test(migrations = "./migrations/sentinel")]
     async fn evidence_is_linked_to_partitioned_audit_action(pool: PgPool) -> sqlx::Result<()> {
         let action_id = uuid::Uuid::new_v4();
         sqlx::query(

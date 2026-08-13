@@ -7,14 +7,21 @@ use axum::response::{IntoResponse, Response};
 use axum::Json;
 
 #[derive(Clone)]
-pub struct RequiredBearerToken { primary: String, scheduler: String }
+pub struct RequiredBearerToken {
+    primary: String,
+    scheduler: String,
+}
 
 impl RequiredBearerToken {
     pub fn new(token: impl Into<String>) -> Self {
-        Self { primary: token.into(), scheduler: String::new() }
+        Self {
+            primary: token.into(),
+            scheduler: String::new(),
+        }
     }
     pub fn with_scheduler(mut self, token: impl Into<String>) -> Self {
-        self.scheduler = token.into(); self
+        self.scheduler = token.into();
+        self
     }
 }
 
@@ -63,11 +70,17 @@ pub async fn require(
 }
 
 pub fn is_scheduler_path(path: &str) -> bool {
-    path.contains("/internal/") || path.contains("/jobs/")
-        || matches!(path,
-            "/api/analytics/snapshot/daily" | "/api/analytics/snapshot/hourly"
-            | "/api/analytics/retention-cleanup" | "/api/analytics/publish-top-users"
-            | "/api/analytics/publish-monthly-ranking" | "/api/automod/cleanup-expired-cards")
+    path.contains("/internal/")
+        || path.contains("/jobs/")
+        || matches!(
+            path,
+            "/api/analytics/snapshot/daily"
+                | "/api/analytics/snapshot/hourly"
+                | "/api/analytics/retention-cleanup"
+                | "/api/analytics/publish-top-users"
+                | "/api/analytics/publish-monthly-ranking"
+                | "/api/automod/cleanup-expired-cards"
+        )
 }
 
 // `OptionalBearerToken` / `require_optional` ont ete supprimes.

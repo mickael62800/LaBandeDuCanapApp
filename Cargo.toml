@@ -2,14 +2,12 @@
 resolver = "2"
 members = [
     "platform-common",
-    "platform-common-api",
     "platform-core",
     "platform-proto",
     "platform-api",
-    "sentinel-gateway",
+    "platform-gateway",
     "platform-scheduler",
     "sentinel-bot",
-    "nexus-gateway",
     "nexus-bot",
     "atrium-bot",
     "platform-common-bot",
@@ -87,10 +85,9 @@ ops-adapters = { path = "ops-adapters" }
 auth-core = { path = "auth-core" }
 auth-api = { path = "auth-api" }
 # Socle partage par les deux plateformes. `platform-common` n'a aucune
-# dependance framework (Redis pur) ; `platform-common-api` tire axum/tower-http
+# dependance framework (Redis pur) ; `platform-api::shared` tire axum/tower-http
 # et n'est donc consomme que par les APIs, jamais par les bots.
 platform-common = { path = "platform-common" }
-platform-common-api = { path = "platform-common-api" }
 platform-core = { path = "platform-core" }
 platform-api = { path = "platform-api" }
 

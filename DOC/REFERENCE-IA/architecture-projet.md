@@ -59,7 +59,7 @@ Le frontend commun se trouve dans `web/`. Il affiche plusieurs univers mais ne r
 - `platform-core/` : règles métier unifiées, avec une frontière de module par entité.
 - `web/` : frontend Vue/TypeScript et navigation multi-univers.
 - `platform-common/` : contrats et composants communs sans règle métier de plateforme.
-- `platform-common-api/` : utilitaires communs aux APIs.
+- `platform-api/src/shared/` : utilitaires HTTP communs aux domaines API.
 - `platform-common-bot/` : utilitaires communs aux bots Discord.
 - `platform-scheduler/` : planificateur HTTP thin commun aux plateformes.
 - `DOC/REFERENCE-IA/scheduler.md` : contrat de sécurité, verrouillage et observabilité des jobs.

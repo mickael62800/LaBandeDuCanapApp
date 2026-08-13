@@ -110,9 +110,9 @@ start_service "api" \
     "cargo run" \
     "$GREEN"
 
-# ── 2. Gateway WebSocket ──
+# Attendre que les APIs demarrent avant les bots et workers
 start_service "gateway" \
-    "$ROOT_DIR/sentinel-gateway" \
+    "$ROOT_DIR/platform-gateway" \
     "cargo run" \
     "$GREEN"
 

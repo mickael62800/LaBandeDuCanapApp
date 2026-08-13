@@ -52,7 +52,7 @@ pub async fn auth_middleware(
             }
             let scheduler_token = std::env::var("SENTINEL_SCHEDULER_TOKEN").unwrap_or_default();
             if request.method() == axum::http::Method::POST
-                && platform_common_api::bearer_auth::is_scheduler_path(request.uri().path())
+                && crate::shared::bearer_auth::is_scheduler_path(request.uri().path())
                 && !scheduler_token.is_empty()
                 && token.as_bytes().ct_eq(scheduler_token.as_bytes()).into()
             {

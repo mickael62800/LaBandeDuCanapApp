@@ -14,7 +14,7 @@
 //! a inventer une abstraction pour deux besoins differents, ce qui coute plus
 //! cher que la duplication qu'elle supprime.
 //!
-//! Les middlewares HTTP vivent dans `platform-common-api` : les y separer
+//! Les middlewares HTTP vivent dans `platform-api::shared` : les y séparer
 //! evite qu'un bot compile axum et tower-http pour rien.
 
 pub mod config_flags;

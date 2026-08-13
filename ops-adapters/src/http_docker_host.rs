@@ -16,8 +16,8 @@
 //! `docker-agent/src/bollard_host.rs`. Il n'existe toujours qu'un seul mapping
 //! bollard -> domaine dans le depot.
 
+use crate::docker_agent_client::{DockerAgentClient, DockerAgentError};
 use async_trait::async_trait;
-use platform_common_api::docker_agent_client::{DockerAgentClient, DockerAgentError};
 use platform_core::ops::domain::entities::docker_host::{
     ContainerSummary, DiskUsage, DockerVersionInfo, ImageSummary, NetworkSummary, PruneOutcome,
     VolumeSummary,

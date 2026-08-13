@@ -4,8 +4,8 @@
 # (glibc >= 2.38). Utilise UNIQUEMENT par l'API.
 #
 # Build args :
-#   BIN_NAME                  (requis) ex: sentinel-api
-#   MIGRATIONS_SRC            (optional) ex: sentinel-api/migrations
+#   BIN_NAME                  (requis) ex: platform-api
+#   MIGRATIONS_SRC            (optional) ex: platform-api/migrations
 #   GRPC_HEALTH_PROBE_VERSION (optional) defaut: v0.4.24
 #   CHEF_IMAGE                (optional) image base cargo-chef
 #
@@ -72,5 +72,5 @@ COPY --from=builder --chown=sentinel:sentinel /tmp/migrations /app/migrations
 
 WORKDIR /app
 USER sentinel
-EXPOSE 3000 50051
+EXPOSE 3000 3100 3101 3200 50051 8090 8091
 ENTRYPOINT ["/usr/local/bin/sentinel-app"]

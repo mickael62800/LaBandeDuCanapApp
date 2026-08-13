@@ -81,8 +81,7 @@ services:
       - internal
       - default
     profiles:
-      - atrium
-      - full
+      - compat-api
 
   # Embeddings RAG locaux : pas de cle API ni de cout par requete.
   # Le modele est telecharge une fois dans le volume persistant puis reste
@@ -171,7 +170,7 @@ services:
       ATRIUM_SERVER_CONTEXT: ${ATRIUM_SERVER_CONTEXT:-}
       RUST_LOG: ${RUST_LOG:-info}
     depends_on:
-      atrium-api:
+      api:
         condition: service_healthy
     networks:
       - internal

@@ -172,8 +172,8 @@ fn load_session_with_invalid_file_content_fails_gracefully() {
     let _ = std::fs::remove_file(&path);
 }
 
-const ONNX_PATH: &str = "../../sentinel-ml/text/exports/text_sentinel.onnx";
-const TOKENIZER_PATH: &str = "../../sentinel-ml/text/exports/tokenizer.json";
+const ONNX_PATH: &str = "../../platform-ml/text/exports/text_sentinel.onnx";
+const TOKENIZER_PATH: &str = "../../platform-ml/text/exports/tokenizer.json";
 
 use crate::sentinel::adapters::outbound::text_tokenizer::TextTokenizer;
 

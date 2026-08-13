@@ -59,7 +59,7 @@ async fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "sentinel_gateway=info,tower_http=debug".into()),
+                .unwrap_or_else(|_| "platform_gateway=info,tower_http=debug".into()),
         )
         .init();
 
@@ -71,7 +71,7 @@ async fn main() {
         channel = %config.redis_channel,
         max_connections = config.max_connections,
         broadcast_capacity = config.broadcast_capacity,
-        "Demarrage de Sentinel Gateway"
+        "Demarrage de Platform Gateway"
     );
 
     // La cle Sentinel ne sert plus dans l'URL WebSocket. Elle reste un mode
@@ -178,7 +178,7 @@ async fn main() {
         }),
     );
 
-    info!("Sentinel Gateway pret (WebSocket sur /ws)");
+    info!("Platform Gateway pret (WebSocket sur /ws)");
 
     axum::serve(
         listener,
@@ -201,7 +201,7 @@ async fn main() {
         serde_json::json!({"event_type": "gateway.shutdown"}),
     );
 
-    info!("Sentinel Gateway arrete proprement");
+    info!("Platform Gateway arrete proprement");
 }
 
 /// Origines exactes declarees dans `ALLOWED_ORIGINS`. Vide ou `*` -> liste vide,

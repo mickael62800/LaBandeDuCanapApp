@@ -50,8 +50,7 @@ pub async fn api_logger_middleware(
     // accumuler de compteur, ou d'y mettre l'IP de quelqu'un d'autre pour la
     // faire bannir a sa place. `client_ip` compte les sauts depuis la DROITE,
     // ou nos propres proxies ecrivent.
-    let client_ip =
-        platform_common_api::rate_limit::client_ip(&request, peer_ip(&request)).to_string();
+    let client_ip = crate::shared::rate_limit::client_ip(&request, peer_ip(&request)).to_string();
 
     // Rate limit dynamique : track + ban auto si seuil franchi
     if let Some(rl) = &rate_limiter {

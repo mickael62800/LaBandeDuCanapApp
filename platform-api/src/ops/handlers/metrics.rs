@@ -11,8 +11,8 @@ pub async fn metrics(State(config): State<Arc<AppConfig>>, headers: HeaderMap) -
     let supplied = headers
         .get(AUTHORIZATION)
         .and_then(|value| value.to_str().ok());
-    if !platform_common_api::metrics::metrics_auth_ok(Some(&config.metrics_token), supplied) {
+    if !crate::shared::metrics::metrics_auth_ok(Some(&config.metrics_token), supplied) {
         return (StatusCode::UNAUTHORIZED, "jeton metrics invalide").into_response();
     }
-    platform_common_api::metrics::render_metrics()
+    crate::shared::metrics::render_metrics()
 }

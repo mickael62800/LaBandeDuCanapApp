@@ -25,6 +25,7 @@
 //! `granted_by`...) le lisent via `Option<Extension<WebUser>>` — `None`
 //! signifiant « appel interne bot/worker ».
 
+use crate::shared::auth_client::AccessOutcome;
 use axum::{
     body::Body,
     extract::State,
@@ -32,7 +33,6 @@ use axum::{
     middleware::Next,
     response::Response,
 };
-use platform_common_api::auth_client::AccessOutcome;
 
 use crate::sentinel::adapters::inbound::http::middleware::auth::AuthKind;
 use crate::sentinel::bootstrap::state::SharedState;

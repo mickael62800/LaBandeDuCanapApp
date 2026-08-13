@@ -1,4 +1,4 @@
-pub use platform_common_api::errors::ApiError;
+pub use crate::shared::errors::ApiError;
 
 #[cfg(test)]
 #[path = "tests/errors.rs"]

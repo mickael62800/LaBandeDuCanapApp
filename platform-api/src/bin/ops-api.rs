@@ -6,16 +6,23 @@ use platform_api::ops::{router, AppConfig, AppState};
 
 #[tokio::main]
 async fn main() {
+    run().await;
+}
+
+pub async fn run() {
     let _ = dotenvy::dotenv();
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
-        )
-        .init();
+    if std::env::var_os("PLATFORM_API_UNIFIED_RUNTIME").is_none() {
+        tracing_subscriber::fmt()
+            .with_env_filter(
+                tracing_subscriber::EnvFilter::try_from_default_env()
+                    .unwrap_or_else(|_| "info".into()),
+            )
+            .init();
+    }
 
     // Le recorder doit etre installe AVANT le routeur : une metrique emise
     // avant lui est perdue.
-    platform_common_api::metrics::init_prometheus();
+    platform_api::shared::metrics::init_prometheus();
 
     let config = match AppConfig::from_env() {
         Ok(config) => Arc::new(config),
@@ -189,6 +196,25 @@ async fn main() {
         listener,
         router(state).into_make_service_with_connect_info::<std::net::SocketAddr>(),
     )
+    .with_graceful_shutdown(shutdown_signal())
     .await
     .expect("serveur arrete");
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async { tokio::signal::ctrl_c().await.expect("ecoute Ctrl+C") };
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("ecoute SIGTERM")
+            .recv()
+            .await;
+    };
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => tracing::info!("Ctrl+C recu"),
+        _ = terminate => tracing::info!("SIGTERM recu"),
+    }
 }

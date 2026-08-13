@@ -869,7 +869,7 @@ fn create_test_app_state(api_key: impl Into<String>) -> AppState {
 
 fn setup_nexus_router(api_key: impl Into<String>) -> axum::Router {
     static TEST_INIT: std::sync::Once = std::sync::Once::new();
-    TEST_INIT.call_once(platform_common_api::metrics::init_prometheus);
+    TEST_INIT.call_once(platform_api::shared::metrics::init_prometheus);
     let state = create_test_app_state(api_key);
     let mut config = HttpConfig::from_env();
     config.rate_limit_per_sec = 1000;

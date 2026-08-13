@@ -8,7 +8,7 @@ use crate::broadcaster::EventBroadcaster;
 pub async fn health(State(broadcaster): State<Arc<EventBroadcaster>>) -> Json<serde_json::Value> {
     Json(serde_json::json!({
         "status": "ok",
-        "service": "sentinel-gateway",
+        "service": "platform-gateway",
         "connected_clients": broadcaster.connected_count(),
     }))
 }

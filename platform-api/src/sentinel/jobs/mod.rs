@@ -8,6 +8,7 @@ pub mod cleanup;
 pub mod discord_audit_sync;
 pub mod export;
 pub mod guild_backup;
+pub mod internal_runner;
 pub mod moderation;
 pub mod security;
 pub mod support;

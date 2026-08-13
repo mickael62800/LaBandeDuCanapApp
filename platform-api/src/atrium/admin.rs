@@ -370,7 +370,7 @@ pub async fn job_generate_summary(
         .config_pool
         .as_ref()
         .ok_or_else(|| ApiError::unavailable("base Atrium indisponible"))?;
-    match platform_common_api::job_lock::run(pool, "atrium:server-summary", || {
+    match crate::shared::job_lock::run(pool, "atrium:server-summary", || {
         run_summary(&state, &guild_id)
     })
     .await
@@ -439,9 +439,7 @@ pub async fn job_retention(
         .config_pool
         .as_ref()
         .ok_or_else(|| ApiError::unavailable("base Atrium indisponible"))?;
-    match platform_common_api::job_lock::run(pool, "atrium:retention", || run_retention(&state))
-        .await
-    {
+    match crate::shared::job_lock::run(pool, "atrium:retention", || run_retention(&state)).await {
         Ok(Some(response)) => Ok(Json(response)),
         Ok(None) => Err(ApiError::conflict("job deja actif")),
         Err(error) => {

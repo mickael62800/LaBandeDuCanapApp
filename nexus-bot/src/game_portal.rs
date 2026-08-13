@@ -359,8 +359,7 @@ pub fn build_panel_embed(
     let ip_txt = if ip_revealed {
         match (public_host.filter(|h| !h.trim().is_empty()), host_port) {
             (Some(host), Some(p)) => format!("**Serveur ouvert !** `{host}:{p}`"),
-            (_, Some(p)) => format!("**Serveur ouvert !** Port : `{p}`"),
-            _ => "**Serveur ouvert !**".to_string(),
+            _ => "**Adresse indisponible : configuration incomplete.**".to_string(),
         }
     } else {
         match ip_reveal_at {
@@ -1066,7 +1065,6 @@ async fn on_ip_reveal(ctx: &Context, api: &ApiClient, server_id: &str) {
                     server.host_port,
                 ) {
                     (Some(host), Some(port)) => format!("`{host}:{port}`"),
-                    (_, Some(port)) => format!("port `{port}`"),
                     _ => "_Adresse indisponible, contacte le propriétaire._".to_string(),
                 };
                 let options = public_game_options(&config);

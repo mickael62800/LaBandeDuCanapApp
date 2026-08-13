@@ -145,6 +145,20 @@ impl ManageGameServersUseCase for ManageGameServersService {
         let host_port = server.host_port.ok_or_else(|| {
             DomainError::Conflict("le port public n'est pas encore alloue".into())
         })?;
+        let portal_config = self
+            .bot_config
+            .get_config(&server.guild_id, "game-portal")
+            .await?;
+        let public_host = crate::nexus::domain::entities::system::bot_config::cfg_str(
+            &portal_config,
+            "session_public_host",
+        )
+        .filter(|host| !host.trim().is_empty())
+        .ok_or_else(|| {
+            DomainError::Conflict(
+                "l'hote public Nexus doit etre configure avant la revelation".into(),
+            )
+        })?;
 
         self.server_repo.mark_ip_revealed(id).await?;
         self.audit(
@@ -154,6 +168,7 @@ impl ManageGameServersUseCase for ManageGameServersService {
             GameAuditAction::IpReveal,
             serde_json::json!({
                 "scheduled_at": server.ip_reveal_at,
+                "public_host": public_host,
                 "host_port": host_port,
                 "forced": true,
             }),

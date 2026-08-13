@@ -135,8 +135,20 @@ fn session_role_name(game_name: &str, server_id: &str) -> String {
     format!("{}_{}", slugify(game_name), session_suffix(server_id))
 }
 
-fn private_text_name(server_id: &str) -> String {
+fn registration_channel_name(game_name: &str) -> String {
+    format!("inscription-{}", slugify(game_name))
+}
+
+fn private_text_name(game_name: &str) -> String {
+    format!("salon-{}", slugify(game_name))
+}
+
+fn legacy_private_text_name(server_id: &str) -> String {
     format!("joueurs-{}", session_suffix(server_id))
+}
+
+fn private_text_topic(server_id: &str) -> String {
+    format!("Nexus Game Portal | session:{server_id} | private")
 }
 
 fn is_player_password_key(key: &str) -> bool {
@@ -682,6 +694,7 @@ async fn create_channel(
     kind: ChannelType,
     category: Option<ChannelId>,
     overwrites: &[PermissionOverwrite],
+    topic: Option<&str>,
 ) -> Option<ChannelId> {
     let construire = |cat: Option<ChannelId>| {
         let mut b = CreateChannel::new(name)
@@ -689,6 +702,9 @@ async fn create_channel(
             .permissions(overwrites.to_vec());
         if let Some(c) = cat {
             b = b.category(c);
+        }
+        if let Some(topic) = topic {
+            b = b.topic(topic);
         }
         b
     };
@@ -824,19 +840,23 @@ async fn on_started(ctx: &Context, api: &ApiClient, guild_id: GuildId, server_id
     let text_ch = create_channel(
         ctx,
         guild_id,
-        &format!("game-{}", slugify(&server.name)),
+        &registration_channel_name(&game_name),
         ChannelType::Text,
         category,
         &build_overwrites(guild_id, role_id, ChannelType::Text),
+        Some(&format!(
+            "Nexus Game Portal | session:{server_id} | registration"
+        )),
     )
     .await;
     let private_text_ch = create_channel(
         ctx,
         guild_id,
-        &private_text_name(server_id),
+        &private_text_name(&game_name),
         ChannelType::Text,
         category,
         &build_overwrites(guild_id, Some(session_role.id), ChannelType::Text),
+        Some(&private_text_topic(server_id)),
     )
     .await;
     let voice_ch = create_channel(
@@ -846,6 +866,7 @@ async fn on_started(ctx: &Context, api: &ApiClient, guild_id: GuildId, server_id
         ChannelType::Voice,
         category,
         &build_overwrites(guild_id, Some(session_role.id), ChannelType::Voice),
+        None,
     )
     .await;
 
@@ -973,17 +994,22 @@ async fn on_deleted(ctx: &Context, api: &ApiClient, server_id: &str) {
 
     if let Ok(guild_num) = detail.server.guild_id.parse::<u64>() {
         let guild_id = GuildId::new(guild_num);
-        let private_name = private_text_name(server_id);
-        if let Ok(channels) = guild_id.channels(&ctx.http).await {
-            for channel in channels.values().filter(|c| c.name == private_name) {
-                let _ = channel.delete(&ctx.http).await;
-            }
-        }
         let game_name = api
             .get_game_template(&detail.server.template_id)
             .await
             .map(|t| t.name)
             .unwrap_or_else(|_| "jeu".into());
+        let private_name = private_text_name(&game_name);
+        let legacy_private_name = legacy_private_text_name(server_id);
+        let private_topic = private_text_topic(server_id);
+        if let Ok(channels) = guild_id.channels(&ctx.http).await {
+            for channel in channels.values().filter(|c| {
+                (c.name == private_name && c.topic.as_deref() == Some(private_topic.as_str()))
+                    || c.name == legacy_private_name
+            }) {
+                let _ = channel.delete(&ctx.http).await;
+            }
+        }
         let role_name = session_role_name(&game_name, server_id);
         if let Ok(roles) = guild_id.roles(&ctx.http).await {
             for role in roles.values().filter(|r| r.name == role_name) {
@@ -1024,9 +1050,14 @@ async fn on_ip_reveal(ctx: &Context, api: &ApiClient, server_id: &str) {
     // Publie l'adresse uniquement dans le salon textuel prive des inscrits.
     if let Ok(guild_num) = server.guild_id.parse::<u64>() {
         let guild_id = GuildId::new(guild_num);
-        let private_name = private_text_name(server_id);
+        let private_name = private_text_name(&game_name);
+        let legacy_private_name = legacy_private_text_name(server_id);
+        let private_topic = private_text_topic(server_id);
         if let Ok(channels) = guild_id.channels(&ctx.http).await {
-            if let Some(private_ch) = channels.values().find(|c| c.name == private_name) {
+            if let Some(private_ch) = channels.values().find(|c| {
+                (c.name == private_name && c.topic.as_deref() == Some(private_topic.as_str()))
+                    || c.name == legacy_private_name
+            }) {
                 let address = match (
                     server
                         .public_host
@@ -1140,4 +1171,18 @@ async fn on_daily_ping(ctx: &Context, api: &ApiClient, server_id: &str) {
             )),
         )
         .await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{private_text_name, registration_channel_name};
+
+    #[test]
+    fn session_channels_use_the_game_name() {
+        assert_eq!(
+            registration_channel_name("7 Days to Die"),
+            "inscription-7-days-to-die"
+        );
+        assert_eq!(private_text_name("7 Days to Die"), "salon-7-days-to-die");
+    }
 }

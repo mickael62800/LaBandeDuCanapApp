@@ -15,3 +15,5 @@ pub mod play_wheel_service;
 pub mod upload_emoji_service;
 pub mod wallet_service;
 pub mod wheel_cases_service;
+// Cas d'usage de NEXUS : orchestration des ports et contrôle des invariants
+// avant écriture en base, action Discord ou opération sur un serveur de jeu.

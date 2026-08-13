@@ -1,9 +1,10 @@
-//! Domaine pur de la Roue du Destin (repris de l'ancien module Sentinel).
+//! Domaine pur de la Roue du Destin.
 //!
 //! 10 cases ponderees, chaque case a un effet coins (positif, negatif ou
 //! neutre). RNG injectee via `spin_with_rng(rng)` -> testable/seedable.
-//! Probabilites et payouts REPRIS A L'IDENTIQUE de l'ancien
-//! `sentinel-core/src/domain/entities/casino/wheel.rs` (commit ff6e8a46^).
+//! Les cases par défaut et leurs probabilités constituent le comportement
+//! standard de NEXUS. Une guilde peut les remplacer par une configuration
+//! validée et persistée.
 
 use chrono::DateTime;
 use chrono::Utc;

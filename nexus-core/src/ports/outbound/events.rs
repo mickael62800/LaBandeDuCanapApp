@@ -32,3 +32,5 @@ pub trait EventPublisher: Send + Sync {
     /// loggees par l'implementation.
     async fn publish(&self, event: &str, data: serde_json::Value);
 }
+// Port de publication des événements NEXUS. Les événements décrivent les
+// ouvertures, arrêts, suppressions et révélations d'adresse à destination du bot.

@@ -199,3 +199,5 @@ mod tests {
         assert!(runtime.inspect(&id).await.unwrap().is_none());
     }
 }
+// Port vers le moteur d'exécution des serveurs de jeu. Le domaine demande des
+// opérations abstraites ; l'API choisit Docker, un agent distant ou noop.

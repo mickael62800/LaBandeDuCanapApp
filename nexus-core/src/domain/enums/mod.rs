@@ -1,1 +1,1 @@
-//! Enums du domaine Nexus (a venir).
+//! Valeurs énumérées partagées par le domaine NEXUS.

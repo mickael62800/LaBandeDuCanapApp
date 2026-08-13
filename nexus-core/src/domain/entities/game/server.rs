@@ -79,13 +79,22 @@ impl GameServerStatus {
     }
 }
 
-/// Game Server — instance d'un template, persistee.
+/// Instance persistée d'un template de jeu pour une guilde.
+///
+/// `GameServer` est la source métier de l'état du portail. Les champs Docker
+/// sont des références techniques, tandis que `status`, les dates et les
+/// compteurs servent à décider si une transition est autorisée.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GameServer {
+    /// Identifiant stable de l'instance.
     pub id: Uuid,
+    /// Guilde Discord propriétaire de l'instance.
     pub guild_id: String,
+    /// Template utilisé pour créer l'instance.
     pub template_id: Uuid,
+    /// Nom visible par les administrateurs et les joueurs.
     pub name: String,
+    /// État courant et unique du cycle de vie.
     pub status: GameServerStatus,
     pub container_id: Option<String>,
     pub container_name: Option<String>,
@@ -96,9 +105,11 @@ pub struct GameServer {
     pub allocated_memory_mb: i32,
     /// Plafond CPU en coeurs. None = defaut de l'adapter.
     pub cpu_limit: Option<f64>,
+    /// Administrateur ou membre à l'origine de la création.
     pub owner_user_id: String,
     pub idle_shutdown_days: Option<i32>,
     pub last_active_at: Option<DateTime<Utc>>,
+    /// Dernier nombre de joueurs connu par le health-check.
     pub last_player_count: i32,
     pub last_error: Option<String>,
     pub created_at: DateTime<Utc>,

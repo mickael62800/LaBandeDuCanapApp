@@ -10,3 +10,5 @@ pub mod quota;
 pub mod server;
 pub mod session;
 pub mod template;
+// Entités du portail de serveurs de jeu : templates, instances, sessions et
+// événements de connexion. Le domaine ne dépend ni de Docker ni de Discord.

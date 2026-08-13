@@ -772,6 +772,10 @@ impl ManageGameServersUseCase for ManageGameServersService {
         command: &str,
         actor_user_id: &str,
     ) -> Result<String, DomainError> {
+        // Avant tout appel reseau : une commande malformee ne doit pas
+        // atteindre le serveur de jeu, ni consommer une connexion RCON.
+        valider_commande_rcon(command)?;
+
         let server = self
             .server_repo
             .find_by_id(id)
@@ -798,17 +802,71 @@ impl ManageGameServersUseCase for ManageGameServersService {
             password: pwd,
             timeout_secs: 5,
         };
-        let resp = self.rcon_client.execute(&params, command).await?;
+        let resultat = self.rcon_client.execute(&params, command).await;
+
+        // Journalise la TENTATIVE, aboutie ou non.
+        //
+        // L'audit etait pose apres le `?` : une commande refusee par le serveur
+        // de jeu, ou partie en timeout, ne laissait donc AUCUNE trace. C'est le
+        // meme defaut que celui corrige cote OPS — « une operation refusee ou en
+        // erreur n'apparait plus comme executee » — mais pris a l'envers : ici
+        // elle n'apparaissait pas du tout. Or ce qu'on veut savoir apres coup,
+        // c'est ce qui a ete TENTE, pas seulement ce qui a reussi.
         self.audit(
             &server.guild_id,
             Some(id),
             Some(actor_user_id),
             GameAuditAction::CommandRcon,
-            serde_json::json!({ "cmd": command }),
+            serde_json::json!({ "cmd": command, "succes": resultat.is_ok() }),
         )
         .await;
-        Ok(resp.raw)
+
+        Ok(resultat?.raw)
     }
+}
+
+/// Longueur maximale d'une commande RCON.
+///
+/// Genereux a dessein : une commande Minecraft avec NBT depasse largement la
+/// centaine de caracteres. Ce n'est pas une liste blanche — c'est une borne.
+const RCON_COMMANDE_MAX: usize = 2_000;
+
+/// Controle de FORME d'une commande RCON — pas de son contenu.
+///
+/// N4 reste un choix de produit : un panneau d'administration de serveur de jeu
+/// sert precisement a executer des commandes, et en restreindre la liste
+/// reviendrait a reimplementer la console. Ce qui suit ne restreint donc PAS ce
+/// qu'un administrateur peut faire ; ca borne ce qui peut etre envoye :
+///
+///   - une commande vide n'a pas de sens et ferait un aller-retour pour rien ;
+///   - les caracteres de controle (`\n`, `\r`, `\0`) n'appartiennent pas a une
+///     commande. Le protocole RCON transporte UNE commande par paquet, mais
+///     l'interpretation du corps appartient au serveur de jeu : selon les
+///     implementations, un saut de ligne peut y etre lu comme un separateur.
+///     Refuser ces caracteres coute une comparaison et retire la question ;
+///   - une longueur bornee evite d'envoyer un corps qui depasserait le paquet.
+///
+/// Place dans le DOMAINE et non dans le handler : le bot Discord appelle le
+/// meme use case, et un controle pose cote HTTP l'aurait laisse passer — c'est
+/// exactement la remarque de l'audit sur l'emplacement d'une future restriction.
+fn valider_commande_rcon(command: &str) -> Result<(), DomainError> {
+    let commande = command.trim();
+    if commande.is_empty() {
+        return Err(DomainError::ValidationError(
+            "commande RCON vide".to_string(),
+        ));
+    }
+    if commande.chars().count() > RCON_COMMANDE_MAX {
+        return Err(DomainError::ValidationError(format!(
+            "commande RCON trop longue (max {RCON_COMMANDE_MAX} caracteres)"
+        )));
+    }
+    if commande.chars().any(|c| c.is_control()) {
+        return Err(DomainError::ValidationError(
+            "commande RCON invalide : caractere de controle".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(test)]

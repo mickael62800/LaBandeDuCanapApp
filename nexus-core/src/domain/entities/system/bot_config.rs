@@ -108,3 +108,5 @@ mod tests {
         assert_eq!(cfg_i64(&entries, "missing", 10), 10);
     }
 }
+// Configuration des modules NEXUS par serveur Discord. Une configuration est
+// rattachée à une guilde et à un module ; l'absence d'activation est fail-closed.

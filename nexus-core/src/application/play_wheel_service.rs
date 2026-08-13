@@ -1,6 +1,6 @@
 //! Implementation du use case Roue du Destin.
 //!
-//! Flow (repris de l'ancien `manage_wheel_service` Sentinel, simplifie) :
+//! Flux d'un tirage de roue :
 //!   1. Claim atomique du tirage du jour (`try_claim_today`) — seule la
 //!      premiere requete concurrente du jour obtient `true`.
 //!   2. Spin RNG (entropie OS en prod).

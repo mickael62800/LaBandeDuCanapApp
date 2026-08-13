@@ -435,3 +435,5 @@ mod tests {
         assert_eq!(report.errors, 0);
     }
 }
+// Tâches métier du portail exécutées en arrière-plan. Chaque job reçoit ses
+// dépendances par ports et doit rester relançable sans doublon.

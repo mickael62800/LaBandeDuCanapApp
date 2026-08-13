@@ -473,3 +473,39 @@ impl BotConfigRepository for DummyBotConfig {
         Ok(())
     }
 }
+
+// ── Forme des commandes RCON (point N4) ────────────────────────────────
+//
+// Ces tests ne disent RIEN de ce qu'un administrateur a le droit d'executer :
+// il n'y a pas de liste blanche, et c'est un choix de produit. Ils verrouillent
+// seulement la forme de ce qui peut partir vers le serveur de jeu.
+mod commande_rcon {
+    use super::super::valider_commande_rcon;
+
+    #[test]
+    fn accepte_une_commande_ordinaire() {
+        assert!(valider_commande_rcon("say bonjour").is_ok());
+        assert!(valider_commande_rcon("  op MonPseudo  ").is_ok());
+    }
+
+    #[test]
+    fn refuse_une_commande_vide() {
+        assert!(valider_commande_rcon("").is_err());
+        assert!(valider_commande_rcon("   ").is_err());
+    }
+
+    #[test]
+    fn refuse_les_caracteres_de_controle() {
+        // Le point du garde-fou : selon l'implementation du serveur de jeu, un
+        // saut de ligne peut etre lu comme un separateur de commandes.
+        assert!(valider_commande_rcon("say bonjour\nstop").is_err());
+        assert!(valider_commande_rcon("say bonjour\r\nban tout-le-monde").is_err());
+        assert!(valider_commande_rcon("say bonjour\0stop").is_err());
+    }
+
+    #[test]
+    fn refuse_au_dela_de_la_borne() {
+        assert!(valider_commande_rcon(&"a".repeat(2_000)).is_ok());
+        assert!(valider_commande_rcon(&"a".repeat(2_001)).is_err());
+    }
+}

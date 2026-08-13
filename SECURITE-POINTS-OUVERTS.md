@@ -9,7 +9,7 @@ Ce qui reste après les audits des plateformes `sentinel-*`, `atrium-*`, `ops-*`
 
 > ### ✅ Corrigés le 13/08/2026
 >
-> **N1, N2, A4, W1, O4, S1, A1, W4, W3**, et **O1 partiellement**.
+> **N1, N2, A4, W1, O4, S1, A1, W4, W3, W2**, et **O1 partiellement**. La section Web est entièrement traitée.
 >
 > S1 est corrigé **dans le dépôt** : plus aucun mot de passe n'a de valeur de repli publiée. Le travail côté serveur reste entier — compléter le `.env`, puis faire tourner les secrets qui valaient encore le défaut. Ajouter la variable ne remplace pas la rotation.
 >
@@ -47,14 +47,14 @@ Audit de `ops-api` / `ops-core`. Onze points relevés, huit corrigés dans la fo
 | ~~O4~~ | ~~`deleted_logs` vaut désormais toujours `0`~~ | ✅ **Corrigé le 13/08** — champ, message et port morts retirés |
 | O5 | Quatre modules non audités | Périmètre non couvert, pas un défaut constaté |
 
-## Web — **non corrigés**
+## Web — **tous corrigés le 13/08**
 
 Audit statique du frontend Vue, de sa chaîne de build et de la configuration nginx. Aucun secret réel ou jeton codé en dur n'a été trouvé. Le build, ESLint et les 89 tests passent ; aucun source map n'est publié. Les en-têtes CSP, HSTS, anti-frame et `nosniff` sont présents, et les passerelles Nexus, Ops et Atrium utilisent `auth_request`.
 
 | # | Sujet | Gravité |
 |---|---|---|
 | ~~W1~~ | ~~`nanoid 3.3.11` et `postcss 8.5.13`~~ | ✅ **Corrigé le 13/08** — `nanoid 3.3.18`, `postcss 8.5.26` ; `npm audit --omit=dev` renvoie 0 |
-| W2 | Le rendu Markdown utilisé avec `v-html` n'échappe pas les guillemets avant de construire les liens | Moyenne — injection d'attribut HTML possible, actuellement contenue en production par la CSP |
+| ~~W2~~ | ~~Le rendu Markdown utilisé avec `v-html` n'échappe pas les guillemets~~ | ✅ **Corrigé le 13/08** — guillemets échappés, URL validée par `new URL`, 8 tests |
 | ~~W3~~ | ~~Le callback OAuth continue si `check-access` échoue autrement que par un 403~~ | ✅ **Corrigé le 13/08** — session ouverte seulement sur 200, identité persistée après la vérification, erreur réessayable |
 | ~~W4~~ | ~~L'ancien champ `api_key` peut encore être stocké dans `localStorage`~~ | ✅ **Corrigé le 13/08** — champ retiré du contrat, Bearer supprimé, et purge des valeurs déjà stockées sur les postes |
 

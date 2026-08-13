@@ -1,6 +1,6 @@
 # À tester — changements du 13/08/2026
 
-Quatorze changements, expliqués simplement, avec ce qu'il faut vérifier pour chacun.
+Quinze changements, expliqués simplement, avec ce qu'il faut vérifier pour chacun.
 
 **Commencer par le point 10** : il exige de compléter le `.env` et, sans ça, plus rien ne démarre.
 
@@ -262,6 +262,23 @@ Les API restaient protégées côté serveur, donc ça ne donnait pas accès aux
 
 ---
 
+## 15. L'aperçu d'embed ne peut plus être détourné (W2)
+
+**Le problème.** L'aperçu de message dans le constructeur d'embeds transforme le Markdown en HTML. Il échappait les chevrons mais **pas les guillemets** — or l'URL d'un lien est réinjectée dans `href="…"`. Une URL contenant un guillemet sortait donc de l'attribut et pouvait en ouvrir un autre, par exemple un gestionnaire d'événement.
+
+La protection du navigateur en production (CSP) empêchait l'exécution, mais ce n'était qu'un filet : le serveur de développement ne l'applique pas, et un assouplissement futur de cette règle aurait rouvert la voie sans que personne ne fasse le lien avec ce fichier.
+
+**Le changement.** Les deux types de guillemets sont échappés, et chaque URL de lien est **validée** (et normalisée) avant d'être posée dans le HTML. Une URL non exploitable laisse le texte brut plutôt que de produire un lien mort.
+
+**À vérifier**, dans **Constructeur d'embeds** :
+
+1. Un lien normal `[doc](https://example.com/page?a=1&b=2)` s'affiche et s'ouvre correctement.
+2. Le gras, l'italique, les titres, les citations, les listes et les blocs de code s'affichent comme avant.
+3. Coller `[clic](https://x.test/"onmouseover="alert(1))` → un lien inoffensif s'affiche, aucune fenêtre ne s'ouvre au survol.
+4. Un texte contenant des apostrophes et des guillemets s'affiche normalement (`il a dit "bonjour" et l'a fait`).
+
+---
+
 ## Récapitulatif des fichiers modifiés
 
 | Changement | Fichier | Service à reconstruire |
@@ -280,6 +297,7 @@ Les API restaient protégées côté serveur, donc ça ne donnait pas accès aux
 | 12 — effacement mémoire | `atrium-api/src/{admin,lib}.rs`, `web/src/{api,services,components}` | `atrium-api`, `web` |
 | 13 — clé API retirée du SPA | `web/src/api/{config,http}.ts`, `types/index.ts`, `main.ts` | `web` |
 | 14 — callback OAuth fail-closed | `web/src/components/pages/auth/AuthCallbackPage.vue` | `web` |
+| 15 — aperçu d'embed | `web/src/utils/discordMarkdown.ts` | `web` |
 
 Vérifications automatiques déjà passées : `cargo clippy --workspace --all-targets`, `npm run lint`, `npm run build`, et les 89 tests web. Elles ne prouvent que la compilation et le comportement en test — les points ci-dessus demandent un vrai essai.
 

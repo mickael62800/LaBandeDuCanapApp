@@ -111,14 +111,25 @@ impl EventBus {
     /// `consumer` l'identifiant de l'instance (cf. [`default_consumer_name`]),
     /// `handler` est appele avec la `String` JSON de chaque entry.
     ///
-    /// Ne retourne jamais : boucle infinie avec reconnexion.
+    /// Boucle avec reconnexion tant que `REDIS_URL` est configuree. Une URL
+    /// absente ou vide est une erreur de configuration fatale pour ce
+    /// consommateur : aucun Redis local implicite n'est tente.
     pub async fn listen_stream_group<F, Fut>(&self, group: String, consumer: String, handler: F)
     where
         F: Fn(String) -> Fut + Send + Sync + Clone + 'static,
         Fut: Future<Output = ()> + Send,
     {
-        let redis_url =
-            std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
+        let redis_url = match std::env::var("REDIS_URL") {
+            Ok(url) if !url.trim().is_empty() => url,
+            Ok(_) => {
+                error!(group = %group, "REDIS_URL est vide; consumer non demarre");
+                return;
+            }
+            Err(e) => {
+                error!(group = %group, error = %e, "REDIS_URL est obligatoire; consumer non demarre");
+                return;
+            }
+        };
 
         loop {
             match self

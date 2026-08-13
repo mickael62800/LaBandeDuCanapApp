@@ -57,7 +57,7 @@ describe("realtimeService", () => {
     vi.stubGlobal("sessionStorage", memoryStorage());
     vi.stubGlobal("WebSocket", FakeWebSocket);
     FakeWebSocket.instances = [];
-    setApiConfig({ api_url: "http://localhost:3000", api_key: "" });
+    setApiConfig({ api_url: "http://localhost:3000" });
     setDiscordToken("initial-token");
   });
 
@@ -88,13 +88,15 @@ describe("realtimeService", () => {
     offSpecialized();
   });
 
-  it("n'ajoute jamais la clé API à l'URL WebSocket", async () => {
-    setApiConfig({ api_url: "http://localhost:3000", api_key: "internal-api-key" });
+  // Le SPA ne detient plus de cle API du tout (elle a quitte `ApiConfig`).
+  // Ce test garde son sens : l'URL WebSocket ne doit porter AUCUN parametre,
+  // une query string finissant dans les logs de tout intermediaire.
+  it("n'ajoute aucun paramètre à l'URL WebSocket", async () => {
+    setApiConfig({ api_url: "http://localhost:3000" });
 
     const connection = realtimeService.connect();
     const socket = FakeWebSocket.instances[0];
     expect(socket?.url).toBe("ws://localhost:3001/ws");
-    expect(socket?.url).not.toContain("internal-api-key");
     expect(new URL(socket!.url).search).toBe("");
     socket?.open();
     await connection;

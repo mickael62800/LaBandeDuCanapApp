@@ -33,8 +33,9 @@ export function apiBase(): string {
 
 function headers(): Record<string, string> {
   const result: Record<string, string> = { "Content-Type": "application/json" };
-  const cfg = getApiConfig();
-  if (cfg?.api_key) result.Authorization = `Bearer ${cfg.api_key}`;
+  // Plus d'`Authorization: Bearer` pose par le SPA : la seule identite que le
+  // navigateur detient est le jeton Discord ci-dessous, et les secrets de
+  // service sont injectes par nginx, cote serveur. Cf. `ApiConfig`.
   const token = getDiscordToken();
   if (token) result["X-Discord-Token"] = token;
   return result;

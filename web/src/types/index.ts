@@ -73,9 +73,10 @@ export interface BotGuildConfig {
   config_value: string;
 }
 
+/// Miroir de `api/config.ts` : `api_key` y a ete retire, ne pas le
+/// reintroduire ici (le SPA ne porte plus aucun secret de service).
 export interface ApiConfig {
   api_url: string;
-  api_key: string;
 }
 
 export interface DiscordUser {

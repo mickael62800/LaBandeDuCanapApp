@@ -5,7 +5,19 @@
 const K_API = "ds.api.config";
 const K_DISCORD_USER = "ds.discord.user";
 
-export interface ApiConfig { api_url: string; api_key: string }
+/// `api_key` a ete RETIRE de ce contrat.
+///
+/// Le champ datait d'une epoque ou le SPA portait lui-meme un Bearer interne.
+/// Il etait vide en production — les secrets Nexus, Ops et Atrium sont injectes
+/// par nginx cote serveur — mais la capacite restait : une valeur non vide
+/// devenait un `Authorization: Bearer`, lisible par tout JavaScript de
+/// l'origine et survivant a la fermeture du navigateur. Une XSS aurait donc eu
+/// un secret interne DURABLE a exfiltrer, la ou le jeton Discord vit en
+/// `sessionStorage` precisement pour ne pas offrir ca.
+///
+/// Ne pas le remettre. Un mode developpeur qui en aurait besoin doit etre
+/// explicite, limite a localhost, et garder la valeur en memoire.
+export interface ApiConfig { api_url: string }
 export interface DiscordUser { id: string; username: string; avatar?: string | null; global_name?: string | null; is_superadmin?: boolean }
 
 function parseStored<T>(key: string): T | null {
@@ -55,10 +67,19 @@ function isAllowedApiUrl(value: string): boolean {
 }
 
 export function getApiConfig(): ApiConfig | null {
-  const cfg = parseStored<Partial<ApiConfig>>(K_API);
-  if (!cfg || typeof cfg.api_url !== "string" || typeof cfg.api_key !== "string") {
+  const cfg = parseStored<Partial<ApiConfig> & { api_key?: unknown }>(K_API);
+  if (!cfg || typeof cfg.api_url !== "string") {
     if (cfg) localStorage.removeItem(K_API);
     return null;
+  }
+  // Purge de l'ancien champ sur les navigateurs qui l'ont deja stocke. Sans
+  // cette reecriture, retirer `api_key` du code laissait la valeur dormir dans
+  // le localStorage des postes existants : plus personne ne l'envoie, mais une
+  // XSS peut toujours la lire. La supprimer du contrat ne la supprime pas des
+  // machines — il faut y aller.
+  if ("api_key" in cfg) {
+    delete cfg.api_key;
+    localStorage.setItem(K_API, JSON.stringify({ api_url: cfg.api_url }));
   }
   // Assainissement : si l'api_url stockée n'est pas dans la whitelist d'origines,
   // on la ramène à l'origin courant (défaut sûr) au lieu de faire confiance à une

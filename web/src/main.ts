@@ -21,7 +21,7 @@ import { setApiConfig, getApiConfig } from "./api/config";
 import { loadSiteConfig } from "./siteConfig";
 function ensureProdConfig() {
   if (!getApiConfig()) {
-    setApiConfig({ api_url: window.location.origin, api_key: "" });
+    setApiConfig({ api_url: window.location.origin });
   }
 }
 

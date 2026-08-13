@@ -9,7 +9,13 @@ Ce qui reste après les audits des plateformes `sentinel-*`, `atrium-*`, `ops-*`
 
 > ### ✅ Corrigés le 13/08/2026
 >
-> **N1, N2, A4, W1, O4.** Les deux failles réellement exploitables sont fermées : la passerelle `/nexus-public/` ne relaie plus que `/api/public/`, et `nexus-api` refuse de démarrer sans clé d'au moins 16 caractères au lieu de servir ouvert. Le détail de chacun reste plus bas, annoté du correctif appliqué — l'historique du raisonnement vaut d'être conservé.
+> **N1, N2, A4, W1, O4, S1**, et **O1 partiellement**.
+>
+> S1 est corrigé **dans le dépôt** : plus aucun mot de passe n'a de valeur de repli publiée. Le travail côté serveur reste entier — compléter le `.env`, puis faire tourner les secrets qui valaient encore le défaut. Ajouter la variable ne remplace pas la rotation.
+>
+> O1 : la moitié « données » du cumul est coupée (rôle `sentinel_ops` restreint + `ops-pgbouncer`). La moitié « hôte » demeure, comme décidé.
+>
+> Détail historique : Les deux failles réellement exploitables sont fermées : la passerelle `/nexus-public/` ne relaie plus que `/api/public/`, et `nexus-api` refuse de démarrer sans clé d'au moins 16 caractères au lieu de servir ouvert. Le détail de chacun reste plus bas, annoté du correctif appliqué — l'historique du raisonnement vaut d'être conservé.
 >
 > Restent ouverts : S1, S2, A1, A2, A3, O1, O2, O3, O5, W2, W3, W4, N3, N4.
 
@@ -17,7 +23,7 @@ Ce qui reste après les audits des plateformes `sentinel-*`, `atrium-*`, `ops-*`
 
 | # | Sujet | Pourquoi c'est encore ouvert |
 |---|---|---|
-| S1 | Mots de passe à défaut fonctionnel dans le compose | Le correctif fait échouer `docker compose up` si une variable manque sur le serveur — décision de déploiement, pas de code |
+| ~~S1~~ | ~~Mots de passe à défaut fonctionnel dans le compose~~ | ✅ **Corrigé le 13/08** — 40 occurrences en `:?`, plus aucun défaut publié. Reste à faire côté serveur : compléter le `.env` (`infrastructure/scripts/verifier-secrets.sh`) et **faire tourner** les mots de passe qui valaient encore le défaut |
 | S2 | `guild_id` dans le corps, hors du verrou mono-serveur | Le corriger proprement coûte un buffer par requête, pour un gain nul tant que l'installation sert une seule guilde |
 
 ## Atrium
@@ -35,7 +41,7 @@ Audit de `ops-api` / `ops-core`. Onze points relevés, huit corrigés dans la fo
 
 | # | Sujet | Pourquoi c'est encore ouvert |
 |---|---|---|
-| O1 | `ops-api` cumule la base Sentinel complète et le jeton d'administration de l'hôte | Structurel : c'est le périmètre du produit, pas un défaut — mais c'est la concentration de pouvoir la plus forte du dépôt |
+| O1 | ~~`ops-api` cumule la base Sentinel **complète**~~ et le jeton d'administration de l'hôte | ⚠️ **Réduit le 13/08** — rôle `sentinel_ops` restreint + pool dédié (migration 034). Le cumul avec l'hôte demeure : c'est le périmètre du produit |
 | O2 | `/metrics` ouvert par défaut | Comportement identique sur les quatre APIs ; le changer pour ops seul casserait la cohérence sans gain |
 | O3 | GeoIP en clair si on l'active | Le palier gratuit d'ip-api n'accepte que `http://` — le correctif est un changement de fournisseur, pas de code |
 | ~~O4~~ | ~~`deleted_logs` vaut désormais toujours `0`~~ | ✅ **Corrigé le 13/08** — champ, message et port morts retirés |

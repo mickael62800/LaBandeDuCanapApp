@@ -1,6 +1,8 @@
 # À tester — changements du 13/08/2026
 
-Neuf changements, expliqués simplement, avec ce qu'il faut vérifier pour chacun.
+Onze changements, expliqués simplement, avec ce qu'il faut vérifier pour chacun.
+
+**Commencer par le point 10** : il exige de compléter le `.env` et, sans ça, plus rien ne démarre.
 
 > **À faire d'abord : reconstruire.** Tous ces changements sont dans le code, aucun n'est actif tant que les images ne sont pas reconstruites. C'est aussi ce qui explique les bugs signalés cette semaine : les conteneurs tournaient sur du code antérieur au 12/08.
 >
@@ -12,9 +14,10 @@ Neuf changements, expliqués simplement, avec ce qu'il faut vérifier pour chacu
 > **Deux variables doivent être présentes dans le `.env` avant de relancer**, sinon le démarrage s'arrête en les nommant (c'est voulu — voir les points 2 et 7) :
 >
 > ```bash
-> grep -E '^(ATRIUM_)?DEEPSEEK_API_KEY=' .env
-> grep -E '^NEXUS_API_KEY=' .env      # doit faire au moins 16 caractères
+> sh ../scripts/verifier-secrets.sh .env
 > ```
+>
+> Ce script remplace les vérifications une par une : il liste d'un coup toutes les variables absentes, vides ou trop courtes, y compris les deux nouvelles (`OPS_DB_PASSWORD`) et celles devenues obligatoires (`DEEPSEEK_API_KEY`, `NEXUS_API_KEY`).
 
 ---
 
@@ -157,6 +160,56 @@ Si l'un des trois échoue avec un 401, c'est que le client concerné n'a pas la 
 
 ---
 
+## 10. ⚠️ Les mots de passe n'ont plus de valeur par défaut (S1)
+
+**Le problème.** Dix mots de passe avaient une valeur de repli **écrite dans le dépôt** (`sentinel_secret`, `admin`…). Un déploiement dont le `.env` en oubliait un démarrait normalement, sans avertissement, avec un mot de passe que tout lecteur du dépôt connaît.
+
+**Le changement.** Les 40 occurrences passent en `:?` : Docker refuse de démarrer et nomme la variable manquante.
+
+**⚠️ C'est le changement le plus risqué du lot. À faire dans cet ordre :**
+
+```bash
+# 1. Lister TOUT ce qui manque, d'un coup (au lieu d'un `up` avorté par variable)
+sh ../scripts/verifier-secrets.sh .env
+
+# 2. Pour chaque ligne ABSENT ou VIDE, generer une valeur
+echo "NOM=$(openssl rand -base64 32 | tr -d '/+=' | head -c 32)" >> .env
+
+# 3. Verifier a vide, sans rien demarrer
+docker compose config >/dev/null && echo OK
+```
+
+**Le piège** : si un service tourne **déjà** avec l'ancienne valeur par défaut, l'ajouter au `.env` ne suffit pas — c'est une **rotation de secret**.
+
+- Postgres n'applique `POSTGRES_PASSWORD` qu'à l'initialisation du volume. Sur un cluster existant : `ALTER ROLE <role> WITH PASSWORD '<nouveau>'` **puis** mise à jour du `.env`.
+- Redis lit `--requirepass` au démarrage de son conteneur ; tous ses clients doivent redémarrer avec la nouvelle URL.
+
+`PGADMIN_PASSWORD` et `GRAFANA_PASSWORD` valaient littéralement `admin` et n'ont **pas** de volume à réinitialiser : autant les changer tout de suite.
+
+---
+
+## 11. L'exploitation n'a plus accès à toute la base (O1, partiel)
+
+**Le problème.** `ops-api` porte le jeton d'administration de la machine **et** se connectait à la base avec `sentinel_app`, propriétaire de tout `discord_sentinel`. Un seul processus compromis donnait la machine *et* l'ensemble des données Discord — membres, infractions, tickets, sauvegardes.
+
+**Le changement.** `ops-api` et `ops-worker` utilisent désormais le rôle `sentinel_ops`, qui n'a de droits que sur cinq tables (logs, audit, événements serveur, bans IP, règles d'alerte), verbe par verbe. Le reste de la base lui est inaccessible.
+
+**Un détail invisible qui explique pourquoi la tentative de 2024 n'avait rien changé** : la `DATABASE_URL` d'un pgbouncer fixe l'utilisateur côté serveur. Toute connexion passant par le pool commun arrive en `sentinel_app`, quelles que soient les identifiants présentées. Il a donc fallu un pool dédié, `ops-pgbouncer`.
+
+**⚠️ Nouvelle variable obligatoire** : `OPS_DB_PASSWORD` (le script du point 10 la vérifie).
+
+**À vérifier**, une fois `ops-api`, `ops-worker` et `ops-pgbouncer` démarrés — l'univers **Exploitation** du back-office :
+
+1. **État de la machine** → les sondes et l'état des conteneurs s'affichent.
+2. **Logs techniques** → la liste se remplit, et les filtres fonctionnent.
+3. **Sécurité de l'hôte** → la liste des IP bannies s'affiche ; bannir puis lever un ban de test fonctionne.
+4. **Règles d'alerte** → activer/désactiver une règle est bien enregistré.
+5. **Opérations système** → le journal d'administration se remplit (il s'écrit à chaque action des points 3 et 4).
+
+> Si l'un de ces écrans renvoie une erreur `permission denied`, c'est qu'une requête d'`ops-api` touche une table hors de la liste des droits : le correctif est d'ajouter le `GRANT` correspondant dans une nouvelle migration, **pas** de rebasculer sur `sentinel_app`. L'inventaire complet est en tête de `034_role_ops_restreint.sql`.
+
+---
+
 ## Récapitulatif des fichiers modifiés
 
 | Changement | Fichier | Service à reconstruire |
@@ -170,6 +223,8 @@ Si l'un des trois échoue avec un 401, c'est que le client concerné n'a pas la 
 | 7 — clé Nexus exigée | `nexus-api/src/{bootstrap,adapters}`, `compose.{core,nexus}.yml`, `platform-common-api/src/bearer_auth.rs` | `nexus-api` |
 | 8 — message de ban IP | `ops-core/src/{domain,application,ports}`, `ops-api/src/{handlers,adapters}` | `ops-api` |
 | 9 — dépendances | `web/package-lock.json` | `web` |
+| 10 — secrets sans défaut | les 5 fichiers `compose.*.yml`, `infrastructure/scripts/verifier-secrets.sh` | aucune (config) |
+| 11 — rôle restreint ops | `sentinel-api/migrations/034_*.sql`, `compose.core.yml` | `ops-api`, `ops-worker` |
 
 Vérifications automatiques déjà passées : `cargo clippy --workspace --all-targets`, `npm run lint`, `npm run build`, et les 89 tests web. Elles ne prouvent que la compilation et le comportement en test — les points ci-dessus demandent un vrai essai.
 

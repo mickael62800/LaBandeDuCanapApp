@@ -199,10 +199,9 @@ services:
       # L'API Nexus appelle aussi Discord (gestion des salons de session).
       # Elle doit recevoir le meme token que nexus-bot.
       NEXUS_DISCORD_TOKEN: ${NEXUS_BOT_TOKEN:-${NEXUS_DISCORD_TOKEN:-}}
-      # Optionnel : protege /metrics par un Bearer. Vide = ouvert (le port
-      # n'est joignable que depuis le reseau interne ou vit Prometheus).
-      # Si defini, configurer le meme token dans le job prometheus.
-      NEXUS_METRICS_TOKEN: ${NEXUS_METRICS_TOKEN:-}
+      # Protege /metrics par un Bearer. Surcharge facultative ; a defaut, le
+      # jeton commun aux quatre API (cf. `METRICS_TOKEN` dans compose.core.yml).
+      NEXUS_METRICS_TOKEN: ${NEXUS_METRICS_TOKEN:-${METRICS_TOKEN:?METRICS_TOKEN est requis}}
       # Origines CORS autorisees. Vide = origines de dev uniquement ; en prod
       # le front est same-origin derriere nginx, donc CORS ne joue pas.
       NEXUS_ALLOWED_ORIGINS: ${NEXUS_ALLOWED_ORIGINS:-${ALLOWED_ORIGINS:-}}

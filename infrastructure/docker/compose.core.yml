@@ -402,9 +402,22 @@ services:
       # handler. Surchargeable via la var RBAC_GLOBAL_GATE du .env docker.
       RBAC_GLOBAL_GATE: ${RBAC_GLOBAL_GATE:-true}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
-      # Optionnel : protege /metrics par un Bearer token. Vide = ouvert (scrape
-      # interne sans auth). Si defini, configurer aussi le job Prometheus.
-      METRICS_TOKEN: ${METRICS_TOKEN:-}
+      # Protege /metrics par un Bearer. EXIGE desormais : `/metrics` expose les
+      # noms de routes, les compteurs d'appels et les latences — la carte de
+      # l'installation. Le port n'est joignable que depuis le reseau interne,
+      # mais « personne ne peut l'atteindre » est une propriete du reseau, pas
+      # une propriete de l'API.
+      #
+      # UNE SEULE variable pour les quatre API (`METRICS_TOKEN`), et c'est
+      # deliberé : elles exposent la meme surface en LECTURE, avec la meme
+      # sensibilite. Un jeton par service se justifie quand les capacites
+      # different — ce qui est le cas de DOCKER_AGENT_TOKEN, pas ici. Chaque
+      # service garde neanmoins sa surcharge (`OPS_METRICS_TOKEN`, etc.) pour
+      # pouvoir en isoler un sans toucher aux autres.
+      #
+      # Prometheus lit le meme jeton depuis un fichier monte
+      # (`prometheus-token-init`, cf. compose.observability.yml).
+      METRICS_TOKEN: ${METRICS_TOKEN:?METRICS_TOKEN est requis}
       # NI DISCORD_CLIENT_SECRET NI WEB_FRONT_URL ici : le flux OAuth appartient
       # a auth-api. Deux processus porteurs du meme client_secret, c'est deux
       # endroits ou il peut fuiter — et un seul des deux le sert vraiment.
@@ -543,7 +556,8 @@ services:
       OPS_DATABASE_URL: postgres://sentinel_ops:${OPS_DB_PASSWORD:?OPS_DB_PASSWORD est requis}@ops-pgbouncer:5432/discord_sentinel
       # Requis : l'API refuse de demarrer sans jeton d'au moins 16 caracteres.
       OPS_API_TOKEN: ${OPS_API_TOKEN:?OPS_API_TOKEN est requis}
-      OPS_METRICS_TOKEN: ${OPS_METRICS_TOKEN:-}
+      # Surcharge facultative ; a defaut, le jeton commun aux quatre API.
+      OPS_METRICS_TOKEN: ${OPS_METRICS_TOKEN:-${METRICS_TOKEN:?METRICS_TOKEN est requis}}
       # Resolution GeoIP : transfert d'adresses IP a un tiers, donc opt-in
       # explicite. Cf. .env.example pour la portee RGPD et le point sur le
       # http:// du palier gratuit.
@@ -902,6 +916,10 @@ volumes:
   # et expirent en 10 min.)
   nexus_redis_data:
   prometheus_data:
+  # Jeton de scrape ecrit au demarrage par `prometheus-token-init` et lu par
+  # Prometheus en `credentials_file`. Volume et non montage de fichier : le
+  # secret ne doit exister que dans Docker, jamais dans le depot.
+  prometheus_secrets:
   grafana_data:
   letsencrypt_etc:
   letsencrypt_www:

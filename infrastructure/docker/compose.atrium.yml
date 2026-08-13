@@ -59,6 +59,10 @@ services:
       # exigee.
       DEEPSEEK_API_KEY: ${ATRIUM_DEEPSEEK_API_KEY:-${DEEPSEEK_API_KEY:?DEEPSEEK_API_KEY est requis}}
       DEEPSEEK_MODEL: ${ATRIUM_DEEPSEEK_MODEL:-${DEEPSEEK_MODEL:-deepseek-v4-flash}}
+      # Protege /metrics par un Bearer. La variable n'etait pas declaree ici du
+      # tout : l'endpoint restait donc ouvert quoi qu'on mette dans le .env.
+      # Surcharge facultative ; a defaut, le jeton commun aux quatre API.
+      ATRIUM_METRICS_TOKEN: ${ATRIUM_METRICS_TOKEN:-${METRICS_TOKEN:?METRICS_TOKEN est requis}}
       ATRIUM_API_RATE_LIMIT_PER_SEC: ${ATRIUM_API_RATE_LIMIT_PER_SEC:-5}
       # Retention de la memoire conversationnelle. Le job quotidien efface
       # messages et resumes au-dela de ce delai.

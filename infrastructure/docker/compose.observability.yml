@@ -60,6 +60,43 @@ services:
       - tools
       - full
 
+  # One-shot : ecrit le jeton de scrape dans un fichier lisible par Prometheus.
+  #
+  # POURQUOI UN CONTENEUR POUR UNE LIGNE
+  #
+  # Prometheus n'interpole PAS les variables d'environnement dans sa
+  # configuration : `credentials: ${METRICS_TOKEN}` y serait pris au pied de la
+  # lettre. Il sait en revanche lire un `credentials_file`. Il faut donc que
+  # quelqu'un ecrive ce fichier — et ce n'est pas au depot de le contenir, ce
+  # serait un secret en clair dans git.
+  #
+  # Meme motif que les snippets de cle nginx (`3x-*-key.sh`) : un tiers ecrit le
+  # secret au demarrage, le service qui s'en sert ne le connait que par fichier.
+  #
+  # `prom/prometheus` est une image minimale dont le shell n'est pas garanti :
+  # on n'y execute donc rien, c'est alpine qui ecrit dans le volume partage.
+  prometheus-token-init:
+    image: alpine:3.20
+    container_name: sentinel-prometheus-token-init
+    environment:
+      METRICS_TOKEN: ${METRICS_TOKEN:?METRICS_TOKEN est requis}
+    volumes:
+      - prometheus_secrets:/secrets
+    # `printf` et non `echo` : pas de saut de ligne final. Prometheus enverrait
+    # le fichier tel quel dans l'en-tete Authorization, et un `\n` invalide le
+    # jeton — panne silencieuse cote scrape, 401 cote API.
+    entrypoint:
+      - sh
+      - -euc
+      - |
+        printf '%s' "$$METRICS_TOKEN" > /secrets/metrics-token
+        chmod 0444 /secrets/metrics-token
+    restart: "no"
+    profiles:
+      - monitoring
+      - observability
+      - full
+
   prometheus:
     image: prom/prometheus:latest
     container_name: sentinel-prometheus
@@ -67,8 +104,12 @@ services:
     logging: *observability-default-logging
     ports:
       - "127.0.0.1:9090:9090"
+    depends_on:
+      prometheus-token-init:
+        condition: service_completed_successfully
     volumes:
       - ../../infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_secrets:/secrets:ro
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'

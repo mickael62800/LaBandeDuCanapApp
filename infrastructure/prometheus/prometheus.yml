@@ -20,15 +20,28 @@ global:
   external_labels:
     cluster: 'sentinel-local'
 
+# AUTHENTIFICATION DES SCRAPES
+#
+# Les quatre API exigent desormais un Bearer sur `/metrics` : l'endpoint expose
+# les noms de routes, les compteurs d'appels et les latences — la carte de
+# l'installation. Le port n'est joignable que depuis le reseau interne, mais
+# c'est une propriete du RESEAU, pas de l'API.
+#
+# Le jeton n'est pas ecrit ici : Prometheus n'interpole pas les variables
+# d'environnement dans sa configuration, et un secret en clair dans le depot
+# serait pire que l'endpoint ouvert. Il est ecrit au demarrage par le service
+# `prometheus-token-init` dans un volume, et lu par `credentials_file`.
+#
+# Les workers (`sentinel-worker:9100`) n'ont pas de jeton : leur serveur de
+# metriques vient de `platform-common-worker` et n'en gere pas. Ils exposent des
+# compteurs de jobs, pas la surface HTTP publique. C'est un reste assume.
 scrape_configs:
   # ── API ──
   - job_name: 'sentinel-api'
     metrics_path: '/metrics'
-    # Durcissement optionnel : si METRICS_TOKEN est defini cote API, decommenter
-    # le bloc ci-dessous avec le meme token pour que le scrape reste autorise.
-    # authorization:
-    #   type: Bearer
-    #   credentials: '<METRICS_TOKEN>'
+    authorization:
+      type: Bearer
+      credentials_file: /secrets/metrics-token
     static_configs:
       - targets: ['api:3000']
         labels:
@@ -39,13 +52,11 @@ scrape_configs:
   # Memes noms de metriques que sentinel-api (http_requests_total,
   # http_request_duration_seconds, tokio_*) : les dashboards Grafana se
   # reutilisent tels quels en filtrant sur le label `service`.
-  # Durcissement optionnel : si NEXUS_METRICS_TOKEN est defini cote API,
-  # decommenter le bloc `authorization` avec le meme token.
   - job_name: 'nexus-api'
     metrics_path: '/metrics'
-    # authorization:
-    #   type: Bearer
-    #   credentials: '<NEXUS_METRICS_TOKEN>'
+    authorization:
+      type: Bearer
+      credentials_file: /secrets/metrics-token
     static_configs:
       - targets: ['nexus-api:3100']
         labels:
@@ -57,17 +68,32 @@ scrape_configs:
   # `http_request_duration_seconds`, `tokio_*`), filtrables sur `service`.
   # Le service tourne derriere le profil Docker `atrium` : quand il est arrete,
   # la cible remonte `down`, ce qui est l'information juste.
-  # Durcissement optionnel : definir ATRIUM_METRICS_TOKEN cote API et
-  # decommenter le bloc `authorization` avec le meme jeton.
   - job_name: 'atrium-api'
     metrics_path: '/metrics'
-    # authorization:
-    #   type: Bearer
-    #   credentials: '<ATRIUM_METRICS_TOKEN>'
+    authorization:
+      type: Bearer
+      credentials_file: /secrets/metrics-token
     static_configs:
       - targets: ['atrium-api:8090']
         labels:
           service: 'atrium-api'
+          component: 'backend'
+
+  # ── API Exploitation (machine hote) ──
+  #
+  # Cible AJOUTEE le 13/08 : `ops-api` exposait `/metrics` et lisait deja
+  # `OPS_METRICS_TOKEN`, mais aucun job ne la scrapait — le jeton protegeait
+  # donc un endpoint que personne ne lisait, et les metriques de l'exploitation
+  # n'existaient nulle part. Quatre API, quatre cibles.
+  - job_name: 'ops-api'
+    metrics_path: '/metrics'
+    authorization:
+      type: Bearer
+      credentials_file: /secrets/metrics-token
+    static_configs:
+      - targets: ['ops-api:3200']
+        labels:
+          service: 'ops-api'
           component: 'backend'
 
   # ── Worker unifie ──

@@ -170,7 +170,10 @@ services:
       # session game-portal). MEME instance que nexus-api : un bus dont le
       # producteur et le consommateur sont sur deux Redis differents ne
       # transporte rien, et l'echec est silencieux.
-      NEXUS_REDIS_URL: redis://:${NEXUS_REDIS_PASSWORD:?NEXUS_REDIS_PASSWORD est requis}@nexus-redis:6379
+      # `platform-common::event_bus` lit REDIS_URL. L'API unifiee utilise
+      # NEXUS_REDIS_URL pour choisir son bus parmi plusieurs Redis, mais ce bot
+      # ne consomme que Nexus et doit donc fournir le nom standard du bus.
+      REDIS_URL: redis://:${NEXUS_REDIS_PASSWORD:?NEXUS_REDIS_PASSWORD est requis}@nexus-redis:6379
       RUST_LOG: ${RUST_LOG:-info}
     depends_on:
       api:

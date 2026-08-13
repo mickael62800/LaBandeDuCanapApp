@@ -23,6 +23,21 @@ FROM pg_catalog.pg_class AS c
 JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace
 WHERE n.nspname = 'public'
   AND c.relkind IN ('r', 'p', 'S', 'v', 'm', 'f')
+  -- Une sequence SERIAL/IDENTITY est liee a sa colonne par une dependance
+  -- AUTO/INTERNAL. PostgreSQL interdit de changer son proprietaire
+  -- directement ; ALTER TABLE ... OWNER la transfere avec sa table.
+  -- Les sequences autonomes, elles, doivent toujours etre traitees ici.
+  AND NOT (
+      c.relkind = 'S'
+      AND EXISTS (
+          SELECT 1
+          FROM pg_catalog.pg_depend AS owned
+          WHERE owned.classid = 'pg_catalog.pg_class'::regclass
+            AND owned.objid = c.oid
+            AND owned.refclassid = 'pg_catalog.pg_class'::regclass
+            AND owned.deptype IN ('a', 'i')
+      )
+  )
   AND NOT EXISTS (
       SELECT 1
       FROM pg_catalog.pg_depend AS d

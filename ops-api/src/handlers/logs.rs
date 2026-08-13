@@ -98,15 +98,38 @@ pub async fn get_logs(
 }
 
 /// DELETE /ops-api/logs/{category} — supprimer tous les logs d'une categorie
+///
+/// AUDITE (point O5) : c'est une suppression definitive, en base ET dans la
+/// stream Redis. La lecture des logs l'etait deja, les bannissements d'IP et
+/// les purges Docker aussi — pas celle-ci. Effacer des journaux sans laisser de
+/// trace de qui l'a fait est exactement ce qu'on reproche a une purge au
+/// bannissement (cf. O4) : la mesure detruit ce qui permettrait de l'examiner.
 pub async fn delete_logs_by_category(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     Path(category): Path<String>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
+    let actor = crate::handlers::security::actor_from(&headers);
     let count = state
         .system_logs_uc
         .purge_category(&category)
         .await
         .map_err(|e| ApiError::from_domain(&e))?;
     redis_log_stream::delete_stream(&state.redis_client, &category).await;
+
+    // Apres coup et avec le decompte : une trace qui annoncerait l'intention
+    // sans le resultat n'apprendrait pas si la purge a porte sur dix lignes ou
+    // sur dix mille.
+    crate::handlers::security::record_event(
+        &state.server_events,
+        &actor,
+        None,
+        "logs.purge_category",
+        Some(&category),
+        "warn",
+        serde_json::json!({ "category": category, "deleted": count }),
+    )
+    .await;
+
     Ok(Json(serde_json::json!({ "deleted": count })))
 }

@@ -60,9 +60,11 @@ pub struct UpdateAlertRuleDto {
 /// sans changer ce qu'elle mesure.
 pub async fn update(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     Path(id): Path<String>,
     Json(dto): Json<UpdateAlertRuleDto>,
 ) -> Result<Json<AlertRuleDto>, ApiError> {
+    let actor = crate::handlers::security::actor_from(&headers);
     let update = AlertRuleUpdate {
         enabled: dto.enabled,
         threshold: dto.threshold,
@@ -70,5 +72,30 @@ pub async fn update(
         cooldown_secs: dto.cooldown_secs,
     };
     let rule = state.alert_rules_uc.update(&id, update).await?;
+
+    // AUDITE (point O5) : desactiver une regle, ou relever son seuil, revient a
+    // AVEUGLER la supervision. C'est le genre de changement qu'on veut pouvoir
+    // dater et attribuer apres un incident — « l'alerte n'a pas sonne » et
+    // « quelqu'un l'a eteinte trois jours plus tot » ne se distinguent pas sans
+    // cette ligne. `warn` quand la regle est desactivee, `info` sinon : le
+    // journal doit faire ressortir la coupure, pas un ajustement de seuil.
+    let severite = if rule.enabled { "info" } else { "warn" };
+    crate::handlers::security::record_event(
+        &state.server_events,
+        &actor,
+        None,
+        "alert_rule.update",
+        Some(&rule.id),
+        severite,
+        serde_json::json!({
+            "id": rule.id,
+            "enabled": rule.enabled,
+            "threshold": rule.threshold,
+            "severity": rule.severity,
+            "cooldown_secs": rule.cooldown_secs,
+        }),
+    )
+    .await;
+
     Ok(Json(rule.into()))
 }

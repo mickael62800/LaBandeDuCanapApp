@@ -1,6 +1,6 @@
 # À tester — changements du 13/08/2026
 
-Treize changements, expliqués simplement, avec ce qu'il faut vérifier pour chacun.
+Quatorze changements, expliqués simplement, avec ce qu'il faut vérifier pour chacun.
 
 **Commencer par le point 10** : il exige de compléter le `.env` et, sans ça, plus rien ne démarre.
 
@@ -245,6 +245,23 @@ docker compose config >/dev/null && echo OK
 
 ---
 
+## 14. La connexion ne s'ouvre plus quand la vérification échoue (W3)
+
+**Le problème.** Après le retour de Discord, le site vérifie auprès de l'API que le compte est bien administrateur. Un refus net (403) était traité correctement — mais **toute autre erreur** (serveur injoignable, 500, coupure réseau) était ignorée : le profil était accepté et l'interface d'administration devenait navigable, alors que les droits n'avaient jamais été confirmés.
+
+Les API restaient protégées côté serveur, donc ça ne donnait pas accès aux données à soi seul. Mais une défense qui s'ouvre à la première panne réseau n'en est pas une, et toute route backend oubliée serait devenue une fuite.
+
+**Le changement.** La session ne s'ouvre que sur une réponse positive. En cas de panne, un message clair et un bouton **Réessayer** — sans refaire tout le tour Discord. Et l'identité n'est enregistrée **qu'après** la vérification : avant, elle était écrite d'abord, si bien qu'un rechargement de page retrouvait une session locale que plus rien ne confrontait à l'API.
+
+**À vérifier** :
+
+1. Connexion normale → tout fonctionne comme avant.
+2. Compte non administrateur → « Accès refusé », retour à la connexion (inchangé).
+3. Panne simulée : arrêter `api` (`docker compose stop api`), se connecter → un message d'erreur et deux boutons s'affichent ; **aucun** accès au back-office. Redémarrer l'API, cliquer **Réessayer** → la connexion aboutit.
+4. Après un échec à l'étape 3, recharger la page : on doit rester déconnecté (aucune session fantôme).
+
+---
+
 ## Récapitulatif des fichiers modifiés
 
 | Changement | Fichier | Service à reconstruire |
@@ -262,6 +279,7 @@ docker compose config >/dev/null && echo OK
 | 11 — rôle restreint ops | `sentinel-api/migrations/034_*.sql`, `compose.core.yml` | `ops-api`, `ops-worker` |
 | 12 — effacement mémoire | `atrium-api/src/{admin,lib}.rs`, `web/src/{api,services,components}` | `atrium-api`, `web` |
 | 13 — clé API retirée du SPA | `web/src/api/{config,http}.ts`, `types/index.ts`, `main.ts` | `web` |
+| 14 — callback OAuth fail-closed | `web/src/components/pages/auth/AuthCallbackPage.vue` | `web` |
 
 Vérifications automatiques déjà passées : `cargo clippy --workspace --all-targets`, `npm run lint`, `npm run build`, et les 89 tests web. Elles ne prouvent que la compilation et le comportement en test — les points ci-dessus demandent un vrai essai.
 

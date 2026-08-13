@@ -9,7 +9,7 @@ Ce qui reste après les audits des plateformes `sentinel-*`, `atrium-*`, `ops-*`
 
 > ### ✅ Corrigés le 13/08/2026
 >
-> **N1, N2, A4, W1, O4, S1, A1**, et **O1 partiellement**.
+> **N1, N2, A4, W1, O4, S1, A1, W4**, et **O1 partiellement**.
 >
 > S1 est corrigé **dans le dépôt** : plus aucun mot de passe n'a de valeur de repli publiée. Le travail côté serveur reste entier — compléter le `.env`, puis faire tourner les secrets qui valaient encore le défaut. Ajouter la variable ne remplace pas la rotation.
 >
@@ -56,7 +56,7 @@ Audit statique du frontend Vue, de sa chaîne de build et de la configuration ng
 | ~~W1~~ | ~~`nanoid 3.3.11` et `postcss 8.5.13`~~ | ✅ **Corrigé le 13/08** — `nanoid 3.3.18`, `postcss 8.5.26` ; `npm audit --omit=dev` renvoie 0 |
 | W2 | Le rendu Markdown utilisé avec `v-html` n'échappe pas les guillemets avant de construire les liens | Moyenne — injection d'attribut HTML possible, actuellement contenue en production par la CSP |
 | W3 | Le callback OAuth continue si la vérification `check-access` échoue autrement que par un 403 | Moyenne — fail-open côté interface ; les API restent l'autorité et refusent les appels non autorisés |
-| W4 | L'ancien champ `api_key` peut encore être stocké dans `localStorage` et envoyé comme Bearer | Faible — vide en production actuelle, mais exfiltrable par une XSS s'il était renseigné |
+| ~~W4~~ | ~~L'ancien champ `api_key` peut encore être stocké dans `localStorage`~~ | ✅ **Corrigé le 13/08** — champ retiré du contrat, Bearer supprimé, et purge des valeurs déjà stockées sur les postes |
 
 ## Nexus
 

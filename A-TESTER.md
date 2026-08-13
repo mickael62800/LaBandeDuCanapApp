@@ -1,6 +1,6 @@
 # À tester — changements du 13/08/2026
 
-Douze changements, expliqués simplement, avec ce qu'il faut vérifier pour chacun.
+Treize changements, expliqués simplement, avec ce qu'il faut vérifier pour chacun.
 
 **Commencer par le point 10** : il exige de compléter le `.env` et, sans ça, plus rien ne démarre.
 
@@ -228,6 +228,23 @@ docker compose config >/dev/null && echo OK
 
 ---
 
+## 13. Le site n'a plus de clé d'API à se faire voler (W4)
+
+**Le problème.** Le SPA pouvait encore stocker une clé interne dans le `localStorage` du navigateur et l'envoyer en `Authorization: Bearer`. Elle était vide en production — les secrets sont injectés par nginx côté serveur — mais la capacité restait : une valeur renseignée aurait été lisible par n'importe quel JavaScript de la page, et **conservée après fermeture du navigateur**. Une faille XSS aurait donc eu un secret durable à voler, là où le jeton Discord vit en `sessionStorage` précisément pour éviter ça.
+
+**Le changement.** Le champ disparaît du contrat, l'en-tête n'est plus posé, et — le point qui compte — **toute valeur déjà stockée sur un poste est effacée à la première lecture**. Retirer le champ du code ne l'aurait pas retiré des machines.
+
+**À vérifier**, dans le navigateur (F12 → Application → Local Storage) :
+
+1. Avant reconstruction, noter le contenu de la clé `ds.api.config`.
+2. Après reconstruction de `web`, recharger la page puis relire cette clé : elle ne doit plus contenir que `api_url`, sans `api_key`.
+3. Onglet Réseau → n'importe quel appel `/api/…` : plus d'en-tête `Authorization`, seulement `X-Discord-Token`.
+4. Le back-office continue de fonctionner normalement (c'est le jeton Discord qui authentifie, et il est inchangé).
+
+> Aucun changement de comportement attendu : la clé était vide en production, donc l'en-tête n'était de toute façon pas envoyé.
+
+---
+
 ## Récapitulatif des fichiers modifiés
 
 | Changement | Fichier | Service à reconstruire |
@@ -244,6 +261,7 @@ docker compose config >/dev/null && echo OK
 | 10 — secrets sans défaut | les 5 fichiers `compose.*.yml`, `infrastructure/scripts/verifier-secrets.sh` | aucune (config) |
 | 11 — rôle restreint ops | `sentinel-api/migrations/034_*.sql`, `compose.core.yml` | `ops-api`, `ops-worker` |
 | 12 — effacement mémoire | `atrium-api/src/{admin,lib}.rs`, `web/src/{api,services,components}` | `atrium-api`, `web` |
+| 13 — clé API retirée du SPA | `web/src/api/{config,http}.ts`, `types/index.ts`, `main.ts` | `web` |
 
 Vérifications automatiques déjà passées : `cargo clippy --workspace --all-targets`, `npm run lint`, `npm run build`, et les 89 tests web. Elles ne prouvent que la compilation et le comportement en test — les points ci-dessus demandent un vrai essai.
 

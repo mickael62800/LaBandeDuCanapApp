@@ -45,7 +45,7 @@ services:
     logging: *auth-default-logging
     command: >-
       redis-server
-      --requirepass ${AUTH_REDIS_PASSWORD:-auth_redis_secret}
+      --requirepass ${AUTH_REDIS_PASSWORD:?AUTH_REDIS_PASSWORD est requis}
       --save ""
       --appendonly no
       --maxmemory 128mb
@@ -53,7 +53,7 @@ services:
     # PAS de `ports:` et pas de volume : joignable seulement par auth-api,
     # et rien ne touche le disque.
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${AUTH_REDIS_PASSWORD:-auth_redis_secret}", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${AUTH_REDIS_PASSWORD:?AUTH_REDIS_PASSWORD est requis}", "ping"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -74,8 +74,8 @@ services:
   auth-db-init:
     image: postgres:16-alpine
     environment:
-      PGPASSWORD: ${POSTGRES_PASSWORD:-sentinel_secret}
-      AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD:-auth_secret}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD est requis}
+      AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD:?AUTH_DB_PASSWORD est requis}
     volumes:
       - ./scripts:/init:ro
     entrypoint:
@@ -110,7 +110,7 @@ services:
     restart: unless-stopped
     logging: *auth-default-logging
     environment:
-      DATABASE_URL: postgres://auth:${AUTH_DB_PASSWORD:-auth_secret}@postgres:5432/auth
+      DATABASE_URL: postgres://auth:${AUTH_DB_PASSWORD:?AUTH_DB_PASSWORD est requis}@postgres:5432/auth
       # SESSION : auth-api applique ses migrations au boot (verrou d'avis de
       # session). Meme raison que pour nexus-pgbouncer.
       POOL_MODE: session
@@ -135,7 +135,7 @@ services:
     # PAS de `ports:` — joignable par la passerelle nginx et par les services
     # internes uniquement.
     environment:
-      AUTH_DATABASE_URL: postgres://auth:${AUTH_DB_PASSWORD:-auth_secret}@auth-pgbouncer:5432/auth
+      AUTH_DATABASE_URL: postgres://auth:${AUTH_DB_PASSWORD:?AUTH_DB_PASSWORD est requis}@auth-pgbouncer:5432/auth
       AUTH_API_BIND_ADDR: 0.0.0.0:8096
       # Jeton des appelants de service (nginx auth_request, sentinel-api,
       # ops-api). Requis : sans lui, /access et /security/* seraient ouverts a
@@ -144,7 +144,7 @@ services:
       # Instance DEDIEE (cf. le commentaire du service `auth-redis`) : les
       # `state` CSRF et le cache d'identite ne doivent pas etre lisibles par
       # les bots, les workers et la gateway.
-      REDIS_URL: redis://:${AUTH_REDIS_PASSWORD:-auth_redis_secret}@auth-redis:6379
+      REDIS_URL: redis://:${AUTH_REDIS_PASSWORD:?AUTH_REDIS_PASSWORD est requis}@auth-redis:6379
       DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID:-}
       DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:-}
       DISCORD_REDIRECT_URI: ${DISCORD_REDIRECT_URI:-}
@@ -177,7 +177,7 @@ services:
   auth-data-import:
     image: postgres:16-alpine
     environment:
-      PGPASSWORD: ${POSTGRES_PASSWORD:-sentinel_secret}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD est requis}
     entrypoint:
       - sh
       - -euc

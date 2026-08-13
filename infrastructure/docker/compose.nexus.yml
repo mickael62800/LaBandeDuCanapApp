@@ -51,7 +51,7 @@ services:
     logging: *nexus-default-logging
     command: >-
       redis-server
-      --requirepass ${NEXUS_REDIS_PASSWORD:-nexus_redis_secret}
+      --requirepass ${NEXUS_REDIS_PASSWORD:?NEXUS_REDIS_PASSWORD est requis}
       --appendonly yes
       --maxmemory 256mb
       --maxmemory-policy noeviction
@@ -59,7 +59,7 @@ services:
     volumes:
       - nexus_redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${NEXUS_REDIS_PASSWORD:-nexus_redis_secret}", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${NEXUS_REDIS_PASSWORD:?NEXUS_REDIS_PASSWORD est requis}", "ping"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -86,8 +86,8 @@ services:
   nexus-db-init:
     image: postgres:16-alpine
     environment:
-      PGPASSWORD: ${POSTGRES_PASSWORD:-sentinel_secret}
-      NEXUS_DB_PASSWORD: ${NEXUS_DB_PASSWORD:-nexus_secret}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD est requis}
+      NEXUS_DB_PASSWORD: ${NEXUS_DB_PASSWORD:?NEXUS_DB_PASSWORD est requis}
     volumes:
       - ./scripts:/init:ro
     entrypoint:
@@ -144,7 +144,7 @@ services:
     restart: unless-stopped
     logging: *nexus-default-logging
     environment:
-      DATABASE_URL: postgres://nexus:${NEXUS_DB_PASSWORD:-nexus_secret}@postgres:5432/nexus
+      DATABASE_URL: postgres://nexus:${NEXUS_DB_PASSWORD:?NEXUS_DB_PASSWORD est requis}@postgres:5432/nexus
       # SESSION, pas TRANSACTION : nexus-api applique ses migrations au boot
       # (`sqlx::migrate!`), qui prend un verrou d'avis de SESSION. En pooling
       # transactionnel ce verrou est rendu au retour de chaque transaction et
@@ -192,7 +192,7 @@ services:
       # Via nexus-pgbouncer (le pgbouncer principal ne route que
       # discord_sentinel). L'API ne touche jamais postgres directement, et se
       # connecte avec le role `nexus` — pas le superuser du cluster.
-      NEXUS_DATABASE_URL: postgres://nexus:${NEXUS_DB_PASSWORD:-nexus_secret}@nexus-pgbouncer:5432/nexus
+      NEXUS_DATABASE_URL: postgres://nexus:${NEXUS_DB_PASSWORD:?NEXUS_DB_PASSWORD est requis}@nexus-pgbouncer:5432/nexus
       NEXUS_API_KEY: ${NEXUS_API_KEY:?NEXUS_API_KEY est requis}
       NEXUS_API_PORT: "3100"
       NEXUS_GRPC_PORT: "3101"
@@ -219,7 +219,7 @@ services:
       # ports de jeu ET bus d'evenements game-portal (stream nexus:events
       # consomme par nexus-bot). Sans lui, l'API bascule sur un publieur inerte
       # et les salons de session ne sont jamais crees.
-      REDIS_URL: redis://:${NEXUS_REDIS_PASSWORD:-nexus_redis_secret}@nexus-redis:6379
+      REDIS_URL: redis://:${NEXUS_REDIS_PASSWORD:?NEXUS_REDIS_PASSWORD est requis}@nexus-redis:6379
       # Runtime des serveurs de jeu : docker | noop. `noop` par defaut (aucun
       # container reel) : passer a `docker` quand la flotte doit tourner.
       #
@@ -276,7 +276,7 @@ services:
       # session game-portal). MEME instance que nexus-api : un bus dont le
       # producteur et le consommateur sont sur deux Redis differents ne
       # transporte rien, et l'echec est silencieux.
-      REDIS_URL: redis://:${NEXUS_REDIS_PASSWORD:-nexus_redis_secret}@nexus-redis:6379
+      REDIS_URL: redis://:${NEXUS_REDIS_PASSWORD:?NEXUS_REDIS_PASSWORD est requis}@nexus-redis:6379
       RUST_LOG: ${RUST_LOG:-info}
     depends_on:
       nexus-api:

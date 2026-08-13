@@ -40,8 +40,8 @@ x-light-worker-env: &light-worker-env
 # exposer /metrics (utilise par les healthchecks).
 x-worker-env: &worker-env
   <<: *light-worker-env
-  DATABASE_URL: postgres://sentinel_app:${SENTINEL_DB_PASSWORD:-sentinel_app_secret}@pgbouncer:5432/discord_sentinel
-  REDIS_URL: redis://:${REDIS_PASSWORD:-sentinel_redis}@redis:6379
+  DATABASE_URL: postgres://sentinel_app:${SENTINEL_DB_PASSWORD:?SENTINEL_DB_PASSWORD est requis}@pgbouncer:5432/discord_sentinel
+  REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD est requis}@redis:6379
   API_URL: http://api:3000
   SENTINEL_API_KEY: ${SENTINEL_API_KEY:-}
 
@@ -142,7 +142,7 @@ services:
       -c pg_stat_statements.max=10000
     environment:
       POSTGRES_USER: sentinel
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sentinel_secret}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD est requis}
       POSTGRES_DB: discord_sentinel
     ports:
       - "127.0.0.1:5432:5432"
@@ -176,8 +176,9 @@ services:
   sentinel-db-init:
     image: postgres:16-alpine
     environment:
-      PGPASSWORD: ${POSTGRES_PASSWORD:-sentinel_secret}
-      SENTINEL_DB_PASSWORD: ${SENTINEL_DB_PASSWORD:-sentinel_app_secret}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD est requis}
+      SENTINEL_DB_PASSWORD: ${SENTINEL_DB_PASSWORD:?SENTINEL_DB_PASSWORD est requis}
+      OPS_DB_PASSWORD: ${OPS_DB_PASSWORD:?OPS_DB_PASSWORD est requis}
     volumes:
       - ./scripts:/init:ro
     entrypoint:
@@ -206,7 +207,29 @@ services:
         $$PSQL -c "ALTER SCHEMA public OWNER TO sentinel_app"
         $$PSQL -c "GRANT CONNECT ON DATABASE discord_sentinel TO sentinel_app"
 
-        # 4. Fermeture croisee. Par defaut PostgreSQL accorde CONNECT a PUBLIC
+        # 4. Role de l'EXPLOITATION, distinct de l'applicatif.
+        #
+        #    `ops-api` porte le jeton d'administration de l'hote (docker-agent)
+        #    ET se connectait a la base avec `sentinel_app`, proprietaire de
+        #    tout `discord_sentinel`. Le compromettre donnait donc la machine
+        #    ET l'integralite des donnees Discord. Ce role coupe la seconde
+        #    moitie : il ne detient que les droits enumerees par la migration
+        #    034, table par table et verbe par verbe.
+        #
+        #    Cree ici et non dans une migration : `CREATE ROLE` exige un
+        #    privilege que `sentinel_app` n'a pas — et c'est tres bien ainsi.
+        #    Les GRANT, eux, sont dans la migration : le proprietaire peut les
+        #    accorder sur ses propres tables, et ils doivent suivre le schema.
+        #
+        #    `ALTER` inconditionnel : une rotation de OPS_DB_PASSWORD dans le
+        #    .env doit prendre effet au redemarrage, sinon ops-api garde un mot
+        #    de passe que la base ignore.
+        $$PSQL -tc "SELECT 1 FROM pg_roles WHERE rolname = 'sentinel_ops'" | grep -q 1 ||
+          $$PSQL -c "CREATE ROLE sentinel_ops LOGIN"
+        $$PSQL -c "ALTER ROLE sentinel_ops WITH LOGIN PASSWORD '$$OPS_DB_PASSWORD'"
+        $$PSQL -c "GRANT CONNECT ON DATABASE discord_sentinel TO sentinel_ops"
+
+        # 5. Fermeture croisee. Par defaut PostgreSQL accorde CONNECT a PUBLIC
         #    sur toute base : sans ces REVOKE, `sentinel_app` pourrait ouvrir
         #    une session sur `auth`, `nexus` et `atrium`. Il n'y lirait rien
         #    (aucune table n'est accordee a PUBLIC), mais une session ouverte
@@ -222,13 +245,50 @@ services:
     networks:
       - data
 
+  # Pool de l'EXPLOITATION, porteur du role restreint `sentinel_ops`.
+  #
+  # POURQUOI UN SECOND POOL PLUTOT QUE REUTILISER `pgbouncer`
+  #
+  # La `DATABASE_URL` d'un pgbouncer fixe l'utilisateur cote SERVEUR. Toute
+  # connexion traversant le pool commun arrive donc en `sentinel_app`, quelles
+  # que soient les identifiants presentes par le client. Pointer simplement
+  # `OPS_DATABASE_URL` sur `sentinel_ops` sans ce pool aurait donne l'illusion
+  # d'un cloisonnement en laissant les droits inchanges — c'est exactement ce
+  # qui a fait croire la migration 024 appliquee pendant des mois.
+  #
+  # Meme motif que `nexus-pgbouncer` et `atrium-pgbouncer` : un pool par role,
+  # bi-network pour faire le pont vers `data`, et l'API reste hors de `data`.
+  ops-pgbouncer:
+    image: edoburu/pgbouncer:latest
+    container_name: sentinel-ops-pgbouncer
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      DATABASE_URL: postgres://sentinel_ops:${OPS_DB_PASSWORD:?OPS_DB_PASSWORD est requis}@postgres:5432/discord_sentinel
+      # TRANSACTION comme le pool commun : ops-api n'applique aucune migration
+      # (elles appartiennent a sentinel-api), donc aucun verrou de session a
+      # preserver. La purge `/security/cleanup` tient dans une transaction.
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 200
+      DEFAULT_POOL_SIZE: 10
+      RESERVE_POOL_SIZE: 2
+      SERVER_RESET_QUERY: DISCARD ALL
+      ADMIN_USERS: sentinel_ops
+      AUTH_TYPE: scram-sha-256
+    depends_on:
+      sentinel-db-init:
+        condition: service_completed_successfully
+    networks:
+      - data
+      - internal
+
   pgbouncer:
     image: edoburu/pgbouncer:latest
     container_name: sentinel-pgbouncer
     restart: unless-stopped
     logging: *default-logging
     environment:
-      DATABASE_URL: postgres://sentinel_app:${SENTINEL_DB_PASSWORD:-sentinel_app_secret}@postgres:5432/discord_sentinel
+      DATABASE_URL: postgres://sentinel_app:${SENTINEL_DB_PASSWORD:?SENTINEL_DB_PASSWORD est requis}@postgres:5432/discord_sentinel
       POOL_MODE: transaction
       MAX_CLIENT_CONN: 1000
       DEFAULT_POOL_SIZE: 25
@@ -256,7 +316,7 @@ services:
     logging: *default-logging
     command: >-
       redis-server
-      --requirepass ${REDIS_PASSWORD:-sentinel_redis}
+      --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD est requis}
       --maxmemory 2gb
       --maxmemory-policy allkeys-lru
     ports:
@@ -264,7 +324,7 @@ services:
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-sentinel_redis}", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:?REDIS_PASSWORD est requis}", "ping"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -329,8 +389,8 @@ services:
       # Les API refusent tout autre guild_id ; les bots quittent toute
       # autre guilde. Vide = verrou desactive.
       PUBLIC_GUILD_ID: ${PUBLIC_GUILD_ID:-}
-      DATABASE_URL: postgres://sentinel_app:${SENTINEL_DB_PASSWORD:-sentinel_app_secret}@pgbouncer:5432/discord_sentinel
-      REDIS_URL: redis://:${REDIS_PASSWORD:-sentinel_redis}@redis:6379
+      DATABASE_URL: postgres://sentinel_app:${SENTINEL_DB_PASSWORD:?SENTINEL_DB_PASSWORD est requis}@pgbouncer:5432/discord_sentinel
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD est requis}@redis:6379
       SENTINEL_API_KEY: ${SENTINEL_API_KEY:-}
       SENTINEL_REQUIRE_API_KEY: ${SENTINEL_REQUIRE_API_KEY:-true}
       # Consommateur de l'identite : le gate superadmin ne resout plus
@@ -475,7 +535,12 @@ services:
     environment:
       RUST_LOG: ${RUST_LOG:-info}
       OPS_API_BIND_ADDR: 0.0.0.0:3200
-      OPS_DATABASE_URL: postgres://sentinel_app:${SENTINEL_DB_PASSWORD:-sentinel_app_secret}@pgbouncer:5432/discord_sentinel
+      # Role RESTREINT (cf. migration 034) via son pool dedie : l'exploitation
+      # ne se connecte plus avec le proprietaire de la base. Elle porte le
+      # jeton d'administration de l'hote ; lui laisser en plus tout
+      # `discord_sentinel` faisait d'un seul processus compromis la machine ET
+      # les donnees de la communaute.
+      OPS_DATABASE_URL: postgres://sentinel_ops:${OPS_DB_PASSWORD:?OPS_DB_PASSWORD est requis}@ops-pgbouncer:5432/discord_sentinel
       # Requis : l'API refuse de demarrer sans jeton d'au moins 16 caracteres.
       OPS_API_TOKEN: ${OPS_API_TOKEN:?OPS_API_TOKEN est requis}
       OPS_METRICS_TOKEN: ${OPS_METRICS_TOKEN:-}
@@ -484,7 +549,7 @@ services:
       # http:// du palier gratuit.
       OPS_GEOIP_ENABLED: ${OPS_GEOIP_ENABLED:-false}
       OPS_GEOIP_URL: ${OPS_GEOIP_URL:-http://ip-api.com/batch}
-      REDIS_URL: redis://:${REDIS_PASSWORD:-sentinel_redis}@redis:6379
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD est requis}@redis:6379
       # Journal des logins reussis : la table appartient a la base de
       # l'identite, l'ecran « Securite de l'hote » la lit par HTTP. Meme
       # relation qu'avec docker-agent pour le daemon Docker.
@@ -513,7 +578,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      pgbouncer:
+      # Son pool, pas le commun : ops-api n'a plus d'identifiants pour celui-ci.
+      ops-pgbouncer:
         condition: service_started
       docker-agent:
         condition: service_started
@@ -540,8 +606,13 @@ services:
     healthcheck: *worker-healthcheck
     environment:
       <<: *light-worker-env
-      OPS_DATABASE_URL: postgres://sentinel_app:${SENTINEL_DB_PASSWORD:-sentinel_app_secret}@pgbouncer:5432/discord_sentinel
-      REDIS_URL: redis://:${REDIS_PASSWORD:-sentinel_redis}@redis:6379
+      # Role RESTREINT (cf. migration 034) via son pool dedie : l'exploitation
+      # ne se connecte plus avec le proprietaire de la base. Elle porte le
+      # jeton d'administration de l'hote ; lui laisser en plus tout
+      # `discord_sentinel` faisait d'un seul processus compromis la machine ET
+      # les donnees de la communaute.
+      OPS_DATABASE_URL: postgres://sentinel_ops:${OPS_DB_PASSWORD:?OPS_DB_PASSWORD est requis}@ops-pgbouncer:5432/discord_sentinel
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD est requis}@redis:6379
       DOCKER_AGENT_URL: http://docker-agent:8095
       DOCKER_AGENT_TOKEN: ${DOCKER_AGENT_TOKEN:?DOCKER_AGENT_TOKEN est requis}
       SECURITY_ALERTS_WEBHOOK: ${SECURITY_ALERTS_WEBHOOK:-}
@@ -551,7 +622,8 @@ services:
     volumes:
       - /var/lib/sentinel:/var/lib/sentinel:ro
     depends_on:
-      pgbouncer:
+      # Meme pool restreint qu'ops-api : il ne lit que `logs` et `alert_rules`.
+      ops-pgbouncer:
         condition: service_started
       redis:
         condition: service_healthy
@@ -578,7 +650,7 @@ services:
       retries: 3
       start_period: 15s
     environment:
-      REDIS_URL: redis://:${REDIS_PASSWORD:-sentinel_redis}@redis:6379
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD est requis}@redis:6379
       REDIS_CHANNEL: sentinel:events
       # API_URL : utilise pour valider les tokens WS via /api/auth/check-access.
       # Sans ca, fallback localhost:3000 -> appel vers gateway lui-meme -> WS rejete 401.
@@ -697,7 +769,7 @@ services:
       GRPC_TLS_DIR: /grpc-certs
       # Le bot et son client gRPC lisent SENTINEL_API_KEY.
       SENTINEL_API_KEY: ${SENTINEL_API_KEY:-${API_KEY:-}}
-      REDIS_URL: redis://:${REDIS_PASSWORD:-sentinel_redis}@redis:6379
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD est requis}@redis:6379
       REDIS_CHANNEL: sentinel:events
       VOICE_GUILD_ID: ${VOICE_GUILD_ID:-}
       VOICE_PUBLIC_CREATOR_CHANNEL_ID: ${VOICE_PUBLIC_CREATOR_CHANNEL_ID:-}

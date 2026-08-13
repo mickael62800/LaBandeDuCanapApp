@@ -24,7 +24,7 @@ Ce qui reste après les audits des plateformes `sentinel-*`, `atrium-*`, `ops-*`
 | # | Sujet | Pourquoi c'est encore ouvert |
 |---|---|---|
 | ~~S1~~ | ~~Mots de passe à défaut fonctionnel dans le compose~~ | ✅ **Corrigé le 13/08** — 40 occurrences en `:?`, plus aucun défaut publié. Reste à faire côté serveur : compléter le `.env` (`infrastructure/scripts/verifier-secrets.sh`) et **faire tourner** les mots de passe qui valaient encore le défaut |
-| S2 | `guild_id` dans le corps, hors du verrou mono-serveur | Le corriger proprement coûte un buffer par requête, pour un gain nul tant que l'installation sert une seule guilde |
+| S2 | `guild_id` dans le corps, hors du verrou mono-serveur | Gain nul tant que l'installation sert une seule guilde et un seul administrateur. ⚠️ **Les deux déclencheurs sont désormais surveillés au démarrage** (13/08) |
 
 ## Atrium
 
@@ -184,6 +184,13 @@ Deux déclencheurs, l'un ou l'autre suffit :
 
 - **L'installation sert plusieurs guildes.** Un `guild_id` de corps désigne alors des données réelles d'un autre serveur.
 - **Plusieurs comptes web coexistent.** `SUPERADMIN_USER_IDS` en liste plusieurs, ou un rôle applicatif est réintroduit.
+
+**Ces deux conditions sont vérifiées au démarrage depuis le 13/08**, et journalisées en `error!` nommant S2 :
+
+- `sentinel-api/src/main.rs` → `verifier_mono_serveur` : un `COUNT(*)` sur `guilds` après les migrations. Une requête, au boot. Son échec n'empêche pas de démarrer — une sonde ne doit pas créer la panne qu'elle surveille.
+- `auth-api/src/config.rs` → `SUPERADMIN_USER_IDS` de plus d'une entrée.
+
+C'est le seul travail fait sur S2, et c'est délibéré : un extracteur adopté par trois handlers sur trente-sept donnerait l'impression que le sujet est traité — exactement ce qui a fait échouer `sentinel_ops` en migration 024. Tant que les deux conditions restent fausses, il n'y a rien à cloisonner ; le jour où l'une devient vraie, on l'apprend au premier redémarrage au lieu de le redécouvrir en relisant ce document.
 
 ### La forme du correctif, le jour venu
 

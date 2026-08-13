@@ -1,14 +1,14 @@
 # À tester — changements du 13/08/2026
 
-Dix-sept changements, expliqués simplement, avec ce qu'il faut vérifier pour chacun.
+Dix-huit changements, expliqués simplement, avec ce qu'il faut vérifier pour chacun.
 
 **Commencer par le point 10** : il exige de compléter le `.env` et, sans ça, plus rien ne démarre.
 
 > **À faire d'abord : reconstruire.** Tous ces changements sont dans le code, aucun n'est actif tant que les images ne sont pas reconstruites. C'est aussi ce qui explique les bugs signalés cette semaine : les conteneurs tournaient sur du code antérieur au 12/08.
 >
 > ```bash
-> docker compose build web atrium-api atrium-bot sentinel-bot nexus-api ops-api
-> docker compose up -d web atrium-api atrium-bot sentinel-bot nexus-api ops-api
+> docker compose build web atrium-api atrium-bot sentinel-bot nexus-api ops-api api auth-api
+> docker compose up -d web atrium-api atrium-bot sentinel-bot nexus-api ops-api api auth-api
 > ```
 >
 > **Deux variables doivent être présentes dans le `.env` avant de relancer**, sinon le démarrage s'arrête en les nommant (c'est voulu — voir les points 2 et 7) :
@@ -310,6 +310,23 @@ La protection du navigateur en production (CSP) empêchait l'exécution, mais ce
 
 ---
 
+## 18. Deux alertes au démarrage, pour un risque qui n'existe pas encore (S2)
+
+**Le contexte.** Le verrou qui garantit que l'installation ne sert qu'un seul serveur Discord ne lit que l'adresse de la requête. Une trentaine d'écrans envoient l'identifiant du serveur dans le **corps** du message : ceux-là passent sans être vérifiés.
+
+**Ce n'est un problème que si l'une de ces deux choses devient vraie** : l'installation gère plusieurs serveurs Discord, ou plusieurs personnes ont accès au back-office. Aujourd'hui ni l'une ni l'autre — un identifiant étranger dans un corps ne désigne donc aucune donnée existante, et il n'y a rien à cloisonner.
+
+**Le changement.** Ces deux conditions étaient écrites dans le document d'audit ; elles sont maintenant **vérifiées automatiquement au démarrage**. Le jour où l'une devient vraie, un message d'erreur nommant S2 apparaît dans les logs — au lieu d'attendre que quelqu'un relise l'audit.
+
+**À vérifier** :
+
+1. `docker compose logs api | grep -i S2` → **aucun résultat**. C'est le comportement attendu aujourd'hui.
+2. `docker compose logs auth-api | grep -i S2` → aucun résultat non plus.
+
+> Si l'un des deux affiche un message un jour, ce n'est pas une panne : c'est le signal que le correctif complet (un contrôle typé, partagé par la trentaine d'écrans concernés) devient nécessaire. Le détail est dans `SECURITE-POINTS-OUVERTS.md`.
+
+---
+
 ## Récapitulatif des fichiers modifiés
 
 | Changement | Fichier | Service à reconstruire |
@@ -331,6 +348,7 @@ La protection du navigateur en production (CSP) empêchait l'exécution, mais ce
 | 15 — aperçu d'embed | `web/src/utils/discordMarkdown.ts` | `web` |
 | 16 — acteur d'audit Nexus | `nexus-api/.../game/servers.rs`, `web/nginx.conf`, `web/src/services/nexusGamesService.ts` | `nexus-api`, `web` |
 | 17 — GeoIP en clair | `ops-api/src/adapters/geoip.rs`, `compose.core.yml` | `ops-api` |
+| 18 — sondes S2 | `sentinel-api/src/main.rs`, `auth-api/src/config.rs`, `auth-core/.../identity.rs` | `api`, `auth-api` |
 
 Vérifications automatiques déjà passées : `cargo clippy --workspace --all-targets`, `npm run lint`, `npm run build`, et les 89 tests web. Elles ne prouvent que la compilation et le comportement en test — les points ci-dessus demandent un vrai essai.
 

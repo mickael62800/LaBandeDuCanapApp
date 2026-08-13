@@ -168,7 +168,7 @@ export function useMemberHomePage() {
 
     busyReveal.value = server.id;
     try {
-      await nexusGamesService.revealIp(guildId, server.id, user.value.id);
+      await nexusGamesService.revealIp(guildId, server.id);
       servers.value = await publicGamesService.listServers(guildId);
       success(`Adresse de ${server.name} révélée.`);
     } catch (error) {

@@ -139,35 +139,41 @@ export const nexusGamesService = {
 
   /**
    * POST /api/games/servers/{id}/start
-   * `actorId` sert a tracer qui a declenche l'action dans le journal d'audit.
+   *
+   * L'AUTEUR DE L'ACTION N'EST PLUS ENVOYÉ PAR LE SPA. Il l'était en paramètre
+   * d'URL (`?actor_id=`) et l'API le reprenait tel quel : n'importe quelle
+   * action tracée — RCON, arrêt, suppression — pouvait donc être attribuée à
+   * quelqu'un d'autre. La passerelle nginx pose désormais `X-Actor-Id` depuis
+   * la session vérifiée, côté serveur, et l'API ignore ce que le navigateur
+   * propose. Ne pas le remettre : ce serait ignoré, et trompeur à la relecture.
    */
-  start(guildId: string, serverId: string, actorId: string): Promise<void> {
+  start(guildId: string, serverId: string): Promise<void> {
     return nexusPost<void>(
-      `/api/games/servers/${encodeURIComponent(serverId)}/start?actor_id=${encodeURIComponent(actorId)}`,
+      `/api/games/servers/${encodeURIComponent(serverId)}/start`,
       guildId,
     );
   },
 
   /** POST /api/games/servers/{id}/stop */
-  stop(guildId: string, serverId: string, actorId: string): Promise<void> {
+  stop(guildId: string, serverId: string): Promise<void> {
     return nexusPost<void>(
-      `/api/games/servers/${encodeURIComponent(serverId)}/stop?actor_id=${encodeURIComponent(actorId)}`,
+      `/api/games/servers/${encodeURIComponent(serverId)}/stop`,
       guildId,
     );
   },
 
   /** POST /api/games/servers/{id}/restart */
-  restart(guildId: string, serverId: string, actorId: string): Promise<void> {
+  restart(guildId: string, serverId: string): Promise<void> {
     return nexusPost<void>(
-      `/api/games/servers/${encodeURIComponent(serverId)}/restart?actor_id=${encodeURIComponent(actorId)}`,
+      `/api/games/servers/${encodeURIComponent(serverId)}/restart`,
       guildId,
     );
   },
 
   /** POST /api/games/servers/{id}/reveal-ip — révélation anticipée admin. */
-  revealIp(guildId: string, serverId: string, actorId: string): Promise<void> {
+  revealIp(guildId: string, serverId: string): Promise<void> {
     return nexusPost<void>(
-      `/api/games/servers/${encodeURIComponent(serverId)}/reveal-ip?actor_id=${encodeURIComponent(actorId)}`,
+      `/api/games/servers/${encodeURIComponent(serverId)}/reveal-ip`,
       guildId,
     );
   },
@@ -178,16 +184,11 @@ export const nexusGamesService = {
    * `scheduled`, les salons/panneau sont créés tout de suite, et le worker
    * démarre le conteneur ~5 min avant `revealAt` (ISO 8601).
    */
-  schedule(
-    guildId: string,
-    serverId: string,
-    revealAt: string,
-    actorId: string,
-  ): Promise<void> {
+  schedule(guildId: string, serverId: string, revealAt: string): Promise<void> {
     return nexusPost<void>(
       `/api/games/servers/${encodeURIComponent(serverId)}/schedule`,
       guildId,
-      { reveal_at: revealAt, actor_id: actorId },
+      { reveal_at: revealAt },
     );
   },
 
@@ -199,12 +200,11 @@ export const nexusGamesService = {
     guildId: string,
     serverId: string,
     revealAt: string | null,
-    actorId: string,
   ): Promise<void> {
     return nexusPost<void>(
       `/api/games/servers/${encodeURIComponent(serverId)}/reveal-schedule`,
       guildId,
-      { reveal_at: revealAt, actor_id: actorId },
+      { reveal_at: revealAt },
     );
   },
 
@@ -246,10 +246,9 @@ export const nexusGamesService = {
     guildId: string,
     serverId: string,
     config: Record<string, string>,
-    actorId: string,
   ): Promise<void> {
     return nexusPut<void>(
-      `/api/games/servers/${encodeURIComponent(serverId)}/config?actor_id=${encodeURIComponent(actorId)}`,
+      `/api/games/servers/${encodeURIComponent(serverId)}/config`,
       guildId,
       { config },
     );
@@ -273,9 +272,9 @@ export const nexusGamesService = {
   },
 
   /** DELETE /api/games/servers/{id} */
-  remove(guildId: string, serverId: string, actorId: string): Promise<void> {
+  remove(guildId: string, serverId: string): Promise<void> {
     return nexusDelete<void>(
-      `/api/games/servers/${encodeURIComponent(serverId)}?actor_id=${encodeURIComponent(actorId)}`,
+      `/api/games/servers/${encodeURIComponent(serverId)}`,
       guildId,
     );
   },

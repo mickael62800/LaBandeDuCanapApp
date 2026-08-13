@@ -16,7 +16,6 @@ import AppButton from "../atoms/AppButton.vue";
 import { computed, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useGuildSelector } from "../../composables/useGuildSelector";
-import { useAuth } from "../../composables/useAuth";
 import { useToast } from "../../composables/useToast";
 import {
   nexusGamesService,
@@ -32,7 +31,8 @@ import AdminPageShell from "../layouts/AdminPageShell.vue";
 const route = useRoute();
 const router = useRouter();
 const { selectedGuildId } = useGuildSelector();
-const { user } = useAuth();
+// `useAuth` n'est plus consulte ici : l'auteur des actions vient desormais de
+// la passerelle (en-tete `X-Actor-Id`), plus du navigateur.
 const { success, error: showError } = useToast();
 
 const serverId = computed(() => String(route.params.id ?? ""));
@@ -118,7 +118,7 @@ async function act(action: "start" | "stop" | "restart") {
   if (!selectedGuildId.value || !server.value || busy.value) return;
   busy.value = true;
   try {
-    await nexusGamesService[action](selectedGuildId.value, server.value.id, user.value?.id ?? "");
+    await nexusGamesService[action](selectedGuildId.value, server.value.id);
     success("Action envoyée.");
     // Le conteneur met quelques secondes à changer d'état : on laisse Docker
     // faire avant de relire, sinon on réafficherait l'état précédent.
@@ -134,7 +134,7 @@ async function remove() {
   if (!selectedGuildId.value || !server.value) return;
   if (!confirm(`Supprimer définitivement « ${server.value.name} » et ses données ?`)) return;
   try {
-    await nexusGamesService.remove(selectedGuildId.value, server.value.id, user.value?.id ?? "");
+    await nexusGamesService.remove(selectedGuildId.value, server.value.id);
     success("Serveur supprimé.");
     router.push("/nexus/servers");
   } catch (e) {
@@ -147,11 +147,7 @@ async function revealIpNow() {
   if (!confirm(`Révéler immédiatement l'adresse de « ${server.value.name} » à tous les membres ? Le rôle du jeu sera mentionné s'il existe.`)) return;
   revealingIp.value = true;
   try {
-    await nexusGamesService.revealIp(
-      selectedGuildId.value,
-      server.value.id,
-      user.value?.id ?? "",
-    );
+    await nexusGamesService.revealIp(selectedGuildId.value, server.value.id);
     success("Adresse révélée immédiatement.");
     await load();
   } catch (e) {
@@ -179,7 +175,6 @@ async function submitSchedule() {
         selectedGuildId.value,
         server.value.id,
         iso,
-        user.value?.id ?? "",
       );
       success("Révélation de l'adresse programmée.");
     } else {
@@ -187,7 +182,6 @@ async function submitSchedule() {
         selectedGuildId.value,
         server.value.id,
         iso,
-        user.value?.id ?? "",
       );
       success("Ouverture programmée : les inscriptions sont ouvertes.");
     }
@@ -208,7 +202,6 @@ async function saveConfig() {
       selectedGuildId.value,
       server.value.id,
       config.value,
-      user.value?.id ?? "",
     );
     success("Configuration enregistrée. Redémarre le serveur pour l'appliquer.");
   } catch (e) {

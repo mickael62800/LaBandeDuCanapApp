@@ -8,7 +8,6 @@
 
 import { computed, ref, watch } from "vue";
 import { useGuildSelector } from "../../composables/useGuildSelector";
-import { useAuth } from "../../composables/useAuth";
 import { useToast } from "../../composables/useToast";
 import {
   nexusGamesService,
@@ -19,7 +18,7 @@ import {
 import AdminPageShell from "../layouts/AdminPageShell.vue";
 
 const { selectedGuildId, selectedGuild } = useGuildSelector();
-const { user } = useAuth();
+// Idem `NexusServerDetailPage` : l'acteur de l'audit vient de la passerelle.
 const { success, error: showError } = useToast();
 
 const servers = ref<GameServer[]>([]);
@@ -88,8 +87,7 @@ async function act(server: GameServer, action: "start" | "stop" | "restart") {
   if (!selectedGuildId.value || busyId.value) return;
   busyId.value = server.id;
   try {
-    const actor = user.value?.id ?? "";
-    await nexusGamesService[action](selectedGuildId.value, server.id, actor);
+    await nexusGamesService[action](selectedGuildId.value, server.id);
     success(`${server.name} : action envoyee`);
     // L'API repond des que l'ordre est pris en compte, mais le conteneur met
     // quelques secondes a changer d'etat : on recharge apres un court delai.

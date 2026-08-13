@@ -2,11 +2,14 @@
 //!
 //! Difference avec sentinel-api : pas de RBAC/component-gates ici, la seule
 //! auth est le Bearer global NEXUS_API_KEY (middleware require_api_key).
-//! L'identite de l'acteur (audit) vient du payload/query (`actor_id`),
-//! comme pour les handlers wallet.
+//!
+//! L'identite de l'acteur (audit) vient de la PASSERELLE pour les appels web
+//! (`X-Actor-Id`, pose par nginx depuis `auth_request`), et du payload/query
+//! pour les appelants internes. Voir `acteur` : le parametre d'URL etait repris
+//! tel quel, ce qui rendait toute action attribuable a n'importe qui.
 
 use axum::extract::{Path, Query, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::Json;
 use serde::Deserialize;
 use uuid::Uuid;
@@ -112,21 +115,120 @@ pub async fn get_server(
 
 #[derive(Debug, Deserialize)]
 pub struct ActorQuery {
-    /// Discord user id de l'acteur (audit). Si absent, fallback sur l'owner.
+    /// Discord user id de l'acteur (audit), pour les appelants INTERNES
+    /// uniquement — le bot, qui connait l'utilisateur ayant lance la commande
+    /// et n'a pas de session web. Ignore pour tout ce qui vient de la
+    /// passerelle : voir `acteur`.
     pub actor_id: Option<String>,
 }
 
-/// Resout l'acteur pour l'audit : actor_id explicite sinon owner du serveur.
-async fn resolve_actor(
+/// Pose par la passerelle nginx, valeur constante. Sa seule presence atteste
+/// que la requete vient du web ; l'identite, elle, est dans `X-Actor-Id`.
+const EN_TETE_SOURCE: &str = "x-actor-source";
+const EN_TETE_ACTEUR: &str = "x-actor-id";
+
+/// Resout l'acteur a journaliser.
+///
+/// LE PROBLEME QU'ON FERME : `actor_id` etait un parametre d'URL repris tel
+/// quel. N'importe quelle action tracee — RCON, arret, suppression de serveur —
+/// pouvait donc etre attribuee a quelqu'un d'autre en ajoutant
+/// `?actor_id=<autre_personne>`. La tracabilite etait falsifiable par le plus
+/// simple des moyens, plus simple encore que de forger un en-tete.
+///
+/// DEUX APPELANTS, DEUX REGIMES :
+///
+/// - **Depuis le web** (`X-Actor-Source: gateway`) : l'identite vient de
+///   `auth_request`, ecrite par nginx qui ECRASE tout en-tete client. Le
+///   parametre d'URL est alors IGNORE — c'est ce qui rend l'attribution non
+///   falsifiable. S'il manque quand meme (auth mal configuree), on journalise
+///   « inconnu » plutot que de croire l'appelant : une trace vide est
+///   preferable a une trace fausse.
+/// - **Interne** (bot, worker — porteurs de `NEXUS_API_KEY`, hors passerelle) :
+///   le parametre reste lu. Ce sont des processus de confiance, et le bot est
+///   le seul a connaitre l'utilisateur Discord qui a clique. Le lui retirer
+///   remplacerait une information vraie par le proprietaire du serveur.
+///
+/// Sans acteur exploitable, repli sur le proprietaire du serveur.
+///
+/// Note : `nexus-api` n'est pas publie sur l'hote. Un navigateur ne peut
+/// l'atteindre QUE par la passerelle, donc jamais par le chemin interne.
+async fn acteur(
     state: &AppState,
+    headers: &HeaderMap,
     server_id: Uuid,
-    explicit: Option<&str>,
+    depuis_url: Option<&str>,
 ) -> Result<String, ApiError> {
-    if let Some(s) = explicit {
-        return Ok(s.to_string());
+    if let Some(a) = acteur_propose(headers, depuis_url) {
+        return Ok(a);
     }
     let detail = state.game_servers_uc.get(server_id).await?;
     Ok(detail.server.owner_user_id)
+}
+
+/// Partie decisive de `acteur`, isolee pour etre testable sans etat : c'est
+/// ici que se joue « qui a le droit de nommer l'auteur d'une action ».
+/// `None` = aucun acteur exploitable, l'appelant retombe sur le proprietaire.
+fn acteur_propose(headers: &HeaderMap, depuis_url: Option<&str>) -> Option<String> {
+    let non_vide = |v: &str| {
+        let v = v.trim();
+        (!v.is_empty()).then(|| v.to_owned())
+    };
+
+    if headers.contains_key(EN_TETE_SOURCE) {
+        return headers
+            .get(EN_TETE_ACTEUR)
+            .and_then(|v| v.to_str().ok())
+            .and_then(non_vide)
+            .or_else(|| Some("inconnu".to_owned()));
+    }
+    depuis_url.and_then(non_vide)
+}
+
+#[cfg(test)]
+mod tests_acteur {
+    use super::*;
+
+    fn entetes(paires: &[(&str, &str)]) -> HeaderMap {
+        let mut h = HeaderMap::new();
+        for (k, v) in paires {
+            h.insert(
+                axum::http::HeaderName::from_bytes(k.as_bytes()).unwrap(),
+                v.parse().unwrap(),
+            );
+        }
+        h
+    }
+
+    #[test]
+    fn la_passerelle_impose_son_acteur_et_ignore_l_url() {
+        let h = entetes(&[("x-actor-source", "gateway"), ("x-actor-id", "111")]);
+        // Le parametre d'URL designe quelqu'un d'autre : c'est precisement
+        // l'attaque que ce point ferme.
+        assert_eq!(acteur_propose(&h, Some("222")).as_deref(), Some("111"));
+    }
+
+    #[test]
+    fn passerelle_sans_identite_journalise_inconnu_plutot_que_l_url() {
+        // nginx n'emet pas un en-tete vide : `X-Actor-Id` peut donc manquer si
+        // l'authentification est mal configuree. Ne PAS retomber sur l'URL —
+        // ce serait rouvrir le defaut le jour ou l'auth casse.
+        let h = entetes(&[("x-actor-source", "gateway")]);
+        assert_eq!(acteur_propose(&h, Some("222")).as_deref(), Some("inconnu"));
+    }
+
+    #[test]
+    fn appelant_interne_peut_nommer_l_acteur() {
+        // Le bot connait l'utilisateur Discord qui a lance la commande, et
+        // n'atteint pas l'API par la passerelle.
+        let h = entetes(&[]);
+        assert_eq!(acteur_propose(&h, Some("333")).as_deref(), Some("333"));
+    }
+
+    #[test]
+    fn sans_rien_d_exploitable_on_retombe_sur_le_proprietaire() {
+        assert_eq!(acteur_propose(&entetes(&[]), None), None);
+        assert_eq!(acteur_propose(&entetes(&[]), Some("   ")), None);
+    }
 }
 
 /// Publie un evenement de cycle de vie serveur a destination du bot.
@@ -148,13 +250,11 @@ async fn publish_lifecycle(state: &AppState, event: &str, server_id: Uuid, guild
 pub async fn start_server(
     State(state): State<AppState>,
     Path(server_id): Path<Uuid>,
+    headers: HeaderMap,
     Query(q): Query<ActorQuery>,
 ) -> Result<StatusCode, ApiError> {
     let detail = state.game_servers_uc.get(server_id).await?;
-    let actor = q
-        .actor_id
-        .clone()
-        .unwrap_or_else(|| detail.server.owner_user_id.clone());
+    let actor = acteur(&state, &headers, server_id, q.actor_id.as_deref()).await?;
     state.game_servers_uc.start(server_id, &actor).await?;
     publish_lifecycle(&state, SERVER_STARTED, server_id, &detail.server.guild_id).await;
     Ok(StatusCode::NO_CONTENT)
@@ -164,13 +264,11 @@ pub async fn start_server(
 pub async fn stop_server(
     State(state): State<AppState>,
     Path(server_id): Path<Uuid>,
+    headers: HeaderMap,
     Query(q): Query<ActorQuery>,
 ) -> Result<StatusCode, ApiError> {
     let detail = state.game_servers_uc.get(server_id).await?;
-    let actor = q
-        .actor_id
-        .clone()
-        .unwrap_or_else(|| detail.server.owner_user_id.clone());
+    let actor = acteur(&state, &headers, server_id, q.actor_id.as_deref()).await?;
     state.game_servers_uc.stop(server_id, &actor).await?;
     publish_lifecycle(&state, SERVER_STOPPED, server_id, &detail.server.guild_id).await;
     Ok(StatusCode::NO_CONTENT)
@@ -180,9 +278,10 @@ pub async fn stop_server(
 pub async fn restart_server(
     State(state): State<AppState>,
     Path(server_id): Path<Uuid>,
+    headers: HeaderMap,
     Query(q): Query<ActorQuery>,
 ) -> Result<StatusCode, ApiError> {
-    let actor = resolve_actor(&state, server_id, q.actor_id.as_deref()).await?;
+    let actor = acteur(&state, &headers, server_id, q.actor_id.as_deref()).await?;
     state.game_servers_uc.restart(server_id, &actor).await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -194,13 +293,11 @@ pub async fn restart_server(
 pub async fn reveal_ip(
     State(state): State<AppState>,
     Path(server_id): Path<Uuid>,
+    headers: HeaderMap,
     Query(q): Query<ActorQuery>,
 ) -> Result<StatusCode, ApiError> {
     let detail = state.game_servers_uc.get(server_id).await?;
-    let actor = q
-        .actor_id
-        .clone()
-        .unwrap_or_else(|| detail.server.owner_user_id.clone());
+    let actor = acteur(&state, &headers, server_id, q.actor_id.as_deref()).await?;
     state.game_servers_uc.reveal_ip(server_id, &actor).await?;
     publish_lifecycle(&state, IP_REVEAL, server_id, &detail.server.guild_id).await;
     Ok(StatusCode::NO_CONTENT)
@@ -224,6 +321,7 @@ pub struct ScheduleDto {
 pub async fn schedule_server(
     State(state): State<AppState>,
     Path(server_id): Path<Uuid>,
+    headers: HeaderMap,
     Json(dto): Json<ScheduleDto>,
 ) -> Result<StatusCode, ApiError> {
     let reveal_at = dto.reveal_at.ok_or_else(|| {
@@ -232,10 +330,7 @@ pub async fn schedule_server(
         ))
     })?;
     let detail = state.game_servers_uc.get(server_id).await?;
-    let actor = dto
-        .actor_id
-        .clone()
-        .unwrap_or_else(|| detail.server.owner_user_id.clone());
+    let actor = acteur(&state, &headers, server_id, dto.actor_id.as_deref()).await?;
     state
         .game_servers_uc
         .schedule(server_id, reveal_at, &actor)
@@ -252,13 +347,13 @@ pub async fn schedule_server(
 pub async fn set_reveal_schedule(
     State(state): State<AppState>,
     Path(server_id): Path<Uuid>,
+    headers: HeaderMap,
     Json(dto): Json<ScheduleDto>,
 ) -> Result<StatusCode, ApiError> {
-    let detail = state.game_servers_uc.get(server_id).await?;
-    let actor = dto
-        .actor_id
-        .clone()
-        .unwrap_or_else(|| detail.server.owner_user_id.clone());
+    // Pas de lecture prealable du serveur ici : `acteur` ne la fait que si
+    // aucune identite n'est exploitable, et cette route ne publie aucun
+    // evenement de cycle de vie (donc pas besoin du `guild_id`).
+    let actor = acteur(&state, &headers, server_id, dto.actor_id.as_deref()).await?;
     state
         .game_servers_uc
         .set_reveal_schedule(server_id, dto.reveal_at, &actor)
@@ -270,13 +365,11 @@ pub async fn set_reveal_schedule(
 pub async fn delete_server(
     State(state): State<AppState>,
     Path(server_id): Path<Uuid>,
+    headers: HeaderMap,
     Query(q): Query<ActorQuery>,
 ) -> Result<StatusCode, ApiError> {
     let detail = state.game_servers_uc.get(server_id).await?;
-    let actor = q
-        .actor_id
-        .clone()
-        .unwrap_or_else(|| detail.server.owner_user_id.clone());
+    let actor = acteur(&state, &headers, server_id, q.actor_id.as_deref()).await?;
     state.game_servers_uc.delete(server_id, &actor).await?;
     publish_lifecycle(&state, SERVER_DELETED, server_id, &detail.server.guild_id).await;
     Ok(StatusCode::NO_CONTENT)
@@ -311,10 +404,11 @@ pub async fn get_stats(
 pub async fn update_config(
     State(state): State<AppState>,
     Path(server_id): Path<Uuid>,
+    headers: HeaderMap,
     Query(q): Query<ActorQuery>,
     Json(dto): Json<UpdateConfigDto>,
 ) -> Result<StatusCode, ApiError> {
-    let actor = resolve_actor(&state, server_id, q.actor_id.as_deref()).await?;
+    let actor = acteur(&state, &headers, server_id, q.actor_id.as_deref()).await?;
     state
         .game_servers_uc
         .update_config(server_id, dto.config, &actor)
@@ -326,10 +420,11 @@ pub async fn update_config(
 pub async fn execute_rcon(
     State(state): State<AppState>,
     Path(server_id): Path<Uuid>,
+    headers: HeaderMap,
     Query(q): Query<ActorQuery>,
     Json(dto): Json<RconCommandDto>,
 ) -> Result<Json<RconCommandResponseDto>, ApiError> {
-    let actor = resolve_actor(&state, server_id, q.actor_id.as_deref()).await?;
+    let actor = acteur(&state, &headers, server_id, q.actor_id.as_deref()).await?;
     let resp = state
         .game_servers_uc
         .execute_rcon(server_id, &dto.command, &actor)

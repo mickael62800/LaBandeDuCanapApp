@@ -9,7 +9,7 @@ Ce qui reste après les audits des plateformes `sentinel-*`, `atrium-*`, `ops-*`
 
 > ### ✅ Corrigés le 13/08/2026
 >
-> **N1, N2, N3, A4, W1, O4, S1, A1, W4, W3, W2**, et **O1 partiellement**. Les sections Web et Nexus sont traitées — N4 mis à part, redescendu à un choix de produit.
+> **N1, N2, N3, A4, A2, A1, W1, W2, W3, W4, O4, S1**, et **O1 partiellement**. Web, Nexus et Atrium sont traités ; N4, O3, A3 et S2 sont durcis mais restent ouverts par décision.
 >
 > S1 est corrigé **dans le dépôt** : plus aucun mot de passe n'a de valeur de repli publiée. Le travail côté serveur reste entier — compléter le `.env`, puis faire tourner les secrets qui valaient encore le défaut. Ajouter la variable ne remplace pas la rotation.
 >
@@ -31,7 +31,7 @@ Ce qui reste après les audits des plateformes `sentinel-*`, `atrium-*`, `ops-*`
 | # | Sujet | Pourquoi c'est encore ouvert |
 |---|---|---|
 | ~~A1~~ | ~~`forget_member` existe mais n'est joignable par aucune route~~ | ✅ **Corrigé le 13/08** — route `DELETE …/members/{id}/memory`, auteur journalisé, bouton dans l'écran Atrium |
-| A2 | `atrium_calming_requested` n'est pas signé | Le signer demande un secret partagé inter-plateformes qui n'existe pas encore |
+| ~~A2~~ | ~~`atrium_calming_requested` n'est pas signé~~ | ✅ **Corrigé le 13/08** — `PLATFORM_EVENTS_HMAC_KEY`, secret dédié. L'accueil est signé aussi, même bus et même exposition |
 | A3 | Contenu des membres envoyé à DeepSeek | Choix de produit, pas défaut de code. ⚠️ **Réduit le 13/08** : les membres sont informés, la rétention est déclarée, et la portée réelle était surestimée (voir plus bas). Reste ouvert : base légale, et l'opt-out par le membre lui-même |
 | ~~A4~~ | ~~`DEEPSEEK_API_KEY` garde un défaut vide dans le compose~~ | ✅ **Corrigé le 13/08** — `:?` sur le dernier repli |
 
@@ -275,9 +275,20 @@ Distribué à `sentinel-bot` (producteur) et `atrium-bot` (consommateur), et à 
 
 C'est la même décision que celle qui a séparé `DOCKER_AGENT_TOKEN` de `DOCKER_AGENT_GAME_TOKEN` : un jeton par surface, pour qu'un porteur ne puisse pas déborder.
 
-### Quand ça devient urgent
+### Fait le 13/08
 
-Le jour où un composant tiers, moins maîtrisé, obtient `REDIS_URL` de l'instance commune. Aujourd'hui les sept porteurs sont tous des binaires du dépôt.
+Exactement la forme décrite ci-dessus. `PLATFORM_EVENTS_HMAC_KEY` est distribué à `sentinel-bot` (producteur) et `atrium-bot` (consommateur), exigé en `:?` dans les deux services. Message canonique `atrium_calming:{guild_id}:{channel_id}:{kind}` — le `channel_id` **dans** le message signé, sans quoi un rappel légitime se rejouerait vers un autre salon.
+
+Deux écarts par rapport à l'énoncé, tous deux volontaires :
+
+- **L'accueil est signé aussi** (`atrium_welcome:{guild_id}:{user_id}`). L'audit ne visait que l'apaisement, mais `atrium_welcome_requested` emprunte le même bus, ne demande pas plus de privilège, et son effet est du même ordre : une publication au nom du bot et un appel payé au modèle. Un préfixe distinct empêche de faire passer un accueil pour un apaisement.
+- **La vérification précède le cooldown** côté Atrium. Placée après, un événement forgé aurait consommé le jeton de 15 minutes du salon : il aurait suffi d'en publier un par salon pour empêcher les rappels légitimes — un déni de service à la place d'un abus.
+
+Ce que la signature **ne** couvre **pas** : elle atteste de l'origine, pas de la fraîcheur. Un événement légitime capturé reste rejouable à l'identique. Les garde-fous existants bornent l'impact de ce rejeu (cooldown Redis partagé, `BudgetGuard`, validation du salon, mentions bornées) ; y ajouter un horodatage signé serait le prochain cran, si le besoin apparaît.
+
+### Quand ça devenait urgent
+
+Le jour où un composant tiers, moins maîtrisé, obtient `REDIS_URL` de l'instance commune. Ce n'est plus un pari : la signature ne dépend plus de qui détient l'URL.
 
 ---
 

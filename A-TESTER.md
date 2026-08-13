@@ -1,6 +1,6 @@
 # À tester — changements du 13/08/2026
 
-Vingt changements, expliqués simplement, avec ce qu'il faut vérifier pour chacun.
+Vingt et un changements, expliqués simplement, avec ce qu'il faut vérifier pour chacun.
 
 **Commencer par le point 10** : il exige de compléter le `.env` et, sans ça, plus rien ne démarre.
 
@@ -361,6 +361,28 @@ La protection du navigateur en production (CSP) empêchait l'exécution, mais ce
 
 ---
 
+## 21. ⚠️ Les messages entre Sentinel et Atrium sont signés (A2)
+
+**Le problème.** Quand l'AutoMod détecte une tension dans un salon, il demande à Atrium de poster un rappel d'apaisement. Cette demande transitait par le bus commun **sans aucune preuve d'origine** : les trois bots, les trois workers et la passerelle en détiennent l'adresse. N'importe lequel — ou quiconque prendrait la main sur l'un d'eux — pouvait donc faire publier un message par Atrium, dans un vrai salon, en son nom, et déclencher un appel payant au service d'IA.
+
+**Le changement.** Ces demandes portent maintenant une signature, vérifiée avant tout traitement. Une demande non signée ou mal signée est rejetée et journalisée. Le message d'accueil d'Atrium est protégé de la même façon.
+
+**⚠️ Nouvelle variable obligatoire : `PLATFORM_EVENTS_HMAC_KEY`.** Elle doit valoir **exactement la même chose** pour `sentinel-bot` et `atrium-bot` — c'est un secret partagé. Générer une valeur :
+
+```bash
+echo "PLATFORM_EVENTS_HMAC_KEY=$(openssl rand -base64 32 | tr -d '/+=' | head -c 32)" >> .env
+```
+
+**Reconstruire les deux bots ensemble.** Si l'un est à jour et pas l'autre, les demandes sont rejetées : Atrium cesse d'accueillir et d'apaiser (rien de cassé, mais rien ne se passe).
+
+**À vérifier**, après reconstruction de `sentinel-bot` **et** `atrium-bot` :
+
+1. Un nouveau membre valide le règlement → le mot d'accueil d'Atrium apparaît comme avant.
+2. `docker compose logs atrium-bot | grep -i signature` → **aucune ligne**. Si vous en voyez, les deux services n'ont pas la même clé.
+3. Provoquer une tension dans un salon (ou attendre l'occasion) → le rappel d'apaisement fonctionne toujours.
+
+---
+
 ## Récapitulatif des fichiers modifiés
 
 | Changement | Fichier | Service à reconstruire |
@@ -385,6 +407,7 @@ La protection du navigateur en production (CSP) empêchait l'exécution, mais ce
 | 18 — sondes S2 | `sentinel-api/src/main.rs`, `auth-api/src/config.rs`, `auth-core/.../identity.rs` | `api`, `auth-api` |
 | 19 — mention IA | `atrium-bot/src/main.rs`, `compose.atrium.yml` | `atrium-bot`, `atrium-api` |
 | 20 — forme RCON | `nexus-core/.../manage_game_servers_service.rs` | `nexus-api`, `nexus-bot` |
+| 21 — events signés | `sentinel-bot/src/shared/platform_event_signing.rs`, `atrium-bot/src/platform_event_signing.rs`, composes | `sentinel-bot`, `atrium-bot` |
 
 Vérifications automatiques déjà passées : `cargo clippy --workspace --all-targets`, `npm run lint`, `npm run build`, et les 89 tests web. Elles ne prouvent que la compilation et le comportement en test — les points ci-dessus demandent un vrai essai.
 

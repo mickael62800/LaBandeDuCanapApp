@@ -77,8 +77,9 @@ pub struct BanIpResponse {
 
 /// POST /api/security/ban-ip
 /// Delegue au use case `ManageIpBansUseCase` (validation + file-shim host +
-/// persistance + purge logs). Le handler ne fait que le gate, l'audit et le
-/// mapping de la reponse.
+/// persistance). Le handler ne fait que le gate, l'audit et le mapping de la
+/// reponse. Les logs de l'IP ne sont PAS purges : un ban ne doit pas detruire
+/// les traces qui le justifient.
 pub async fn ban_ip(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -86,7 +87,7 @@ pub async fn ban_ip(
 ) -> Result<Json<BanIpResponse>, ApiError> {
     let actor = actor_from(&headers);
 
-    let outcome = state
+    state
         .ip_bans_uc
         .ban(&dto.ip, dto.reason.clone(), &actor)
         .await?;
@@ -99,16 +100,13 @@ pub async fn ban_ip(
         "security.ban_ip",
         Some(ip),
         "warn",
-        serde_json::json!({ "reason": dto.reason, "ip": ip, "deleted_logs": outcome.deleted_logs }),
+        serde_json::json!({ "reason": dto.reason, "ip": ip }),
     )
     .await;
 
     Ok(Json(BanIpResponse {
         ok: true,
-        message: format!(
-            "IP {} bannie ({} logs purges, sera applique au prochain tick du cron host)",
-            ip, outcome.deleted_logs
-        ),
+        message: format!("IP {ip} bannie (sera applique au prochain tick du cron host)"),
     }))
 }
 

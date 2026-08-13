@@ -4,18 +4,15 @@
 
 use async_trait::async_trait;
 
-use crate::domain::entities::ip_ban::{BanIpOutcome, Fail2banStatus, ManualIpBan};
+use crate::domain::entities::ip_ban::{Fail2banStatus, ManualIpBan};
 use crate::domain::errors::DomainError;
 
 #[async_trait]
 pub trait ManageIpBansUseCase: Send + Sync {
-    /// Bannit une IP : valide, met en file host, persiste, purge les logs.
-    async fn ban(
-        &self,
-        ip: &str,
-        reason: Option<String>,
-        actor: &str,
-    ) -> Result<BanIpOutcome, DomainError>;
+    /// Bannit une IP : valide, met en file host, persiste. Ne purge PAS les
+    /// logs de l'IP — cf. le commentaire de `ban` dans le service.
+    async fn ban(&self, ip: &str, reason: Option<String>, actor: &str)
+        -> Result<(), DomainError>;
 
     /// Leve un ban : valide, met en file host, marque la ligne DB comme levee.
     async fn unban(&self, ip: &str, reason: Option<String>, actor: &str)

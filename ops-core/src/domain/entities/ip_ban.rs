@@ -17,12 +17,16 @@ pub struct ManualIpBan {
     pub reason: Option<String>,
 }
 
-/// Resultat d'une demande de ban : ce que l'appelant doit reporter.
-#[derive(Debug, Clone)]
-pub struct BanIpOutcome {
-    /// Nombre de logs API purges pour cette IP (best-effort).
-    pub deleted_logs: u64,
-}
+// `BanIpOutcome` a ete supprime avec son unique champ, `deleted_logs`.
+//
+// Bannir une IP ne purge plus ses logs — la mesure detruisait les preuves qui
+// la justifiaient. Le champ a survecu au comportement qu'il decrivait : il
+// valait toujours 0, et l'interface annoncait « 0 logs purges » a chaque ban.
+// Un contrat qui rend compte d'une action qui n'a plus lieu est pire qu'un
+// contrat absent : il se lit comme une mesure devenue inefficace.
+//
+// `ban` renvoie donc `()`. La retention des logs est le travail de la purge
+// programmee (`/security/cleanup`), explicite et auditee.
 
 /// Statut fail2ban tel qu'expose par le cron host (lecture seule).
 #[derive(Debug, Clone)]

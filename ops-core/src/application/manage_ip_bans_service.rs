@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use crate::domain::entities::ip_ban::{BanIpOutcome, Fail2banStatus, ManualIpBan};
+use crate::domain::entities::ip_ban::{Fail2banStatus, ManualIpBan};
 use crate::domain::errors::DomainError;
 use crate::ports::inbound::manage_ip_bans::ManageIpBansUseCase;
 use crate::ports::outbound::host_ban_queue::{Fail2banStatusReader, HostBanQueue};
@@ -72,7 +72,7 @@ impl ManageIpBansUseCase for ManageIpBansService {
         ip: &str,
         reason: Option<String>,
         actor: &str,
-    ) -> Result<BanIpOutcome, DomainError> {
+    ) -> Result<(), DomainError> {
         let ip = ip.trim();
         validate_bannable_ip(ip)?;
         let reason = reason.as_deref().map(str::trim).filter(|s| !s.is_empty());
@@ -92,7 +92,7 @@ impl ManageIpBansUseCase for ManageIpBansService {
         //
         // La retention des logs est le travail de la purge programmee
         // (`/security/cleanup`), qui est explicite et auditee.
-        Ok(BanIpOutcome { deleted_logs: 0 })
+        Ok(())
     }
 
     async fn unban(

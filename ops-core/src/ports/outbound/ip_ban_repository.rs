@@ -1,5 +1,8 @@
-//! Port outbound : persistance des bans IP manuels (table `manual_ip_bans`)
-//! et purge des logs API associes.
+//! Port outbound : persistance des bans IP manuels (table `manual_ip_bans`).
+//!
+//! `delete_api_logs_for_ip` a ete retire : bannir une IP ne purge plus ses
+//! logs, et le port n'avait donc plus d'appelant. Le laisser en place rendait
+//! la capacite triviale a rebrancher par inadvertance.
 
 use async_trait::async_trait;
 
@@ -22,7 +25,4 @@ pub trait IpBanRepository: Send + Sync {
 
     /// Bans manuels actifs (non leves), du plus recent au plus ancien.
     async fn list_active(&self) -> Result<Vec<ManualIpBan>, DomainError>;
-
-    /// Purge les logs API lies a une IP bannie. Retourne le nb de lignes.
-    async fn delete_api_logs_for_ip(&self, ip: &str) -> Result<u64, DomainError>;
 }

@@ -555,11 +555,21 @@ async fn on_member_add_impl(ctx: &Context, new_member: &Member, rules_accepted: 
     // ne voit pas ce salon — l'accueil serait perdu, et le rappel « mentionne-moi »
     // avec lui.
     if accueil_autorise {
+        // Signe comme l'apaisement : meme bus commun, meme absence de privilege
+        // requis pour y ecrire. Un event forge ferait accueillir n'importe quel
+        // membre a n'importe quel moment, au nom du bot, avec un appel paye au
+        // modele a la cle.
+        use crate::shared::platform_event_signing as signature_plateforme;
+        let sig = signature_plateforme::sign(
+            &signature_plateforme::secret(),
+            &signature_plateforme::welcome_message(&guild_id.to_string(), &user_id.to_string()),
+        );
         base.publish_event(
             "atrium_welcome_requested",
             serde_json::json!({
                 "guild_id": guild_id.to_string(),
                 "user_id": user_id.to_string(),
+                "sig": sig,
             }),
         );
     }

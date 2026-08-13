@@ -30,6 +30,7 @@ use tonic::transport::Channel;
 use tonic::Request;
 
 mod logic;
+mod platform_event_signing;
 
 const DISCORD_DIRECTORY_MAX_CHARS: usize = 6_000;
 const MEMBERS_PER_ROLE: usize = 30;
@@ -133,6 +134,10 @@ struct CalmingEventData {
     reason: String,
     #[serde(default)]
     kind: String,
+    /// Signature HMAC posee par Sentinel. Absente = event non signe : traite
+    /// comme une signature fausse des lors qu'un secret est configure.
+    #[serde(default)]
+    sig: String,
 }
 
 #[derive(Clone)]
@@ -250,6 +255,21 @@ impl Handler {
         }
 
         if event.event == "atrium_welcome_requested" {
+            // Origine verifiee AVANT tout appel au modele : un event forge ne
+            // doit couter ni une requete payante ni un message public.
+            if !platform_event_signing::verifie(
+                &event.data.sig,
+                &platform_event_signing::welcome_message(
+                    &event.data.guild_id,
+                    &event.data.user_id,
+                ),
+            ) {
+                tracing::warn!(
+                    guild_id = %event.data.guild_id,
+                    "accueil Atrium refuse : signature absente ou invalide"
+                );
+                return;
+            }
             let Ok(guild_num) = event.data.guild_id.parse::<u64>() else {
                 return;
             };
@@ -310,6 +330,26 @@ impl Handler {
         }
 
         if event.event != "atrium_calming_requested" || event.data.reason != "channel_tension" {
+            return;
+        }
+
+        // Meme controle que pour l'accueil, et place AVANT le cooldown : un
+        // event forge ne doit pas non plus consommer le jeton de 15 minutes,
+        // sans quoi il suffirait d'en publier un par salon pour empecher les
+        // rappels legitimes.
+        if !platform_event_signing::verifie(
+            &event.data.sig,
+            &platform_event_signing::calming_message(
+                &event.data.guild_id,
+                &event.data.channel_id,
+                &event.data.kind,
+            ),
+        ) {
+            tracing::warn!(
+                guild_id = %event.data.guild_id,
+                channel_id = %event.data.channel_id,
+                "apaisement Atrium refuse : signature absente ou invalide"
+            );
             return;
         }
 

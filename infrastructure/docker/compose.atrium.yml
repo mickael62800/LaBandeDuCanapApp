@@ -191,6 +191,10 @@ services:
       ATRIUM_DISCORD_TOKEN: ${ATRIUM_DISCORD_TOKEN:-}
       # Consomme les demandes d'apaisement publiees par Sentinel AutoMod.
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD est requis}@redis:6379
+      # Verifie la signature de ces events. MEME valeur que dans le service
+      # `sentinel-bot` qui les signe : une divergence fait tout rejeter, et ne
+      # se voit que dans les logs de ce conteneur.
+      PLATFORM_EVENTS_HMAC_KEY: ${PLATFORM_EVENTS_HMAC_KEY:?PLATFORM_EVENTS_HMAC_KEY est requis}
       ATRIUM_GRPC_URL: http://atrium-api:8091
       ATRIUM_GRPC_TOKEN: ${ATRIUM_GRPC_TOKEN:?ATRIUM_GRPC_TOKEN est requis}
       ATRIUM_GENERAL_CHANNEL_ID: ${ATRIUM_GENERAL_CHANNEL_ID:-}

@@ -17,6 +17,11 @@ redis = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 platform-common-bot = { version = "0.1.0", path = "../platform-common-bot" }
+# Verification des events inter-plateformes (cf. platform_event_signing.rs).
+# Memes versions que sentinel-bot, qui les signe : les deux implementations
+# doivent produire le meme HMAC.
+hmac = "0.12"
+sha2 = "0.10"
 
 [lints]
 workspace = true

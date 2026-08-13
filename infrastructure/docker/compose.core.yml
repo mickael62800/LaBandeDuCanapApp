@@ -781,6 +781,16 @@ services:
       GRPC_TLS_DIR: /grpc-certs
       # Le bot et son client gRPC lisent SENTINEL_API_KEY.
       SENTINEL_API_KEY: ${SENTINEL_API_KEY:-${API_KEY:-}}
+      # Signature des events publies VERS Atrium (apaisement, accueil).
+      #
+      # Secret DEDIE, et surtout PAS SENTINEL_API_KEY : le consommateur est
+      # atrium-bot, d'une autre plateforme. Lui confier la cle de l'API de
+      # Sentinel echangerait un probleme contre un pire. Meme raisonnement que
+      # DOCKER_AGENT_TOKEN / DOCKER_AGENT_GAME_TOKEN — un jeton par surface.
+      #
+      # Doit valoir exactement la meme chose ici et dans `atrium-bot`, sinon
+      # tous les events sont rejetes (visible dans les logs d'atrium-bot).
+      PLATFORM_EVENTS_HMAC_KEY: ${PLATFORM_EVENTS_HMAC_KEY:?PLATFORM_EVENTS_HMAC_KEY est requis}
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD est requis}@redis:6379
       REDIS_CHANNEL: sentinel:events
       VOICE_GUILD_ID: ${VOICE_GUILD_ID:-}

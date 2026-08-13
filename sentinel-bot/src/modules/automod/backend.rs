@@ -9,6 +9,7 @@ use tracing::{debug, error, info, warn};
 
 use crate::shared::embeds::{critical_embed, moderate_embed};
 use crate::shared::heartbeat::ApiClientKey;
+use crate::shared::platform_event_signing;
 
 use super::api_client::{Action, AnalyzeRequest, ApiClient, MessageMetadata};
 use super::config::EmbedColors;
@@ -340,13 +341,28 @@ pub(super) async fn send_to_backend(
             // Signal collectif, sans contenu ni identite de membre. Atrium
             // applique son propre cooldown avant de publier le rappel.
             if effective_reason.contains("Tension de salon") {
+                let kind = calming_kind(&request.flags);
+                // Signe : ce bus est l'instance Redis COMMUNE, y publier ne
+                // demande aucun privilege, et rien d'autre n'atteste que
+                // l'event vient bien de l'AutoMod. Secret dedie aux echanges
+                // inter-plateformes — pas `SENTINEL_API_KEY`, qui ouvrirait
+                // toute l'API de Sentinel a atrium-bot.
+                let signature = platform_event_signing::sign(
+                    &platform_event_signing::secret(),
+                    &platform_event_signing::calming_message(
+                        &request.guild_id,
+                        &request.channel_id,
+                        kind,
+                    ),
+                );
                 base.publish_event(
                     "atrium_calming_requested",
                     serde_json::json!({
                         "guild_id": request.guild_id,
                         "channel_id": request.channel_id,
                         "reason": "channel_tension",
-                        "kind": calming_kind(&request.flags),
+                        "kind": kind,
+                        "sig": signature,
                     }),
                 );
             }

@@ -419,7 +419,39 @@ impl GameContainerRuntime for DockerContainerRuntime {
             .await
             .map_err(|e| DomainError::Internal(format!("list networks: {e}")))?;
         if existing.iter().any(|n| n.name.as_deref() == Some(name)) {
-            return self.require_managed_network(name).await;
+            match self.require_managed_network(name).await {
+                Ok(()) => return Ok(()),
+                Err(ownership_error) => {
+                    // Migration d'une ancienne installation : Docker ne sait
+                    // pas ajouter des labels a un reseau existant. On ne peut
+                    // le recréer automatiquement que s'il est strictement
+                    // vide; un reseau avec des conteneurs reste fail-closed.
+                    let network = self
+                        .docker
+                        .inspect_network(
+                            name,
+                            None::<bollard::network::InspectNetworkOptions<String>>,
+                        )
+                        .await
+                        .map_err(|e| {
+                            DomainError::Internal(format!("inspect network migration: {e}"))
+                        })?;
+                    if network
+                        .containers
+                        .as_ref()
+                        .is_some_and(|containers| !containers.is_empty())
+                    {
+                        return Err(ownership_error);
+                    }
+                    tracing::warn!(
+                        network = name,
+                        "reseau Nexus historique vide sans labels; recreation controlee"
+                    );
+                    self.docker.remove_network(name).await.map_err(|e| {
+                        DomainError::Internal(format!("remove legacy empty network: {e}"))
+                    })?;
+                }
+            }
         }
         let labels = HashMap::from([
             (

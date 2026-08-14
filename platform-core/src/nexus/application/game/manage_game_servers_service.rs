@@ -25,7 +25,7 @@ use crate::nexus::domain::entities::game::server::{
 use crate::nexus::domain::entities::game::template::GameTemplate;
 use crate::nexus::domain::errors::DomainError;
 use crate::nexus::ports::inbound::game::manage_game_servers::{
-    GameServerDetail, ManageGameServersUseCase,
+    GameServerDetail, ManageGameServersUseCase, RequestIpRevealOutcome,
 };
 use crate::nexus::ports::outbound::game::container_runtime::{
     ContainerRuntime, ContainerSpec, ContainerStats, PortMapping, PortProtocol, RestartPolicy,
@@ -175,6 +175,91 @@ impl ManageGameServersUseCase for ManageGameServersService {
         )
         .await;
         Ok(())
+    }
+
+    async fn request_ip_reveal(
+        &self,
+        id: Uuid,
+        actor_user_id: &str,
+    ) -> Result<RequestIpRevealOutcome, DomainError> {
+        use crate::nexus::domain::entities::system::bot_config;
+
+        let server = self
+            .server_repo
+            .find_by_id(id)
+            .await?
+            .ok_or_else(|| DomainError::NotFound(format!("game_server {id} introuvable")))?;
+
+        if server.ip_revealed {
+            return Err(DomainError::Conflict(
+                "l'adresse du serveur est deja revelee".into(),
+            ));
+        }
+
+        let portal_config = self
+            .bot_config
+            .get_config(&server.guild_id, "game-portal")
+            .await?;
+
+        // Hote public requis DES MAINTENANT : sans lui, le worker ne pourrait
+        // rien reveler a l'echeance et le clic resterait sans effet visible.
+        // On echoue en fermeture avec un message clair plutot qu'en silence.
+        bot_config::cfg_str(&portal_config, "session_public_host")
+            .filter(|host| !host.trim().is_empty())
+            .ok_or_else(|| {
+                DomainError::Conflict(
+                    "l'hote public Nexus doit etre configure avant l'ouverture".into(),
+                )
+            })?;
+
+        let delay = bot_config::cfg_i64(&portal_config, "reveal_delay_minutes", 10).clamp(1, 1440);
+
+        // Demarre le conteneur s'il est au repos. Un serveur deja en ligne ou en
+        // cours de demarrage n'est pas relance ; tout autre etat transitoire
+        // (Stopping) ou terminal (Deleted) refuse en fermeture.
+        let started = match server.status {
+            GameServerStatus::Running | GameServerStatus::Starting => false,
+            status if status.can_start() => {
+                self.start(id, actor_user_id).await?;
+                true
+            }
+            status => {
+                return Err(DomainError::Conflict(format!(
+                    "impossible d'ouvrir le serveur depuis le statut {status:?}"
+                )));
+            }
+        };
+
+        let reveal_at = chrono::Utc::now() + chrono::Duration::minutes(delay);
+        self.server_repo
+            .set_ip_reveal_at(id, Some(reveal_at))
+            .await?;
+        self.audit(
+            &server.guild_id,
+            Some(id),
+            Some(actor_user_id),
+            GameAuditAction::Schedule,
+            serde_json::json!({
+                "reveal_at": reveal_at,
+                "delay_minutes": delay,
+                "started": started,
+                "trigger": "reveal_request",
+            }),
+        )
+        .await;
+        info!(
+            server_id = %id,
+            %reveal_at,
+            delay_minutes = delay,
+            started,
+            "ouverture demandee via le bouton (reveal_request)"
+        );
+
+        Ok(RequestIpRevealOutcome {
+            delay_minutes: delay,
+            reveal_at,
+            started,
+        })
     }
 
     async fn schedule(

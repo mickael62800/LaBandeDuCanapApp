@@ -26,3 +26,9 @@ Le serveur possède un état de cycle de vie. Les transitions incompatibles doiv
 
 L'adresse IP et les accès peuvent être révélés par des routes dédiées et planifiées. Ne pas les exposer avant confirmation de la règle de révélation.
 
+Trois chemins de révélation coexistent :
+
+- **Bouton « Révéler l'adresse IP » du panneau d'inscription Discord** (`POST /reveal-ip/request`, propriétaire du serveur) : démarre le conteneur s'il est à l'arrêt, annonce l'ouverture dans le panneau, puis **programme** la révélation à `now + reveal_delay_minutes` (config game-portal, défaut 10 min). Le worker `reveal-ip` publie l'adresse dans le **salon privé des inscrits** à l'échéance, une fois le serveur `running`. Échoue en fermeture si l'hôte public n'est pas configuré.
+- **« Révéler maintenant » (admin web, `POST /reveal-ip`)** : révélation immédiate forcée, exige un serveur déjà `running`.
+- **Programmation (`/schedule`, `/reveal-schedule`)** : ouverture différée, le worker démarre le conteneur ~5 min avant l'heure.
+

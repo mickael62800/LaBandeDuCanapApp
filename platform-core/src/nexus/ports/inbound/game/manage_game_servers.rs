@@ -14,6 +14,19 @@ pub struct GameServerDetail {
     pub config: HashMap<String, String>,
 }
 
+/// Résultat d'une demande d'ouverture via le bouton « Révéler l'adresse IP ».
+/// Le serveur a été démarré si nécessaire et la révélation est programmée à
+/// `reveal_at`. Le bot s'en sert pour annoncer le décompte dans le panneau.
+#[derive(Debug, Clone)]
+pub struct RequestIpRevealOutcome {
+    /// Délai retenu avant la révélation, lu dans la config de la guilde.
+    pub delay_minutes: i64,
+    /// Heure de révélation programmée (`now + delay_minutes`).
+    pub reveal_at: chrono::DateTime<chrono::Utc>,
+    /// `true` si cet appel a démarré le conteneur (il était à l'arrêt).
+    pub started: bool,
+}
+
 #[async_trait]
 pub trait ManageGameServersUseCase: Send + Sync {
     // ── CRUD basique ──────────────────────────────────────────────────
@@ -32,6 +45,20 @@ pub trait ManageGameServersUseCase: Send + Sync {
     /// Rend immédiatement l'adresse publique, avant l'échéance programmée.
     /// Réservé aux appels d'administration par la couche HTTP.
     async fn reveal_ip(&self, id: Uuid, actor_user_id: &str) -> Result<(), DomainError>;
+
+    /// Demande d'ouverture depuis le bouton « Révéler l'adresse IP » du panneau.
+    ///
+    /// Contrairement à `reveal_ip` (révélation immédiate, réservée à l'admin),
+    /// ce flux DÉMARRE le serveur s'il est à l'arrêt puis PROGRAMME la
+    /// révélation à `now + reveal_delay_minutes` (config de la guilde, défaut
+    /// 10 min). Le worker `reveal-ip` publie l'adresse à l'échéance, une fois le
+    /// conteneur `running`. Échoue en fermeture si l'hôte public n'est pas
+    /// configuré ou si l'adresse est déjà révélée.
+    async fn request_ip_reveal(
+        &self,
+        id: Uuid,
+        actor_user_id: &str,
+    ) -> Result<RequestIpRevealOutcome, DomainError>;
 
     /// Mode « Préparation » : programme l'ouverture à `reveal_at` sans démarrer
     /// le conteneur. Le serveur passe en `scheduled` ; le worker le démarrera

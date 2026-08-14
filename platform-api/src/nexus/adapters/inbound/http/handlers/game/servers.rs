@@ -303,6 +303,39 @@ pub async fn reveal_ip(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// Réponse de `/reveal-ip/request` : le bot y lit le décompte à annoncer.
+#[derive(Debug, serde::Serialize)]
+pub struct RequestRevealDto {
+    pub delay_minutes: i64,
+    pub reveal_at: chrono::DateTime<chrono::Utc>,
+    pub started: bool,
+}
+
+/// POST /api/games/servers/{server_id}/reveal-ip/request
+///
+/// Flux du bouton « Révéler l'adresse IP » : démarre le serveur si besoin et
+/// programme la révélation à `now + reveal_delay_minutes`. Le worker `reveal-ip`
+/// publiera l'adresse à l'échéance (événement `game_ip_reveal`). On ne publie
+/// PAS `game_server_started` ici : les salons existent déjà (le bouton est sur
+/// le panneau) et le conteneur est démarré côté API.
+pub async fn request_reveal_ip(
+    State(state): State<AppState>,
+    Path(server_id): Path<Uuid>,
+    headers: HeaderMap,
+    Query(q): Query<ActorQuery>,
+) -> Result<Json<RequestRevealDto>, ApiError> {
+    let actor = acteur(&state, &headers, server_id, q.actor_id.as_deref()).await?;
+    let outcome = state
+        .game_servers_uc
+        .request_ip_reveal(server_id, &actor)
+        .await?;
+    Ok(Json(RequestRevealDto {
+        delay_minutes: outcome.delay_minutes,
+        reveal_at: outcome.reveal_at,
+        started: outcome.started,
+    }))
+}
+
 /// Corps des routes de programmation. `reveal_at` optionnel pour
 /// `/reveal-schedule` (None efface la programmation) ; requis pour `/schedule`
 /// (une valeur nulle y est refusee par le use case).

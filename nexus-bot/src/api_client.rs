@@ -237,6 +237,13 @@ pub struct ServerRegistration {
     pub user_id: String,
 }
 
+/// Réponse de `/reveal-ip/request` : décompte à annoncer + démarrage effectué.
+#[derive(Debug, Deserialize)]
+pub struct RevealRequest {
+    pub delay_minutes: i64,
+    pub started: bool,
+}
+
 mod coussin;
 mod economy;
 mod game_portal;

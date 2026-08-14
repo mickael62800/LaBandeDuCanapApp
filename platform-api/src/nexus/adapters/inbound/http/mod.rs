@@ -109,6 +109,10 @@ fn container_lifecycle_routes() -> Router<AppState> {
             post(handlers::game::servers::reveal_ip),
         )
         .route(
+            "/api/games/servers/{server_id}/reveal-ip/request",
+            post(handlers::game::servers::request_reveal_ip),
+        )
+        .route(
             "/api/games/servers/{server_id}/schedule",
             post(handlers::game::servers::schedule_server),
         )

@@ -295,6 +295,22 @@ impl ManageGameServersUseCase for DummyManageGameServers {
     async fn reveal_ip(&self, _: Uuid, _: &str) -> Result<(), DomainError> {
         Ok(())
     }
+    async fn request_ip_reveal(
+        &self,
+        _: Uuid,
+        _: &str,
+    ) -> Result<
+        platform_core::nexus::ports::inbound::game::manage_game_servers::RequestIpRevealOutcome,
+        DomainError,
+    > {
+        Ok(
+            platform_core::nexus::ports::inbound::game::manage_game_servers::RequestIpRevealOutcome {
+                delay_minutes: 10,
+                reveal_at: chrono::Utc::now() + chrono::Duration::minutes(10),
+                started: true,
+            },
+        )
+    }
     async fn schedule(
         &self,
         _: Uuid,

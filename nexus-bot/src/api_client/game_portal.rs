@@ -36,14 +36,21 @@ impl ApiClient {
         self.send(self.http.post(&url).json(&body)).await
     }
 
-    /// POST /api/games/servers/{server_id}/reveal-ip.
-    pub async fn reveal_server_ip(&self, server_id: &str, actor_id: &str) -> Result<(), String> {
+    /// POST /api/games/servers/{server_id}/reveal-ip/request.
+    ///
+    /// Flux du bouton : demarre le serveur si besoin et programme la revelation
+    /// de l'IP. Renvoie le decompte a annoncer dans le panneau.
+    pub async fn request_reveal_ip(
+        &self,
+        server_id: &str,
+        actor_id: &str,
+    ) -> Result<RevealRequest, String> {
         let url = format!(
-            "{}/api/games/servers/{}/reveal-ip",
+            "{}/api/games/servers/{}/reveal-ip/request",
             self.base_url,
             encode_segment(server_id)
         );
-        self.send_no_content(self.http.post(&url).query(&[("actor_id", actor_id)]))
+        self.send(self.http.post(&url).query(&[("actor_id", actor_id)]))
             .await
     }
 

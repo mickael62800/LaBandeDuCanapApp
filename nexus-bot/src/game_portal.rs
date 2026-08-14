@@ -284,22 +284,57 @@ async fn on_reveal_ip_component(
         .await;
         return;
     }
-    match api
-        .reveal_server_ip(server_id, &component.user.id.to_string())
+    let outcome = match api
+        .request_reveal_ip(server_id, &component.user.id.to_string())
         .await
     {
-        Ok(()) => {
-            respond_ephemeral(
-                ctx,
-                component,
-                "✅ Adresse publiée dans le salon privé des inscrits.",
-            )
-            .await;
-        }
+        Ok(outcome) => outcome,
         Err(e) => {
-            respond_ephemeral(ctx, component, format!("❌ Révélation impossible : {e}")).await;
+            respond_ephemeral(ctx, component, format!("❌ Ouverture impossible : {e}")).await;
+            return;
         }
-    }
+    };
+
+    // Accuse ephemere au proprietaire.
+    let minutes = outcome.delay_minutes;
+    let debut = if outcome.started {
+        "🚀 Le serveur démarre."
+    } else {
+        "🚀 Le serveur est déjà en ligne."
+    };
+    respond_ephemeral(
+        ctx,
+        component,
+        format!(
+            "{debut} L'adresse de connexion sera révélée dans le salon privé des inscrits dans **{minutes} minute(s)**."
+        ),
+    )
+    .await;
+
+    // Annonce publique dans le panneau d'inscription : tout le monde voit que la
+    // session ouvre bientot. L'adresse, elle, ne parait qu'au salon prive a
+    // l'echeance (publiee par le worker reveal-ip).
+    let game_name = api
+        .get_game_template(&detail.server.template_id)
+        .await
+        .map(|t| t.name)
+        .unwrap_or_else(|_| "Le serveur".into());
+    let _ = component
+        .channel_id
+        .send_message(
+            &ctx.http,
+            CreateMessage::new().embed(
+                CreateEmbed::new()
+                    .title(format!("⏳ {game_name} ouvre bientôt !"))
+                    .description(format!(
+                        "Le serveur démarre. L'adresse de connexion sera révélée dans le **salon privé des inscrits** dans **{minutes} minute(s)**.\n\nPas encore inscrit ? Clique sur **Je m'inscris** ci-dessus."
+                    ))
+                    .color(0x5865f2)
+                    .footer(CreateEmbedFooter::new("Game Portal | Nexus"))
+                    .timestamp(serenity::model::Timestamp::now()),
+            ),
+        )
+        .await;
 }
 
 async fn respond_ephemeral(

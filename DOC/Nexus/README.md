@@ -19,4 +19,4 @@ La documentation destinée aux développeurs et aux agents techniques se trouve 
 - [Coussin Piégé](coussin-piege.md)
 - [Jeux mentionnables](jeux-mentionnables.md)
 - [Configuration](configuration.md)
-
+- [Hauts faits Discord et jeux](haut-faits.md)

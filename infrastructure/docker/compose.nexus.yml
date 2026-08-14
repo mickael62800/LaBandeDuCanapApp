@@ -136,8 +136,12 @@ services:
       # volume jeux est faible) mais pour tenir nexus-api hors du reseau `data`.
       POOL_MODE: session
       MAX_CLIENT_CONN: 100
-      DEFAULT_POOL_SIZE: 10
-      RESERVE_POOL_SIZE: 2
+      # En mode session, chaque connexion cliente epingle une connexion serveur :
+      # le plafond de concurrence reel est ce DEFAULT_POOL_SIZE, pas le pool
+      # applicatif. Il doit donc etre >= NEXUS_DB_MAX_CONNECTIONS (defaut 20),
+      # sinon les jobs restent en attente d'un slot serveur ("pool timed out").
+      DEFAULT_POOL_SIZE: 25
+      RESERVE_POOL_SIZE: 5
       ADMIN_USERS: nexus
       AUTH_TYPE: scram-sha-256
     depends_on:

@@ -376,6 +376,7 @@ impl ManageGameServersUseCase for ManageGameServersService {
                 id,
                 &[
                     GameServerStatus::Created,
+                    GameServerStatus::Scheduled,
                     GameServerStatus::Running,
                     GameServerStatus::Stopped,
                     GameServerStatus::Error,
@@ -384,9 +385,40 @@ impl ManageGameServersUseCase for ManageGameServersService {
             )
             .await?;
         if !claimed {
-            return Err(DomainError::Conflict(
-                "operation deja en cours sur ce serveur (delete)".into(),
-            ));
+            // Le claim stable a echoue : le serveur est en transition
+            // (Starting/Stopping). On autorise QUAND MEME la suppression si cette
+            // transition dure depuis plus que le seuil « bloque » — c'est alors un
+            // etat fige (opeation morte), pas une operation en cours. En deca du
+            // seuil, on refuse : une vraie operation pourrait etre en vol (ex. un
+            // pull d'image long), et un delete la doublerait -> conteneur orphelin.
+            // Un eventuel orphelin (delete pendant un pull tres long) est rattrape
+            // par le nettoyage d'orphelins du reconciler.
+            let cfg = load_game_portal_config(&self.bot_config, &server.guild_id).await?;
+            let stuck_after = chrono::Duration::minutes(cfg.stuck_transition_threshold_minutes);
+            let bloque = matches!(
+                server.status,
+                GameServerStatus::Starting | GameServerStatus::Stopping
+            ) && (chrono::Utc::now() - server.updated_at) > stuck_after;
+
+            let forced = bloque
+                && self
+                    .server_repo
+                    .try_transition_status(
+                        id,
+                        &[GameServerStatus::Starting, GameServerStatus::Stopping],
+                        GameServerStatus::Deleted,
+                    )
+                    .await?;
+            if !forced {
+                return Err(DomainError::Conflict(
+                    "operation deja en cours sur ce serveur (delete)".into(),
+                ));
+            }
+            warn!(
+                server_id = %id,
+                status = ?server.status,
+                "delete force d'un serveur bloque en transition au-dela du seuil"
+            );
         }
 
         // Stop si actif (best-effort).

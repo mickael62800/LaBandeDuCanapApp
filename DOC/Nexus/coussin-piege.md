@@ -23,3 +23,4 @@ Cette page sert surtout à suivre l'état des participants et leur position dans
 ## Résultat attendu
 
 Une recherche doit afficher le joueur correspondant. Le classement doit permettre de comparer les joueurs selon les règles du jeu.
+

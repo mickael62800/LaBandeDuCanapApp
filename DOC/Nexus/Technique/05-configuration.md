@@ -17,3 +17,4 @@ La configuration est par guilde. Une clé absente doit être interprétée comme
 - `POST /api/games/{guild_id}/upload-emoji` : préparer un emoji.
 
 Un jeu doit avoir un nom. Un panneau est lié à une guilde et à un salon Discord. La suppression retire le jeu des propositions futures.
+

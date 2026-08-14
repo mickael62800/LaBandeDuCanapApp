@@ -11,3 +11,4 @@ Sentinel est la plateforme qui expose la réception de logs worker via `POST /ap
 ## Tâches périodiques
 
 Le worker traite notamment les expirations de sanctions, rappels, votes AutoMod, nettoyages, SLA tickets, rôles temporaires et progression vocale. Les tâches doivent être idempotentes et tracer leurs erreurs.
+

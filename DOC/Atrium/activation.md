@@ -13,3 +13,4 @@ Cette fonctionnalité permet de mettre l'assistant IA à disposition d'un serveu
 ## Résultat attendu
 
 Après l'enregistrement, l'état affiché doit correspondre à l'état réellement appliqué au serveur sélectionné.
+

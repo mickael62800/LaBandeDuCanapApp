@@ -14,3 +14,4 @@
 - **Source de vérité :** information prioritaire lorsqu'il existe plusieurs versions.
 - **Audit :** trace d'une action administrative ou sensible.
 - **Snapshot / sauvegarde :** photographie enregistrée d'une structure ou d'un état.
+

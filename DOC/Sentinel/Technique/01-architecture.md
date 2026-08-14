@@ -2,7 +2,7 @@
 
 ## Composants
 
-- `sentinel-api` : API HTTP, authentification, persistance et appels Discord.
+- `platform-api` : API HTTP, authentification, persistance et appels Discord.
 - `platform-core::sentinel` : règles métier de modération, communauté et système.
 - `sentinel-bot` : commandes et événements Discord.
 - `sentinel-worker` : tâches périodiques, expirations, rappels et nettoyage.
@@ -20,3 +20,5 @@
 6. L'audit conserve la trace.
 
 Le bot ne doit pas accéder directement à PostgreSQL. Les plateformes NEXUS et Atrium utilisent leurs APIs propres.
+
+

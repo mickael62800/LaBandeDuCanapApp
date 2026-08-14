@@ -15,3 +15,4 @@ AutoMod produit des signaux sur les messages : spam, insulte, lien, phishing, co
 ## Règles
 
 Une détection est un signal, pas une preuve absolue. Une revue doit conserver le contexte et l'action décidée. Les seuils doivent être ajustés à partir des faux positifs et des décisions humaines.
+

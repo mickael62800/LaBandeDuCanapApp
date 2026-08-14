@@ -14,3 +14,4 @@ Cette fonctionnalité surveille et protège la machine contre les accès ou comp
 ## Résultat attendu
 
 La page doit montrer les menaces et les protections actives sans confondre un événement de sécurité avec une infraction de modération Discord.
+

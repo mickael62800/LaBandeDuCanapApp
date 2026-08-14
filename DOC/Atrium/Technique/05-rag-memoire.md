@@ -4,7 +4,7 @@
 
 Les documents de connaissance sont découpés et indexés avec des embeddings. Lors d'une question, Atrium recherche les passages proches de la demande puis les ajoute au contexte de génération.
 
-Les documents intégrés sont dans `atrium-api/knowledge/`. Une recherche RAG vide ne doit pas être interprétée comme une réponse : Atrium doit signaler que l'information n'est pas connue.
+Les documents intégrés sont dans `platform-api/knowledge/`. Une recherche RAG vide ne doit pas être interprétée comme une réponse : Atrium doit signaler que l'information n'est pas connue.
 
 ## Mémoire
 
@@ -17,3 +17,5 @@ Le worker appelle le job de résumé pour une guilde. L'API récupère une quant
 ## Rétention
 
 Le job de rétention purge les compteurs de quotas anciens et, si la mémoire est active, les messages et résumés dépassant `ATRIUM_MEMORY_RETENTION_DAYS`.
+
+

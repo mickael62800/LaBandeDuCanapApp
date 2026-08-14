@@ -22,3 +22,4 @@ Ce domaine permet de construire et de sauvegarder la structure du serveur Discor
 ## Résultat attendu
 
 Après enregistrement, les modules actifs et les réglages affichés correspondent au serveur choisi. Une sauvegarde doit permettre d'identifier clairement la structure et la date concernées.
+

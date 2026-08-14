@@ -24,3 +24,4 @@ Les membres trouvent plus facilement une activité et peuvent lancer les jeux pr
 ## Résultat attendu
 
 Après l'ajout, le jeu apparaît dans la liste. Après le déploiement, les membres peuvent voir le panneau dans le salon choisi. La suppression retire le jeu des propositions futures.
+

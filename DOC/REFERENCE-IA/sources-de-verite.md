@@ -20,3 +20,4 @@
 ## Conflit
 
 Si deux sources se contredisent, signaler le conflit et privilégier la source la plus récente et officiellement persistée. Ne pas choisir silencieusement une valeur.
+

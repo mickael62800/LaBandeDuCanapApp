@@ -3,9 +3,9 @@
 ## Composants
 
 - `atrium-bot` : connexion Discord, détection des messages, publication des réponses.
-- `atrium-api` : logique d'orchestration, quotas, configuration, RAG et accès PostgreSQL.
+- `platform-api` : logique d'orchestration, quotas, configuration, RAG et accès PostgreSQL.
 - `platform-core::atrium` : règles métier de bienvenue et d'apaisement, indépendantes de Discord.
-- `platform-scheduler` : déclenche les résumés et la purge via `atrium-api`.
+- `platform-scheduler` : déclenche les résumés et la purge via `platform-api`.
 - PostgreSQL : configuration par serveur, quotas, mémoire, résumés et documents indexés.
 - Fournisseur IA : génération des réponses et des résumés.
 
@@ -23,3 +23,5 @@
 ## Flux d'apaisement
 
 Sentinel ou un événement interne envoie `GenerateCalming`. L'API vérifie l'identifiant de guilde et de salon, l'activation et le quota, puis génère un message court ou utilise le texte de secours. Le bot publie ensuite le rappel dans le salon cible.
+
+

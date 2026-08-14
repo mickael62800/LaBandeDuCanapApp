@@ -1,6 +1,6 @@
 # Documentation technique NEXUS
 
-Cette documentation décrit les contrats techniques de NEXUS. Elle complète [la documentation fonctionnelle](../Complet/README.md).
+Cette documentation décrit les contrats techniques de NEXUS. Elle complète [la documentation fonctionnelle](../README.md).
 
 ## Documents
 
@@ -14,4 +14,7 @@ Cette documentation décrit les contrats techniques de NEXUS. Elle complète [la
 
 ## Source de vérité
 
-Les routes sont définies dans `nexus-api/src/adapters/inbound/http/mod.rs`. Les règles métier sont dans `platform-core/src/nexus`. Le client web utilise `web/src/api/nexusHttp.ts` et les services `web/src/services/nexus*.ts`.
+Les routes sont définies dans `platform-api/src/mod.rs`. Les règles métier sont dans `platform-core/src/nexus`. Le client web utilise `web/src/api/nexusHttp.ts` et les services `web/src/services/nexus*.ts`.
+
+
+

@@ -19,3 +19,4 @@ Les autres routes utilisent le préfixe `/` propre à la passerelle Ops et sont 
 ## Règle d'accès
 
 Une route d'administration valide l'identité et les droits avant toute action. La réponse HTTP confirme l'acceptation technique ; le contenu doit être lu pour connaître le résultat métier.
+

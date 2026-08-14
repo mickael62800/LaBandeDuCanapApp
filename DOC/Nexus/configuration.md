@@ -26,3 +26,4 @@ Chaque communauté peut choisir les fonctions NEXUS qu'elle souhaite utiliser, a
 ## Résultat attendu
 
 Après sauvegarde, les réglages affichés correspondent au serveur Discord sélectionné et les modules actifs sont utilisables dans cette communauté.
+

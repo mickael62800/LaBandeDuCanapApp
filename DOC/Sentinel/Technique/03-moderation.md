@@ -19,3 +19,4 @@
 ## Fonctions avancées
 
 Les rappels, preuves, revues, statistiques de modération, sanctions temporaires et actions de masse sont traités par des contrats dédiés. Une action de masse nécessite une confirmation et une trace explicite.
+

@@ -19,3 +19,4 @@ Une même alerte n'est pas renvoyée indéfiniment pour la même clé. Redis con
 ## Notification
 
 Les alertes sont envoyées via le canal configuré, notamment un webhook Discord. Le message doit préciser la règle, la ressource, la valeur observée et le seuil.
+

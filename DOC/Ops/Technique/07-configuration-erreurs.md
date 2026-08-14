@@ -21,3 +21,4 @@
 ## Règle pour une IA
 
 Ne pas confondre `/health` et `/ready` : une API peut répondre tout en n'étant pas prête pour toutes ses dépendances. Ne jamais redémarrer ou supprimer un composant sans identifier ses dépendants et conserver les logs utiles.
+

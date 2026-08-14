@@ -20,3 +20,4 @@ Filtrer par plateforme, service, niveau et période. Comparer les logs avec les 
 ## Confidentialité
 
 Les logs peuvent contenir des identifiants, adresses IP ou données de requête. Limiter leur accès et éviter de les recopier dans une réponse non sécurisée.
+

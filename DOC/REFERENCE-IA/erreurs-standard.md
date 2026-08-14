@@ -15,3 +15,4 @@
 `Objet : [cible]`  
 `Cause : [explication simple]`  
 `Suite : [action possible ou personne à contacter]`
+

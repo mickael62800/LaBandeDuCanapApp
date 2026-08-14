@@ -1,6 +1,6 @@
 # Documentation technique Sentinel
 
-Cette documentation décrit les contrats techniques de Sentinel. Elle complète [la documentation fonctionnelle](../Complet/README.md).
+Cette documentation décrit les contrats techniques de Sentinel. Elle complète [la documentation fonctionnelle](../README.md).
 
 ## Documents
 
@@ -15,4 +15,7 @@ Cette documentation décrit les contrats techniques de Sentinel. Elle complète 
 
 ## Source de vérité
 
-Les routes sont dans `sentinel-api/src/adapters/inbound/http`. Les règles métier sont dans `platform-core/src/sentinel`. Le dashboard utilise `web/src/api/http.ts` et les services de `web/src/services`.
+Les routes sont dans `platform-api/src`. Les règles métier sont dans `platform-core/src/sentinel`. Le dashboard utilise `web/src/api/http.ts` et les services de `web/src/services`.
+
+
+

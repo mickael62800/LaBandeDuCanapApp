@@ -26,3 +26,4 @@ L'administrateur adapte les résultats possibles de la roue aux animations de so
 ## Résultat attendu
 
 La roue doit utiliser exactement les cases enregistrées et leur ordre. Une suppression ou une modification doit être visible dans la configuration après l'enregistrement.
+

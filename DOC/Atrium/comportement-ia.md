@@ -13,3 +13,4 @@ Cette fonctionnalité permet de préciser le ton et la manière dont Atrium doit
 ## Résultat attendu
 
 Les réponses d'Atrium respectent le ton demandé tout en conservant des informations conformes aux sources de la communauté.
+

@@ -27,3 +27,4 @@ Ce domaine regroupe les outils qui servent à accueillir les membres, publier de
 ## Résultat attendu
 
 Chaque contenu doit être publié au bon endroit et chaque action doit laisser un état compréhensible : ouvert, publié, programmé, attribué, expiré ou clôturé.
+

@@ -29,3 +29,4 @@ NEXUS évite de devoir gérer manuellement l'installation et le fonctionnement d
 ## Résultat attendu
 
 Après une action, l'interface doit indiquer clairement le nouvel état du serveur ou expliquer l'erreur rencontrée. Une création réussie produit un serveur visible dans la liste des serveurs de la communauté.
+

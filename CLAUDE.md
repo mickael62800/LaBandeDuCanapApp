@@ -1,250 +1,154 @@
-# CLAUDE.md
+# Regles d'or de DiscordSentinel
 
-Repères pour travailler dans ce dépôt. Le [README](README.md) décrit le produit ; ce fichier décrit **comment coder ici**.
+Ce fichier est la charte de travail du depot. Le code existant et les tests sont
+la source de verite. La documentation produit se trouve dans `DOC/`.
 
-## Le dépôt en une phrase
+## 1. Architecture de reference
 
-Monorepo Rust : **trois plateformes hexagonales** — `sentinel-*` (modération Discord), `nexus-*` (serveurs de jeux + casino), `atrium-*` (parcours d'accueil assisté par IA) — partageant `web/` (Vue 3), `infrastructure/` (Docker/Grafana/Prometheus), Postgres et Redis.
+Le depot est un monorepo Rust. L'architecture actuelle est :
 
-Les briques applicatives sont consolidées sous les crates `platform-*`. Deux dossiers hors crates : `platform-ml/` (modèles ONNX `text/`, `vision/`) et `persona/` (fiches de rôle en Markdown pour la skill `party-mode`).
-
-Atrium est la plus jeune et la plus petite (≈30 fichiers) : elle n'a ni gateway ni sous-états d'API. Ne pas la prendre comme modèle de structure — la référence reste `sentinel-*`.
-
-**L'identité est une plateforme, pas une fonction de Sentinel.** `auth-core` + `auth-api` servent l'OAuth2 Discord, les sessions web et le gate superadmin, avec leur propre base (`auth`) et leur rôle Postgres dédié — c'est celle qui contient les access/refresh tokens des administrateurs. Les trois passerelles nginx (`/nexus-api/`, `/ops-api/`, `/atrium-api/`) interrogent `auth-api:8096/access`, et `platform-api` est un consommateur via `platform_api::shared::auth_client`. Ne pas réintroduire de résolution d'identité locale.
-
-`AccessOutcome::Unavailable` (→ **503**) est distinct de `Denied` (→ **403**) : confondre les deux fait passer une panne réseau pour une révocation de droits.
-
-**Trois instances Redis, pas une.** `redis` (commun), `auth-redis`, `nexus-redis`. Le découpage suit le **périmètre du bus**, pas l'organigramme : Nexus est séparable parce que `nexus:events` et l'allocation de ports sont internes à la plateforme. Atrium **reste sur l'instance commune** parce qu'il *consomme* `sentinel:events` (les demandes d'apaisement publiées par l'AutoMod) — un bus dont le producteur et le consommateur sont sur deux Redis différents ne transporte rien, et l'échec est silencieux. C'est le critère à appliquer avant toute nouvelle séparation.
-
-`nexus-redis` est en `noeviction` **et** persistant : les réservations de port (`game:port:*`) sont le garde-fou anti-collision, et sous `allkeys-lru` — le réglage de l'instance commune — Redis peut en évincer une encore active. Deux serveurs de jeu se voient alors attribuer le même port, et le symptôme apparaît au démarrage du second, très loin de la cause.
-
-L'identité a aussi **son propre Redis** (`auth-redis`), sans persistance et en `noeviction`. Sur l'instance commune, tout porteur de `REDIS_URL` — les trois bots, les trois workers, la gateway — pouvait lire les `state` CSRF (`oauth:web:state:*`) et le cache `token → identité` (`user_id:*`), donc résoudre n'importe quel jeton et forger un callback OAuth valide. `noeviction` et non `allkeys-lru` : sous LRU, Redis peut évincer un `state` encore valide, et le login échoue alors avec « state invalide » sans rien qui l'explique dans les logs.
-
-## Règles d'or
-
-1. **Le métier va dans le module d'entité correspondant de `platform-core`.** Atrium est déjà natif dans `platform_core::atrium`; Sentinel, Nexus et Ops y sont réexportés pendant leur migration. `*-api`, `*-bot`, `platform-scheduler` et `*-gateway` restent des adaptateurs. Si tu écris une règle de décision dans un handler HTTP ou dans un module du bot, c'est au mauvais endroit.
-2. **Sens des dépendances** : `domain` ← `application` ← `ports` ← adapters. `domain/` ne dépend d'aucune infra (pas de `sqlx`, pas de `serenity`, pas de `reqwest`).
-3. **Le bot est une interface légère.** Il rend, il écoute, il appelle l'API. Il ne décide pas et n'a **pas d'accès DB**.
-4. **Un adaptateur inbound ne fait pas d'I/O sortante.** Pas de `reqwest::Client` dans un handler : passer par le port (`DiscordApi::send_channel_embed`, `get_user_me`, …). Un handler qui appelle le réseau lui-même est intestable sans réseau, et chaque appelant réimplémente les contrôles de sécurité — c'est ainsi que la validation du snowflake s'est retrouvée copiée dans trois fichiers. Seule exception documentée : l'échange de jetons OAuth2 (`handlers/system/oauth.rs`), indissociable du flux CSRF/cookies.
-5. **Config par serveur d'abord.** Un nouveau réglage se déclare dans `bot_definitions.config_schema` et se lit dans `bot_guild_config` — pas en variable d'env. Les env vars sont des fallbacks / réglages globaux lus au démarrage. La sémantique de référence est `platform-core/src/sentinel/domain/entities/system/config_parsers.rs` : `parse_bool_str` (`true`/`1`/`yes`, insensible à la casse) et surtout **`parse_enabled_flag` : clé absente = module DÉSACTIVÉ** (fail-closed, miroir de `parseBoolConfig` côté web). Ne pas réécrire ces parsers ailleurs. Nexus a longtemps porté une copie inline au défaut inversé (absent = activé) ; elle a été supprimée (cf. `platform-core/src/nexus/domain/entities/system/bot_config.rs`), le `cfg_bool` restant est appelé fail-closed. Ne pas la réintroduire.
-6. **Filtre fermant sur tout ce qui est public.** En cas de doute sur une permission Discord (cache froid, guilde inconnue), on ne publie pas. Voir `sentinel-bot/src/modules/presence`.
-7. **Le ban n'est jamais automatique.** Toute évolution de l'automod doit préserver ça : seul un administrateur finalise un ban.
-
-## `#[allow(dead_code)]`
-
-Passés de **121 à 7**, et chacun des 7 porte sa justification en commentaire. Un `allow` neuf sans explication masque autant les vrais oublis que le faux positif qu'il vise. Résolutions par ordre de préférence :
-
-1. **Supprimer le code** s'il est vraiment mort.
-2. **`#[cfg(test)]`** si l'élément n'existe que pour les tests (accesseur de vérification) — préserve la couverture sans mentir sur l'usage.
-3. **`allow` justifié**, en dernier recours et toujours commenté.
-
-Les 7 restants : `tests/test_helpers.rs` (inclus dans ~40 binaires, chacun n'en consommant qu'une partie) et 4 DTO miroirs de contrats d'API dont le bot ne lit qu'une partie des champs.
-
-**Deux fonctionnalités annoncées mais non implémentées** ont été découvertes en retirant ces `allow` — elles étaient exactement ce qu'il masquait :
-- `guild-backup-bot` : « Sauvegarde automatique », son intervalle, et « Rôles autorisés à restaurer » sont exposés dans l'interface. Aucun n'est lu. Le contrôle d'accès au restore n'est **pas** appliqué (seule la gate Owner côté API protège).
-- `welcome` : les 6 champs `anniversary_*` sont configurables mais aucun handler du bot ne les rend.
-- `moderation` : `list_reminders` est appelé, son résultat jamais consommé.
-
-## Ne pas faire sans demande explicite
-
-- **Ne pas lancer `cargo test`** — les builds sont longs. `cargo check` et `cargo clippy` suffisent pour valider une modif.
-- **Ne pas redémarrer / arrêter les services** (docker compose, bot, API) — l'environnement de l'utilisateur tourne.
-- Ne pas créer de migration « corrective » sans regarder d'abord les dernières migrations existantes.
-
-## Vérifier son travail
-
-```bash
-cargo check --workspace
-cargo clippy --workspace --all-targets    # lints partagés définis dans le Cargo.toml racine
-cd web && npm run lint && npm run build   # build = vue-tsc --noEmit + vite build
-```
-
-## Où va quoi
-
-| Tu veux… | Va dans |
+| Composant | Responsabilite |
 |---|---|
-| Ajouter une règle métier Sentinel | `platform-core/src/sentinel/application/<domaine>/<verbe>_service.rs` |
-| Exposer ça en HTTP | `sentinel-api/src/adapters/inbound/http/{routes,handlers,dto}/` |
-| Persister | `platform-core/src/sentinel/ports/outbound/` (trait) + `sentinel-api/src/adapters/outbound/postgres/` (impl) |
-| Câbler un nouveau port dans l'API | le sous-état de son domaine dans `sentinel-api/src/bootstrap/state/` |
-| Ajouter une commande slash | `sentinel-bot/src/modules/<module>/` + `sentinel-bot/src/command_registry.rs` |
-| Un job périodique | `sentinel-worker/src/domains/<domaine>/` + `scheduler.rs` |
-| Un écran d'admin | `web/src/components/pages/` + store Pinia + `web/src/api/http.ts` (ou `nexusHttp.ts`), route dans `router/adminRoutes.ts` sous son univers, entrée dans `useDashboardSections` |
-| Un réglage éditable par serveur | migration `config_schema` + lecture via `bot_guild_config` |
-| Toucher aux serveurs de jeux | `platform-core/src/nexus/application/game/` + `nexus-api/src/adapters/outbound/game_runtime/` |
+| `platform-core` | Regles metier et cas d'usage des domaines `sentinel`, `nexus`, `atrium`, `ops` |
+| `platform-api` | Service API unifie : HTTP, gRPC, persistance et adaptateurs externes |
+| `platform-proto` | Contrats protobuf/gRPC partages |
+| `platform-scheduler` | Appels HTTP periodiques, sans logique metier ni acces base |
+| `platform-gateway` | Relais Redis Streams vers WebSocket |
+| `sentinel-bot`, `nexus-bot`, `atrium-bot` | Connexions Discord et interfaces utilisateur des trois produits |
+| `auth-core`, `auth-api` | OAuth Discord, sessions web et identite |
+| `ops-agent` | Sondes de l'hote et supervision privilegiee |
+| `docker-agent` | Seul composant autorise a parler au socket Docker |
+| `web` | Dashboard Vue/TypeScript multi-univers |
 
-Domaines de `platform-core/src/sentinel/application/` : `ai`, `audit`, `community`, `guild_backup`, `moderation`, `system` (le métier `ops` vit dans le contexte Ops, cf. plus bas).
+Les anciens crates `sentinel-api`, `nexus-api`, `atrium-api`, `ops-api`, les
+anciens workers et les anciens protos ne doivent pas etre recrees.
 
-**Le socket Docker n'est monté que par `docker-agent`.** `/var/run/docker.sock` équivaut à un accès root sur l'hôte ; il n'a rien à faire dans une API qui sert aussi l'OAuth, la modération ou la vitrine publique du portail de jeux. `docker-agent` est un crate minimal — pas de base, pas de session, pas de route nginx, joignable seulement sur le réseau `internal` avec `DOCKER_AGENT_TOKEN`.
+## 2. Dependances et couches
 
-Il expose **deux surfaces**, toutes deux en liste blanche stricte, jamais un passe-plat vers l'API Docker :
+Respecter le sens suivant :
 
-| Surface | Port | Implémentation | Client |
-|---|---|---|---|
-| `/version`, `/containers`, `/prune/*`… | `platform_core::ops::DockerHost` | `bollard_host.rs` | `ops-api` → `HttpDockerHost` |
-| `/game/*` (cycle de vie des serveurs de jeu) | `platform_core::ops::GameContainerRuntime` | `bollard_game.rs` | `nexus-api` → `HttpGameRuntime` |
+`domain -> application -> ports -> adapters`
 
-Les deux clients sont de simples adaptateurs : les handlers et les use cases ignorent que Docker est passé de l'autre côté d'un appel réseau. C'est tout l'intérêt d'avoir eu un port plutôt qu'un client bollard appelé directement.
+- `platform-core` ne depend pas de SQLx, Axum, Serenity, Reqwest, Redis ou Docker.
+- Les ports sont definis pres du domaine qui en a besoin.
+- Les implementations des ports vivent dans `platform-api`, `ops-agent` ou
+  `docker-agent` selon leur responsabilite.
+- Un handler HTTP traduit une requete et appelle un cas d'usage. Il ne contient
+  pas de regle metier et ne fait pas d'I/O sortante directement.
+- Un bot appelle l'API ou gRPC. Il ne lit jamais PostgreSQL et ne contient pas
+  de decision metier durable.
+- Le scheduler appelle une route interne authentifiee. Il ne contient ni SQLx,
+  ni Redis metier, ni Docker, ni SDK Discord.
 
-**Un jeton par surface**, et l'agent refuse de démarrer s'ils sont identiques : `DOCKER_AGENT_TOKEN` (hôte, porté par `ops-api`) et `DOCKER_AGENT_GAME_TOKEN` (`/game/*`, porté par `nexus-api`). Avec un jeton unique, les identifiants de `nexus-api` ouvraient l'arrêt et la purge de **tous** les conteneurs de l'hôte, `postgres` et `auth-api` compris — on lui avait retiré l'accès direct au socket pour lui confier la clé du processus qui l'a. La séparation est stricte dans les deux sens, et les macros `guarded!` / `guarded_game!` rendent le choix visible à la relecture.
+## 3. Frontieres des domaines
 
-**Ne pas remonter le socket ailleurs**, et ne pas ajouter `bollard` (ni `tar`, qui ne sert qu'à `upload_file_to_container`) à un autre crate : le mapping bollard → domaine n'existe qu'une fois, dans `docker-agent/`. `cargo tree -e normal -i bollard` doit toujours ne montrer qu'un seul dépendant. Nexus a longtemps été la contre-épreuve — il portait `bollard`, montait le socket, et dupliquait un second mapping de 537 lignes.
+- Sentinel concerne la moderation, la securite et la vie d'un serveur Discord.
+- Nexus concerne les jeux, serveurs de jeu, wallet, economie et animations.
+- Atrium concerne l'accueil, l'assistance IA, le RAG, la memoire et les quotas.
+- Ops concerne la machine hote, les services, les logs techniques, TLS, les
+  alertes et Docker.
+- Auth concerne l'identite et les sessions ; aucun domaine ne doit reimplementer
+  une resolution d'identite locale.
 
-Corollaire de rangement : le port du cycle de vie vit dans le contexte Ops (domaine neutre de la machine hôte), pas dans le domaine Nexus — c'est une opération sur le daemon de l'hôte, pas une règle du portail. `platform_core::nexus` le réexporte sous le nom court `ContainerRuntime`.
+Ne pas deplacer une regle dans un domaine voisin pour eviter de creer un
+nouveau port. Si une fonctionnalite touche plusieurs domaines, definir un
+contrat explicite et conserver un proprietaire metier unique.
 
-**Le nommage `sentinel.*` de Nexus : ce qui a bougé et ce qui ne bougera pas.** Les **labels** sont passés à `nexus.*` — écrits dans les deux générations, lus dans les deux (`list_managed_containers` fait deux passes, Docker combinant les filtres `label` en ET et non en OU). La sortie de transition se fait quand `docker ps -a --filter label=sentinel.managed=game-portal` ne renvoie plus rien.
+## 4. Regles de securite non negociables
 
-Les **noms** restent : `sentinel-game-{id}` (persisté en base, comparé par le reconciler), `sentinel-game-vol-{id}` (Docker ne renomme pas un volume — changer la formule monterait un volume neuf et vide, le monde de jeu paraîtrait effacé), `sentinel-games` et `/var/lib/sentinel/games` (défauts décrivant l'installation en place). Ce sont des identifiants portant des données, pas des étiquettes. Les renommer demande une migration explicite, jamais une édition de ligne.
+1. Le navigateur ne recoit jamais de secret backend, token API, token Discord,
+   token Docker ou credential de base.
+2. L'acteur authentifie vient d'une frontiere serveur de confiance ; ne jamais
+   faire confiance a un identifiant fourni par le navigateur.
+3. `Denied` (403) et `Unavailable` (503) restent distincts.
+4. Une permission Discord sensible est reverifiee dans le handler concerne.
+5. Toute configuration inconnue ou permission incertaine echoue en fermeture.
+6. Une cle de module absente signifie module desactive (fail closed).
+7. Le ban Discord n'est jamais automatique : une finalisation humaine est
+   obligatoire.
+8. Les routes `/internal/` sont reservees au scheduler ou aux services
+   autorises et exigent leur authentification dediee.
+9. Le socket Docker est monte uniquement dans `docker-agent`. Ne jamais ajouter
+   `bollard` ou un acces socket a `platform-api`, un bot ou le web.
+10. Les tokens, preuves de moderation, transcripts, wallets, sessions et donnees
+    IA ne doivent jamais apparaitre dans les logs.
+11. TLS invalide, secret absent ou token trop court provoque un echec ferme.
+12. Ne jamais utiliser un token de surface Docker hote pour les serveurs de jeu.
 
-**`ops` vs `system`** — la frontière est « est-ce que ça parle de Discord ? ». `ops` couvre la **machine hôte** : sondes système, conteneurs Docker, logs techniques des services, sécurité de l'hôte (TLS, IP bannies, journal d'administration), règles d'alerte. Cette machine héberge aussi Nexus et Atrium : ces écrans ne sont pas « du Sentinel », ils sont transverses. `system` garde le métier de la plateforme : tickets, OAuth, reset de guilde, lockdown, slowmode, quarantaine, exports. Le métier Ops vit dans `platform-core/src/ops`; `ops-api`, `ops-agent` et `docker-agent` gardent leurs adaptateurs et privilèges séparés. `sentinel-api` n'en garde qu'un **consommateur** : le sous-état `OpsState` (`bootstrap/state/ops.rs`) branché sur les ports `platform_core::ops` (sondes santé, registre des services, logs). L'univers « Exploitation » du back-office est la contrepartie web.
-Domaines de `sentinel-worker/src/domains/` (16) : `ai`, `analytics`, `announcements`, `appeal_sla`, `audit_cache`, `automod`, `cache`, `cleanup`, `discord_audit_sync`, `export`, `guild_backup`, `moderation`, `monitoring`, `security`, `temp_roles`, `tickets`.
+## 5. Donnees, bus et jobs
 
-## État de l'API : sous-états par domaine
+- Un bot ne parle jamais directement a PostgreSQL.
+- Chaque domaine utilise sa base logique, ses migrations et son role applicatif.
+- Toute migration doit etre ajoutee dans l'arborescence actuelle de
+  `platform-api/migrations/`, apres lecture des migrations precedentes.
+- Ne jamais modifier une migration deja appliquee pour corriger le schema.
+- Les streams Redis sont cloisonnes par domaine (`sentinel:events`,
+  `nexus:events`, etc.). Ne pas publier un evenement sur le stream d'un autre
+  domaine.
+- Un job doit etre idempotent et proteger les effets non repetables par un
+  verrou ou une contrainte d'unicite.
+- Une reponse de succes n'est annoncee qu'apres confirmation de l'API et de la
+  persistance.
+- Les appels scheduler portent `x-scheduler-job` et utilisent une URL interne.
 
-`AppState` vit dans **`sentinel-api/src/bootstrap/state/`** — c'est la composition root, pas un détail de l'adaptateur HTTP. (`adapters/inbound/http/state.rs` n'est plus qu'une ré-exportation de compatibilité ; ne l'utilise pas dans du code neuf.)
+## 6. Configuration
 
-Un handler déclare **le sous-état de son domaine**, jamais le god-object.
+- Un reglage lie a une guilde appartient a `bot_definitions.config_schema` et
+  `bot_guild_config`, pas a une variable d'environnement seule.
+- Les variables d'environnement servent aux secrets, connexions, ports,
+  defaults globaux et parametres d'exploitation.
+- Toute nouvelle variable doit etre ajoutee a `.env.example`, a la
+  documentation technique et au compose concerne.
+- Ne jamais afficher la valeur d'une variable secrete dans une erreur ou un log.
 
-```rust
-// ✅ à faire — le compilateur interdit à ce handler de toucher au reste
-async fn restore(State(st): State<GuildBackupState>, ...) { st.guild_snapshots_uc... }
+## 7. Web
 
-// ❌ forme héritée, à ne plus écrire dans du code neuf
-async fn restore(State(st): State<AppState>, ...) { st.guild_snapshots_uc... }
+- Les quatre univers sont `sentinel`, `nexus`, `atrium` et `ops`.
+- L'univers vient de `route.meta.universe`, jamais d'une deduction par URL.
+- Respecter l'ordre atomic design : `atoms -> molecules -> organisms ->
+  templates -> pages`.
+- Les pages admin utilisent le shell admin commun ; les pages publiques utilisent
+  le layout public ; les pages d'authentification utilisent le layout bare.
+- Les clients HTTP ne doivent pas etre fusionnes si leur mode d'authentification
+  differe.
+- Le web ne contient aucune regle d'autorisation faisant foi : l'API tranche.
+
+## 8. Methode de modification
+
+Avant de coder :
+
+1. Lire le module metier concerne, son port et l'adaptateur existant.
+2. Rechercher les consommateurs et les tests avant de changer un contrat.
+3. Verifier si la fonctionnalite existe deja dans `platform-core`.
+4. Choisir le plus petit changement compatible avec les frontieres ci-dessus.
+
+Apres modification :
+
+```powershell
+cargo fmt --all -- --check
+cargo check --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+cd web; npm run lint; npm run build
 ```
 
-Chaque sous-état implémente `FromRef<AppState>`, donc les deux formes coexistent dans un même `Router<AppState>` : la migration se fait fichier par fichier, avec un code qui compile à chaque étape.
+Les tests PostgreSQL necessitent une base de test dediee et une
+`DATABASE_URL`. Ne jamais lancer une suite destructive contre une base de
+developpement ou de production.
 
-**Migration terminée.** Sept sous-états : `ai`, `moderation`, `audit`, `community`, `system`, `ops`, `guild_backup`. `AppState` est passé de **100 à 14 champs**, tous légitimes : infrastructure partagée (`broadcaster`, `redis_client`, `cache`, `discord_api`, `job_client`, `log_repo`, `bot_config_repo`, `pg_pool`), config lue par les middlewares (`api_key`, `guild_id`, `metrics_token`, `discord_bot_token`) et `nexus_games`.
+## 9. Restrictions d'intervention
 
-`superadmin_user_ids` n'y figure plus. `SUPERADMIN_USER_IDS` reste la variable qui décide qui entre dans le back-office, mais **seul `auth-api` la lit**. La copie locale servait un scope par rôle dans `list_tickets` et `list_all_channels` : identité comparée à la liste locale, sinon repli sur `moderated_guilds`, qui faisait un `SELECT` sur `api_user_guilds` — table supprimée par la migration 007. Le moindre écart entre les deux listes transformait donc ces deux écrans en 500. Le port `moderated_guilds`, l'outbound `find_user_guild_roles` et leurs implémentations ont été retirés avec.
+- Ne pas demarrer, arreter ou recreer les services Docker sans demande explicite.
+- Ne pas supprimer une migration, un volume, une table ou un fichier utilisateur
+  sans cible precise et verification prealable.
+- Ne pas ajouter de `#[allow(dead_code)]` sans justification locale ; supprimer
+  le code mort ou le borner a `#[cfg(test)]` en priorite.
+- Ne pas introduire de compatibilite avec une ancienne crate simplement parce
+  qu'un document ou un commentaire la mentionne : verifier le code actuel.
+- Toute modification d'architecture doit mettre a jour `README.md`, `DOC/` et
+  les fichiers Docker/configuration impactes.
 
-Un fichier reste volontairement sur `AppState`, faute d'appartenir à un domaine unique : `handlers/moderation/purge.rs` (audit-logs + logs système). Le forcer dans un sous-état aurait reconstitué un god-object en miniature.
+## 10. Regle finale
 
-`handlers/community/voice_channels.rs` en est sorti : il réclamait `tickets_uc` et `superadmin_user_ids` uniquement pour le scope par rôle supprimé ci-dessus. `VoiceChannelsState` ne porte plus que `voice_channels_uc`, `audit_logs_uc` (il trace ses propres actions) et `broadcaster`.
-
-**Règle de rangement** : si un fichier réclame plus de 2-3 ports étrangers à son domaine, c'est le fichier qui est mal rangé, pas le sous-état qui est trop étroit.
-
-**Écriture de fichiers en masse** : n'utilise pas `Get-Content -Raw` + `Set-Content` sous PowerShell 5.1 — `Get-Content` décode un fichier sans BOM en ANSI, ce qui double-encode tous les accents au réenregistrement. Utilise `[System.IO.File]::ReadAllText/WriteAllText`, ou l'outil Edit pour tout texte accentué.
-
-Pour ajouter un domaine (ou en déplacer un fichier) :
-1. Créer/compléter `bootstrap/state/<domaine>.rs` (struct + `FromRef<AppState>`).
-2. Le construire dans `bootstrap/app_state.rs` **avant** le littéral `AppState`, et faire pointer les champs plats correspondants sur des clones du sous-état — jamais deux instanciations du même port.
-3. Dans les handlers : remplacer l'import et `State<AppState>` → `State<XState>`.
-4. Le compilateur liste alors les dépendances transverses réellement utilisées (souvent `broadcaster`, `bot_config_repo`) : les **ajouter explicitement** au sous-état, c'est l'information qu'on cherchait.
-5. `tests/test_helpers.rs` : hisser en variables locales tout port que les tests inspectent (`broadcaster` **doit** être une instance unique, sinon les assertions d'événements portent sur un canal que personne n'écoute).
-6. Supprimer les champs plats du domaine seulement quand plus aucun site ne les lit.
-
-## Code partagé entre les plateformes
-
-Quatre crates socles, séparés par **surface de dépendances** — un bot n'a aucune raison de compiler axum, une API aucune raison de compiler serenity. Le suffixe dit qui a le droit de dépendre du crate :
-
-| Crate | Contenu | Consommé par | Dépendances |
-|---|---|---|---|
-| `platform-common` | Bus d'événements Redis Streams (`EventBus`, paramétré par la clé de stream), erreurs communes, `config_flags` (sémantique de référence de `enabled`) | les trois `-core`, les trois `-bot`, `platform-common-worker` | redis, tokio — aucun framework |
-| `platform-api::shared` | Rate limit par IP, métriques Prometheus, CORS, en-têtes de sécurité, mapping d'erreurs HTTP | les quatre domaines API | axum, tower-http, metrics |
-| `platform-common-bot` | Embeds normalisés (`embeds.rs`) et helpers d'interaction Discord (`discord_helpers.rs` : `defer_ephemeral`, `option_str`, …) | les trois `-bot` | serenity |
-| `platform-common-worker` | Boucle de scheduler, client API, helpers Redis, métriques | les trois `-worker` | tokio, reqwest, sqlx — **aucune dépendance de plateforme** |
-
-**Le suffixe est un contrat, pas une étiquette.** `platform-common-worker` a longtemps dépendu de `sentinel-core` et `sentinel-proto` — pour deux parsers et un helper mTLS. `nexus-worker` et `atrium-worker` compilaient donc tout le domaine de Sentinel sans jamais l'appeler, et une modif du domaine pouvait casser leur build. Les parsers sont remontés dans `platform-common::config_flags` (leur place : ils doivent être identiques partout), le helper mTLS est redescendu dans `sentinel-worker/src/grpc.rs`, son unique appelant. **Aucun crate socle ne dépend d'une plateforme** ; si c'est tentant, c'est que le code n'appartient pas au socle.
-
-Corollaire côté logs : `send_worker_log` / `send_lifecycle_log` ne postent sur `POST /api/logs` que si la plateforme l'a déclaré via `enable_worker_log_push` (seul `sentinel-worker` le fait — c'est la seule API qui expose la route). Sans ça, le socle lisait `SENTINEL_API_KEY` en dur : les workers Nexus et Atrium POSTaient sans clé, à chaque tick, sur une route inexistante, l'échec avalé en `debug!`.
-
-**Le critère d'entrée est la preuve, pas l'intuition** : on ne mutualise que du code mesuré identique. L'event bus l'était à 352 lignes sur 353. À l'inverse, les `api_client.rs` des bots ne partagent que 118 lignes sur 517 : ils restent dupliqués, parce qu'une abstraction inventée pour deux besoins différents coûte plus cher que la duplication qu'elle supprime.
-
-Restent propres à chaque plateforme : l'authentification, le verrou mono-serveur et les règles métier.
-
-**Consommer un crate socle, ce n'est pas le recopier.** Le pont se fait par ré-export, pas par duplication du fichier :
-
-```rust
-// sentinel-bot/src/shared/discord_helpers.rs — la bonne forme
-pub use platform_common_bot::discord_helpers::{defer_ephemeral, option_str, /* … */};
-// puis les helpers propres à Sentinel en dessous.
-```
-
-Ce module-là est correct ; `sentinel-bot/src/shared/embeds.rs` a été converti en `pub use platform_common_bot::embeds::*` (il ne reste que le chemin d'import historique pour les ~20 fichiers qui en dépendent). Une copie ne se voit pas au `cargo check` : elle se voit le jour où l'on corrige un seul des deux exemplaires — d'où la règle du ré-export.
-
-## Deux chemins pour agir sur Discord depuis le web
-
-Choisir en connaissance de cause :
-
-- **Synchrone** — l'API appelle l'API Discord directement (`DiscordApi` dans les adapters outbound). Pour ce qui doit répondre immédiatement et rapporter un résultat à l'appelant.
-- **Asynchrone** — l'API publie sur Redis Stream `sentinel:events` (`XADD MAXLEN ~ 10000`, champ `payload = {"event":…, "data":…}`), un module du bot consomme via `XREADGROUP` + `XACK` et rapporte le résultat à l'API. **Obligatoire** quand le message doit venir du bot (identité, avatar, permissions) : voir `modules/{announcements,embeds,messages}`.
-
-La gateway lit la même stream en `XREAD $` (live-tail, sans group) pour le relay WebSocket.
-
-**Les events destructifs sont signés (HMAC-SHA256, secret = `SENTINEL_API_KEY`).** `sentinel:events` vit sur l'instance Redis **commune** : les trois bots, les trois workers et la gateway en portent l'URL, donc y publier ne demande aucun privilège. C'est acceptable pour un event d'affichage, pas pour `guild_reset` (déban de tous les bannis, retrait des rôles) ni `guild_backup:restore_requested`, qui avec `wipe` supprime **tous** les salons, rôles et emojis avant de restaurer. Le bot rejette un event non signé ou mal signé ; secret vide (dev) = signature non exigée.
-
-Le **message canonique** existe en trois exemplaires — `sentinel-api/src/adapters/inbound/http/event_signing.rs`, `sentinel-bot/src/shared/event_signing.rs`, et `sign_capture` dans `sentinel-worker/.../guild_backup/auto_backup.rs`. C'est un contrat inter-processus, pas du code mutualisable : aucun des trois crates ne peut dépendre des deux autres. Modifier un format sans le répercuter partout fait rejeter l'event — le sens de défaillance est le bon (rien n'est détruit), mais ça ne se voit que dans les logs du bot. Tout champ qui change l'effet de l'action doit être **dans** le message signé : `wipe` y est, sinon une restauration légitime se rejouerait en effacement.
-
-`guild_backup:restore_requested` ne l'était pas alors que `guild_reset` l'était depuis le début — l'asymétrie protégeait la moins destructive des deux opérations.
-
-## Deux pièges qui ne se voient pas à la relecture
-
-**`into_make_service_with_connect_info` n'est pas optionnel.** Le rate limit commun extrait `ConnectInfo<SocketAddr>` ; servir un routeur avec `axum::serve(listener, router)` fait répondre **500 à toutes les routes**, `/health` compris — donc healthcheck en échec, conteneur jamais `healthy`, et tout ce qui l'attend en `depends_on` qui ne démarre pas. C'est arrivé à `atrium-api`, et ça n'a pas été vu parce que les tests appelaient le routeur en `oneshot` **en injectant `ConnectInfo` à la main**. Un test qui fabrique lui-même l'extension que la production oublie ne teste rien. `atrium_api::serve` centralise désormais le montage, et `health_repond_quand_l_api_est_servie_comme_en_production` ouvre une vraie socket.
-
-**Un secret vide n'est pas un secret absent.** `std::env::var` rend `Ok("")` pour une variable déclarée mais vide : un contrôle qui ne teste que la présence laisse passer la chaîne vide. Et `bearer_auth::matches(h, "")` renvoyait alors `true` dès que le client envoyait `Authorization: Bearer ` — le préfixe seul. `ATRIUM_API_TOKEN: ${ATRIUM_API_TOKEN:-}` rendait le cas atteignable, ouvrant tout `/admin/*`. Trois barrières désormais : le compose exige la variable (`:?`), la config refuse une valeur vide, et `matches` refuse un jeton attendu vide. Utiliser `:?` et non `:-` pour tout secret.
-
-## Migrations
-
-- Sentinel : `sentinel-api/migrations/` — `001_init.sql` (base vierge) + migrations incrémentales numérotées. Historique pré-refonte archivé dans `migrations_legacy/`.
-- Nexus : `nexus-api/migrations/`.
-- Atrium : `atrium-api/migrations/`.
-
-**Une base logique, un rôle, un pgbouncer.** La séparation en bases ne vaut que si chacune a son propre compte : `POSTGRES_USER: sentinel` est le **superuser** du cluster, et un superuser ignore tous les `GRANT`. Quatre rôles ordinaires, un par base, chacun propriétaire de la sienne et créé par son `*-db-init` : `sentinel_app` (`discord_sentinel`, partagée par sentinel-api et sentinel-worker), `nexus`, `atrium`, `auth`. S'ajoute `sentinel_ops`, non propriétaire et restreint, pour l'exploitation (voir plus bas). Aucune API n'est sur le réseau `data`, chacune passe par son pgbouncer. Le compte superuser ne sert plus qu'aux `*-db-init` et à pgadmin.
-
-Deux extensions exigeaient le superuser et bloquaient la bascule — `pg_stat_statements` côté Sentinel, `pgvector` côté Atrium. Elles sont créées par le `db-init` **avant** les migrations : le `CREATE EXTENSION IF NOT EXISTS` de la migration devient alors un no-op et passe sous un rôle ordinaire. C'est le motif à réutiliser pour toute extension future, plutôt que de rendre le superuser à un service.
-
-Les `db-init` révoquent aussi le `CONNECT` de `PUBLIC` sur les autres bases : sans ça, un rôle applicatif peut encore ouvrir une session ailleurs (sans rien y lire, mais c'est une surface).
-
-Ne pas rebrancher une API sur le réseau `data` ni sur le compte `sentinel`.
-
-**`sentinel_ops` est de retour, et cette fois il sert.** La migration 024 l'avait introduit, la 028 l'avait abandonné : jamais utilisé, droits incomplets, illusion de cloisonnement. La 034 le rétablit — mais l'échec précédent tenait à un détail qui ne se voit pas à la relecture : **la `DATABASE_URL` d'un pgbouncer fixe l'utilisateur côté serveur.** Toute connexion traversant le pool commun arrive en `sentinel_app`, quelles que soient les identifiants présentées. Changer `OPS_DATABASE_URL` seul ne cloisonne donc rien du tout. Il a fallu un pool dédié (`ops-pgbouncer`), comme en ont déjà Nexus et Atrium.
-
-La règle reste donc valable dans son fond : **un rôle restreint qui ne s'accompagne pas de son pool est un décor.** Et ses droits se dérivent de l'inventaire du SQL réellement exécuté, table par table et verbe par verbe (cf. l'en-tête de la migration 034) — pas d'une intention. Toute requête hors de cette liste échoue en `permission denied` : le sens de défaillance est le bon, mais il faut penser à étendre les `GRANT` en même temps qu'on ajoute une requête à `ops-api`.
-
-Ce qui justifie l'exception : `ops-api` est le seul service à cumuler l'accès à la base **et** le jeton d'administration de l'hôte (cf. O1 de `SECURITE-POINTS-OUVERTS.md`). Le compromettre donnait la machine *et* toutes les données Discord. Les autres services de cette base (`sentinel-api`, `sentinel-worker`) restent sur `sentinel_app` : ils travaillent dans le même domaine de confiance, et les séparer l'un de l'autre n'apporterait que deux listes de `GRANT` à maintenir.
-
-**Chaque plateforme a sa propre base logique**, donc ses propres tables `bot_definitions` / `bot_guild_config` : `nexus-api/migrations/007_game_portal.sql` et `atrium-api/migrations/007_config_par_serveur.sql` les répliquent. Un `-api` ne lit jamais la base d'une autre plateforme. Un nouveau réglage se déclare donc dans le `config_schema` **de sa plateforme**.
-- Numéroter à la suite, nom en français descriptif, une préoccupation par fichier.
-
-## Dépendances
-
-Toute dépendance partagée se déclare dans `[workspace.dependencies]` du `Cargo.toml` racine, puis `dep = { workspace = true }` dans le crate. Restent inline : deps target-gated (jemalloc), `ort`, `bollard`, spécifiques d'un seul crate.
-
-## Conventions
-
-- Commentaires et doc en **français**, comme le reste du code. Les `//!` de tête de module expliquent le *pourquoi*, pas seulement le *quoi* — s'aligner sur ce style (cf. `modules/presence`, `modules/messages`).
-- Discord IDs : `VARCHAR(20)` en base, `String` en Rust.
-- Erreurs : `thiserror` dans le core, conversion en réponse HTTP dans `adapters/inbound/http/errors.rs`.
-- Le web suit l'**atomic design** : `atoms` → `molecules` → `organisms` → `templates` → `pages`. Une *template* ne contient pas de markup métier : elle compose des organisms (cf. `MainLayout` = `Sidebar` + `TopBar`, `PublicLayout` = `SiteHeader`).
-
-## Le web : univers, mises en page, navigation
-
-**Quatre univers** (`web/src/universes.ts`, source unique) : `sentinel`, `nexus`, `atrium` et `ops`. Les trois premiers sont des produits Discord ; **`ops` (« Exploitation ») est la machine hôte** — Docker, disques, TLS, IP bannies, logs des services. Transverse aux trois plateformes, donc à sa place dans aucune.
-
-Chaque univers déclare sa marque, sa **couleur d'accent** et sa page d'accueil. Les accents sont volontairement écartés (`#5865f2` / `#a855f7` / `#14b8a6` / `#f59e0b`) : Sentinel et Nexus étaient auparavant deux bleu-violets à un cran d'écart, et la couleur ne disait rien du produit. `MainLayout` pose `--universe-accent` sur la coque ; sidebar, topbar et `AdminPageShell` en héritent. Ne pas réintroduire de couleur par groupe de menu.
-
-**L'univers se déclare, il ne se déduit pas.** Il vient de `route.meta.universe`, jamais d'une analyse d'URL. Le ternaire `path.startsWith("/nexus") ? "nexus" : "sentinel"` faisait de Sentinel le `else` de Nexus — d'où l'impossibilité d'un 3ᵉ univers, les pages publiques qui basculaient l'app en Sentinel, et le logo qui ramenait toujours sur `/dashboard`. Les routes d'administration passent par `inUniverse(...)` dans `adminRoutes.ts` ; une entrée de menu sans `universe` ne compile pas.
-
-**Deux racines de routeur** : `publicRoutes.ts` (site communautaire + connexion) et `adminRoutes.ts` (back-office). `meta.public` ne dit QUE « accessible sans connexion » ; la mise en page vient de `meta.layout` (`site`, `bare`, ou absent = back-office). Les deux étaient confondus, ce qui laissait le site public sans navigation et obligeait chaque page à redessiner sa barre.
-
-**Où mettre une page** :
-
-| Type | Dossier | Mise en page |
-|---|---|---|
-| Écran d'administration | `components/pages/` | `AdminPageShell` (titre, `lede`, `actions`) |
-| Page du site public | `components/pages/public/` | `PublicLayout` via `meta.layout: "site"` |
-| Connexion / OAuth | `components/pages/auth/` | aucune (`meta.layout: "bare"`) |
-
-**Les hubs à onglets** (`StatsHubPage`, `ModerationHubPage`, `RolesHubPage`, `VoiceHubPage`, `LevelsHubPage`) portent l'`AdminPageShell` : titre fixe, et `lede` qui suit l'onglet actif via un champ dans le tableau `tabs`. Leurs **contenus d'onglet** (`StatsPage`, `ReviewPage`, `LevelsConfigPage`… — sans route propre) n'ont donc **pas** de shell : ils commencent par un `<div class="…-tab">`, avec au besoin un `<p class="tab-note">` et une `.tab-toolbar` pour leurs actions. Un shell dans un onglet empile deux titres et fait changer la forme de l'en-tête à chaque clic.
-
-Une page enchâssée qui garde une route propre gate son en-tête sur une prop (`NotesPage`, `EvidencePage` : `v-if="!props.embedded"`). Deux pages délèguent leur en-tête à un organism parce qu'il change selon la vue : `IdeasPage` et `TicketsPage` (liste ou détail).
-
-**Ne pas recopier le titre dégradé.** Il existait en quatre exemplaires (`StatsPage`, `ModstatsPage`, `ModerationHubPage`, `ServerHealthPage`), chacun avec sa propre `@keyframes`. `AdminPageShell` en est la seule source.
-
-**Trois clients HTTP, trois modèles d'authentification** — ne pas les fusionner : `api/http.ts` (bearer + token Discord, refresh de session), `api/nexusHttp.ts` et `api/atriumHttp.ts` (passerelle nginx, clé injectée côté serveur, jamais dans le SPA), `services/publicHttp.ts` (aucune credential, ne redirige jamais vers `/login`).
-
-**Passerelles nginx** (`web/nginx.conf`) : `nexus-api` et `atrium-api` ne sont pas publiés sur l'hôte. Le SPA les atteint via `/nexus-api/` et `/atrium-api/`, qui font tous deux `auth_request` vers sentinel-api (seul composant sachant *qui* est connecté) puis injectent le secret depuis un snippet généré au démarrage par `/docker-entrypoint.d/3x-*-key.sh`. Ajouter une passerelle = un bloc `location`, un script d'entrypoint, un `COPY` dans `web/Dockerfile` et la variable dans le service `web` du compose. Le `set $upstream` doit **précéder** le `rewrite ... break`, sinon la variable reste vide et nginx répond 500.
-
-**Attention au mot « serveur »**, qui désigne trois choses : le serveur Discord (guilde), le serveur de jeu (Nexus) et la machine hôte. Les libellés doivent lever l'ambiguïté — « Sauvegardes du serveur Discord », « État de la machine », « Sécurité de l'hôte ».
+Une modification est correcte si elle respecte les frontieres du domaine,
+conserve le fail-closed, ne contourne pas les ports, ne donne pas de privilege
+supplementaire a un composant et laisse le depot compilable.

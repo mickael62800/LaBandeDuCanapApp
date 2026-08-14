@@ -14,3 +14,4 @@ Cette fonctionnalité donne une vue de santé de la machine qui héberge les ser
 ## Résultat attendu
 
 La page doit présenter un état lisible et récent. Une anomalie doit être traitée comme un signal de supervision, pas comme une preuve automatique de panne métier.
+

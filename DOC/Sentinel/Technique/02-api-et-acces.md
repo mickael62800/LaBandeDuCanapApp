@@ -18,3 +18,4 @@ Les routes métier utilisent `/api/`. Les appels web passent par `http.ts`, qui 
 ## Accès
 
 Une réponse acceptée par HTTP ne garantit pas la réussite Discord ou métier. Lire le corps de réponse. Les opérations sensibles doivent inclure l'acteur, une raison et, lorsque prévu, une durée.
+

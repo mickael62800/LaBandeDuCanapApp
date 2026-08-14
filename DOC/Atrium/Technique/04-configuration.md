@@ -28,3 +28,4 @@
 ## Configuration par serveur
 
 Les clés applicatives sont `welcome_context`, `conflict_context` et `welcome_ghost_minutes`. L'activation est stockée séparément par guilde. Une valeur absente doit être traitée selon les valeurs par défaut fail-closed prévues par l'application.
+

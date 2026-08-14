@@ -29,3 +29,4 @@ Réponse d'état : `{ "guild_id": "...", "enabled": true }`.
 ## Règles d'API
 
 Les clés de configuration acceptées sont limitées. Les identifiants invalides renvoient une erreur de requête. Les quotas sont en lecture seule depuis l'administration.
+

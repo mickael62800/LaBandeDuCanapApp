@@ -20,3 +20,4 @@ Les clés API et tokens Docker ne doivent jamais apparaître dans le frontend ou
 ## Règle pour une IA
 
 Ne jamais annoncer une action comme réussie sans lire la réponse métier. En cas d'erreur, conserver l'état précédent comme hypothèse et demander une nouvelle lecture avant de réessayer.
+

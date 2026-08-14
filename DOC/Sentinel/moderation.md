@@ -21,3 +21,4 @@ Ce domaine permet de surveiller l'activité du serveur et de traiter les comport
 ## Résultat attendu
 
 Une action doit indiquer clairement le membre concerné, la raison, la durée éventuelle et le résultat obtenu. Les décisions importantes doivent rester consultables dans l'historique.
+

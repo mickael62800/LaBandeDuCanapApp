@@ -31,3 +31,4 @@ Une alerte répétée ne doit pas produire un flot illimité de notifications.
 ## Règle générale
 
 Ne pas déduire qu'une action a réussi uniquement parce qu'elle a été demandée. Relire l'état après l'action.
+

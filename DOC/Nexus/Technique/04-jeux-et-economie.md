@@ -20,3 +20,4 @@ Le tirage applique les cases enregistrées et les éventuels cooldowns. Une conf
 ## Coussin
 
 Les routes `/api/coussin/...` couvrent profil, classe, entraînement, inventaire, boutique, assurance, vol, primes, paris, classement et combats. Les actions peuvent appliquer des cooldowns et modifier plusieurs données : vérifier la réponse avant toute nouvelle action.
+

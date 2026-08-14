@@ -18,3 +18,4 @@ La surface de sécurité peut débannir une IP, consulter les événements et la
 La purge des logs API, logs d'audit et bans manuels est une opération destructive. Elle doit être explicitement demandée, bornée par une durée et journalisée.
 
 Une IP bannie ne doit pas entraîner automatiquement la suppression de ses preuves : la rétention est gérée séparément.
+

@@ -14,3 +14,4 @@ La base de connaissances rassemble les documents qu'Atrium peut consulter pour r
 ## Résultat attendu
 
 Atrium s'appuie sur les documents activés pour répondre aux membres et peut ignorer les documents désactivés ou non disponibles.
+

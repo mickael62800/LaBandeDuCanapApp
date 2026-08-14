@@ -20,3 +20,4 @@ Le constructeur manipule catégories, salons et rôles. Vérifier les identifian
 - restauration avec option de nettoyage.
 
 Une restauration peut modifier fortement la guilde. Elle doit être confirmée, auditée et vérifiée après exécution.
+

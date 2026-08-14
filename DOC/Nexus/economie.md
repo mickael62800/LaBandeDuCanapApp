@@ -23,3 +23,4 @@ Cette page donne une vue claire de la circulation des ressources virtuelles dans
 ## Résultat attendu
 
 Une consultation doit retourner les informations du membre demandé ou le classement de la communauté, sans modifier le solde.
+

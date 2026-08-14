@@ -1,4 +1,4 @@
-# Documentation NEXUS
+# Documentation DiscordSentinel
 
 ## Référence commune pour les IA
 
@@ -37,3 +37,5 @@ Ces documents décrivent le comportement attendu de chaque fonctionnalité NEXUS
 - [Guide fonctionnel Sentinel](Sentinel/guide-contexte.md)
 
 Chaque page explique à quoi sert la fonctionnalité et ce que l'on peut y faire, sans entrer dans les détails techniques.
+
+

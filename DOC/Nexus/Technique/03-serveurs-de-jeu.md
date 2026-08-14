@@ -25,3 +25,4 @@ Le serveur possède un état de cycle de vie. Les transitions incompatibles doiv
 ## Données sensibles
 
 L'adresse IP et les accès peuvent être révélés par des routes dédiées et planifiées. Ne pas les exposer avant confirmation de la règle de révélation.
+

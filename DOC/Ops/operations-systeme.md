@@ -14,3 +14,4 @@ Cette fonctionnalité regroupe les opérations techniques liées aux services de
 ## Résultat attendu
 
 L'écran doit permettre de distinguer un composant opérationnel, dégradé ou indisponible et d'orienter le diagnostic vers le bon service.
+

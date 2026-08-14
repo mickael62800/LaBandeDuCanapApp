@@ -22,3 +22,4 @@ Demander une confirmation ou orienter vers une personne autorisée avant :
 ## Vérification minimale
 
 Vérifier l'identité de l'auteur, la plateforme, la guilde, la cible, le droit requis et l'impact possible avant l'action.
+

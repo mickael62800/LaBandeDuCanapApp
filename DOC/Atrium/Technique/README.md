@@ -13,4 +13,7 @@ Cette documentation décrit les contrats techniques réellement exposés par Atr
 
 ## Source de vérité
 
-Les routes sont déclarées dans `atrium-api/src/lib.rs` et `atrium-api/src/admin.rs`. Les messages gRPC sont définis dans `atrium-proto`. Les règles métier de réponse sont dans `platform-core/src/atrium`.
+Les routes sont déclarées dans `platform-api/src` et `platform-api/src/atrium/admin.rs`. Les messages gRPC sont définis dans `platform-proto`. Les règles métier de réponse sont dans `platform-core/src/atrium`.
+
+
+

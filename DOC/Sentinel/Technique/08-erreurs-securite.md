@@ -16,3 +16,4 @@ Les tokens API et Discord ne doivent jamais apparaître dans le frontend ni dans
 ## Règle pour une IA
 
 Ne pas transformer une détection en sanction automatique sans vérifier le contexte et les droits. Ne pas annoncer une action Discord comme réussie sans confirmation. Si l'identité, la guilde, la règle ou la preuve manque, demander une vérification humaine.
+

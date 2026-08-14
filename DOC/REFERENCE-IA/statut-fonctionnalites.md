@@ -15,3 +15,4 @@ Une fonctionnalité visible dans le dashboard n'est pas forcément disponible da
 ## Vérification
 
 Avant de promettre une fonction, vérifier son écran, son module activé, la réponse du service et l'état de ses dépendances. En cas de doute, présenter la fonction comme conditionnelle.
+

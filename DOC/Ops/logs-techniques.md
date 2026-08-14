@@ -14,3 +14,4 @@ Cette fonctionnalité permet de consulter les journaux produits par les services
 ## Résultat attendu
 
 La consultation doit permettre de sélectionner le service et la plateforme concernés, puis de retrouver les messages utiles au diagnostic.
+

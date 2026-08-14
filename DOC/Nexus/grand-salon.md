@@ -29,3 +29,4 @@ Le Grand Salon transforme les échanges de la communauté en une animation parti
 ## Résultat attendu
 
 Chaque participation doit mettre à jour le profil du membre ou l'état de l'objet concerné : motion soumise ou votée, cercle créé, dossier vérifié ou article publié.
+

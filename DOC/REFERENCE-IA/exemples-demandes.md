@@ -23,3 +23,4 @@
 ## Règle
 
 Une IA doit transformer une demande vague en informations vérifiables avant d'agir.
+

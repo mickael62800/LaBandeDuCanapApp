@@ -1,6 +1,6 @@
 # Documentation technique Ops
 
-Cette documentation décrit les contrats techniques d'Ops. Elle complète [la documentation fonctionnelle](../Complet/README.md).
+Cette documentation décrit les contrats techniques d'Ops. Elle complète [la documentation fonctionnelle](../README.md).
 
 ## Documents
 
@@ -14,4 +14,7 @@ Cette documentation décrit les contrats techniques d'Ops. Elle complète [la do
 
 ## Source de vérité
 
-Les routes sont définies dans `ops-api/src/lib.rs`. Les règles métier sont dans `platform-core/src/ops`. Le dashboard utilise `web/src/api/opsHttp.ts` et les services Ops.
+Les routes sont définies dans `platform-api/src`. Les règles métier sont dans `platform-core/src/ops`. Le dashboard utilise `web/src/api/opsHttp.ts` et les services Ops.
+
+
+

@@ -13,3 +13,4 @@ Cette fonctionnalité permet de suivre l'utilisation d'Atrium et les limites qui
 ## Résultat attendu
 
 La page doit permettre de distinguer la consommation du serveur de la consommation globale et d'identifier rapidement une limite proche d'être atteinte.
+

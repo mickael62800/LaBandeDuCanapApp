@@ -11,47 +11,47 @@ Le projet est un monorepo Rust organisé autour de quatre univers fonctionnels :
 
 Le frontend commun se trouve dans `web/`. Il affiche plusieurs univers mais ne remplace pas leurs APIs respectives.
 
-## Structure de transition
+## Structure actuelle
 
 | Dossier | Responsabilité |
 |---|---|
 | `platform-core` | Cœur métier commun, séparé en modules `sentinel`, `nexus`, `atrium` et `ops` |
 | anciens `*-core` | Façades temporaires ou sources en attente de migration vers `platform-core` |
-| `*-api` | API HTTP, persistance et adaptateurs externes |
+| `platform-api` | API HTTP/gRPC unifiee, persistance et adaptateurs externes |
 | `*-bot` | Connexion Discord, commandes et publication des messages |
 | `platform-scheduler` | Planification HTTP commune des tâches périodiques |
 | `*-gateway` | Point d'entrée ou relais réseau lorsqu'il existe |
-| `*-proto` | Contrats gRPC et messages interservices |
+| `platform-proto` | Contrats protobuf/gRPC partages |
 
 ## Dossiers principaux
 
 ### Sentinel
 
 - `platform-core/src/sentinel` : modération, infractions, AutoMod, communauté et règles.
-- `sentinel-api` : API principale et accès Discord/PostgreSQL/Redis.
+- `platform-api` : API principale et accès Discord/PostgreSQL/Redis.
 - `sentinel-bot` : commandes et événements Discord Sentinel.
 - `ops-agent` : collecte hôte, surveillance Docker et monitoring stateful des services.
 
 ### NEXUS
 
 - `platform-core/src/nexus` : serveurs de jeu, wallets, roue, Coussin et jeux.
-- `nexus-api` : API NEXUS, base dédiée et orchestration du runtime de jeu.
+- `platform-api` : API NEXUS, base dédiée et orchestration du runtime de jeu.
 - `nexus-bot` : portail de jeux et commandes NEXUS.
-- `platform-scheduler` : déclenche les jobs NEXUS via `nexus-api`.
+- `platform-scheduler` : déclenche les jobs NEXUS via `platform-api`.
 
 ### Atrium
 
 - `platform-core/src/atrium` : règles métier de réponse, accueil et apaisement.
-- `atrium-api` : API d'administration, génération IA, quotas, RAG et mémoire.
+- `platform-api` : API d'administration, génération IA, quotas, RAG et mémoire.
 - `atrium-bot` : réception des messages Discord et publication des réponses.
-- `platform-scheduler` : déclenche les jobs Atrium via `atrium-api`.
+- `platform-scheduler` : déclenche les jobs Atrium via `platform-api`.
 
 ### Ops
 
 - `platform-core/src/ops` : sondes machine, contrats Docker, sécurité hôte et logs.
-- `ops-api` : API de supervision et d'administration technique.
+- `platform-api` : API de supervision et d'administration technique.
 - `ops-agent` : collecte hôte, surveillance Docker et monitoring des services.
-- `platform-scheduler` : déclenche l'évaluation des alertes dans `ops-api`.
+- `platform-scheduler` : déclenche l'évaluation des alertes dans `platform-api`.
 - `docker-agent` : accès contrôlé aux opérations Docker.
 
 ## Services partagés
@@ -98,8 +98,11 @@ Une tâche doit pouvoir être relancée sans créer de doublon lorsque le métie
 ## Règles d'orientation pour une IA
 
 - Une règle de décision va dans le `*-core` de la plateforme concernée.
-- Une route HTTP appartient au `*-api`.
+- Une route HTTP appartient a `platform-api`, dans le module du domaine concerne.
 - Une interaction Discord appartient au `*-bot`.
 - Une tâche périodique appartient au `*-worker`.
 - Une opération machine appartient à Ops, même si elle sert NEXUS ou Atrium.
 - L'identité et les sessions appartiennent à `auth`, pas à Sentinel localement.
+
+
+

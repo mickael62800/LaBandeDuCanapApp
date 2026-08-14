@@ -17,3 +17,4 @@ Cette documentation donne les règles communes nécessaires pour comprendre Sent
 ## Règle générale
 
 Avant toute réponse ou action, identifier la plateforme, le serveur concerné, l'utilisateur, l'objet demandé, les droits disponibles et l'état actuel. Ne jamais inventer une donnée manquante.
+

@@ -24,3 +24,4 @@ Le bot transmet `guild_id`, `channel_id`, le type de conflit et le message ou co
 ## Authentification
 
 Les appels gRPC portent `ATRIUM_GRPC_TOKEN` dans les métadonnées. Le bot ne parle pas directement à PostgreSQL.
+

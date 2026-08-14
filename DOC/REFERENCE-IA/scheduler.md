@@ -25,3 +25,4 @@ Le scheduler expose `/metrics` sur `METRICS_PORT` avec le nombre d'exécutions p
 3. Appliquer le verrou distribué avec un nom stable et préfixé par plateforme.
 4. Ajouter uniquement le timer et l'appel HTTP dans `platform-scheduler`.
 5. Tester le scope du token, le verrou et le rapport JSON.
+

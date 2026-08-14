@@ -16,3 +16,4 @@ Chaque objet est rattaché à une guilde. Les publications doivent identifier le
 ## Tâches différées
 
 Le worker peut vérifier le SLA des tickets, fermer les tickets inactifs, expirer des rôles temporaires et traiter les rappels. Une relance ne doit pas créer deux actions identiques.
+

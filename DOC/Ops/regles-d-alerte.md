@@ -14,3 +14,4 @@ Cette fonctionnalité définit les seuils à partir desquels Ops doit prévenir 
 ## Résultat attendu
 
 Une règle active déclenche une alerte lorsque sa condition est atteinte. L'alerte doit identifier la ressource concernée et la raison du déclenchement.
+

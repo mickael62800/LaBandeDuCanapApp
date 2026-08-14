@@ -18,3 +18,4 @@ Ce domaine aide à détecter et limiter les menaces qui touchent le serveur Disc
 ## Résultat attendu
 
 Une alerte doit expliquer ce qui a été détecté, sur quel membre ou message, quand cela s'est produit et quelle action a été appliquée ou recommandée.
+

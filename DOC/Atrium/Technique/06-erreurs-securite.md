@@ -19,3 +19,4 @@ Le message du membre, les documents retrouvés et l'historique sont des données
 ## Exploitation
 
 Vérifier d'abord `/health`, puis les métriques, les logs API, gRPC, bot et worker. En cas de quota indisponible, bloquer ou utiliser le comportement de secours prévu ; ne pas contourner la limite.
+

@@ -13,3 +13,4 @@ Cette fonctionnalité permet de définir les informations qu'Atrium utilise lors
 ## Résultat attendu
 
 Après sauvegarde, Atrium utilise les nouvelles consignes lors de ses messages d'accueil sur le serveur sélectionné.
+

@@ -329,6 +329,21 @@ pub async fn request_reveal_ip(
         .game_servers_uc
         .request_ip_reveal(server_id, &actor)
         .await?;
+
+    // Démarrage en TÂCHE DE FOND : le pull d'image + create + start prennent
+    // des minutes et dépasseraient le timeout HTTP du client (bot ou web). La
+    // révélation est déjà programmée ; le worker fera passer l'état à `running`.
+    // Le claim atomique de `start` protège contre un double-démarrage.
+    if outcome.started {
+        let uc = state.game_servers_uc.clone();
+        let actor = actor.clone();
+        tokio::spawn(async move {
+            if let Err(e) = uc.start(server_id, &actor).await {
+                tracing::warn!(error = %e, %server_id, "reveal-request: demarrage en tache de fond echoue");
+            }
+        });
+    }
+
     Ok(Json(RequestRevealDto {
         delay_minutes: outcome.delay_minutes,
         reveal_at: outcome.reveal_at,

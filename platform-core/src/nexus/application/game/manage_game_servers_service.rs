@@ -214,15 +214,16 @@ impl ManageGameServersUseCase for ManageGameServersService {
 
         let delay = bot_config::cfg_i64(&portal_config, "reveal_delay_minutes", 10).clamp(1, 1440);
 
-        // Demarre le conteneur s'il est au repos. Un serveur deja en ligne ou en
+        // Faut-il demarrer le conteneur ? On DECIDE ici mais on ne demarre PAS :
+        // le pull d'image + create + start prennent des minutes (image de 8 Go
+        // pour certains jeux) et bloqueraient la requete au-dela du timeout HTTP
+        // client. L'appelant (handler) lance `start` en tache de fond ; le
+        // worker fera passer l'etat a `running`. Un serveur deja en ligne ou en
         // cours de demarrage n'est pas relance ; tout autre etat transitoire
         // (Stopping) ou terminal (Deleted) refuse en fermeture.
         let started = match server.status {
             GameServerStatus::Running | GameServerStatus::Starting => false,
-            status if status.can_start() => {
-                self.start(id, actor_user_id).await?;
-                true
-            }
+            status if status.can_start() => true,
             status => {
                 return Err(DomainError::Conflict(format!(
                     "impossible d'ouvrir le serveur depuis le statut {status:?}"

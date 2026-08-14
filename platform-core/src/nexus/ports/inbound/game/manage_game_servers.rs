@@ -23,7 +23,10 @@ pub struct RequestIpRevealOutcome {
     pub delay_minutes: i64,
     /// Heure de révélation programmée (`now + delay_minutes`).
     pub reveal_at: chrono::DateTime<chrono::Utc>,
-    /// `true` si cet appel a démarré le conteneur (il était à l'arrêt).
+    /// `true` si un démarrage doit être lancé (le serveur était à l'arrêt).
+    /// Le use case ne démarre PAS lui-même — le pull d'image bloquerait la
+    /// requête ; le handler lance `start` en tâche de fond quand ce drapeau
+    /// est vrai.
     pub started: bool,
 }
 

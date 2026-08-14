@@ -276,6 +276,11 @@ pub async fn start_server(
 }
 
 /// POST /api/games/servers/{server_id}/stop
+///
+/// En TÂCHE DE FOND comme `start` : `docker stop` laisse au conteneur un délai
+/// de grâce (`stop_timeout_secs`, 30 s par défaut) avant kill, ce qui dépasse le
+/// timeout client (15 s) et faisait annuler la requête. On répond 204 dès que
+/// l'ordre est pris ; l'UI suit l'état par polling.
 pub async fn stop_server(
     State(state): State<AppState>,
     Path(server_id): Path<Uuid>,
@@ -284,8 +289,14 @@ pub async fn stop_server(
 ) -> Result<StatusCode, ApiError> {
     let detail = state.game_servers_uc.get(server_id).await?;
     let actor = acteur(&state, &headers, server_id, q.actor_id.as_deref()).await?;
-    state.game_servers_uc.stop(server_id, &actor).await?;
-    publish_lifecycle(&state, SERVER_STOPPED, server_id, &detail.server.guild_id).await;
+    let guild_id = detail.server.guild_id.clone();
+    let bg = state.clone();
+    tokio::spawn(async move {
+        match bg.game_servers_uc.stop(server_id, &actor).await {
+            Ok(()) => publish_lifecycle(&bg, SERVER_STOPPED, server_id, &guild_id).await,
+            Err(e) => tracing::warn!(error = %e, %server_id, "stop (tache de fond) a echoue"),
+        }
+    });
     Ok(StatusCode::NO_CONTENT)
 }
 

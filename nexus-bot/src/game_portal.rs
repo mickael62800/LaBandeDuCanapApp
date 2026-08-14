@@ -279,26 +279,35 @@ pub async fn refresh_options_card(ctx: &Context, api: &ApiClient, server_id: &st
     });
     match existing {
         Some(m) => {
-            let _ = text_ch
+            if let Err(e) = text_ch
                 .edit_message(&ctx.http, m.id, EditMessage::new().embeds(embeds))
-                .await;
-        }
-        None => {
-            if let Ok(msg) = text_ch
-                .send_message(&ctx.http, CreateMessage::new().embeds(embeds))
                 .await
             {
-                let _ = text_ch.pin(&ctx.http, msg.id).await;
+                tracing::warn!(error = %e, server_id, "game-portal: edition carte parametres impossible");
             }
         }
+        None => match text_ch
+            .send_message(&ctx.http, CreateMessage::new().embeds(embeds))
+            .await
+        {
+            Ok(msg) => {
+                let _ = text_ch.pin(&ctx.http, msg.id).await;
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, server_id, "game-portal: creation carte parametres impossible");
+            }
+        },
     }
 }
 
+/// Decoupe les options en blocs tenant dans la VALEUR d'un champ d'embed
+/// Discord, dont la limite dure est 1024 caracteres. On borne a 1000 pour
+/// garder une marge (chaque option est deja une ligne markdown courte).
 fn chunk_options(options: &[String]) -> Vec<String> {
     let mut chunks = Vec::new();
     let mut current = String::new();
     for line in options {
-        if !current.is_empty() && current.len() + line.len() + 1 > 1800 {
+        if !current.is_empty() && current.len() + line.len() + 1 > 1000 {
             chunks.push(std::mem::take(&mut current));
         }
         if !current.is_empty() {

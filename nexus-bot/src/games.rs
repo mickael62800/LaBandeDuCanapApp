@@ -136,7 +136,7 @@ fn register_admin() -> CreateCommand {
         )
         .add_option(CreateCommandOption::new(
             CommandOptionType::SubCommand,
-            "refresh-options",
+            "parametres",
             "Rafraichir la carte des parametres des serveurs de session",
         ))
 }
@@ -170,9 +170,7 @@ pub async fn handle_command(api: &ApiClient, ctx: &Context, command: &CommandInt
         ("game-admin", "delete") => handle_delete(ctx, command, api, &guild_id).await,
         ("game-admin", "panel") => handle_panel(ctx, command, api, &guild_id).await,
         ("game-admin", "refresh") => handle_refresh(ctx, command, api, &guild_id).await,
-        ("game-admin", "refresh-options") => {
-            handle_refresh_options(ctx, command, api, &guild_id).await
-        }
+        ("game-admin", "parametres") => handle_refresh_options(ctx, command, api, &guild_id).await,
         ("game", "list") => handle_list(ctx, command, api, &guild_id).await,
         ("game", "join") => handle_join(ctx, command, api, &guild_id).await,
         ("game", "leave") => handle_leave(ctx, command, api, &guild_id).await,

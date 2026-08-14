@@ -592,9 +592,30 @@ impl ManageGameServersUseCase for ManageGameServersService {
 
             // Reutilise le password existant si on reutilise un rcon_port,
             // sinon en genere un nouveau.
+            //
+            // EXCEPTION : sur les images ou RCON n'a pas de mot de passe propre
+            // (Palworld : c'est l'`ADMIN_PASSWORD` qui fait foi), generer un
+            // secret separe garantirait l'echec — la plateforme s'authentifierait
+            // avec une valeur que le serveur ignore. On adopte donc le mot de
+            // passe admin EFFECTIF, pour ne pas ecraser celui choisi dans
+            // l'interface. S'il est vide, on retombe sur un secret genere, qui
+            // devient alors l'`ADMIN_PASSWORD` du serveur.
             let rcon_password = match (&server.rcon_password, rcon_port) {
                 (Some(p), Some(_)) => Some(p.clone()),
-                (None, Some(_)) => Some(generate_rcon_password()),
+                (None, Some(_)) => {
+                    let contrat =
+                        crate::nexus::domain::entities::game::presence::rcon_env(&template.slug);
+                    let mot_de_passe_partage = if contrat.password_key == "ADMIN_PASSWORD" {
+                        let overrides = self.config_repo.get_all(id).await.unwrap_or_default();
+                        Self::render_env(&template, &overrides)
+                            .get(contrat.password_key)
+                            .map(|v| v.trim().to_owned())
+                            .filter(|v| !v.is_empty())
+                    } else {
+                        None
+                    };
+                    Some(mot_de_passe_partage.unwrap_or_else(generate_rcon_password))
+                }
                 _ => None,
             };
 

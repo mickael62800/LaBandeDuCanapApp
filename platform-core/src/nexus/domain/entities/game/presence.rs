@@ -1,4 +1,4 @@
-//! Presence des joueurs sur un serveur de jeu, via RCON.
+//! RCON par jeu : contrat d'activation, et presence des joueurs.
 //!
 //! Chaque jeu expose ses joueurs differemment : la commande ET le format de
 //! reponse changent. Ce module isole cette difference pour que les jobs
@@ -8,6 +8,45 @@
 //! `last_player_count` et donc l'extinction automatique (idle shutdown). Une
 //! commande inadaptee renvoie « 0 joueur » sur un serveur peuple — et le
 //! worker finit par eteindre un serveur ou des gens jouent.
+
+/// Port RCON DANS le conteneur. Le port hote alloue par la plateforme y est
+/// mappe ; c'est cette valeur qui est passee a l'image.
+pub const CONTAINER_RCON_PORT: u16 = 25575;
+
+/// Noms des variables d'environnement qui pilotent RCON, selon l'image.
+///
+/// Chaque image de jeu a sa propre convention. Injecter celle d'un autre jeu
+/// revient a ne rien activer du tout : l'image ignore des variables qu'elle ne
+/// connait pas, RCON reste ferme, et la plateforme se retrouve a interroger un
+/// port ou personne n'ecoute.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RconEnv {
+    pub enable_key: &'static str,
+    pub password_key: &'static str,
+    pub port_key: &'static str,
+}
+
+/// Contrat RCON de l'image, par jeu.
+///
+/// Palworld (`thijsvanloef/palworld-server-docker`) attend `RCON_ENABLED`, et
+/// n'a PAS de mot de passe RCON distinct : c'est l'`ADMIN_PASSWORD` du serveur
+/// qui fait foi. Le defaut (`ENABLE_RCON` / `RCON_PASSWORD`) est la convention
+/// des images Minecraft `itzg`.
+pub fn rcon_env(template_slug: &str) -> RconEnv {
+    if template_slug.to_ascii_lowercase().starts_with("palworld") {
+        RconEnv {
+            enable_key: "RCON_ENABLED",
+            password_key: "ADMIN_PASSWORD",
+            port_key: "RCON_PORT",
+        }
+    } else {
+        RconEnv {
+            enable_key: "ENABLE_RCON",
+            password_key: "RCON_PASSWORD",
+            port_key: "RCON_PORT",
+        }
+    }
+}
 
 /// Un joueur connecte, tel que rapporte par le serveur de jeu.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -111,6 +150,19 @@ fn parse_minecraft_list(raw: &str) -> Vec<PlayerPresence> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn palworld_a_son_propre_contrat_rcon() {
+        // Injecter les variables Minecraft a Palworld revient a laisser RCON
+        // ferme : l'image ignore `ENABLE_RCON` et n'a pas de `RCON_PASSWORD`.
+        let pal = rcon_env("palworld");
+        assert_eq!(pal.enable_key, "RCON_ENABLED");
+        assert_eq!(pal.password_key, "ADMIN_PASSWORD");
+
+        let mc = rcon_env("minecraft-vanilla");
+        assert_eq!(mc.enable_key, "ENABLE_RCON");
+        assert_eq!(mc.password_key, "RCON_PASSWORD");
+    }
 
     #[test]
     fn palworld_utilise_show_players_et_pas_list() {

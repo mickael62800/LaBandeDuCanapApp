@@ -1,4 +1,5 @@
 use super::*;
+use crate::nexus::domain::entities::game::presence;
 
 /// Substitue `{{KEY}}` (avec spaces tolerees) par `env[KEY]`. Si la cle
 /// n'existe pas, le placeholder est remplace par une chaine vide (comme
@@ -135,16 +136,24 @@ impl ManageGameServersService {
                 env.insert("PORT".to_string(), template.container_port.to_string());
             }
         }
+        // Le contrat RCON depend de l'IMAGE, pas d'une convention unique :
+        // Palworld attend `RCON_ENABLED` et se sert de l'`ADMIN_PASSWORD`.
+        // Injecter les variables Minecraft laissait RCON ferme cote Palworld —
+        // d'ou une console muette, un nombre de joueurs a zero et aucune
+        // presence exploitable pour les hauts faits.
+        //
+        // Ces variables sont posees APRES les overrides : elles font foi, sinon
+        // un reglage saisi dans l'interface pourrait fermer la console dont la
+        // plateforme depend pour surveiller le serveur.
         if template.supports_rcon && cfg.rcon_enabled {
             if let Some(pwd) = &server.rcon_password {
-                env.insert("ENABLE_RCON".to_string(), "true".to_string());
-                env.insert("RCON_PASSWORD".to_string(), pwd.clone());
-                if let Some(p) = server.rcon_port {
-                    // RCON_PORT du container : on garde 25575 par defaut Minecraft,
-                    // le mapping host expose le port_alloue.
-                    let _ = p;
-                    env.insert("RCON_PORT".to_string(), "25575".to_string());
-                }
+                let rcon = presence::rcon_env(&template.slug);
+                env.insert(rcon.enable_key.to_string(), "true".to_string());
+                env.insert(rcon.password_key.to_string(), pwd.clone());
+                env.insert(
+                    rcon.port_key.to_string(),
+                    presence::CONTAINER_RCON_PORT.to_string(),
+                );
             }
         }
         // Le CONTENEUR recoit plus que le jeu : une JVM configuree avec 2 Go
@@ -201,7 +210,7 @@ impl ManageGameServersService {
                 // RCON est toujours TCP.
                 port_mappings.push(PortMapping {
                     host_port: rcon_host_port,
-                    container_port: 25575,
+                    container_port: presence::CONTAINER_RCON_PORT,
                     protocol: PortProtocol::Tcp,
                     // RCON = console admin : bind uniquement sur loopback,
                     // l'app s'y connecte via 127.0.0.1. JAMAIS exposé.

@@ -315,11 +315,20 @@ La source retenue est l'option 2 du document (RCON). `ShowPlayers` renvoie le
 **SteamID64** de chaque joueur connecté : la présence est donc une observation
 vérifiable, reliable à un membre Discord via `game_player_links`.
 
-- `platform-core::…::game::presence` porte la commande et l'analyse **par jeu**
-  (`ShowPlayers` pour Palworld, `list` pour Minecraft). Cela corrige au passage
-  un défaut réel : le health check interrogeait tous les jeux avec la commande
-  Minecraft, donc rapportait « 0 joueur » sur un serveur Palworld peuplé — et
-  ce compteur alimente l'extinction automatique.
+- `platform-core::…::game::presence` porte **tout le contrat RCON par jeu** :
+  la commande, l'analyse de la réponse, et les variables d'environnement qui
+  activent la console. Deux défauts réels y sont corrigés :
+  - le health check interrogeait tous les jeux avec la commande Minecraft
+    (`list`), donc rapportait « 0 joueur » sur un serveur Palworld peuplé — et
+    ce compteur alimente l'extinction automatique ;
+  - la plateforme injectait `ENABLE_RCON` / `RCON_PASSWORD` (conventions des
+    images Minecraft `itzg`) à **toutes** les images. Palworld attend
+    `RCON_ENABLED`, et n'a pas de mot de passe RCON distinct : c'est
+    l'`ADMIN_PASSWORD` du serveur. RCON restait donc fermé côté Palworld, et la
+    plateforme interrogeait un port où personne n'écoutait.
+
+  Pour Palworld, le mot de passe RCON est désormais l'`ADMIN_PASSWORD`
+  **effectif** — celui choisi dans l'interface reste donc autoritaire.
 - Le job `palworld-presence` (scheduler → `POST
   /api/games/internal/jobs/palworld-presence`, 120 s par défaut) relève les
   joueurs et demande l'attribution. Les `source_event_id` sont stables par

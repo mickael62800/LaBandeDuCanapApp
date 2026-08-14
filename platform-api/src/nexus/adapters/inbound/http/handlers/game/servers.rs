@@ -247,6 +247,13 @@ async fn publish_lifecycle(state: &AppState, event: &str, server_id: Uuid, guild
 }
 
 /// POST /api/games/servers/{server_id}/start
+///
+/// Démarrage en TÂCHE DE FOND : le pull d'image (jusqu'à ~8 Go) + create + start
+/// prennent des minutes. Exécuté dans la requête, le client (web ou bot) coupe à
+/// son timeout et ANNULE la requête — ce qui interrompait la création du
+/// conteneur et laissait le serveur coincé en `starting`. On répond donc 202 dès
+/// que l'ordre est pris ; l'UI suit l'état par polling, et une erreur éventuelle
+/// est exposée via `last_error` du serveur.
 pub async fn start_server(
     State(state): State<AppState>,
     Path(server_id): Path<Uuid>,
@@ -255,8 +262,16 @@ pub async fn start_server(
 ) -> Result<StatusCode, ApiError> {
     let detail = state.game_servers_uc.get(server_id).await?;
     let actor = acteur(&state, &headers, server_id, q.actor_id.as_deref()).await?;
-    state.game_servers_uc.start(server_id, &actor).await?;
-    publish_lifecycle(&state, SERVER_STARTED, server_id, &detail.server.guild_id).await;
+    let guild_id = detail.server.guild_id.clone();
+    let bg = state.clone();
+    tokio::spawn(async move {
+        match bg.game_servers_uc.start(server_id, &actor).await {
+            Ok(()) => publish_lifecycle(&bg, SERVER_STARTED, server_id, &guild_id).await,
+            Err(e) => {
+                tracing::warn!(error = %e, %server_id, "start (tache de fond) a echoue")
+            }
+        }
+    });
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -282,7 +297,15 @@ pub async fn restart_server(
     Query(q): Query<ActorQuery>,
 ) -> Result<StatusCode, ApiError> {
     let actor = acteur(&state, &headers, server_id, q.actor_id.as_deref()).await?;
-    state.game_servers_uc.restart(server_id, &actor).await?;
+    // Comme `start` : `restart` inclut un `start` (donc un possible pull long).
+    // On l'exécute en tâche de fond pour ne pas se faire annuler par le timeout
+    // client. L'UI suit l'état par polling.
+    let bg = state.clone();
+    tokio::spawn(async move {
+        if let Err(e) = bg.game_servers_uc.restart(server_id, &actor).await {
+            tracing::warn!(error = %e, %server_id, "restart (tache de fond) a echoue");
+        }
+    });
     Ok(StatusCode::NO_CONTENT)
 }
 

@@ -1,5 +1,6 @@
 //! Couche application Nexus : cas d'usage orchestrant le domaine via les ports.
 
+pub mod achievements_service;
 pub mod coussin_bet_service;
 pub mod coussin_insurance_service;
 pub mod coussin_inventory_service;

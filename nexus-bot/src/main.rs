@@ -14,6 +14,7 @@
 //!   - NEXUS_API_URL (defaut http://localhost:3100)
 //!   - NEXUS_API_KEY (Bearer vers nexus-api)
 
+mod achievements;
 mod api_client;
 mod embeds;
 mod event_bus;
@@ -116,6 +117,7 @@ impl EventHandler for Handler {
         // reconnexion gateway, le consumer tourne deja.
         if !self.game_portal_started.swap(true, Ordering::SeqCst) {
             game_portal::spawn(ctx.clone(), self.api.clone());
+            achievements::spawn(ctx.clone(), self.api.clone());
             games::spawn_listener(ctx.clone(), self.api.clone());
         }
         let commands = vec![
@@ -257,6 +259,7 @@ impl EventHandler for Handler {
         let commands: Vec<CreateCommand> = commands
             .into_iter()
             .chain(games::register_commands())
+            .chain(std::iter::once(achievements::register()))
             .chain(std::iter::once(grand_salon::register()))
             .chain(std::iter::once(wheel_panel::register()))
             .collect();
@@ -290,6 +293,7 @@ impl EventHandler for Handler {
                 "roue-panel" => wheel_panel::handle_command(&ctx, &cmd).await,
                 "game" | "game-admin" => games::handle_command(&self.api, &ctx, &cmd).await,
                 "salon" => grand_salon::handle_command(&self.api, &ctx, &cmd).await,
+                "haut-faits" => achievements::handle_command(&self.api, &ctx, &cmd).await,
                 _ => {}
             },
             Interaction::Component(component) => {

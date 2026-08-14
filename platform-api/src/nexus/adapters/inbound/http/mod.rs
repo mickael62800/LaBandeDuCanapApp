@@ -160,6 +160,33 @@ pub fn build_router_with(state: AppState, config: HttpConfig) -> Router {
     ));
 
     let api = Router::new()
+        // ── Hauts faits ──
+        .route(
+            "/api/achievements/definitions",
+            get(handlers::achievements::list_definitions),
+        )
+        .route(
+            "/api/achievements/definitions/{id}",
+            patch(handlers::achievements::update_definition),
+        )
+        .route(
+            "/api/achievements/{guild_id}/members/{user_id}",
+            get(handlers::achievements::member_progress),
+        )
+        .route(
+            "/api/achievements/{guild_id}/links/{user_id}/{game}",
+            get(handlers::achievements::get_link)
+                .put(handlers::achievements::put_link)
+                .delete(handlers::achievements::delete_link),
+        )
+        .route(
+            "/api/achievements/{guild_id}/grant",
+            post(handlers::achievements::grant),
+        )
+        .route(
+            "/api/achievements/{guild_id}/game-events",
+            post(handlers::achievements::game_event),
+        )
         .route(
             "/api/grand-salon/{guild_id}/membership/{user_id}",
             get(handlers::grand_salon::membership),

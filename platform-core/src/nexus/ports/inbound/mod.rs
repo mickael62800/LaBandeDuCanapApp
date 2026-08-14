@@ -1,5 +1,6 @@
 //! Ports inbound Nexus (traits de cas d'usage).
 
+pub mod achievements;
 pub mod coussin_bet;
 pub mod coussin_insurance;
 pub mod coussin_inventory;

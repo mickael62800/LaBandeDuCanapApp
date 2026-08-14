@@ -86,6 +86,7 @@ export const adminRoutes: RouteRecordRaw[] = [
     { path: "/nexus/grand-salon", name: "nexus-grand-salon", component: () => import("@/components/pages/NexusGrandSalonPage.vue") },
     { path: "/nexus/roue", name: "nexus-roue", component: () => import("@/components/pages/NexusWheelPage.vue") },
     { path: "/nexus/coussin", name: "nexus-coussin", component: () => import("@/components/pages/NexusCoussinPage.vue") },
+    { path: "/nexus/haut-faits", name: "nexus-achievements", component: () => import("@/components/pages/NexusAchievementsPage.vue") },
     { path: "/nexus/jeux", name: "nexus-games", component: () => import("@/components/pages/NexusMentionableGamesPage.vue") },
     { path: "/nexus/config", name: "nexus-config", component: () => import("@/components/pages/NexusConfigPage.vue") },
   ]),

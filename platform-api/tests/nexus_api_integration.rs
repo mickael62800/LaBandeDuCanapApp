@@ -837,6 +837,101 @@ impl platform_core::nexus::ports::outbound::grand_salon_repository::GrandSalonRe
 /// `String`. Les tests exercent donc la meme posture que la production.
 const TEST_API_KEY: &str = "cle-de-test-nexus-32-caracteres";
 
+/// Repo de hauts faits inerte : les tests HTTP de ce fichier n'exercent pas
+/// cette surface, l'etat a seulement besoin d'un use case construit.
+struct DummyAchievementRepo;
+
+#[async_trait]
+impl platform_core::nexus::ports::outbound::achievement_repository::AchievementRepository
+    for DummyAchievementRepo
+{
+    async fn list_definitions(
+        &self,
+        _: Option<&str>,
+    ) -> Result<Vec<platform_core::nexus::domain::entities::achievement::Achievement>, DomainError>
+    {
+        Ok(vec![])
+    }
+    async fn find_definition(
+        &self,
+        _: Uuid,
+    ) -> Result<Option<platform_core::nexus::domain::entities::achievement::Achievement>, DomainError>
+    {
+        Ok(None)
+    }
+    async fn find_definition_by_code(
+        &self,
+        _: Option<&str>,
+        _: &str,
+    ) -> Result<Option<platform_core::nexus::domain::entities::achievement::Achievement>, DomainError>
+    {
+        Ok(None)
+    }
+    async fn update_definition(
+        &self,
+        _: Uuid,
+        _: platform_core::nexus::ports::outbound::achievement_repository::AchievementUpdate,
+    ) -> Result<platform_core::nexus::domain::entities::achievement::Achievement, DomainError> {
+        Err(DomainError::NotFound("test".into()))
+    }
+    async fn find_link(
+        &self,
+        _: &str,
+        _: &str,
+        _: &str,
+    ) -> Result<
+        Option<platform_core::nexus::domain::entities::achievement::GamePlayerLink>,
+        DomainError,
+    > {
+        Ok(None)
+    }
+    async fn find_link_by_player(
+        &self,
+        _: &str,
+        _: &platform_core::nexus::domain::entities::achievement::GameIdentity,
+    ) -> Result<
+        Option<platform_core::nexus::domain::entities::achievement::GamePlayerLink>,
+        DomainError,
+    > {
+        Ok(None)
+    }
+    async fn upsert_link(
+        &self,
+        _: &str,
+        _: &str,
+        _: &platform_core::nexus::domain::entities::achievement::GameIdentity,
+        _: bool,
+    ) -> Result<platform_core::nexus::domain::entities::achievement::GamePlayerLink, DomainError>
+    {
+        Err(DomainError::NotFound("test".into()))
+    }
+    async fn delete_link(&self, _: &str, _: &str, _: &str) -> Result<bool, DomainError> {
+        Ok(false)
+    }
+    async fn insert_unlock(
+        &self,
+        _: &platform_core::nexus::domain::entities::achievement::UserAchievement,
+    ) -> Result<
+        Option<platform_core::nexus::domain::entities::achievement::UserAchievement>,
+        DomainError,
+    > {
+        Ok(None)
+    }
+    async fn list_for_member(
+        &self,
+        _: &str,
+        _: &str,
+    ) -> Result<
+        Vec<platform_core::nexus::domain::entities::achievement::UserAchievement>,
+        DomainError,
+    > {
+        Ok(vec![])
+    }
+    async fn count_for_member(&self, _: &str, _: &str) -> Result<i64, DomainError> {
+        Ok(0)
+    }
+}
+
 fn create_test_app_state(api_key: impl Into<String>) -> AppState {
     let api_key = api_key.into();
     AppState {
@@ -862,6 +957,11 @@ fn create_test_app_state(api_key: impl Into<String>) -> AppState {
         coussin_steal: Arc::new(DummyCoussinSteal),
         coussin_prime: Arc::new(DummyCoussinPrime),
         coussin_bet: Arc::new(DummyCoussinBet),
+        achievements_uc: Arc::new(
+            platform_core::nexus::application::achievements_service::AchievementsService::new(
+                Arc::new(DummyAchievementRepo),
+            ),
+        ),
         game_servers_uc: Arc::new(DummyManageGameServers),
         game_templates_uc: Arc::new(DummyManageGameTemplates),
         game_server_repo: Arc::new(DummyGameServerRepo),

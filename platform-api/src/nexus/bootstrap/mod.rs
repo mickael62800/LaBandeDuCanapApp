@@ -91,6 +91,10 @@ pub struct AppState {
     pub coussin_steal: Arc<dyn CoussinStealUseCase>,
     pub coussin_prime: Arc<dyn CoussinPrimeUseCase>,
     pub coussin_bet: Arc<dyn CoussinBetUseCase>,
+    // ── Hauts faits ──
+    pub achievements_uc: Arc<
+        dyn platform_core::nexus::ports::inbound::achievements::ManageAchievementsUseCase,
+    >,
     // ── Game Portal ──
     pub game_servers_uc: Arc<dyn ManageGameServersUseCase>,
     pub game_templates_uc: Arc<dyn ManageGameTemplatesUseCase>,
@@ -313,6 +317,17 @@ pub async fn build_state() -> Result<AppState, Box<dyn std::error::Error>> {
         crate::nexus::adapters::outbound::system::discord_api::ReqwestDiscordApiClient::new(discord_token),
     );
 
+    // ── Hauts faits ──
+    let achievements_uc: Arc<
+        dyn platform_core::nexus::ports::inbound::achievements::ManageAchievementsUseCase,
+    > = Arc::new(
+        platform_core::nexus::application::achievements_service::AchievementsService::new(Arc::new(
+            crate::nexus::adapters::outbound::postgres::achievement_repository::PgAchievementRepository::new(
+                pool.clone(),
+            ),
+        )),
+    );
+
     // ── Game Portal : use cases ──
     let game_servers_uc: Arc<dyn ManageGameServersUseCase> = Arc::new(ManageGameServersService {
         server_repo: game_server_repo.clone(),
@@ -382,6 +397,7 @@ pub async fn build_state() -> Result<AppState, Box<dyn std::error::Error>> {
         coussin_steal,
         coussin_prime,
         coussin_bet,
+        achievements_uc,
         game_servers_uc,
         game_templates_uc,
         game_server_repo,

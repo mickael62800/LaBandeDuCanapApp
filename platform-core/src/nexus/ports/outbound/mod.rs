@@ -1,5 +1,6 @@
 //! Ports outbound Nexus (repos abstraits, implementes par les adapters).
 
+pub mod achievement_repository;
 pub mod casino;
 pub mod coussin_bet_repository;
 pub mod coussin_cooldown_repository;

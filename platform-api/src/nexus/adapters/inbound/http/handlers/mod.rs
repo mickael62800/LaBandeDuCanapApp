@@ -1,3 +1,4 @@
+pub mod achievements;
 pub mod bot_config;
 pub mod casino;
 pub mod coussin;

@@ -1,5 +1,6 @@
 //! Entites du domaine Nexus.
 
+pub mod achievement;
 pub mod casino;
 pub mod coussin;
 pub mod coussin_shop;

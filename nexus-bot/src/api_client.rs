@@ -244,10 +244,13 @@ pub struct RevealRequest {
     pub started: bool,
 }
 
+mod achievements;
 mod coussin;
 mod economy;
 mod game_portal;
 mod games;
+
+pub use achievements::AchievementProgress;
 
 impl ApiClient {
     /// `base_url` ex. http://nexus-api:3100 (NEXUS_API_URL).

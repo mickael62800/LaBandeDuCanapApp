@@ -24,6 +24,13 @@ pub mod game_events {
     pub const GAME_ROLE_DELETE: &str = "game_role_delete";
 }
 
+/// Hauts faits (cf. DOC/Nexus/haut-faits.md).
+pub mod achievement_events {
+    /// Un haut fait vient d'etre attribue : le bot publie l'annonce.
+    /// Emis UNIQUEMENT apres persistance confirmee.
+    pub const ACHIEVEMENT_UNLOCKED: &str = "achievement.unlocked";
+}
+
 #[async_trait]
 pub trait EventPublisher: Send + Sync {
     /// Publie un evenement. Best-effort : un echec de publication ne doit

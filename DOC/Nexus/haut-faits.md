@@ -251,6 +251,50 @@ La fonctionnalité ne doit pas être déclarée disponible pour Palworld tant qu
 la source d'événements et la méthode de liaison des joueurs n'ont pas été
 validées sur le conteneur réel.
 
+## État de l'implémentation
+
+Première tranche livrée, centrée sur Palworld.
+
+**En place**
+
+- Migration `platform-api/migrations/nexus/031_achievements.sql` : tables
+  `achievements`, `game_player_links`, `user_achievements`, catalogue Palworld
+  (56 définitions) et module de config `nexus-achievements` (salon d'annonce,
+  interrupteur d'annonce, mention, profils publics).
+- Domaine `platform-core::nexus` : entités, ports et
+  `achievements_service` (règles d'attribution, idempotence, filtrage des
+  hauts faits secrets).
+- API : `GET/PATCH /api/achievements/definitions`, progression d'un membre,
+  liaison d'identité (`PUT/GET/DELETE .../links/...`), attribution manuelle
+  (`POST .../grant`) et relais d'événement de jeu (`POST .../game-events`).
+  Publication de `achievement.unlocked` après persistance confirmée.
+- Bot : consumer durable de `achievement.unlocked` (annonce dans le salon
+  configuré, salon vérifié comme appartenant à la guilde) et commande
+  `/haut-faits` (`moi`, `membre`, `compte`, `lier`, `delier`), réponses
+  éphémères.
+- Dashboard : page **Hauts faits** (`/nexus/haut-faits`) pour choisir l'image
+  de chaque haut fait, parmi les visuels livrés dans
+  `web/public/Achievement/<jeu>/` ou une URL libre, et activer/désactiver une
+  définition.
+
+**Liaison des joueurs**
+
+Le membre déclare lui-même son identité via `/haut-faits lier`. Pour Palworld
+l'identifiant attendu est un **SteamID64** (17 chiffres, préfixe `7656119`),
+validé par le domaine ; un pseudo est refusé. Une identité ne peut être
+revendiquée que par un seul membre par guilde.
+
+**Non encore livré — et pourquoi**
+
+Aucun adaptateur d'événements Palworld n'est branché : la source (plugin, RCON
+ou logs) n'a pas été validée sur le conteneur réel. En conséquence, tous les
+hauts faits Palworld de gameplay sont en `verification = 'manual'` et ne
+peuvent être attribués que par un administrateur, de façon tracée
+(`granted_by`). Seul `first_launch_palworld` est en `auto`, prêt à être
+déclenché par `POST /game-events` dès qu'un producteur d'événements existera.
+Le passage en `auto` des autres hauts faits est un changement de données, pas
+de code.
+
 ## Catalogue initial des hauts faits Discord
 
 ### Arrivée et découverte

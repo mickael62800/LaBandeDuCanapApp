@@ -1,5 +1,6 @@
 //! Adaptateurs PostgreSQL implémentant les ports de `platform_core::nexus`.
 
+pub mod achievement_repository;
 pub mod casino;
 pub mod coussin_bet_repository;
 pub mod coussin_cooldown_repository;

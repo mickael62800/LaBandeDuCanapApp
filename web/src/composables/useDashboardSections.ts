@@ -37,6 +37,7 @@ const ALL_SECTIONS: DashboardSection[] = [
   { key: "nexus.roue", path: "/nexus/roue", label: "Roue du Destin", icon: "zap", universe: "nexus" },
   { key: "nexus.coussin", path: "/nexus/coussin", label: "Coussin Piégé", icon: "gavel", universe: "nexus" },
   { key: "nexus.games", path: "/nexus/jeux", label: "Jeux mentionnables", icon: "target", universe: "nexus" },
+  { key: "nexus.achievements", path: "/nexus/haut-faits", label: "Hauts faits", icon: "award", universe: "nexus" },
   { key: "nexus.config", path: "/nexus/config", label: "Configuration", icon: "sliders", universe: "nexus" },
 
   // ── Sentinel : general ──

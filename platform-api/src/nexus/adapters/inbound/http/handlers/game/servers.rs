@@ -22,7 +22,7 @@ use crate::nexus::adapters::inbound::http::handlers::ApiError;
 use crate::nexus::bootstrap::AppState;
 use platform_core::nexus::domain::entities::game::server::CreateGameServerCommand;
 use platform_core::nexus::ports::outbound::events::game_events::{
-    IP_REVEAL, OPTIONS_UPDATED, SERVER_DELETED, SERVER_SCHEDULED, SERVER_STARTED, SERVER_STOPPED,
+    IP_REVEAL, SERVER_DELETED, SERVER_SCHEDULED, SERVER_STARTED, SERVER_STOPPED,
 };
 
 /// POST /api/games/{guild_id}/servers
@@ -493,14 +493,10 @@ pub async fn update_config(
     Json(dto): Json<UpdateConfigDto>,
 ) -> Result<StatusCode, ApiError> {
     let actor = acteur(&state, &headers, server_id, q.actor_id.as_deref()).await?;
-    let detail = state.game_servers_uc.get(server_id).await?;
     state
         .game_servers_uc
         .update_config(server_id, dto.config, &actor)
         .await?;
-    // Rafraichit la carte des parametres dans le salon d'inscription : le bot
-    // reconstruit l'embed epingle a partir de la config a jour.
-    publish_lifecycle(&state, OPTIONS_UPDATED, server_id, &detail.server.guild_id).await;
     Ok(StatusCode::NO_CONTENT)
 }
 

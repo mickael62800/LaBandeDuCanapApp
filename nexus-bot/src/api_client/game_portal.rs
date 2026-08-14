@@ -11,16 +11,6 @@ impl ApiClient {
         self.send(self.http.get(&url)).await
     }
 
-    /// GET /api/games/{guild_id}/servers — serveurs de session de la guilde.
-    pub async fn list_servers(&self, guild_id: &str) -> Result<Vec<GameServer>, String> {
-        let url = format!(
-            "{}/api/games/{}/servers",
-            self.base_url,
-            encode_segment(guild_id)
-        );
-        self.send(self.http.get(&url)).await
-    }
-
     /// GET /api/games/templates/{template_id}.
     pub async fn get_game_template(&self, template_id: &str) -> Result<GameTemplate, String> {
         let url = format!(

@@ -68,6 +68,11 @@ fn register_public() -> CreateCommand {
                     .required(true),
             ),
         )
+        .add_option(CreateCommandOption::new(
+            CommandOptionType::SubCommand,
+            "parametres",
+            "Voir les reglages du serveur de ce salon (reponse privee)",
+        ))
 }
 
 fn register_admin() -> CreateCommand {
@@ -134,11 +139,6 @@ fn register_admin() -> CreateCommand {
                 .required(false),
             ),
         )
-        .add_option(CreateCommandOption::new(
-            CommandOptionType::SubCommand,
-            "parametres",
-            "Rafraichir la carte des parametres des serveurs de session",
-        ))
 }
 
 // ── Dispatch ──
@@ -170,59 +170,36 @@ pub async fn handle_command(api: &ApiClient, ctx: &Context, command: &CommandInt
         ("game-admin", "delete") => handle_delete(ctx, command, api, &guild_id).await,
         ("game-admin", "panel") => handle_panel(ctx, command, api, &guild_id).await,
         ("game-admin", "refresh") => handle_refresh(ctx, command, api, &guild_id).await,
-        ("game-admin", "parametres") => handle_refresh_options(ctx, command, api, &guild_id).await,
         ("game", "list") => handle_list(ctx, command, api, &guild_id).await,
         ("game", "join") => handle_join(ctx, command, api, &guild_id).await,
         ("game", "leave") => handle_leave(ctx, command, api, &guild_id).await,
+        ("game", "parametres") => handle_show_params(ctx, command, api).await,
         _ => reply(ctx, command, "Sous-commande inconnue.").await,
     }
 }
 
 // ── Sub-commands ──
 
-/// Rafraichit la carte des parametres (salon d'inscription) de tous les serveurs
-/// de session de la guilde. Utile quand un reglage a ete change hors du flux web
-/// habituel (qui, lui, rafraichit deja automatiquement via un evenement).
-async fn handle_refresh_options(
-    ctx: &Context,
-    cmd: &CommandInteraction,
-    api: &ApiClient,
-    guild_id: &str,
-) {
-    if !has_manage_guild(cmd) {
-        reply(
-            ctx,
-            cmd,
-            "Tu as besoin de la permission **Gerer le serveur**.",
-        )
-        .await;
-        return;
-    }
-    let servers = match api.list_servers(guild_id).await {
-        Ok(servers) => servers,
-        Err(e) => {
-            reply(
-                ctx,
-                cmd,
-                &format!("Impossible de lister les serveurs : {e}"),
-            )
-            .await;
-            return;
+/// `/game parametres` — accessible a TOUS les joueurs. Affiche les reglages du
+/// serveur de session correspondant au salon courant, en reponse EPHEMERE
+/// (visible du seul demandeur). Contextuel : dans le salon prive des inscrits le
+/// mot de passe est inclus ; dans le salon d'inscription il est masque.
+async fn handle_show_params(ctx: &Context, cmd: &CommandInteraction, api: &ApiClient) {
+    match crate::game_portal::params_embeds_for_channel(ctx, api, cmd.channel_id).await {
+        Ok(embeds) => {
+            let _ = cmd
+                .create_response(
+                    ctx,
+                    CreateInteractionResponse::Message(
+                        CreateInteractionResponseMessage::new()
+                            .embeds(embeds)
+                            .ephemeral(true),
+                    ),
+                )
+                .await;
         }
-    };
-    let mut done = 0usize;
-    for server in &servers {
-        if server.text_channel_id.is_some() {
-            crate::game_portal::refresh_options_card(ctx, api, &server.id).await;
-            done += 1;
-        }
+        Err(message) => reply(ctx, cmd, message).await,
     }
-    reply(
-        ctx,
-        cmd,
-        &format!("Cartes de parametres rafraichies : **{done}** serveur(s)."),
-    )
-    .await;
 }
 
 async fn handle_create(ctx: &Context, cmd: &CommandInteraction, api: &ApiClient, guild_id: &str) {

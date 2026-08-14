@@ -206,7 +206,6 @@ pub struct ServerDetailResponse {
 
 #[derive(Debug, Deserialize)]
 pub struct GameServer {
-    pub id: String,
     pub guild_id: String,
     pub template_id: String,
     pub name: String,

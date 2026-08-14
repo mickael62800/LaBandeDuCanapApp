@@ -12,9 +12,11 @@
 //!     panneau sont CONSERVES (pour pouvoir redemarrer sans tout reconstruire) ;
 //!   - `game_server_deleted` : suppression du jeu — supprime salons et role ;
 //!   - `game_ip_reveal` : poste l'adresse de connexion et rafraichit le panneau ;
-//!   - `game_daily_ping` : rappelle l'ouverture a venir au role du jeu ;
-//!   - `game_options_updated` : rafraichit la carte des parametres epinglee sous
-//!     le panneau d'inscription (mot de passe exclu).
+//!   - `game_daily_ping` : rappelle l'ouverture a venir au role du jeu.
+//!
+//! Les joueurs consultent les reglages d'un serveur via la commande ephemere
+//! `/game parametres` (voir `params_embeds_for_channel`), pas via une carte
+//! epinglee.
 //!
 //! La configuration par guild (categorie, hote public) est lue via
 //! `GET /api/config/{guild_id}/game-portal`.
@@ -198,14 +200,13 @@ fn public_game_options(config: &std::collections::HashMap<String, String>) -> Ve
     options
 }
 
-/// Footer marqueur de la carte des paramètres du salon d'inscription. Sert à
-/// retrouver le message pour l'éditer au lieu d'en créer un nouveau.
+/// Footer des embeds de la commande `/game parametres`.
 const OPTIONS_FOOTER: &str = "Game Portal | Paramètres";
 
-/// Options affichées dans le salon d'inscription : comme `public_game_options`
-/// mais SANS le mot de passe. Ce salon est visible de tout le rôle du jeu ; le
-/// mot de passe ne doit apparaître qu'au salon privé des inscrits, à la
-/// révélation.
+/// Options affichées hors salon privé (ex. salon d'inscription) : comme
+/// `public_game_options` mais SANS le mot de passe. Ce salon est visible de tout
+/// le rôle du jeu ; le mot de passe ne doit apparaître qu'au salon privé des
+/// inscrits.
 fn registration_options(config: &std::collections::HashMap<String, String>) -> Vec<String> {
     let mut options: Vec<_> = config
         .iter()
@@ -242,62 +243,66 @@ fn build_options_embeds(
                 .color(0x2ecc71)
                 .footer(CreateEmbedFooter::new(OPTIONS_FOOTER));
             if index == 0 {
-                embed = embed.description(
-                    "Les réglages de ce serveur. Le mot de passe éventuel n'apparaît qu'à l'ouverture, dans le salon privé des inscrits.",
-                );
+                embed = embed.description("Réglages actuels de ce serveur.");
             }
             embed
         })
         .collect()
 }
 
-/// Poste (ou met à jour) la carte des paramètres épinglée dans le salon
-/// d'inscription d'un serveur de session. Idempotent : retrouve la carte
-/// existante par son footer et l'édite, sinon en crée une et l'épingle.
-pub async fn refresh_options_card(ctx: &Context, api: &ApiClient, server_id: &str) {
-    let Ok(detail) = api.get_game_server(server_id).await else {
-        return;
-    };
-    let server = detail.server;
-    let Some(text_ch) = parse_channel(server.text_channel_id.as_ref()) else {
-        return;
-    };
+/// Extrait l'ID de serveur du topic d'un salon de session. Les salons
+/// d'inscription et privés portent tous deux `... | session:{id} | ...` dans
+/// leur topic (posé à la création). `None` si le salon n'est pas un salon de
+/// session.
+fn server_id_from_topic(topic: &str) -> Option<&str> {
+    let after = topic.split("session:").nth(1)?;
+    let id = after.split([' ', '|']).next()?.trim();
+    (!id.is_empty()).then_some(id)
+}
+
+/// Construit les embeds de paramètres à afficher en réponse ÉPHÉMÈRE à la
+/// commande `/game parametres`, à partir du salon d'où elle est lancée.
+///
+/// Contextuel : dans le salon privé des inscrits (topic `| private`) le mot de
+/// passe est inclus (comme à la révélation) ; ailleurs (salon d'inscription) il
+/// est masqué. Retourne un message d'erreur affichable si le salon n'est pas un
+/// salon de session.
+pub async fn params_embeds_for_channel(
+    ctx: &Context,
+    api: &ApiClient,
+    channel: ChannelId,
+) -> Result<Vec<CreateEmbed>, &'static str> {
+    let topic = match channel.to_channel(&ctx.http).await {
+        Ok(ch) => ch.guild().and_then(|g| g.topic),
+        Err(_) => None,
+    }
+    .ok_or(
+        "Utilise cette commande dans le salon d'un jeu (inscription ou salon privé des inscrits).",
+    )?;
+
+    let server_id =
+        server_id_from_topic(&topic).ok_or("Ce salon n'est pas rattaché à un serveur de jeu.")?;
+    let is_private = topic.contains("| private");
+
+    let detail = api
+        .get_game_server(server_id)
+        .await
+        .map_err(|_| "Serveur introuvable.")?;
     let game_name = api
-        .get_game_template(&server.template_id)
+        .get_game_template(&detail.server.template_id)
         .await
         .map(|t| t.name)
         .unwrap_or_else(|_| "Jeu".into());
-    let options = registration_options(&detail.config);
-    let embeds = build_options_embeds(&game_name, &server.name, &options);
-
-    let existing = text_ch.pins(&ctx.http).await.ok().and_then(|pins| {
-        pins.into_iter().find(|m| {
-            m.embeds
-                .iter()
-                .any(|e| e.footer.as_ref().map(|f| f.text.as_str()) == Some(OPTIONS_FOOTER))
-        })
-    });
-    match existing {
-        Some(m) => {
-            if let Err(e) = text_ch
-                .edit_message(&ctx.http, m.id, EditMessage::new().embeds(embeds))
-                .await
-            {
-                tracing::warn!(error = %e, server_id, "game-portal: edition carte parametres impossible");
-            }
-        }
-        None => match text_ch
-            .send_message(&ctx.http, CreateMessage::new().embeds(embeds))
-            .await
-        {
-            Ok(msg) => {
-                let _ = text_ch.pin(&ctx.http, msg.id).await;
-            }
-            Err(e) => {
-                tracing::warn!(error = %e, server_id, "game-portal: creation carte parametres impossible");
-            }
-        },
-    }
+    let options = if is_private {
+        public_game_options(&detail.config)
+    } else {
+        registration_options(&detail.config)
+    };
+    Ok(build_options_embeds(
+        &game_name,
+        &detail.server.name,
+        &options,
+    ))
 }
 
 /// Decoupe les options en blocs tenant dans la VALEUR d'un champ d'embed
@@ -536,6 +541,11 @@ pub fn build_panel_embed(
             false,
         )
         .field("Adresse (IP)", ip_txt, false)
+        .field(
+            "Réglages",
+            "Tape `/game parametres` pour voir tous les réglages du serveur (réponse privée).",
+            false,
+        )
         .color(0x5865f2)
         .footer(CreateEmbedFooter::new("Game Portal | Nexus"))
         .timestamp(serenity::model::Timestamp::now())
@@ -619,7 +629,6 @@ async fn handle_event(ctx: &Context, api: &ApiClient, payload_json: &str) {
         Some(ev::SERVER_DELETED) => on_deleted(ctx, api, &server_id).await,
         Some(ev::IP_REVEAL) => on_ip_reveal(ctx, api, &server_id).await,
         Some(ev::DAILY_PING) => on_daily_ping(ctx, api, &server_id).await,
-        Some(ev::OPTIONS_UPDATED) => refresh_options_card(ctx, api, &server_id).await,
         _ => {}
     }
 }
@@ -1118,9 +1127,6 @@ async fn on_started(ctx: &Context, api: &ApiClient, guild_id: GuildId, server_id
             .await;
     }
 
-    // Carte des paramètres, épinglée sous le panneau d'inscription.
-    refresh_options_card(ctx, api, server_id).await;
-
     tracing::info!(guild = %guild_id, server_id, "game-portal: session ouverte (salons crees)");
 }
 
@@ -1190,7 +1196,6 @@ async fn on_ip_reveal(ctx: &Context, api: &ApiClient, server_id: &str) {
     let Ok(detail) = api.get_game_server(server_id).await else {
         return;
     };
-    let config = detail.config;
     let server = detail.server;
     let Some(text_ch) = parse_channel(server.text_channel_id.as_ref()) else {
         return;
@@ -1228,36 +1233,20 @@ async fn on_ip_reveal(ctx: &Context, api: &ApiClient, server_id: &str) {
                     (Some(host), Some(port)) => format!("`{host}:{port}`"),
                     _ => "_Adresse indisponible, contacte le propriétaire._".to_string(),
                 };
-                let options = public_game_options(&config);
-                let mut chunks = chunk_options(&options);
-                if chunks.is_empty() {
-                    chunks.push("_Aucune option publique configurée._".into());
+                let mut card = CreateEmbed::new()
+                    .title(format!("🎮 {game_name} — {name}", name = server.name))
+                    .description(format!(
+                        "🔓 **Serveur ouvert**\nConnexion : {address}\n\nTape `/game parametres` ici pour voir tous les réglages (mot de passe inclus)."
+                    ))
+                    .color(0x5865f2)
+                    .footer(CreateEmbedFooter::new("Game Portal | Accès privé"))
+                    .timestamp(serenity::model::Timestamp::now());
+                if let Some(url) = cover_url.as_deref() {
+                    card = card.image(url);
                 }
-                for (index, chunk) in chunks.into_iter().enumerate() {
-                    let mut card = CreateEmbed::new()
-                        .title(if index == 0 {
-                            format!("🎮 {game_name} — {name}", name = server.name)
-                        } else {
-                            format!("🎮 {game_name} — options (suite)")
-                        })
-                        .description(if index == 0 {
-                            format!("🔓 **Serveur ouvert**\nConnexion : {address}")
-                        } else {
-                            "Suite des options accessibles aux joueurs.".to_string()
-                        })
-                        .field("Options de la partie", chunk, false)
-                        .color(0x5865f2)
-                        .footer(CreateEmbedFooter::new("Game Portal | Accès privé"))
-                        .timestamp(serenity::model::Timestamp::now());
-                    if index == 0 {
-                        if let Some(url) = cover_url.as_deref() {
-                            card = card.image(url);
-                        }
-                    }
-                    let _ = private_ch
-                        .send_message(&ctx.http, CreateMessage::new().embed(card))
-                        .await;
-                }
+                let _ = private_ch
+                    .send_message(&ctx.http, CreateMessage::new().embed(card))
+                    .await;
             }
         }
     }

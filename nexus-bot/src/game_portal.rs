@@ -268,15 +268,32 @@ async fn on_reveal_ip_component(
     component: &ComponentInteraction,
     server_id: &str,
 ) {
+    // Defer ephemere IMMEDIAT : le demarrage du conteneur (allocation de ports,
+    // reseau, pull d'image, start) depasse largement les 3 s d'ack imposees par
+    // Discord. Sans ce defer, l'interaction echoue en « n'a pas repondu a
+    // temps » avant meme la fin de l'appel API.
+    if let Err(e) = component
+        .create_response(
+            &ctx.http,
+            CreateInteractionResponse::Defer(
+                CreateInteractionResponseMessage::new().ephemeral(true),
+            ),
+        )
+        .await
+    {
+        tracing::warn!(error = %e, server_id, "game-portal: defer reveal-ip impossible");
+        return;
+    }
+
     let detail = match api.get_game_server(server_id).await {
         Ok(detail) => detail,
         Err(e) => {
-            respond_ephemeral(ctx, component, format!("❌ Serveur introuvable : {e}")).await;
+            edit_deferred(ctx, component, format!("❌ Serveur introuvable : {e}")).await;
             return;
         }
     };
     if detail.server.owner_user_id != component.user.id.to_string() {
-        respond_ephemeral(
+        edit_deferred(
             ctx,
             component,
             "⛔ Seul le propriétaire du serveur peut révéler son adresse.",
@@ -290,7 +307,7 @@ async fn on_reveal_ip_component(
     {
         Ok(outcome) => outcome,
         Err(e) => {
-            respond_ephemeral(ctx, component, format!("❌ Ouverture impossible : {e}")).await;
+            edit_deferred(ctx, component, format!("❌ Ouverture impossible : {e}")).await;
             return;
         }
     };
@@ -302,7 +319,7 @@ async fn on_reveal_ip_component(
     } else {
         "🚀 Le serveur est déjà en ligne."
     };
-    respond_ephemeral(
+    edit_deferred(
         ctx,
         component,
         format!(
@@ -337,19 +354,17 @@ async fn on_reveal_ip_component(
         .await;
 }
 
-async fn respond_ephemeral(
+/// Edite la reponse ephemere DEJA deferee (voir le `Defer` en tete de
+/// `on_reveal_ip_component`). A n'appeler qu'apres ce defer.
+async fn edit_deferred(
     ctx: &Context,
     component: &ComponentInteraction,
     content: impl Into<String>,
 ) {
     let _ = component
-        .create_response(
+        .edit_response(
             &ctx.http,
-            CreateInteractionResponse::Message(
-                CreateInteractionResponseMessage::new()
-                    .content(content)
-                    .ephemeral(true),
-            ),
+            serenity::builder::EditInteractionResponse::new().content(content.into()),
         )
         .await;
 }

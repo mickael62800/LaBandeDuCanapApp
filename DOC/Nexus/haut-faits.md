@@ -284,16 +284,35 @@ l'identifiant attendu est un **SteamID64** (17 chiffres, préfixe `7656119`),
 validé par le domaine ; un pseudo est refusé. Une identité ne peut être
 revendiquée que par un seul membre par guilde.
 
-**Non encore livré — et pourquoi**
+**Adaptateur Palworld : la présence par RCON**
 
-Aucun adaptateur d'événements Palworld n'est branché : la source (plugin, RCON
-ou logs) n'a pas été validée sur le conteneur réel. En conséquence, tous les
-hauts faits Palworld de gameplay sont en `verification = 'manual'` et ne
-peuvent être attribués que par un administrateur, de façon tracée
-(`granted_by`). Seul `first_launch_palworld` est en `auto`, prêt à être
-déclenché par `POST /game-events` dès qu'un producteur d'événements existera.
-Le passage en `auto` des autres hauts faits est un changement de données, pas
-de code.
+La source retenue est l'option 2 du document (RCON). `ShowPlayers` renvoie le
+**SteamID64** de chaque joueur connecté : la présence est donc une observation
+vérifiable, reliable à un membre Discord via `game_player_links`.
+
+- `platform-core::…::game::presence` porte la commande et l'analyse **par jeu**
+  (`ShowPlayers` pour Palworld, `list` pour Minecraft). Cela corrige au passage
+  un défaut réel : le health check interrogeait tous les jeux avec la commande
+  Minecraft, donc rapportait « 0 joueur » sur un serveur Palworld peuplé — et
+  ce compteur alimente l'extinction automatique.
+- Le job `palworld-presence` (scheduler → `POST
+  /api/games/internal/jobs/palworld-presence`, 120 s par défaut) relève les
+  joueurs et demande l'attribution. Les `source_event_id` sont stables par
+  (guilde, joueur, haut fait) : rejouer le job ne crée aucun doublon.
+
+Deux hauts faits sont donc en `auto` : `first_launch_palworld` et
+`palworld_massive_session` (seuil `criteria.players`, lu depuis la définition
+et jamais codé en dur).
+
+**Non livré — et pourquoi**
+
+Les hauts faits de gameplay (boss, Paldeck, élevage, bases, exploration) ne
+sont **pas observables par RCON**. Ils restent en `verification = 'manual'` :
+seul un administrateur peut les attribuer, de façon tracée (`granted_by`). Les
+rendre automatiques demandera une source qui les prouve (mod, plugin ou
+lecture de sauvegarde validée), pas une déduction depuis un signal qui ne les
+établit pas. La route `POST /game-events` est déjà là pour accueillir un tel
+producteur.
 
 ## Catalogue initial des hauts faits Discord
 

@@ -1,4 +1,5 @@
 use super::*;
+use crate::nexus::domain::entities::game::presence;
 
 // ════════════════════════════════════════════════════════════════════════
 // JOB 1 : HEALTH CHECK
@@ -32,7 +33,21 @@ pub async fn run_health_check(ctx: &JobContext) -> Result<JobReport, DomainError
             password: pwd,
             timeout_secs: cfg.rcon_timeout_secs,
         };
-        let resp = match ctx.rcon_client.execute(&params, "list").await {
+        // La commande ET le format de reponse dependent du jeu : Palworld
+        // repond a `ShowPlayers`, pas a `list`. Interroger avec la mauvaise
+        // commande renvoyait « 0 joueur » sur un serveur peuple, ce qui
+        // alimente l'extinction automatique — donc eteint un serveur occupe.
+        let slug = ctx
+            .template_repo
+            .find_by_id(server.template_id)
+            .await
+            .ok()
+            .flatten()
+            .map(|t| t.slug)
+            .unwrap_or_default();
+        let commande = presence::players_command(&slug);
+
+        let resp = match ctx.rcon_client.execute(&params, commande).await {
             Ok(r) => r,
             Err(e) => {
                 warn!(error = %e, server_id = %server.id, "health rcon failed");
@@ -40,7 +55,9 @@ pub async fn run_health_check(ctx: &JobContext) -> Result<JobReport, DomainError
                 continue;
             }
         };
-        let (count, players) = parse_minecraft_list(&resp.raw);
+        let presents = presence::parse_players(&slug, &resp.raw);
+        let count = presents.len() as i32;
+        let players: Vec<String> = presents.into_iter().map(|p| p.name).collect();
 
         // Maj last_player_count + last_active_at si > 0
         if let Err(e) = ctx
@@ -89,25 +106,4 @@ pub async fn run_health_check(ctx: &JobContext) -> Result<JobReport, DomainError
         errors,
         details: serde_json::Value::Object(details),
     })
-}
-
-/// Parse la sortie de la commande `list` Minecraft :
-/// `There are 2 of a max of 20 players online: alice, bob`
-pub(super) fn parse_minecraft_list(raw: &str) -> (i32, Vec<String>) {
-    // Compte
-    let count = raw
-        .split(' ')
-        .find_map(|w| w.parse::<i32>().ok())
-        .unwrap_or(0);
-    // Liste apres ":"
-    let players: Vec<String> = if let Some(idx) = raw.find(':') {
-        raw[idx + 1..]
-            .split(',')
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .collect()
-    } else {
-        vec![]
-    };
-    (count, players)
 }

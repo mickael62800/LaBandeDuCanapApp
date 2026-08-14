@@ -73,9 +73,6 @@ pub use reconciler::run_reconciler;
 pub use reveal_ip::run_reveal_ip;
 
 #[cfg(test)]
-use health_check::parse_minecraft_list;
-
-#[cfg(test)]
 mod tests {
     use super::*;
     use crate::nexus::domain::entities::game::audit::{GameAuditAction, GameAuditEntry};
@@ -88,19 +85,6 @@ mod tests {
     use crate::nexus::ports::outbound::game::game_server_repository::{
         GameServerRuntimeUpdate, NewGameServer, TemplateUsage,
     };
-
-    #[test]
-    fn test_parse_minecraft_list() {
-        let raw = "There are 2 of a max of 20 players online: Alice, Bob";
-        let (count, players) = parse_minecraft_list(raw);
-        assert_eq!(count, 2);
-        assert_eq!(players, vec!["Alice", "Bob"]);
-
-        let raw_empty = "There are 0 of a max of 20 players online:";
-        let (count2, players2) = parse_minecraft_list(raw_empty);
-        assert_eq!(count2, 0);
-        assert!(players2.is_empty());
-    }
 
     #[test]
     fn managed_server_label_supports_current_and_legacy_names() {

@@ -279,7 +279,8 @@ pub async fn delete_link(
 // ── Attribution ──────────────────────────────────────────────────────────
 
 /// Publie l'annonce sur `nexus:events`, apres persistance confirmee.
-async fn publish_unlock(state: &AppState, outcome: &UnlockOutcome) -> bool {
+/// Renvoie `true` si un haut fait a bien ete debloque (donc annonce).
+pub(crate) async fn publish_unlock(state: &AppState, outcome: &UnlockOutcome) -> bool {
     let UnlockOutcome::Unlocked(unlocked) = outcome else {
         return false;
     };

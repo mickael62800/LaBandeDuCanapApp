@@ -39,6 +39,10 @@ const emit = defineEmits<{
 const { success, error: showError } = useToast();
 
 const formValues = ref<Record<string, string>>({});
+/** Ce qui est REELLEMENT stocke en base (sert a distinguer « configure » de
+ * « valeur par defaut » dans l'etat affiche sous chaque champ). */
+const dbValues = ref<Record<string, string>>({});
+/** Etat EFFECTIF : base + defauts du schema. Reference de comparaison. */
 const savedValues = ref<Record<string, string>>({});
 const saving = ref(false);
 const successMessage = ref("");
@@ -240,7 +244,7 @@ const changesCount = computed(() =>
 );
 
 function fieldStatus(field: ConfigField): { text: string; source: "db" | "default" | "none" } {
-  const dbValue = savedValues.value[field.key];
+  const dbValue = dbValues.value[field.key];
 
   if (isWorker.value) {
     if (dbValue !== undefined && dbValue !== "") {
@@ -271,12 +275,33 @@ function fieldStatus(field: ConfigField): { text: string; source: "db" | "defaul
 }
 
 function loadFormValues() {
-  const values: Record<string, string> = {};
+  const stored: Record<string, string> = {};
   for (const cfg of props.configs.filter((c) => c.bot_name === props.definition.bot_name)) {
-    values[cfg.config_key] = cfg.config_value;
+    stored[cfg.config_key] = cfg.config_value;
   }
-  savedValues.value = { ...values };
-  formValues.value = { ...values };
+  dbValues.value = { ...stored };
+
+  // Le formulaire doit montrer l'etat EFFECTIF, pas seulement ce qui est
+  // stocke : cote backend, une cle absente vaut le `default` du schema.
+  //
+  // Sans ce remplissage, un interrupteur dont le defaut est `true` s'affichait
+  // ETEINT alors que le service le considerait ALLUME — et l'eteindre pour de
+  // bon etait impossible : la valeur affichee etant deja « off », rien
+  // n'apparaissait modifie, donc rien n'etait ecrit. C'est ce qui faisait
+  // persister les annonces de level-up malgre un interrupteur visuellement
+  // sur off.
+  const effective = { ...stored };
+  for (const field of configFields.value) {
+    if (
+      effective[field.key] === undefined
+      && field.default !== undefined
+      && field.default !== ""
+    ) {
+      effective[field.key] = field.default;
+    }
+  }
+  savedValues.value = { ...effective };
+  formValues.value = { ...effective };
 }
 
 function cancelChanges() {

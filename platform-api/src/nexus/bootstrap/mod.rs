@@ -143,8 +143,19 @@ pub async fn build_state() -> Result<AppState, Box<dyn std::error::Error>> {
     let db_url = std::env::var("NEXUS_DATABASE_URL")
         .map_err(|_| "NEXUS_DATABASE_URL manquante (ex: postgres://user:pass@host/nexus)")?;
 
+    // Pool partage par les requetes ET les verrous de jobs (`job_pool`). Chaque
+    // job planifie (health-check, auto-start, reveal-ip...) tient une connexion
+    // pour son verrou d'avance pendant TOUTE sa duree : a 5, quelques jobs qui
+    // se chevauchent suffisaient a epuiser le pool et a faire echouer les
+    // acquisitions en `pool timed out`. Defaut releve a 20, configurable ; reste
+    // bien sous le pool serveur de nexus-pgbouncer et le max_connections Postgres.
+    let max_conns = std::env::var("NEXUS_DB_MAX_CONNECTIONS")
+        .ok()
+        .and_then(|v| v.parse::<u32>().ok())
+        .filter(|n| *n >= 1)
+        .unwrap_or(20);
     let pool = PgPoolOptions::new()
-        .max_connections(5)
+        .max_connections(max_conns)
         .connect(&db_url)
         .await?;
 

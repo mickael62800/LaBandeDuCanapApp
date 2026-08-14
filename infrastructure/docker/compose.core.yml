@@ -451,6 +451,9 @@ services:
       NEXUS_API_URL: http://127.0.0.1:3100
       NEXUS_API_KEY: ${NEXUS_API_KEY:?NEXUS_API_KEY est requis}
       NEXUS_DATABASE_URL: ${NEXUS_DATABASE_URL:-postgres://nexus:${NEXUS_DB_PASSWORD:?NEXUS_DB_PASSWORD est requis}@nexus-pgbouncer:5432/nexus}
+      # Taille du pool de connexions DB (requetes + verrous de jobs). Reste sous
+      # le pool serveur de nexus-pgbouncer et le max_connections Postgres (150).
+      NEXUS_DB_MAX_CONNECTIONS: ${NEXUS_DB_MAX_CONNECTIONS:-20}
       NEXUS_REDIS_URL: ${NEXUS_REDIS_URL:-redis://:${NEXUS_REDIS_PASSWORD:?NEXUS_REDIS_PASSWORD est requis}@nexus-redis:6379}
       NEXUS_API_PORT: "3100"
       NEXUS_GRPC_PORT: "3101"

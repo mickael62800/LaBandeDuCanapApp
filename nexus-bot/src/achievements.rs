@@ -41,14 +41,22 @@ pub fn register() -> CreateCommand {
         jeu_option = jeu_option.add_string_choice(*label, *value);
         jeu_option_delier = jeu_option_delier.add_string_choice(*label, *value);
     }
-    lier = lier.add_sub_option(jeu_option).add_sub_option(
-        CreateCommandOption::new(
-            CommandOptionType::String,
-            "identifiant",
-            "Ton SteamID64 : 17 chiffres commencant par 7656119",
+    lier = lier
+        .add_sub_option(jeu_option)
+        .add_sub_option(
+            CreateCommandOption::new(CommandOptionType::String, "plateforme", "Ou tu joues")
+                .required(true)
+                .add_string_choice("Steam", "steam")
+                .add_string_choice("Xbox / Microsoft Store", "xbox"),
         )
-        .required(true),
-    );
+        .add_sub_option(
+            CreateCommandOption::new(
+                CommandOptionType::String,
+                "identifiant",
+                "SteamID64 (17 chiffres) ou XUID / Gamertag Xbox",
+            )
+            .required(true),
+        );
 
     CreateCommand::new("haut-faits")
         .description("Consulter tes hauts faits et lier ton compte de jeu")
@@ -222,7 +230,10 @@ async fn compte(api: &ApiClient, ctx: &Context, cmd: &CommandInteraction, guild_
     let mut lignes = Vec::new();
     for (label, slug) in JEUX_LIABLES {
         let ligne = match api.get_player_link(guild_id, &user_id, slug).await {
-            Ok(Some(link)) => format!("**{label}** : `{}`", link.game_player_id),
+            Ok(Some(link)) => format!(
+                "**{label}** : `{}` ({})",
+                link.game_player_id, link.platform
+            ),
             Ok(None) => format!("**{label}** : _aucun compte lie_"),
             Err(e) => format!("**{label}** : indisponible ({e})"),
         };
@@ -252,9 +263,16 @@ async fn lier(api: &ApiClient, ctx: &Context, cmd: &CommandInteraction, guild_id
         repondre(ctx, cmd, "Jeu et identifiant requis.").await;
         return;
     };
+    let plateforme = sous_option_str(cmd, "plateforme").unwrap_or_else(|| "steam".to_string());
 
     match api
-        .link_player(guild_id, &cmd.user.id.to_string(), &jeu, &identifiant)
+        .link_player(
+            guild_id,
+            &cmd.user.id.to_string(),
+            &jeu,
+            &plateforme,
+            &identifiant,
+        )
         .await
     {
         Ok(link) => {

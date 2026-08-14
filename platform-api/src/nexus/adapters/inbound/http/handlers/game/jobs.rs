@@ -268,6 +268,11 @@ async fn run_palworld_presence(
                     .unlock_from_game_event(GameUnlockCommand {
                         guild_id: server.guild_id.clone(),
                         game: "palworld".to_string(),
+                        // `ShowPlayers` expose un SteamID64 : c'est le seul
+                        // format dont la correspondance soit etablie par ce
+                        // canal.
+                        platform:
+                            platform_core::nexus::domain::entities::achievement::Platform::Steam,
                         game_player_id: steam_id.clone(),
                         achievement_code: code.to_string(),
                         source_event_id,

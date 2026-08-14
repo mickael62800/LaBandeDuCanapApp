@@ -296,6 +296,11 @@ impl EventHandler for Handler {
                 "haut-faits" => achievements::handle_command(&self.api, &ctx, &cmd).await,
                 _ => {}
             },
+            Interaction::Modal(modal)
+                if game_portal::handles_modal(modal.data.custom_id.as_str()) =>
+            {
+                game_portal::on_link_modal(&self.api, &ctx, &modal).await;
+            }
             Interaction::Component(component) => {
                 let cid = component.data.custom_id.as_str();
                 if cid.starts_with("c:") {

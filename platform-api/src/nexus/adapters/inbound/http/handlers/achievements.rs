@@ -18,7 +18,9 @@ use uuid::Uuid;
 
 use crate::nexus::adapters::inbound::http::handlers::{validate_discord_id, ApiError};
 use crate::nexus::bootstrap::AppState;
-use platform_core::nexus::domain::entities::achievement::{Achievement, AchievementProgress};
+use platform_core::nexus::domain::entities::achievement::{
+    Achievement, AchievementProgress, Platform,
+};
 use platform_core::nexus::domain::errors::DomainError;
 use platform_core::nexus::ports::inbound::achievements::{GameUnlockCommand, UnlockOutcome};
 use platform_core::nexus::ports::outbound::achievement_repository::AchievementUpdate;
@@ -105,13 +107,22 @@ where
 
 #[derive(Debug, Deserialize)]
 pub struct LinkIdentityDto {
-    /// Identite dans le jeu. Palworld : SteamID64 (17 chiffres).
+    /// Plateforme du compte : `steam` (defaut) ou `xbox`. Elle determine le
+    /// format attendu pour `game_player_id`.
+    #[serde(default = "plateforme_par_defaut")]
+    pub platform: String,
+    /// Identite dans le jeu : SteamID64, XUID ou Gamertag selon la plateforme.
     pub game_player_id: String,
+}
+
+fn plateforme_par_defaut() -> String {
+    "steam".to_string()
 }
 
 #[derive(Debug, Serialize)]
 pub struct LinkDto {
     pub game: String,
+    pub platform: String,
     pub game_player_id: String,
     pub verified: bool,
     pub verified_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -129,6 +140,8 @@ pub struct GrantDto {
 #[derive(Debug, Deserialize)]
 pub struct GameEventDto {
     pub game: String,
+    #[serde(default = "plateforme_par_defaut")]
+    pub platform: String,
     pub game_player_id: String,
     pub achievement_code: String,
     pub source_event_id: String,
@@ -232,6 +245,7 @@ pub async fn get_link(
         .await?;
     Ok(Json(link.map(|l| LinkDto {
         game: l.game,
+        platform: l.platform.as_str().to_owned(),
         game_player_id: l.game_player_id,
         verified: l.verified_at.is_some(),
         verified_at: l.verified_at,
@@ -246,12 +260,14 @@ pub async fn put_link(
 ) -> Result<Json<LinkDto>, ApiError> {
     validate_discord_id("guild_id", &guild_id)?;
     validate_discord_id("user_id", &user_id)?;
+    let platform = Platform::parse(&dto.platform)?;
     let link = state
         .achievements_uc
-        .link_identity(&guild_id, &user_id, &game, &dto.game_player_id)
+        .link_identity(&guild_id, &user_id, &game, platform, &dto.game_player_id)
         .await?;
     Ok(Json(LinkDto {
         game: link.game,
+        platform: link.platform.as_str().to_owned(),
         game_player_id: link.game_player_id,
         verified: link.verified_at.is_some(),
         verified_at: link.verified_at,
@@ -338,6 +354,7 @@ pub async fn game_event(
         .unlock_from_game_event(GameUnlockCommand {
             guild_id,
             game: dto.game,
+            platform: Platform::parse(&dto.platform)?,
             game_player_id: dto.game_player_id,
             achievement_code: dto.achievement_code,
             source_event_id: dto.source_event_id,

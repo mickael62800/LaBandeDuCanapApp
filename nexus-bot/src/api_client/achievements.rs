@@ -13,6 +13,7 @@ pub struct AchievementProgress {
 #[derive(Debug, Deserialize)]
 pub struct PlayerLink {
     pub game: String,
+    pub platform: String,
     pub game_player_id: String,
 }
 
@@ -56,10 +57,14 @@ impl ApiClient {
         guild_id: &str,
         user_id: &str,
         game: &str,
+        platform: &str,
         game_player_id: &str,
     ) -> Result<PlayerLink, String> {
         let url = self.link_url(guild_id, user_id, game);
-        let body = serde_json::json!({ "game_player_id": game_player_id });
+        let body = serde_json::json!({
+            "platform": platform,
+            "game_player_id": game_player_id,
+        });
         self.send(self.http.put(&url).json(&body)).await
     }
 

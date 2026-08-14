@@ -279,10 +279,35 @@ Première tranche livrée, centrée sur Palworld.
 
 **Liaison des joueurs**
 
-Le membre déclare lui-même son identité via `/haut-faits lier`. Pour Palworld
-l'identifiant attendu est un **SteamID64** (17 chiffres, préfixe `7656119`),
-validé par le domaine ; un pseudo est refusé. Une identité ne peut être
-revendiquée que par un seul membre par guilde.
+Le membre déclare lui-même son identité — c'est la vérification exigée par ce
+document : elle vient de son propre compte Discord, pas d'un nom lu dans un log.
+
+Deux points d'entrée, pour la même opération :
+
+- **Boutons du panneau d'inscription** — « ID Steam » / « ID Xbox » ouvrent une
+  **modale** de saisie. C'est le chemin principal : le joueur lie son compte au
+  moment où il pense à la session, sans quitter le salon. Le jeu est déduit du
+  serveur porteur du panneau, il n'a donc pas à le choisir.
+- **`/haut-faits lier`** — même opération en commande, avec choix explicite du
+  jeu et de la plateforme.
+
+Le format dépend de la **plateforme**, pas du jeu (Palworld se joue via Steam
+et via le Microsoft Store) :
+
+| Plateforme | Format accepté |
+|---|---|
+| `steam` | SteamID64 — 17 chiffres, préfixe `7656119` |
+| `xbox` | XUID (16 chiffres) ou Gamertag (3 à 15 caractères) |
+
+Une identité ne peut être revendiquée que par un seul membre par guilde, et un
+membre n'a qu'une identité par jeu (les deux unicités sont portées par le
+schéma).
+
+⚠️ L'attribution **automatique** par l'adaptateur de présence n'est établie que
+pour **Steam** : `ShowPlayers` renvoie un SteamID64. Un joueur Xbox peut lier
+son compte et recevoir des hauts faits manuels, mais la correspondance
+automatique ne sera effective que si le serveur rapporte ce même identifiant —
+ce qui reste à valider sur un serveur avec crossplay actif.
 
 **Adaptateur Palworld : la présence par RCON**
 

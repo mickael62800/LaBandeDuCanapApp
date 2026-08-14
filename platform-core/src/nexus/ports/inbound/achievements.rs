@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use uuid::Uuid;
 
 use crate::nexus::domain::entities::achievement::{
-    Achievement, AchievementProgress, GamePlayerLink,
+    Achievement, AchievementProgress, GamePlayerLink, Platform,
 };
 use crate::nexus::domain::errors::DomainError;
 use crate::nexus::ports::outbound::achievement_repository::AchievementUpdate;
@@ -32,6 +32,8 @@ pub struct UnlockedAchievement {
 pub struct GameUnlockCommand {
     pub guild_id: String,
     pub game: String,
+    /// Plateforme de l'identite rapportee par l'adaptateur.
+    pub platform: Platform,
     /// Identite DANS LE JEU. Le membre Discord est resolu par la liaison
     /// verifiee ; il n'est jamais fourni par l'adaptateur.
     pub game_player_id: String,
@@ -64,12 +66,14 @@ pub trait ManageAchievementsUseCase: Send + Sync {
     ) -> Result<Vec<AchievementProgress>, DomainError>;
 
     // ── Liaison d'identite de jeu ──────────────────────────────────────
-    /// Enregistre l'identite de jeu d'un membre (ex. SteamID64 pour Palworld).
+    /// Enregistre l'identite de jeu d'un membre. Le format attendu depend de la
+    /// plateforme (SteamID64, XUID ou Gamertag).
     async fn link_identity(
         &self,
         guild_id: &str,
         discord_user_id: &str,
         game: &str,
+        platform: Platform,
         game_player_id: &str,
     ) -> Result<GamePlayerLink, DomainError>;
     async fn find_link(

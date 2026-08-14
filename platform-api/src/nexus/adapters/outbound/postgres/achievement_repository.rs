@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 use platform_core::nexus::{
     domain::{
         entities::achievement::{
-            Achievement, GameIdentity, GamePlayerLink, UserAchievement, Verification,
+            Achievement, GameIdentity, GamePlayerLink, Platform, UserAchievement, Verification,
         },
         errors::DomainError,
     },
@@ -45,15 +45,16 @@ fn definition_from_row(row: &PgRow) -> Result<Achievement, DomainError> {
     })
 }
 
-fn link_from_row(row: &PgRow) -> GamePlayerLink {
-    GamePlayerLink {
+fn link_from_row(row: &PgRow) -> Result<GamePlayerLink, DomainError> {
+    Ok(GamePlayerLink {
         id: row.get("id"),
         guild_id: row.get("guild_id"),
         discord_user_id: row.get("discord_user_id"),
         game: row.get("game"),
+        platform: Platform::parse(row.get::<&str, _>("platform"))?,
         game_player_id: row.get("game_player_id"),
         verified_at: row.get("verified_at"),
-    }
+    })
 }
 
 #[async_trait]
@@ -174,7 +175,7 @@ impl AchievementRepository for PgAchievementRepository {
         .fetch_optional(&self.pool)
         .await
         .map_err(pg_ctx("find_link"))?;
-        Ok(row.as_ref().map(link_from_row))
+        row.as_ref().map(link_from_row).transpose()
     }
 
     async fn find_link_by_player(
@@ -193,7 +194,7 @@ impl AchievementRepository for PgAchievementRepository {
         .fetch_optional(&self.pool)
         .await
         .map_err(pg_ctx("find_link_by_player"))?;
-        Ok(row.as_ref().map(link_from_row))
+        row.as_ref().map(link_from_row).transpose()
     }
 
     async fn upsert_link(
@@ -217,6 +218,7 @@ impl AchievementRepository for PgAchievementRepository {
         .bind(guild_id)
         .bind(discord_user_id)
         .bind(identity.game())
+        .bind(identity.platform().as_str())
         .bind(identity.player_id())
         .bind(verified_at)
         .fetch_one(&self.pool)
@@ -234,7 +236,7 @@ impl AchievementRepository for PgAchievementRepository {
                 DomainError::Infrastructure(format!("upsert_link pg: {e}"))
             }
         })?;
-        Ok(link_from_row(&row))
+        link_from_row(&row)
     }
 
     async fn delete_link(

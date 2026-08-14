@@ -1,7 +1,7 @@
 use std::sync::Mutex;
 
 use super::*;
-use crate::nexus::domain::entities::achievement::Verification;
+use crate::nexus::domain::entities::achievement::{Platform, Verification};
 
 /// Repository en memoire. Reproduit les contraintes d'unicite que porte le
 /// schema SQL — c'est ce qui rend le test d'idempotence significatif.
@@ -26,6 +26,7 @@ impl FakeRepo {
             guild_id: guild.into(),
             discord_user_id: user.into(),
             game: game.into(),
+            platform: Platform::Steam,
             game_player_id: player.into(),
             verified_at: verified.then(Utc::now),
         });
@@ -148,6 +149,7 @@ impl AchievementRepository for FakeRepo {
             guild_id: guild_id.into(),
             discord_user_id: discord_user_id.into(),
             game: identity.game().into(),
+            platform: identity.platform(),
             game_player_id: identity.player_id().into(),
             verified_at: verified.then(Utc::now),
         };
@@ -206,6 +208,7 @@ fn commande(code: &str, event_id: &str) -> GameUnlockCommand {
     GameUnlockCommand {
         guild_id: "guild".into(),
         game: "palworld".into(),
+        platform: Platform::Steam,
         game_player_id: "76561198000000000".into(),
         achievement_code: code.into(),
         source_event_id: event_id.into(),
@@ -301,7 +304,13 @@ async fn une_identite_deja_prise_par_un_autre_membre_est_refusee() {
     let service = AchievementsService::new(repo);
 
     let result = service
-        .link_identity("guild", "user", "palworld", "76561198000000000")
+        .link_identity(
+            "guild",
+            "user",
+            "palworld",
+            Platform::Steam,
+            "76561198000000000",
+        )
         .await;
 
     assert!(matches!(result, Err(DomainError::Conflict(_))));
@@ -313,7 +322,7 @@ async fn un_steam_id_mal_forme_est_refuse_avant_toute_ecriture() {
     let service = AchievementsService::new(repo.clone());
 
     let result = service
-        .link_identity("guild", "user", "palworld", "DarkPoney")
+        .link_identity("guild", "user", "palworld", Platform::Steam, "DarkPoney")
         .await;
 
     assert!(matches!(result, Err(DomainError::ValidationError(_))));

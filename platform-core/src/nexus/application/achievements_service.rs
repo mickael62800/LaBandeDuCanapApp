@@ -17,7 +17,8 @@ use tracing::info;
 use uuid::Uuid;
 
 use crate::nexus::domain::entities::achievement::{
-    Achievement, AchievementProgress, GameIdentity, GamePlayerLink, UserAchievement, Verification,
+    Achievement, AchievementProgress, GameIdentity, GamePlayerLink, Platform, UserAchievement,
+    Verification,
 };
 use crate::nexus::domain::errors::DomainError;
 use crate::nexus::ports::inbound::achievements::{
@@ -154,11 +155,12 @@ impl ManageAchievementsUseCase for AchievementsService {
         guild_id: &str,
         discord_user_id: &str,
         game: &str,
+        platform: Platform,
         game_player_id: &str,
     ) -> Result<GamePlayerLink, DomainError> {
-        // La validation du format appartient au domaine : pour Palworld, un
-        // pseudo n'est pas une identite recevable.
-        let identity = GameIdentity::parse(game, game_player_id)?;
+        // La validation du format appartient au domaine : le format depend de
+        // la plateforme choisie, pas d'une saisie libre.
+        let identity = GameIdentity::parse(game, platform, game_player_id)?;
 
         // Refus explicite si un AUTRE membre a deja revendique cette identite.
         // Le repository porte aussi la contrainte, mais le message d'erreur
@@ -201,7 +203,11 @@ impl ManageAchievementsUseCase for AchievementsService {
         &self,
         cmd: GameUnlockCommand,
     ) -> Result<UnlockOutcome, DomainError> {
-        let identity = GameIdentity::parse(&cmd.game, &cmd.game_player_id)?;
+        // L'identite rapportee par un serveur de jeu est resolue par une
+        // recherche exacte sur l'identifiant : la plateforme sert seulement a
+        // valider le format, et `Steam` est la seule dont le format soit
+        // etabli pour Palworld (cf. adaptateur de presence).
+        let identity = GameIdentity::parse(&cmd.game, cmd.platform, &cmd.game_player_id)?;
 
         // 1. Identite -> membre Discord. SANS LIAISON VERIFIEE, RIEN.
         let link = self

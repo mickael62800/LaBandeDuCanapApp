@@ -54,7 +54,15 @@ pub struct ManageGameServersService {
 
 mod provisioning;
 
-use provisioning::render_template;
+/// L'erreur de start correspond-elle a un reseau Docker introuvable ? Docker
+/// repond « network <id> not found » quand le conteneur reference un reseau qui
+/// n'existe plus (recreation du reseau, `docker network rm`). Detection par
+/// motif : l'erreur traverse docker-agent puis http_runtime sous forme de texte
+/// (le detail est inclus dans le message par `map_error`).
+fn is_missing_network_error(e: &DomainError) -> bool {
+    let msg = e.to_string().to_ascii_lowercase();
+    msg.contains("network") && msg.contains("not found")
+}
 
 #[async_trait]
 impl ManageGameServersUseCase for ManageGameServersService {
@@ -488,6 +496,10 @@ impl ManageGameServersUseCase for ManageGameServersService {
         // Si pas de container_id encore -> create complete (alloue ports +
         // volume + container).
         let mut server = server;
+        // Conteneur cree DANS cet appel ? Si oui, un echec de start ne peut pas
+        // venir d'un conteneur perime (il vient d'etre bati contre le reseau
+        // courant) : on ne tente pas de le recreer.
+        let freshly_created = server.container_id.is_none();
         if server.container_id.is_none() {
             // On REUTILISE les ports/volume deja persistes (retry d'un start
             // precedent en Error) au lieu d'en reallouer — sinon les anciennes
@@ -649,46 +661,52 @@ impl ManageGameServersUseCase for ManageGameServersService {
         }
 
         // Start
-        let cid = server
+        let mut cid = server
             .container_id
-            .as_ref()
+            .clone()
             .ok_or_else(|| DomainError::Internal("container_id absent apres create".into()))?;
 
-        // Init files : pour les jeux dont l'image ne genere pas elle-meme
-        // ses fichiers de config (ex Terraria/ryshe + /tshock/config.json).
-        // On rend les {{KEY}} a partir des env effectives (defaults +
-        // overrides) et on upload chaque fichier dans le container *avant*
-        // start. Reupload systematique = la modif des champs UI prend
-        // effet au prochain start sans recreer le container.
-        if !template.init_files.is_empty() {
-            let overrides = self.config_repo.get_all(id).await.unwrap_or_default();
-            let render_env = Self::render_env(&template, &overrides);
-            for f in &template.init_files {
-                let path = render_template(&f.path, &render_env);
-                let content = render_template(&f.content, &render_env);
-                if let Err(e) = self
-                    .container_runtime
-                    .upload_file_to_container(cid, &path, &content)
-                    .await
-                {
-                    error!(error = %e, path = %path, "init_file upload echoue");
+        // Upload des init files puis start, avec UNE tentative de recreation si
+        // le conteneur reutilise pointe sur un reseau disparu. Ce cas survient
+        // apres une recreation du reseau Docker (migration de labels, ou un
+        // `docker network rm`) : le conteneur garde l'ancien ID de reseau et
+        // Docker refuse le start avec « network ... not found ». Le monde est
+        // sur le volume, pas dans le conteneur : le recreer ne perd rien.
+        let mut recreated = false;
+        loop {
+            self.upload_init_files(id, &cid, &template).await?;
+            match self.container_runtime.start_container(&cid).await {
+                Ok(()) => break,
+                Err(e) if !freshly_created && !recreated && is_missing_network_error(&e) => {
+                    warn!(
+                        error = %e,
+                        server_id = %id,
+                        "start: conteneur lie a un reseau disparu -> recreation du conteneur"
+                    );
+                    cid = match self.recreate_container(id, &server, &template, &cfg).await {
+                        Ok(new_cid) => new_cid,
+                        Err(recreate_err) => {
+                            self.server_repo
+                                .update_status(
+                                    id,
+                                    GameServerStatus::Error,
+                                    Some(&format!("recreation conteneur: {recreate_err}")),
+                                )
+                                .await?;
+                            return Err(recreate_err);
+                        }
+                    };
+                    recreated = true;
+                    // On repart en haut de la boucle : reupload des init files
+                    // dans le NOUVEAU conteneur, puis nouvelle tentative de start.
+                }
+                Err(e) => {
                     self.server_repo
-                        .update_status(
-                            id,
-                            GameServerStatus::Error,
-                            Some(&format!("init_file {path}: {e}")),
-                        )
+                        .update_status(id, GameServerStatus::Error, Some(&format!("start: {e}")))
                         .await?;
                     return Err(e);
                 }
             }
-        }
-
-        if let Err(e) = self.container_runtime.start_container(cid).await {
-            self.server_repo
-                .update_status(id, GameServerStatus::Error, Some(&format!("start: {e}")))
-                .await?;
-            return Err(e);
         }
 
         self.server_repo

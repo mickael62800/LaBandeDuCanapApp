@@ -357,4 +357,85 @@ impl ManageGameServersService {
             warn!(error = %e, "game_audit log failed");
         }
     }
+
+    /// Upload les init files du template dans le conteneur avant start. No-op
+    /// si le template n'en definit pas. Sur echec, passe le serveur en `Error`
+    /// et propage. Extrait de `start` pour etre rejoue apres une recreation de
+    /// conteneur (les fichiers doivent etre reinjectes dans le nouveau).
+    pub(super) async fn upload_init_files(
+        &self,
+        id: Uuid,
+        cid: &str,
+        template: &GameTemplate,
+    ) -> Result<(), DomainError> {
+        if template.init_files.is_empty() {
+            return Ok(());
+        }
+        let overrides = self.config_repo.get_all(id).await.unwrap_or_default();
+        let render_env = Self::render_env(template, &overrides);
+        for f in &template.init_files {
+            let path = render_template(&f.path, &render_env);
+            let content = render_template(&f.content, &render_env);
+            if let Err(e) = self
+                .container_runtime
+                .upload_file_to_container(cid, &path, &content)
+                .await
+            {
+                error!(error = %e, path = %path, "init_file upload echoue");
+                self.server_repo
+                    .update_status(
+                        id,
+                        GameServerStatus::Error,
+                        Some(&format!("init_file {path}: {e}")),
+                    )
+                    .await?;
+                return Err(e);
+            }
+        }
+        Ok(())
+    }
+
+    /// Recree le conteneur d'un serveur dont le conteneur precedent est perime
+    /// (typiquement lie a un reseau Docker disparu). Retire l'ancien conteneur
+    /// (best-effort), garantit le reseau COURANT et le volume existant, puis
+    /// recree le conteneur et persiste son nouvel ID.
+    ///
+    /// Les ports et le volume sont DEJA alloues et persistes : on les reutilise
+    /// tels quels, on ne realloue rien. Le monde du joueur vit dans le volume,
+    /// pas dans le conteneur : le recreer ne perd aucune donnee.
+    pub(super) async fn recreate_container(
+        &self,
+        id: Uuid,
+        server: &GameServer,
+        template: &GameTemplate,
+        cfg: &GamePortalConfig,
+    ) -> Result<String, DomainError> {
+        if let Some(old) = &server.container_id {
+            if let Err(e) = self.container_runtime.remove_container(old).await {
+                warn!(error = %e, "recreation: suppression de l'ancien conteneur a echoue (peut-etre deja absent)");
+            }
+        }
+        self.container_runtime
+            .ensure_network(&cfg.docker_network_name)
+            .await?;
+        if let Some(vol) = &server.volume_name {
+            self.container_runtime.ensure_volume(vol).await?;
+        }
+        self.container_runtime
+            .pull_image_if_missing(&template.image)
+            .await?;
+        let overrides = self.config_repo.get_all(id).await?;
+        let spec = self.build_spec(server, template, &overrides, cfg);
+        let cid = self.container_runtime.create_container(&spec).await?;
+        self.server_repo
+            .update_runtime(
+                id,
+                GameServerRuntimeUpdate {
+                    container_id: Some(cid.clone()),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        Ok(cid)
+    }
 }

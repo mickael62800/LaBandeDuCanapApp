@@ -69,7 +69,12 @@ impl HttpGameRuntime {
                 tracing::warn!(error = %source, "docker-agent injoignable")
             }
             DockerAgentError::Rejected { status, detail } => {
-                tracing::warn!(%status, body = %detail, "docker-agent a refuse l'operation")
+                tracing::warn!(%status, body = %detail, "docker-agent a refuse l'operation");
+                // On INCLUT le detail dans le message d'erreur (pas seulement le
+                // status) : le use case a besoin de distinguer un echec « reseau
+                // introuvable » (conteneur orphelin a recreer) d'un 502
+                // generique. Le detail vient de l'API Docker, jamais un secret.
+                return DomainError::Internal(format!("docker-agent {status}: {detail}"));
             }
             DockerAgentError::InvalidResponse(source) => {
                 tracing::warn!(error = %source, "reponse docker-agent illisible")

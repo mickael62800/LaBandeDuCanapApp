@@ -1,3 +1,4 @@
+use super::provisioning::render_template;
 use super::*;
 use crate::nexus::domain::entities::game::audit::{GameAuditAction, GameAuditEntry};
 use crate::nexus::domain::entities::game::template::PortProtocol as TemplatePortProtocol;

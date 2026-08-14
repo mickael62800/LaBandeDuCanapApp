@@ -12,7 +12,9 @@
 //!     panneau sont CONSERVES (pour pouvoir redemarrer sans tout reconstruire) ;
 //!   - `game_server_deleted` : suppression du jeu — supprime salons et role ;
 //!   - `game_ip_reveal` : poste l'adresse de connexion et rafraichit le panneau ;
-//!   - `game_daily_ping` : rappelle l'ouverture a venir au role du jeu.
+//!   - `game_daily_ping` : rappelle l'ouverture a venir au role du jeu ;
+//!   - `game_options_updated` : rafraichit la carte des parametres epinglee sous
+//!     le panneau d'inscription (mot de passe exclu).
 //!
 //! La configuration par guild (categorie, hote public) est lue via
 //! `GET /api/config/{guild_id}/game-portal`.
@@ -194,6 +196,102 @@ fn public_game_options(config: &std::collections::HashMap<String, String>) -> Ve
         .collect();
     options.sort_unstable();
     options
+}
+
+/// Footer marqueur de la carte des paramètres du salon d'inscription. Sert à
+/// retrouver le message pour l'éditer au lieu d'en créer un nouveau.
+const OPTIONS_FOOTER: &str = "Game Portal | Paramètres";
+
+/// Options affichées dans le salon d'inscription : comme `public_game_options`
+/// mais SANS le mot de passe. Ce salon est visible de tout le rôle du jeu ; le
+/// mot de passe ne doit apparaître qu'au salon privé des inscrits, à la
+/// révélation.
+fn registration_options(config: &std::collections::HashMap<String, String>) -> Vec<String> {
+    let mut options: Vec<_> = config
+        .iter()
+        .filter(|(key, _)| is_safe_game_option(key) && !is_player_password_key(key))
+        .map(|(key, value)| format!("**{key}** : `{value}`"))
+        .collect();
+    options.sort_unstable();
+    options
+}
+
+/// Construit la carte des paramètres (un ou plusieurs embeds, un par chunk).
+/// Bornée à 10 embeds (limite Discord par message).
+fn build_options_embeds(
+    game_name: &str,
+    server_name: &str,
+    options: &[String],
+) -> Vec<CreateEmbed> {
+    let mut chunks = chunk_options(options);
+    if chunks.is_empty() {
+        chunks.push("_Aucune option publique configurée._".into());
+    }
+    chunks.truncate(10);
+    chunks
+        .into_iter()
+        .enumerate()
+        .map(|(index, chunk)| {
+            let mut embed = CreateEmbed::new()
+                .title(if index == 0 {
+                    format!("⚙️ Paramètres — {game_name} · {server_name}")
+                } else {
+                    "⚙️ Paramètres (suite)".to_string()
+                })
+                .field("Options de la partie", chunk, false)
+                .color(0x2ecc71)
+                .footer(CreateEmbedFooter::new(OPTIONS_FOOTER));
+            if index == 0 {
+                embed = embed.description(
+                    "Les réglages de ce serveur. Le mot de passe éventuel n'apparaît qu'à l'ouverture, dans le salon privé des inscrits.",
+                );
+            }
+            embed
+        })
+        .collect()
+}
+
+/// Poste (ou met à jour) la carte des paramètres épinglée dans le salon
+/// d'inscription d'un serveur de session. Idempotent : retrouve la carte
+/// existante par son footer et l'édite, sinon en crée une et l'épingle.
+pub async fn refresh_options_card(ctx: &Context, api: &ApiClient, server_id: &str) {
+    let Ok(detail) = api.get_game_server(server_id).await else {
+        return;
+    };
+    let server = detail.server;
+    let Some(text_ch) = parse_channel(server.text_channel_id.as_ref()) else {
+        return;
+    };
+    let game_name = api
+        .get_game_template(&server.template_id)
+        .await
+        .map(|t| t.name)
+        .unwrap_or_else(|_| "Jeu".into());
+    let options = registration_options(&detail.config);
+    let embeds = build_options_embeds(&game_name, &server.name, &options);
+
+    let existing = text_ch.pins(&ctx.http).await.ok().and_then(|pins| {
+        pins.into_iter().find(|m| {
+            m.embeds
+                .iter()
+                .any(|e| e.footer.as_ref().map(|f| f.text.as_str()) == Some(OPTIONS_FOOTER))
+        })
+    });
+    match existing {
+        Some(m) => {
+            let _ = text_ch
+                .edit_message(&ctx.http, m.id, EditMessage::new().embeds(embeds))
+                .await;
+        }
+        None => {
+            if let Ok(msg) = text_ch
+                .send_message(&ctx.http, CreateMessage::new().embeds(embeds))
+                .await
+            {
+                let _ = text_ch.pin(&ctx.http, msg.id).await;
+            }
+        }
+    }
 }
 
 fn chunk_options(options: &[String]) -> Vec<String> {
@@ -512,6 +610,7 @@ async fn handle_event(ctx: &Context, api: &ApiClient, payload_json: &str) {
         Some(ev::SERVER_DELETED) => on_deleted(ctx, api, &server_id).await,
         Some(ev::IP_REVEAL) => on_ip_reveal(ctx, api, &server_id).await,
         Some(ev::DAILY_PING) => on_daily_ping(ctx, api, &server_id).await,
+        Some(ev::OPTIONS_UPDATED) => refresh_options_card(ctx, api, &server_id).await,
         _ => {}
     }
 }
@@ -1009,6 +1108,9 @@ async fn on_started(ctx: &Context, api: &ApiClient, guild_id: GuildId, server_id
             )
             .await;
     }
+
+    // Carte des paramètres, épinglée sous le panneau d'inscription.
+    refresh_options_card(ctx, api, server_id).await;
 
     tracing::info!(guild = %guild_id, server_id, "game-portal: session ouverte (salons crees)");
 }

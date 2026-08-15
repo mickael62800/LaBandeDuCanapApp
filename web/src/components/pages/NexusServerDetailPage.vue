@@ -498,12 +498,6 @@ function fmtDuration(secs: number | null): string {
           <template v-if="isRunning">
             <button :disabled="busy" @click="act('stop')">Arrêter</button>
             <button :disabled="busy || isTransient" @click="act('restart')">Redémarrer</button>
-            <button
-              :disabled="busy || isTransient"
-              @click="showStopScheduleForm = !showStopScheduleForm"
-            >
-              Programmer la fermeture
-            </button>
           </template>
           <template v-else>
             <button :disabled="busy || isTransient" @click="act('start')">
@@ -516,6 +510,12 @@ function fmtDuration(secs: number | null): string {
               {{ isScheduled ? "Reprogrammer" : "Programmer l’ouverture" }}
             </button>
           </template>
+          <button
+            :disabled="busy || isTransient"
+            @click="showStopScheduleForm = !showStopScheduleForm"
+          >
+            Programmer la fermeture
+          </button>
           <AppButton variant="danger" size="sm" @click="remove">Supprimer</AppButton>
         </div>
       </div>

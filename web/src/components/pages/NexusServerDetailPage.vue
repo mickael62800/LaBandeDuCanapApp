@@ -244,18 +244,57 @@ async function sendRcon() {
   }
 }
 
-// ── Statistiques en direct, uniquement quand le serveur tourne ──
+// ── Statistiques en direct + historique graphique, uniquement quand le serveur tourne ──
 let statsTimer: ReturnType<typeof setInterval> | null = null;
+const cpuHistory = ref<number[]>([]);
+const ramHistory = ref<number[]>([]);
 
 async function refreshStats() {
   if (!selectedGuildId.value || !server.value || !isRunning.value) {
     stats.value = null;
+    cpuHistory.value = [];
+    ramHistory.value = [];
     return;
   }
-  stats.value = await nexusGamesService
+  const newStats = await nexusGamesService
     .stats(selectedGuildId.value, server.value.id)
     .catch(() => null);
+
+  stats.value = newStats;
+
+  if (newStats) {
+    cpuHistory.value.push(newStats.cpu_percent);
+    if (cpuHistory.value.length > 20) cpuHistory.value.shift();
+
+    const ramPct = (newStats.memory_used_mb / Math.max(newStats.memory_limit_mb, 1)) * 100;
+    ramHistory.value.push(ramPct);
+    if (ramHistory.value.length > 20) ramHistory.value.shift();
+  }
 }
+
+const cpuPolyline = computed(() => {
+  if (cpuHistory.value.length < 2) return "";
+  const max = 100;
+  return cpuHistory.value
+    .map((val, idx) => {
+      const x = (idx / (cpuHistory.value.length - 1)) * 260;
+      const y = 50 - (Math.min(val, max) / max) * 44;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+});
+
+const ramPolyline = computed(() => {
+  if (ramHistory.value.length < 2) return "";
+  const max = 100;
+  return ramHistory.value
+    .map((val, idx) => {
+      const x = (idx / (ramHistory.value.length - 1)) * 260;
+      const y = 50 - (Math.min(val, max) / max) * 44;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+});
 
 function syncStatsTimer() {
   if (statsTimer) {
@@ -267,6 +306,8 @@ function syncStatsTimer() {
     statsTimer = setInterval(refreshStats, 5000);
   } else {
     stats.value = null;
+    cpuHistory.value = [];
+    ramHistory.value = [];
   }
 }
 
@@ -494,21 +535,35 @@ function fmtDuration(secs: number | null): string {
 
             <div v-if="stats" class="sd-surveillance-grid">
               <div class="sd-surv-card">
-                <div class="sd-surv-label">Processeur (CPU)</div>
-                <div class="sd-surv-val">{{ stats.cpu_percent.toFixed(1) }} %</div>
+                <div class="sd-surv-header">
+                  <span class="sd-surv-label">Processeur (CPU)</span>
+                  <span class="sd-surv-val">{{ stats.cpu_percent.toFixed(1) }} %</span>
+                </div>
                 <div class="sd-meter">
                   <div class="sd-meter-bar" :style="{ width: `${Math.min(stats.cpu_percent, 100)}%` }"></div>
+                </div>
+                <div class="sd-chart-box">
+                  <svg viewBox="0 0 260 50" class="sd-chart-svg">
+                    <polyline v-if="cpuPolyline" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" :points="cpuPolyline" />
+                  </svg>
                 </div>
               </div>
 
               <div class="sd-surv-card">
-                <div class="sd-surv-label">Mémoire RAM</div>
-                <div class="sd-surv-val">{{ stats.memory_used_mb }} / {{ stats.memory_limit_mb }} Mo</div>
+                <div class="sd-surv-header">
+                  <span class="sd-surv-label">Mémoire RAM</span>
+                  <span class="sd-surv-val">{{ stats.memory_used_mb }} / {{ stats.memory_limit_mb }} Mo</span>
+                </div>
                 <div class="sd-meter">
                   <div
                     class="sd-meter-bar ram-bar"
                     :style="{ width: `${Math.min((stats.memory_used_mb / Math.max(stats.memory_limit_mb, 1)) * 100, 100)}%` }"
                   ></div>
+                </div>
+                <div class="sd-chart-box">
+                  <svg viewBox="0 0 260 50" class="sd-chart-svg">
+                    <polyline v-if="ramPolyline" fill="none" stroke="var(--warning, #eab308)" stroke-width="2" stroke-linejoin="round" :points="ramPolyline" />
+                  </svg>
                 </div>
               </div>
 

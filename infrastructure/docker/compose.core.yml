@@ -309,7 +309,7 @@ services:
         #    pas concernes. `|| true` : les bases des profils inactifs
         #    n'existent pas, et leur absence n'est pas une erreur.
         for DB in auth nexus atrium; do
-          $$PSQL -c "REVOKE CONNECT ON DATABASE $$DB FROM PUBLIC" || true
+          psql -h postgres -U sentinel -d discord_sentinel -c "REVOKE CONNECT ON DATABASE $$DB FROM PUBLIC" || true
         done
     depends_on:
       postgres:

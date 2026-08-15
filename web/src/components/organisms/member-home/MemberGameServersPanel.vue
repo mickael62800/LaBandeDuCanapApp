@@ -21,27 +21,28 @@ const playersOnline = computed(() =>
 
 /**
  * Calcule l'image spécifique selon l'état du serveur :
- * - Online (Running) : suffixe `_online` (ou image de base)
- * - Attente (Scheduled / Starting) : suffixe `_waiting` ou `_attente`
- * - Offline (Stopped / Created / Error) : suffixe `_offline`
+ * - Online (Running) : image par défaut du jeu (l'image standard)
+ * - Attente (Scheduled / Starting) : suffixe `_waiting` (ex: game_waiting.jpg)
+ * - Offline (Stopped / Created / Error) : suffixe `_offline` (ex: game_offline.jpg)
  */
 function coverImageFor(server: PublicGameServer): string | null {
   if (!server.cover_image_url) return null;
   const url = server.cover_image_url;
+  const status = server.status || (server.online ? "running" : "stopped");
+
+  // Si le serveur est en ligne, on utilise directement la jaquette standard de base du jeu
+  if (status === "running") {
+    return url;
+  }
+
   const dot = url.lastIndexOf(".");
   if (dot === -1) return url;
 
   const base = url.substring(0, dot);
   const ext = url.substring(dot);
+  const cleanBase = base.replace(/_(offline|waiting|attente)$/i, "");
 
-  // Élimine tout suffixe d'état déjà présent dans l'URL de base s'il y en a un
-  const cleanBase = base.replace(/_(online|offline|waiting|attente)$/i, "");
-
-  const status = server.status || (server.online ? "running" : "stopped");
-
-  if (status === "running") {
-    return `${cleanBase}_online${ext}`;
-  } else if (status === "scheduled" || status === "starting") {
+  if (status === "scheduled" || status === "starting") {
     return `${cleanBase}_waiting${ext}`;
   } else {
     return `${cleanBase}_offline${ext}`;

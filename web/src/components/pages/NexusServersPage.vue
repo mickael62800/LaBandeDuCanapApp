@@ -18,7 +18,7 @@ import {
 import AdminPageShell from "../layouts/AdminPageShell.vue";
 import DashboardHero from "../organisms/DashboardHero.vue";
 
-const { selectedGuildId, selectedGuild } = useGuildSelector();
+const { selectedGuildId } = useGuildSelector();
 // Idem `NexusServerDetailPage` : l'acteur de l'audit vient de la passerelle.
 const { success, error: showError } = useToast();
 
@@ -104,10 +104,7 @@ watch(selectedGuildId, load, { immediate: true });
 </script>
 
 <template>
-  <AdminPageShell
-    title="Serveurs de jeu"
-    :subtitle="selectedGuild?.name ?? 'Aucun serveur selectionne'"
-  >
+  <AdminPageShell>
     <DashboardHero
       title="Nexus Games"
       subtitle="Plateforme d'hébergement et de pilotage de vos serveurs de jeu."

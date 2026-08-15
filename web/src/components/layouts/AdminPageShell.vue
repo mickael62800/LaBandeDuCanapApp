@@ -1,21 +1,21 @@
 <script setup lang="ts">
 withDefaults(
   defineProps<{
-    title: string;
+    title?: string;
     /** Emoji ou caractere prefixe affiche avant le titre. */
     icon?: string;
     /** Largeur de page : constrained (defaut), wide pour dashboards/tables, narrow pour login. */
     width?: "constrained" | "wide" | "narrow";
   }>(),
-  { icon: "", width: "constrained" },
+  { title: "", icon: "", width: "constrained" },
 );
 </script>
 
 <template>
   <div :class="['admin-page', `page--${width}`]">
-    <header class="admin-page-header" :class="{ 'has-actions': !!$slots.actions }">
-      <div class="admin-page-title-block">
-        <h1 class="admin-page-title">
+    <header v-if="title || icon || $slots.lede || $slots.actions" class="admin-page-header" :class="{ 'has-actions': !!$slots.actions }">
+      <div v-if="title || icon || $slots.lede" class="admin-page-title-block">
+        <h1 v-if="title || icon" class="admin-page-title">
           <span v-if="icon" class="admin-page-icon">{{ icon }}</span>
           {{ title }}
         </h1>

@@ -296,7 +296,7 @@ watch(selectedGuildId, load, { immediate: true });
 </script>
 
 <template>
-  <AdminPageShell title="Accueil IA" icon="🌿" class="atrium-page">
+  <AdminPageShell class="atrium-page">
     <DashboardHero
       title="Atrium"
       subtitle="Accueil assisté par Intelligence Artificielle et base de connaissances communautaire."

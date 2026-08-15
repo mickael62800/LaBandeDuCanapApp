@@ -56,17 +56,13 @@ onUnmounted(stopPolling);
 </script>
 
 <template>
-  <AdminPageShell title="État de la machine" icon="🖥️" class="dashboard">
+  <AdminPageShell class="dashboard">
     <DashboardHero
       title="Exploitation"
-      subtitle="Surveillance des ressources, disques, sécurité et conteneurs de la machine hôte."
+      subtitle="Ressources, disques, services et conteneurs de la machine hôte — celle qui héberge Sentinel, Nexus et Atrium."
       logo="/exploration_logo.png"
       universe="ops"
     />
-    <template #lede>
-      Ressources, disques, services et conteneurs de la machine hôte — celle
-      qui héberge Sentinel, Nexus et Atrium. Rien ici ne concerne Discord.
-    </template>
     <template #actions>
         <button
           class="auto-toggle"

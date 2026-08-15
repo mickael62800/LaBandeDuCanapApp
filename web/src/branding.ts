@@ -76,7 +76,7 @@ export const ATRIUM: Brand = {
 /// rien a fournir tant qu'on ne veut pas d'icone ici.
 export const OPS: Brand = {
   name: "Exploitation",
-  mark: "/ops_logo.png",
+  mark: "/exploration_logo.png",
   tagline: "Machine, services et securite de l'hote",
 };
 

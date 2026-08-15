@@ -460,10 +460,6 @@ pub fn build_router_with(state: AppState, config: HttpConfig) -> Router {
             "/api/games/internal/jobs/auto-start",
             post(handlers::game::jobs::job_auto_start),
         )
-        .route(
-            "/api/games/internal/jobs/palworld-presence",
-            post(handlers::game::jobs::job_palworld_presence),
-        )
         // Les routes de cycle de vie des conteneurs rejoignent le groupe
         // protege : elles heritent du Bearer et du verrou mono-serveur, et
         // portent en plus leur rate limit strict.

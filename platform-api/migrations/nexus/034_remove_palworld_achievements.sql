@@ -1,0 +1,21 @@
+-- 034_remove_palworld_achievements.sql
+--
+-- Retire le CATALOGUE Palworld des hauts faits. Le systeme lui-meme est
+-- conserve (tables, liaisons d'identite, attributions, publication Discord) :
+-- seules les definitions propres a Palworld disparaissent.
+--
+-- Pourquoi : hormis la presence (premiere connexion, session nombreuse), les
+-- hauts faits Palworld portaient sur des faits de jeu — boss, Paldeck, elevage,
+-- bases — qu'aucune source fiable n'expose. Ils restaient donc en attribution
+-- manuelle sans perspective d'automatisation raisonnable. Les garder affichait
+-- 57 objectifs que rien ne pouvait debloquer.
+--
+-- Les migrations 031 a 033 ne sont PAS modifiees : elles ont pu etre appliquees,
+-- et sqlx refuse de demarrer si une migration enregistree disparait du disque.
+-- On defait donc par une nouvelle migration, pas en reecrivant les anciennes.
+--
+-- `user_achievements` est nettoye par la cascade de la cle etrangere
+-- (ON DELETE CASCADE sur achievement_id) : aucune attribution orpheline ne
+-- subsiste.
+
+DELETE FROM achievements WHERE game = 'palworld';

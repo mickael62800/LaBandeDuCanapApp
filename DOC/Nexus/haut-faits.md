@@ -90,6 +90,8 @@ si l'identité du joueur ou le contexte ne peuvent pas être vérifiés.
 
 ## Palworld
 
+> **Non retenu** — voir « Périmètre » dans l'état de l'implémentation.
+
 Le support Palworld nécessite de choisir une source d'événements compatible
 avec le serveur utilisé. Les options sont, par ordre de préférence :
 
@@ -253,102 +255,57 @@ validées sur le conteneur réel.
 
 ## État de l'implémentation
 
-Première tranche livrée, centrée sur Palworld.
+Le système est en place et **destiné aux hauts faits Discord / Nexus**. Le
+catalogue Palworld a été retiré (voir « Périmètre » ci-dessous).
 
 **En place**
 
-- Migration `platform-api/migrations/nexus/031_achievements.sql` : tables
-  `achievements`, `game_player_links`, `user_achievements`, catalogue Palworld
-  (56 définitions) et module de config `nexus-achievements` (salon d'annonce,
-  interrupteur d'annonce, mention, profils publics).
-- Domaine `platform-core::nexus` : entités, ports et
-  `achievements_service` (règles d'attribution, idempotence, filtrage des
-  hauts faits secrets).
+- Migrations `031` à `034` dans `platform-api/migrations/nexus/` : tables
+  `achievements`, `game_player_links`, `user_achievements`, et module de config
+  `nexus-achievements` (salon d'annonce, interrupteur d'annonce, mention,
+  profils publics).
+- Domaine `platform-core::nexus` : entités, ports et `achievements_service`
+  (règles d'attribution, idempotence, filtrage des hauts faits secrets).
 - API : `GET/PATCH /api/achievements/definitions`, progression d'un membre,
-  liaison d'identité (`PUT/GET/DELETE .../links/...`), attribution manuelle
-  (`POST .../grant`) et relais d'événement de jeu (`POST .../game-events`).
-  Publication de `achievement.unlocked` après persistance confirmée.
-- Bot : consumer durable de `achievement.unlocked` (annonce dans le salon
-  configuré, salon vérifié comme appartenant à la guilde) et commande
-  `/haut-faits` (`moi`, `membre`, `compte`, `lier`, `delier`), réponses
-  éphémères.
+  liaison d'identité, attribution manuelle (`POST .../grant`) et relais
+  d'événement de jeu (`POST .../game-events`). Publication de
+  `achievement.unlocked` après persistance confirmée.
+- Bot : consumer durable de `achievement.unlocked` (salon vérifié comme
+  appartenant à la guilde) et commande `/haut-faits` (`moi`, `membre`,
+  `compte`, `lier`, `delier`), réponses éphémères.
 - Dashboard : page **Hauts faits** (`/nexus/haut-faits`) pour choisir l'image
-  de chaque haut fait, parmi les visuels livrés dans
-  `web/public/Achievement/<jeu>/` ou une URL libre, et activer/désactiver une
-  définition.
+  de chaque haut fait et activer/désactiver une définition.
 
-**Liaison des joueurs**
+**Garanties portées par le schéma**
 
-Le membre déclare lui-même son identité — c'est la vérification exigée par ce
-document : elle vient de son propre compte Discord, pas d'un nom lu dans un log.
+- unicité `(guilde, membre, haut fait)` — jamais attribué deux fois ;
+- `source_event_id` unique — un événement rejoué n'attribue rien ;
+- double unicité croisée sur l'identité de jeu — pas d'usurpation.
 
-Deux points d'entrée, pour la même opération :
+**Périmètre : pourquoi Palworld a été retiré**
 
-- **Boutons du panneau d'inscription** — « ID Steam » / « ID Xbox » ouvrent une
-  **modale** de saisie. C'est le chemin principal : le joueur lie son compte au
-  moment où il pense à la session, sans quitter le salon. Le jeu est déduit du
-  serveur porteur du panneau, il n'a donc pas à le choisir.
-- **`/haut-faits lier`** — même opération en commande, avec choix explicite du
-  jeu et de la plateforme.
+Le catalogue Palworld (57 définitions) et son adaptateur de présence ont été
+supprimés par la migration `034`.
 
-Le format dépend de la **plateforme**, pas du jeu (Palworld se joue via Steam
-et via le Microsoft Store) :
+Hormis la présence — première connexion, session nombreuse —, les hauts faits
+Palworld portaient sur des faits de jeu (boss vaincus, Paldeck, élevage, état
+des bases) qu'**aucune source fiable n'expose** :
 
-| Plateforme | Format accepté |
-|---|---|
-| `steam` | SteamID64 — 17 chiffres, préfixe `7656119` |
-| `xbox` | XUID (16 chiffres) ou Gamertag (3 à 15 caractères) |
+- RCON ne donne que la liste des joueurs connectés ;
+- une sauvegarde décrit un **état**, pas la manière dont on y est arrivé : elle
+  ne dira jamais qu'un boss a été vaincu sans être mis K.O. ;
+- il n'existe pas d'API de mods serveur officielle pour Palworld.
 
-Une identité ne peut être revendiquée que par un seul membre par guilde, et un
-membre n'a qu'une identité par jeu (les deux unicités sont portées par le
-schéma).
+Ils seraient donc restés en attribution manuelle sans perspective
+d'automatisation raisonnable — 57 objectifs affichés que presque rien ne
+pouvait débloquer. Le système reste ouvert aux hauts faits de jeu : la route
+`POST /game-events` et la liaison d'identité sont intactes, prêtes pour un jeu
+dont les événements seraient réellement vérifiables.
 
-⚠️ L'attribution **automatique** par l'adaptateur de présence n'est établie que
-pour **Steam** : `ShowPlayers` renvoie un SteamID64. Un joueur Xbox peut lier
-son compte et recevoir des hauts faits manuels, mais la correspondance
-automatique ne sera effective que si le serveur rapporte ce même identifiant —
-ce qui reste à valider sur un serveur avec crossplay actif.
+**Ce qui reste à faire pour Discord**
 
-**Adaptateur Palworld : la présence par RCON**
-
-La source retenue est l'option 2 du document (RCON). `ShowPlayers` renvoie le
-**SteamID64** de chaque joueur connecté : la présence est donc une observation
-vérifiable, reliable à un membre Discord via `game_player_links`.
-
-- `platform-core::…::game::presence` porte **tout le contrat RCON par jeu** :
-  la commande, l'analyse de la réponse, et les variables d'environnement qui
-  activent la console. Deux défauts réels y sont corrigés :
-  - le health check interrogeait tous les jeux avec la commande Minecraft
-    (`list`), donc rapportait « 0 joueur » sur un serveur Palworld peuplé — et
-    ce compteur alimente l'extinction automatique ;
-  - la plateforme injectait `ENABLE_RCON` / `RCON_PASSWORD` (conventions des
-    images Minecraft `itzg`) à **toutes** les images. Palworld attend
-    `RCON_ENABLED`, et n'a pas de mot de passe RCON distinct : c'est
-    l'`ADMIN_PASSWORD` du serveur. RCON restait donc fermé côté Palworld, et la
-    plateforme interrogeait un port où personne n'écoutait.
-
-  Pour Palworld, le mot de passe RCON est désormais l'`ADMIN_PASSWORD`
-  **effectif** — celui choisi dans l'interface reste donc autoritaire.
-- Le job `palworld-presence` (scheduler → `POST
-  /api/games/internal/jobs/palworld-presence`, 120 s par défaut) relève les
-  joueurs et demande l'attribution. Les `source_event_id` sont stables par
-  (guilde, joueur, haut fait) : rejouer le job ne crée aucun doublon.
-
-Deux hauts faits sont donc en `auto` : `first_launch_palworld` et
-`palworld_massive_session` (seuil `criteria.players`, lu depuis la définition
-et jamais codé en dur).
-
-**Non livré — et pourquoi**
-
-Les hauts faits de gameplay (boss, Paldeck, élevage, bases, exploration) ne
-sont **pas observables par RCON**. Les sources envisageables pour aller plus
-loin, ce qu'elles couvrent réellement et ce qui restera hors de portée sont
-analysés dans [`palworld-sources.md`](palworld-sources.md). Ils restent en `verification = 'manual'` :
-seul un administrateur peut les attribuer, de façon tracée (`granted_by`). Les
-rendre automatiques demandera une source qui les prouve (mod, plugin ou
-lecture de sauvegarde validée), pas une déduction depuis un signal qui ne les
-établit pas. La route `POST /game-events` est déjà là pour accueillir un tel
-producteur.
+Les catalogues ci-dessous ne sont pas encore seedés : ce sont des définitions
+à créer, puis à brancher sur les événements Discord/Nexus déjà produits.
 
 ## Catalogue initial des hauts faits Discord
 
@@ -482,6 +439,11 @@ qu'un adaptateur fiable — logs structurés, RCON, plugin ou mod — n'a pas é
 validé.
 
 ## Hauts faits Palworld avancés
+
+> **Non retenu.** Cette section documente l'intention d'origine. Le catalogue
+> Palworld a été retiré (migration `034`) faute de source capable de vérifier
+> ces faits : voir « Périmètre » plus haut. Conservée comme référence si un jeu
+> exposant de vrais événements est ajouté un jour.
 
 Ces hauts faits sont volontairement difficiles. Ils doivent être attribués
 uniquement après réception d'événements vérifiables et ne doivent pas être

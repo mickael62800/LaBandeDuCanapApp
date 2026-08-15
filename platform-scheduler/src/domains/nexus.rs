@@ -27,10 +27,6 @@ pub fn start(config: DomainConfig) {
         ("reveal-ip", env("GAME_REVEAL_IP_INTERVAL_SECS", 300)),
         ("daily-ping", env("GAME_DAILY_PING_INTERVAL_SECS", 3_600)),
         ("auto-start", env("GAME_AUTO_START_INTERVAL_SECS", 60)),
-        (
-            "palworld-presence",
-            env("GAME_PALWORLD_PRESENCE_INTERVAL_SECS", 120),
-        ),
     ] {
         let client = config.client.clone();
         crate::schedule::spawn_interval(job_name(job), interval, move || {
@@ -75,7 +71,6 @@ fn job_name(job: &str) -> &'static str {
         "reveal-ip" => "nexus.reveal-ip",
         "daily-ping" => "nexus.daily-ping",
         "auto-start" => "nexus.auto-start",
-        "palworld-presence" => "nexus.palworld-presence",
         _ => "nexus.unknown",
     }
 }

@@ -21,16 +21,16 @@ const playersOnline = computed(() =>
 
 /**
  * Calcule l'image spécifique selon l'état du serveur :
- * - Online (Running) : image par défaut du jeu (l'image standard)
- * - Attente (Scheduled / Starting) : suffixe `_waiting` (ex: game_waiting.jpg)
- * - Offline (Stopped / Created / Error) : suffixe `_offline` (ex: game_offline.jpg)
+ * - En ligne (Running) : jaquette normale "LE SERVEUR EST OUVERT !" (ex: palworld_game.jpg)
+ * - En attente (Scheduled / Starting) : jaquette "LE SERVEUR OUVRE BIENTÔT !" (ex: palworld_game_attente.jpg)
+ * - Hors ligne (Stopped / Created / Error) : jaquette "LE SERVEUR EST FERMÉ !" (ex: palworld_game_offline.jpg)
  */
 function coverImageFor(server: PublicGameServer): string | null {
   if (!server.cover_image_url) return null;
   const url = server.cover_image_url;
   const status = server.status || (server.online ? "running" : "stopped");
 
-  // Si le serveur est en ligne, on utilise directement la jaquette standard de base du jeu
+  // Si le serveur tourne actuellement
   if (status === "running") {
     return url;
   }
@@ -42,9 +42,11 @@ function coverImageFor(server: PublicGameServer): string | null {
   const ext = url.substring(dot);
   const cleanBase = base.replace(/_(offline|waiting|attente)$/i, "");
 
+  // En attente d'ouverture -> affiche la jaquette _attente.jpg / _attente.png ("Bientôt ouvert")
   if (status === "scheduled" || status === "starting") {
-    return `${cleanBase}_waiting${ext}`;
+    return `${cleanBase}_attente${ext}`;
   } else {
+    // Tout autre état (arrêté, coupé entre les dates, créé, erreur) -> affiche la jaquette _offline.jpg / _offline.png ("Fermé")
     return `${cleanBase}_offline${ext}`;
   }
 }

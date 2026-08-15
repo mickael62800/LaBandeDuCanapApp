@@ -187,24 +187,26 @@ async function submitSchedule() {
         server.value.id,
         iso,
       );
-      // Création automatique de l'événement dans le Planning Communautaire
-      const endIso = stopAtInput.value
-        ? new Date(stopAtInput.value).toISOString()
-        : new Date(new Date(iso).getTime() + 4 * 3600 * 1000).toISOString(); // Par défaut +4h si pas de date de fermeture
-
-      await communityAdminService
-        .createEvent(selectedGuildId.value, {
-          title: `🎮 ${server.value.name}`,
-          description: `Ouverture du serveur de jeu ${server.value.name}. Rejoignez-nous !`,
-          game: template.value?.name ?? server.value.name,
-          starts_at: iso,
-          ends_at: endIso,
-          is_public: true,
-        })
-        .catch((e) => console.warn("Événement planning non créé:", e));
-
-      success("Ouverture programmée & ajoutée au Planning Communautaire !");
+      success(isScheduled.value ? "Ouverture reprogrammée !" : "Ouverture programmée : les inscriptions sont ouvertes.");
     }
+
+    // Création / synchronisation automatique de l'événement dans le Planning Communautaire
+    const endIso = stopAtInput.value
+      ? new Date(stopAtInput.value).toISOString()
+      : new Date(new Date(iso).getTime() + 4 * 3600 * 1000).toISOString(); // Par défaut +4h si pas de date de fermeture
+
+    await communityAdminService
+      .createEvent(selectedGuildId.value, {
+        title: `🎮 ${server.value.name}`,
+        description: `Ouverture du serveur de jeu ${server.value.name}. Rejoignez-nous !`,
+        game: template.value?.name ?? server.value.name,
+        starts_at: iso,
+        ends_at: endIso,
+        is_public: true,
+      })
+      .then(() => success("Événement inscrit au Planning Communautaire !"))
+      .catch((e) => console.warn("Événement planning non créé:", e));
+
     showScheduleForm.value = false;
     await load();
   } catch (e) {

@@ -24,6 +24,13 @@ function isOn(botName: string): boolean {
   return enabledMap.value[botName] === true;
 }
 
+function displayedParamCount(def: BotDefinition): number {
+  const schema = Array.isArray(def.config_schema) ? def.config_schema : [];
+  if (def.bot_name === "welcome-bot") return 1;
+  if (def.bot_name === "automod-bot") return schema.filter((f) => !f.key.startsWith("score_")).length;
+  return schema.length;
+}
+
 const enabledCount = computed(() => props.definitions.filter((definition) => isOn(definition.bot_name)).length);
 </script>
 
@@ -52,7 +59,7 @@ const enabledCount = computed(() => props.definitions.filter((definition) => isO
         </div>
         <div class="component-desc">{{ def.description }}</div>
         <div class="component-params">
-          {{ def.config_schema.length }} parametre{{ def.config_schema.length > 1 ? "s" : "" }}
+          {{ displayedParamCount(def) }} parametre{{ displayedParamCount(def) > 1 ? "s" : "" }}
         </div>
       </button>
     </div>

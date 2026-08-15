@@ -199,9 +199,9 @@ pub async fn handle(ctx: &Context, cmd: &CommandInteraction) {
     let mut resultats: Vec<(&Journal, Issue)> = Vec::new();
 
     for journal in JOURNAUX {
-        // Salon deja porteur du bon nom dans la categorie : on l'adopte.
+        // Salon deja porteur du bon nom dans n'importe quelle categorie de logs ou sur le serveur : on l'adopte sans dupliquer.
         let deja = existants.values().find(|c| {
-            c.parent_id == Some(categorie) && c.kind == ChannelType::Text && c.name == journal.nom
+            c.kind == ChannelType::Text && c.name.to_lowercase() == journal.nom.to_lowercase()
         });
 
         let issue = match deja {
@@ -230,7 +230,7 @@ pub async fn handle(ctx: &Context, cmd: &CommandInteraction) {
     repondre_rapport(ctx, cmd, categorie, &resultats).await;
 }
 
-/// Categorie des logs : reutilise celle qui porte le nom attendu, sinon la cree.
+/// Categorie des logs : reutilise la categorie existante "📋 Logs" ou "🎬 Les Coulisses", sinon cree "📋 Logs".
 async fn trouver_ou_creer_categorie(ctx: &Context, guild_id: GuildId) -> Result<ChannelId, String> {
     let salons = guild_id
         .channels(&ctx.http)
@@ -239,7 +239,7 @@ async fn trouver_ou_creer_categorie(ctx: &Context, guild_id: GuildId) -> Result<
 
     if let Some(c) = salons
         .values()
-        .find(|c| c.kind == ChannelType::Category && c.name == NOM_CATEGORIE)
+        .find(|c| c.kind == ChannelType::Category && (c.name.contains("Logs") || c.name.contains("Coulisses") || c.name == NOM_CATEGORIE))
     {
         return Ok(c.id);
     }

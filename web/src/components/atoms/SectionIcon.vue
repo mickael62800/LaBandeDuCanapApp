@@ -19,6 +19,9 @@ defineProps<{ name: string }>();
     <template v-else-if="name === 'award'">
       <circle cx="12" cy="8" r="6" /><path d="M8.21 13.89L7 23l5-3 5 3-1.21-9.12" />
     </template>
+    <template v-else-if="name === 'target'">
+      <circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="6" /><circle cx="12" cy="12" r="2" />
+    </template>
     <template v-else-if="name === 'zap'">
       <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
     </template>

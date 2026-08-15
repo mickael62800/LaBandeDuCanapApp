@@ -188,22 +188,36 @@ async function submitSchedule() {
       success(isScheduled.value ? "Ouverture reprogrammée !" : "Ouverture programmée : les inscriptions sont ouvertes.");
     }
 
-    // Création / synchronisation automatique de l'événement dans le Planning Communautaire
+    // Création / synchronisation automatique sans doublon de l'événement dans le Planning Communautaire
     const endIso = stopAtInput.value
       ? new Date(stopAtInput.value).toISOString()
       : new Date(new Date(iso).getTime() + 4 * 3600 * 1000).toISOString(); // Par défaut +4h si pas de date de fermeture
 
-    await communityAdminService
-      .createEvent(selectedGuildId.value, {
-        title: `🎮 ${server.value.name}`,
+    const eventTitle = `🎮 ${server.value.name}`;
+
+    try {
+      const existingEvents = await communityAdminService.listEvents(selectedGuildId.value);
+      const match = existingEvents.find((e) => e.title === eventTitle);
+
+      const payload = {
+        title: eventTitle,
         description: `Ouverture du serveur de jeu ${server.value.name}. Rejoignez-nous !`,
         game: template.value?.name ?? server.value.name,
         starts_at: iso,
         ends_at: endIso,
         is_public: true,
-      })
-      .then(() => success("Événement inscrit au Planning Communautaire !"))
-      .catch((e) => console.warn("Événement planning non créé:", e));
+      };
+
+      if (match) {
+        await communityAdminService.updateEvent(match.id, payload);
+        success("Événement du Planning Communautaire mis à jour !");
+      } else {
+        await communityAdminService.createEvent(selectedGuildId.value, payload);
+        success("Événement inscrit au Planning Communautaire !");
+      }
+    } catch (e) {
+      console.warn("Événement planning non synchronisé:", e);
+    }
 
     showScheduleForm.value = false;
     await load();

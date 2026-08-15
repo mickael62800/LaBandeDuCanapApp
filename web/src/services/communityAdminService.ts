@@ -9,6 +9,7 @@
 // modérer suppose de voir ce qu'on ne publie pas.
 
 import { httpDelete, httpGet, httpPost, httpPut } from "@/api/http";
+import type { PublicEvent } from "./publicEventsService";
 
 // ── Recherche de joueurs ──
 
@@ -178,8 +179,24 @@ export const communityAdminService = {
 
   // ── Evénements ──
 
+  listEvents(guildId: string, from?: Date, to?: Date): Promise<PublicEvent[]> {
+    let q = "";
+    if (from && to) {
+      q = `?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}`;
+    }
+    return httpGet<PublicEvent[]>(`/api/events/${encodeURIComponent(guildId)}${q}`);
+  },
+
   createEvent(guildId: string, input: CreateEventInput): Promise<{ id: string }> {
     return httpPost<{ id: string }>(`/api/events/${encodeURIComponent(guildId)}`, input);
+  },
+
+  updateEvent(id: string, input: CreateEventInput): Promise<{ id: string }> {
+    return httpPut<{ id: string }>(`/api/events/detail/${encodeURIComponent(id)}`, input);
+  },
+
+  deleteEvent(id: string): Promise<{ deleted: boolean }> {
+    return httpDelete<{ deleted: boolean }>(`/api/events/detail/${encodeURIComponent(id)}`);
   },
 
   deleteNews(id: string): Promise<{ deleted: boolean }> {

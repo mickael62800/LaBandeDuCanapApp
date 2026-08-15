@@ -196,8 +196,15 @@ async function submitSchedule() {
     const eventTitle = `🎮 ${server.value.name}`;
 
     try {
-      const existingEvents = await communityAdminService.listEvents(selectedGuildId.value);
-      const match = existingEvents.find((e) => e.title === eventTitle);
+      const windowFrom = new Date(Date.now() - 90 * 86400 * 1000);
+      const windowTo = new Date(Date.now() + 180 * 86400 * 1000);
+      const existingEvents = await communityAdminService.listEvents(selectedGuildId.value, windowFrom, windowTo);
+      // Trouve tout événement dont le titre contient le nom du serveur
+      const matches = existingEvents.filter((e) =>
+        e.title === eventTitle ||
+        e.title.includes(server.value!.name) ||
+        (server.value!.name && e.title.toLowerCase().includes(server.value!.name.toLowerCase())),
+      );
 
       const payload = {
         title: eventTitle,
@@ -208,9 +215,17 @@ async function submitSchedule() {
         is_public: true,
       };
 
-      if (match) {
-        await communityAdminService.updateEvent(match.id, payload);
-        success("Événement du Planning Communautaire mis à jour !");
+      if (matches.length > 0) {
+        // Met à jour le premier événement trouvé
+        const firstMatch = matches[0];
+        await communityAdminService.updateEvent(firstMatch.id, payload);
+
+        // Supprime automatiquement tous les autres événements en doublon créés précédemment
+        for (let i = 1; i < matches.length; i++) {
+          await communityAdminService.deleteEvent(matches[i].id).catch(() => null);
+        }
+
+        success("Événement du Planning mis à jour (doublons nettoyés) !");
       } else {
         await communityAdminService.createEvent(selectedGuildId.value, payload);
         success("Événement inscrit au Planning Communautaire !");

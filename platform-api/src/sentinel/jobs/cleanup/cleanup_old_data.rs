@@ -11,7 +11,7 @@ use tracing::{info, warn};
 use super::CleanupConfig;
 
 const DELETE_OLD_LOGS_SQL: &str =
-    "DELETE FROM logs WHERE \"timestamp\" < NOW() - make_interval(days => $1::int)";
+    "DELETE FROM ONLY logs WHERE \"timestamp\" < NOW() - make_interval(days => $1::int)";
 
 fn record_cleanup_success(table: &'static str, rows: u64) {
     metrics::counter!("cleanup_rows_total", "table" => table).increment(rows);
@@ -139,7 +139,7 @@ pub async fn run(pool: &PgPool, config: &CleanupConfig) -> Result<(), String> {
     // ── Audit logs ──
     let audit_deleted = match logs_days {
         Some(days) => match sqlx::query(
-            "DELETE FROM audit_logs WHERE created_at < NOW() - make_interval(days => $1::int)",
+            "DELETE FROM ONLY audit_logs WHERE created_at < NOW() - make_interval(days => $1::int)",
         )
         .bind(days)
         .execute(pool)
@@ -163,7 +163,7 @@ pub async fn run(pool: &PgPool, config: &CleanupConfig) -> Result<(), String> {
     // ── User activity log ──
     let activity_deleted = match logs_days {
         Some(days) => match sqlx::query(
-            "DELETE FROM user_activity_log WHERE created_at < NOW() - make_interval(days => $1::int)",
+            "DELETE FROM ONLY user_activity_log WHERE created_at < NOW() - make_interval(days => $1::int)",
         )
         .bind(days)
         .execute(pool)

@@ -253,10 +253,10 @@
   color: var(--site-ink-3);
 }
 
-/* Un serveur éteint reste visible mais s'efface : il informe sans attirer. */
+/* Un serveur éteint ou en attente conserve son visuel d'origine éclatant */
 .mb-game.off img,
 .mb-game.off .mb-game-fallback {
-  filter: grayscale(0.85) brightness(0.55);
+  filter: none;
 }
 
 .mb-game-addr {

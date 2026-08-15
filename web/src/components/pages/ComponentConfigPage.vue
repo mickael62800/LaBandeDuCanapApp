@@ -25,20 +25,11 @@ const { configs } = storeToRefs(botEnabledStore);
 const definitions = ref<BotDefinition[]>([]);
 const selectedComponent = ref<string | null>(null);
 
-function isWorker(botName: string): boolean {
-  return botName.endsWith("-worker");
-}
-
 // NB : welcome-bot dispose d'une page de config dediee (/welcome, UX riche),
 // mais il DOIT rester liste ici — c'est le seul endroit ou basculer son
 // interrupteur `enabled`. L'exclure le rendait impossible a activer (et la
 // tuile « Bienvenue », gardee par requiredBot, n'apparaissait donc jamais).
-const moduleDefinitions = computed(() =>
-  definitions.value.filter((d) => !isWorker(d.bot_name)),
-);
-const workerDefinitions = computed(() =>
-  definitions.value.filter((d) => isWorker(d.bot_name)),
-);
+const moduleDefinitions = computed(() => definitions.value);
 
 const selectedDefinition = computed(() =>
   definitions.value.find((d) => d.bot_name === selectedComponent.value) ?? null,
@@ -95,14 +86,6 @@ onMounted(async () => {
       <ComponentSelectorSection
         title="Modules"
         :definitions="moduleDefinitions"
-        :selected-key="selectedComponent"
-        @select="selectComponent"
-      />
-
-      <ComponentSelectorSection
-        v-if="workerDefinitions.length > 0"
-        title="Workers"
-        :definitions="workerDefinitions"
         :selected-key="selectedComponent"
         @select="selectComponent"
       />

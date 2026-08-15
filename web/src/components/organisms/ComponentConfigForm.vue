@@ -54,6 +54,7 @@ const isWorker = computed(() => props.definition.bot_name.endsWith("-worker"));
 // (le reste se configure sur la page dediee -> voir DEDICATED_PAGE).
 const DEDICATED_CONFIG: Record<string, { label: string; path: string }> = {
   "welcome-bot": { label: "la page Bienvenue", path: "/welcome" },
+  "security-bot": { label: "la page Sécurité", path: "/security" },
 };
 const dedicated = computed(() => DEDICATED_CONFIG[props.definition.bot_name] ?? null);
 

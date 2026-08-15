@@ -145,6 +145,16 @@ async function submit() {
       ip_reveal_days: days,
     });
 
+    // La creation seule persiste un serveur a l'arret. C'est la programmation
+    // qui publie `game_server_scheduled` vers nexus-bot : le bot cree alors
+    // immediatement les salons Discord et le panneau d'inscription, tandis que
+    // le conteneur attend l'heure d'ouverture.
+    await nexusGamesService.schedule(
+      selectedGuildId.value,
+      created.id,
+      openDate.toISOString(),
+    );
+
     // Remplissage automatique du calendrier communautaire avec l'événement
     try {
       await communityAdminService.createEvent(selectedGuildId.value, {
@@ -159,7 +169,7 @@ async function submit() {
       // Si la création d'événement échoue (ex: permissions), le serveur est quand même créé
     }
 
-    success(`Serveur « ${created.name} » créé et événement ajouté au calendrier !`);
+    success(`Serveur « ${created.name} » programmé, salons Discord demandés et événement ajouté au calendrier !`);
     router.push(`/nexus/servers/${created.id}`);
   } catch (e) {
     showError(e instanceof Error ? e.message : "Création impossible");

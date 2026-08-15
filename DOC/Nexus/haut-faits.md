@@ -341,7 +341,9 @@ et jamais codé en dur).
 **Non livré — et pourquoi**
 
 Les hauts faits de gameplay (boss, Paldeck, élevage, bases, exploration) ne
-sont **pas observables par RCON**. Ils restent en `verification = 'manual'` :
+sont **pas observables par RCON**. Les sources envisageables pour aller plus
+loin, ce qu'elles couvrent réellement et ce qui restera hors de portée sont
+analysés dans [`palworld-sources.md`](palworld-sources.md). Ils restent en `verification = 'manual'` :
 seul un administrateur peut les attribuer, de façon tracée (`granted_by`). Les
 rendre automatiques demandera une source qui les prouve (mod, plugin ou
 lecture de sauvegarde validée), pas une déduction depuis un signal qui ne les

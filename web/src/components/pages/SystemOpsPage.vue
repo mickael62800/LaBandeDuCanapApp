@@ -4,6 +4,7 @@ import { onMounted, onUnmounted, ref } from "vue";
 import { useToast } from "@/composables/useToast";
 import { useConfirm } from "@/composables/useConfirm";
 import { systemOpsService } from "@/services/polishServices";
+import { systemService } from "@/services/systemService";
 import type { CacheStats, ModelInfo } from "@/types/polish";
 import AdminPageShell from "@/components/layouts/AdminPageShell.vue";
 
@@ -56,8 +57,7 @@ const reloadingDb = ref(false);
 async function saveDatabaseDump() {
   savingDb.value = true;
   try {
-    const res = await fetch("/api/system/info");
-    const data = await res.json();
+    const data = await systemService.getInfo();
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");

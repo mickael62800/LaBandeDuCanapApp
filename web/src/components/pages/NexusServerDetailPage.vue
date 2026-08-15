@@ -50,9 +50,12 @@ const busy = ref(false);
 const savingConfig = ref(false);
 const revealingIp = ref(false);
 const showScheduleForm = ref(false);
+const showStopScheduleForm = ref(false);
 const scheduling = ref(false);
+const schedulingStop = ref(false);
 /// Valeur du champ `datetime-local` (heure locale « YYYY-MM-DDTHH:mm »).
 const revealAtInput = ref("");
+const stopAtInput = ref("");
 const rconCommand = ref("");
 const rconOutput = ref("");
 
@@ -191,6 +194,39 @@ async function submitSchedule() {
     showError(e instanceof Error ? e.message : "Programmation impossible");
   } finally {
     scheduling.value = false;
+  }
+}
+
+/// Programme l'arrêt automatique du serveur.
+async function submitStopSchedule() {
+  if (!selectedGuildId.value || !server.value || schedulingStop.value) return;
+  if (!stopAtInput.value) return;
+  const targetTime = new Date(stopAtInput.value).getTime();
+  const delayMs = targetTime - Date.now();
+  if (delayMs <= 0) {
+    showError("Choisis une date et une heure de fermeture dans le futur.");
+    return;
+  }
+  schedulingStop.value = true;
+  try {
+    setTimeout(async () => {
+      if (selectedGuildId.value && server.value && isRunning.value) {
+        try {
+          await nexusGamesService.stop(selectedGuildId.value, server.value.id);
+          success(`Arrêt automatique du serveur « ${server.value.name} » effectué.`);
+          await load();
+        } catch (e) {
+          console.error("Échec arrêt automatique:", e);
+        }
+      }
+    }, delayMs);
+
+    success(`Arrêt automatique du serveur programmé le ${new Date(stopAtInput.value).toLocaleString("fr-FR")}.`);
+    showStopScheduleForm.value = false;
+  } catch (e) {
+    showError(e instanceof Error ? e.message : "Programmation de l'arrêt impossible");
+  } finally {
+    schedulingStop.value = false;
   }
 }
 
@@ -462,6 +498,12 @@ function fmtDuration(secs: number | null): string {
           <template v-if="isRunning">
             <button :disabled="busy" @click="act('stop')">Arrêter</button>
             <button :disabled="busy || isTransient" @click="act('restart')">Redémarrer</button>
+            <button
+              :disabled="busy || isTransient"
+              @click="showStopScheduleForm = !showStopScheduleForm"
+            >
+              Programmer la fermeture
+            </button>
           </template>
           <template v-else>
             <button :disabled="busy || isTransient" @click="act('start')">
@@ -491,8 +533,22 @@ function fmtDuration(secs: number | null): string {
           {{
             isRunning
               ? "L’adresse sera révélée automatiquement à l’heure choisie."
-              : "Le conteneur démarrera automatiquement ~5 min avant, et l’adresse sera révélée à l’heure choisie. Les salons et le panneau d’inscription sont créés dès maintenant."
+              : "Le conteneur démarrera automatiquement ~5 min avant, et l’adresse sera révélée à l'heure choisie. Les salons et le panneau d'inscription sont créés dès maintenant."
           }}
+        </p>
+      </div>
+
+      <!-- Formulaire de programmation de la FERMETURE -->
+      <div v-if="showStopScheduleForm" class="sd-schedule">
+        <label>
+          Fermeture le
+          <input type="datetime-local" v-model="stopAtInput" />
+        </label>
+        <button :disabled="schedulingStop || !stopAtInput" @click="submitStopSchedule">
+          {{ schedulingStop ? "Programmation…" : "Programmer la fermeture" }}
+        </button>
+        <p class="sd-hint">
+          Le conteneur sera arrêté automatiquement à la date et l'heure sélectionnées.
         </p>
       </div>
 

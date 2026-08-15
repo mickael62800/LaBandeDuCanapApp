@@ -417,6 +417,7 @@ function fmtDuration(secs: number | null): string {
         <dl class="sd-meta">
           <div><dt>Créé le</dt><dd>{{ fmtDate(server.created_at) }}</dd></div>
           <div><dt>Démarré le</dt><dd>{{ fmtDate(server.started_at) }}</dd></div>
+          <div><dt>Fermé le</dt><dd>{{ fmtDate(server.stopped_at) }}</dd></div>
           <div><dt>Dernière activité</dt><dd>{{ fmtDate(server.last_active_at) }}</dd></div>
           <div>
             <dt>Adresse</dt>

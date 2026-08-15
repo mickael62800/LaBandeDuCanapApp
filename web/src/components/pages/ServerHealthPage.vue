@@ -9,6 +9,7 @@ import ServerHealthResources from "@/components/organisms/ServerHealthResources.
 import ServerHealthDisks from "@/components/organisms/ServerHealthDisks.vue";
 import ServerHealthServices from "@/components/organisms/ServerHealthServices.vue";
 import AdminPageShell from "@/components/layouts/AdminPageShell.vue";
+import DashboardHero from "@/components/organisms/DashboardHero.vue";
 
 const { error: showError } = useToast();
 
@@ -56,6 +57,12 @@ onUnmounted(stopPolling);
 
 <template>
   <AdminPageShell title="État de la machine" icon="🖥️" class="dashboard">
+    <DashboardHero
+      title="Exploitation"
+      subtitle="Surveillance des ressources, disques, sécurité et conteneurs de la machine hôte."
+      logo="/exploration_logo.png"
+      universe="ops"
+    />
     <template #lede>
       Ressources, disques, services et conteneurs de la machine hôte — celle
       qui héberge Sentinel, Nexus et Atrium. Rien ici ne concerne Discord.

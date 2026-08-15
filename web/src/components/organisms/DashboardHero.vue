@@ -1,27 +1,42 @@
 <script setup lang="ts">
 import { useBotEnabledStatus } from "@/composables/useBotEnabledStatus";
 
+const props = withDefaults(
+  defineProps<{
+    title?: string;
+    subtitle?: string;
+    logo?: string;
+    universe?: "sentinel" | "nexus" | "atrium" | "ops";
+  }>(),
+  {
+    title: "DiscordSentinel",
+    subtitle: "Plateforme unifiée d'administration — Modération, Communauté et Gestion système.",
+    logo: "/sentinel_logo.png",
+    universe: "sentinel",
+  },
+);
+
 const { disabledBots, disabledCount } = useBotEnabledStatus();
 </script>
 
 <template>
-  <div>
+  <div :class="`hero-theme-${props.universe}`">
     <header class="dash-hero">
       <div class="hero-pattern" aria-hidden="true"></div>
       <div class="hero-gloss" aria-hidden="true"></div>
       <div class="hero-logo-wrap">
-        <img src="/sentinel_logo.png" alt="Sentinel" class="hero-logo" />
+        <img :src="props.logo" :alt="props.title" class="hero-logo" />
       </div>
       <div class="hero-text">
-        <h1>DiscordSentinel</h1>
-        <p>Panneau d'administration unifié — modération, communauté, jeux.</p>
+        <h1>{{ props.title }}</h1>
+        <p>{{ props.subtitle }}</p>
       </div>
     </header>
 
     <!-- Bandeau "X composants desactives" — discret, cliquable vers /component-config.
-         N'apparait que s'il y a au moins 1 composant off pour la guild courante. -->
+         N'apparait que s'il y a au moins 1 composant off pour la guild courante sur Sentinel. -->
     <router-link
-      v-if="disabledCount > 0"
+      v-if="props.universe === 'sentinel' && disabledCount > 0"
       to="/component-config"
       class="disabled-banner"
       :title="`Voir / réactiver dans Composants : ${disabledBots.join(', ')}`"
@@ -38,6 +53,23 @@ const { disabledBots, disabledCount } = useBotEnabledStatus();
 </template>
 
 <style scoped>
+.hero-theme-sentinel {
+  --accent: #5865f2;
+  --accent-alt: #8b5cf6;
+}
+.hero-theme-nexus {
+  --accent: #a855f7;
+  --accent-alt: #ec4899;
+}
+.hero-theme-atrium {
+  --accent: #14b8a6;
+  --accent-alt: #3b82f6;
+}
+.hero-theme-ops {
+  --accent: #f59e0b;
+  --accent-alt: #ef4444;
+}
+
 .dash-hero {
   position: relative;
   overflow: hidden;

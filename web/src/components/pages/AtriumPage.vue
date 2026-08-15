@@ -13,6 +13,7 @@
 
 import { computed, ref, watch } from "vue";
 import AdminPageShell from "../layouts/AdminPageShell.vue";
+import DashboardHero from "../organisms/DashboardHero.vue";
 import AppToggle from "../atoms/AppToggle.vue";
 import AppButton from "../atoms/AppButton.vue";
 import AppInput from "../atoms/AppInput.vue";
@@ -296,10 +297,12 @@ watch(selectedGuildId, load, { immediate: true });
 
 <template>
   <AdminPageShell title="Accueil IA" icon="🌿" class="atrium-page">
-    <template #lede>
-      Atrium accueille les nouveaux membres et répond à leurs questions à
-      partir de la base de connaissances du serveur.
-    </template>
+    <DashboardHero
+      title="Atrium"
+      subtitle="Accueil assisté par Intelligence Artificielle et base de connaissances communautaire."
+      logo="/atrium_logo.png"
+      universe="atrium"
+    />
     <template #actions>
       <AppButton variant="secondary" :disabled="loading" @click="load">
         Actualiser

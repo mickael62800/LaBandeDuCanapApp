@@ -16,6 +16,7 @@ import {
   type GameTemplate,
 } from "@/services/nexusGamesService";
 import AdminPageShell from "../layouts/AdminPageShell.vue";
+import DashboardHero from "../organisms/DashboardHero.vue";
 
 const { selectedGuildId, selectedGuild } = useGuildSelector();
 // Idem `NexusServerDetailPage` : l'acteur de l'audit vient de la passerelle.
@@ -107,6 +108,13 @@ watch(selectedGuildId, load, { immediate: true });
     title="Serveurs de jeu"
     :subtitle="selectedGuild?.name ?? 'Aucun serveur selectionne'"
   >
+    <DashboardHero
+      title="Nexus Games"
+      subtitle="Plateforme d'hébergement et de pilotage de vos serveurs de jeu."
+      logo="/nexus_logo.png"
+      universe="nexus"
+    />
+
     <p v-if="!selectedGuildId" class="ns-hint">
       Selectionne un serveur Discord pour voir sa flotte.
     </p>

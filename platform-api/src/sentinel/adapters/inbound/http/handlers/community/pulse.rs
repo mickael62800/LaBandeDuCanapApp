@@ -4,12 +4,13 @@
 //! Un seul endpoint public renvoie les deux listes — la page les affiche cote
 //! a cote, deux requetes seraient deux allers-retours pour rien.
 
-use axum::extract::Path;
+use axum::extract::{Path, Query, State};
 use axum::Json;
 use serde::{Deserialize, Serialize};
 
 use crate::sentinel::adapters::inbound::http::errors::ApiError;
 use crate::sentinel::adapters::inbound::http::handlers::community::public_guard::ensure_guild_id;
+use crate::sentinel::bootstrap::state::CommunityState;
 
 /// Fenetres par defaut. Une semaine pour les nouveaux venus : au-dela, un
 /// membre n'est plus vraiment « nouveau ». Deux semaines pour les
@@ -49,11 +50,47 @@ pub struct PulseDto {
 }
 
 /// GET /api/public/pulse/{guild_id}
-pub async fn public_pulse(Path(guild_id): Path<String>) -> Result<Json<PulseDto>, ApiError> {
+pub async fn public_pulse(
+    State(state): State<CommunityState>,
+    Path(guild_id): Path<String>,
+    Query(query): Query<PulseQuery>,
+) -> Result<Json<PulseDto>, ApiError> {
     ensure_guild_id(&guild_id)?;
 
+    let anniv_days = query.anniversary_days.unwrap_or(14);
+    let join_days = query.join_days.unwrap_or(7);
+
+    let anniversaries_data = state
+        .members_uc
+        .upcoming_anniversaries(&guild_id, anniv_days)
+        .await?;
+
+    let newcomers_data = state
+        .members_uc
+        .recent_joins(&guild_id, join_days, 20)
+        .await?;
+
+    let anniversaries = anniversaries_data
+        .into_iter()
+        .map(|a| AnniversaryDto {
+            username: a.username,
+            avatar: a.avatar,
+            years: a.years,
+            joined_at: a.joined_at.to_rfc3339(),
+        })
+        .collect();
+
+    let newcomers = newcomers_data
+        .into_iter()
+        .map(|m| NewcomerDto {
+            username: m.display_name.unwrap_or(m.username),
+            avatar: m.avatar,
+            joined_at: m.joined_at.map(|d| d.to_rfc3339()),
+        })
+        .collect();
+
     Ok(Json(PulseDto {
-        anniversaries: vec![],
-        newcomers: vec![],
+        anniversaries,
+        newcomers,
     }))
 }

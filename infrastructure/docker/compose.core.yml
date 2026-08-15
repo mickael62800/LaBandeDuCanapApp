@@ -275,7 +275,7 @@ services:
         #    Les objets appartenant a une extension restent a leur
         #    proprietaire systeme.
         $$PSQL -c "ALTER DATABASE discord_sentinel OWNER TO sentinel_app"
-        $$PSQL -v target_role=sentinel_app -f /init/reassign-public-objects.sql
+        psql -h postgres -U sentinel -d discord_sentinel -v ON_ERROR_STOP=1 -v target_role=sentinel_app -f /init/reassign-public-objects.sql
         $$PSQL -c "ALTER SCHEMA public OWNER TO sentinel_app"
         $$PSQL -c "GRANT CONNECT ON DATABASE discord_sentinel TO sentinel_app"
 

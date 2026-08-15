@@ -10,8 +10,13 @@ SELECT set_config('vars.target_role', :'target_role', false);
 DO $$
 DECLARE
     r RECORD;
-    target_role text := current_setting('vars.target_role');
+    v_target_role text := current_setting('vars.target_role', true);
 BEGIN
+    IF v_target_role IS NULL OR v_target_role = '' THEN
+        RAISE NOTICE 'Pas de target_role spécifié, réassignation ignorée.';
+        RETURN;
+    END IF;
+
     FOR r IN
         SELECT format(
             'ALTER %s %I.%I OWNER TO %I',
@@ -24,7 +29,7 @@ BEGIN
             END,
             n.nspname,
             c.relname,
-            target_role
+            v_target_role
         ) AS stmt
         FROM pg_catalog.pg_class AS c
         JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace
@@ -50,8 +55,12 @@ END $$;
 DO $$
 DECLARE
     r RECORD;
-    target_role text := current_setting('vars.target_role');
+    v_target_role text := current_setting('vars.target_role', true);
 BEGIN
+    IF v_target_role IS NULL OR v_target_role = '' THEN
+        RETURN;
+    END IF;
+
     FOR r IN
         SELECT format(
             'ALTER %s %I.%I(%s) OWNER TO %I',
@@ -59,7 +68,7 @@ BEGIN
             n.nspname,
             p.proname,
             pg_catalog.pg_get_function_identity_arguments(p.oid),
-            target_role
+            v_target_role
         ) AS stmt
         FROM pg_catalog.pg_proc AS p
         JOIN pg_catalog.pg_namespace AS n ON n.oid = p.pronamespace
@@ -85,15 +94,19 @@ END $$;
 DO $$
 DECLARE
     r RECORD;
-    target_role text := current_setting('vars.target_role');
+    v_target_role text := current_setting('vars.target_role', true);
 BEGIN
+    IF v_target_role IS NULL OR v_target_role = '' THEN
+        RETURN;
+    END IF;
+
     FOR r IN
         SELECT format(
             'ALTER %s %I.%I OWNER TO %I',
             CASE t.typtype WHEN 'd' THEN 'DOMAIN' ELSE 'TYPE' END,
             n.nspname,
             t.typname,
-            target_role
+            v_target_role
         ) AS stmt
         FROM pg_catalog.pg_type AS t
         JOIN pg_catalog.pg_namespace AS n ON n.oid = t.typnamespace

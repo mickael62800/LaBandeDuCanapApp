@@ -327,6 +327,7 @@ fn chunk_options(options: &[String]) -> Vec<String> {
     chunks
 }
 
+#[allow(dead_code)]
 fn public_cover_url(path: Option<&str>) -> Option<String> {
     public_cover_url_for_status(path, "running")
 }

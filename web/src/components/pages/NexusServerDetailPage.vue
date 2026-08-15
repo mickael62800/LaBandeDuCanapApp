@@ -51,9 +51,7 @@ const busy = ref(false);
 const savingConfig = ref(false);
 const revealingIp = ref(false);
 const showScheduleForm = ref(false);
-const showStopScheduleForm = ref(false);
 const scheduling = ref(false);
-const schedulingStop = ref(false);
 /// Valeur du champ `datetime-local` (heure locale « YYYY-MM-DDTHH:mm »).
 const revealAtInput = ref("");
 const stopAtInput = ref("");
@@ -213,39 +211,6 @@ async function submitSchedule() {
     showError(e instanceof Error ? e.message : "Programmation impossible");
   } finally {
     scheduling.value = false;
-  }
-}
-
-/// Programme l'arrêt automatique du serveur.
-async function submitStopSchedule() {
-  if (!selectedGuildId.value || !server.value || schedulingStop.value) return;
-  if (!stopAtInput.value) return;
-  const targetTime = new Date(stopAtInput.value).getTime();
-  const delayMs = targetTime - Date.now();
-  if (delayMs <= 0) {
-    showError("Choisis une date et une heure de fermeture dans le futur.");
-    return;
-  }
-  schedulingStop.value = true;
-  try {
-    setTimeout(async () => {
-      if (selectedGuildId.value && server.value && isRunning.value) {
-        try {
-          await nexusGamesService.stop(selectedGuildId.value, server.value.id);
-          success(`Arrêt automatique du serveur « ${server.value.name} » effectué.`);
-          await load();
-        } catch (e) {
-          console.error("Échec arrêt automatique:", e);
-        }
-      }
-    }, delayMs);
-
-    success(`Arrêt automatique du serveur programmé le ${new Date(stopAtInput.value).toLocaleString("fr-FR")}.`);
-    showStopScheduleForm.value = false;
-  } catch (e) {
-    showError(e instanceof Error ? e.message : "Programmation de l'arrêt impossible");
-  } finally {
-    schedulingStop.value = false;
   }
 }
 
@@ -526,48 +491,32 @@ function fmtDuration(secs: number | null): string {
               :disabled="busy || isTransient"
               @click="showScheduleForm = !showScheduleForm"
             >
-              {{ isScheduled ? "Reprogrammer" : "Programmer l’ouverture" }}
+              {{ isScheduled ? "Reprogrammer" : "Programmer (Ouverture & Fermeture)" }}
             </button>
           </template>
-          <button
-            :disabled="busy || isTransient"
-            @click="showStopScheduleForm = !showStopScheduleForm"
-          >
-            Programmer la fermeture
-          </button>
           <AppButton variant="danger" size="sm" @click="remove">Supprimer</AppButton>
         </div>
       </div>
 
-      <!-- Formulaire de programmation (Préparation / révélation auto) -->
+      <!-- Formulaire de programmation unifié (Ouverture + Fermeture) -->
       <div v-if="showScheduleForm" class="sd-schedule">
         <label>
           {{ isRunning ? "Révéler l’adresse le" : "Ouverture le" }}
           <input type="datetime-local" v-model="revealAtInput" />
         </label>
-        <button :disabled="scheduling || !revealAtInput" @click="submitSchedule">
-          {{ scheduling ? "Programmation…" : "Programmer" }}
-        </button>
-        <p class="sd-hint">
-          {{
-            isRunning
-              ? "L’adresse sera révélée automatiquement à l’heure choisie."
-              : "Le conteneur démarrera automatiquement ~5 min avant, et l’adresse sera révélée à l'heure choisie. Les salons et le panneau d'inscription sont créés dès maintenant."
-          }}
-        </p>
-      </div>
-
-      <!-- Formulaire de programmation de la FERMETURE -->
-      <div v-if="showStopScheduleForm" class="sd-schedule">
         <label>
           Fermeture le
           <input type="datetime-local" v-model="stopAtInput" />
         </label>
-        <button :disabled="schedulingStop || !stopAtInput" @click="submitStopSchedule">
-          {{ schedulingStop ? "Programmation…" : "Programmer la fermeture" }}
+        <button :disabled="scheduling || !revealAtInput" @click="submitSchedule">
+          {{ scheduling ? "Programmation…" : "Enregistrer la programmation" }}
         </button>
         <p class="sd-hint">
-          Le conteneur sera arrêté automatiquement à la date et l'heure sélectionnées.
+          {{
+            isRunning
+              ? "L’adresse sera révélée à l’heure d'ouverture choisie. Le serveur sera fermé à la date d'arrêt programmée."
+              : "Le conteneur démarrera automatiquement ~5 min avant, et l’adresse sera révélée à l'heure d'ouverture. La fermeture et le planning seront automatiquement synchronisés."
+          }}
         </p>
       </div>
 

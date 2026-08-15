@@ -2,7 +2,7 @@
 import { computed, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import StatusDot from "../atoms/StatusDot.vue";
-import NotificationPanel from "./NotificationPanel.vue";
+import NotificationModal from "./NotificationModal.vue";
 import { useAuth } from "../../composables/useAuth";
 import { useNotifications } from "../../composables/useNotifications";
 import { useRealtime } from "../../composables/useRealtime";
@@ -18,7 +18,7 @@ const route = useRoute();
 const router = useRouter();
 const { toggle: toggleSidebar } = useSidebar();
 const { user, logout, avatarUrl } = useAuth();
-const { unreadCount, panelOpen, togglePanel } = useNotifications();
+const { unreadCount, togglePanel } = useNotifications();
 const { connected: wsConnected } = useRealtime();
 const { guilds, selectedGuildId, fetchGuilds, selectGuild } = useGuildSelector();
 
@@ -158,7 +158,7 @@ onMounted(() => {
       </button>
     </div>
 
-    <NotificationPanel v-if="panelOpen" />
+    <NotificationModal />
   </header>
 </template>
 

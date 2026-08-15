@@ -306,20 +306,26 @@
 
 .jx-fleche-nav {
   flex: none;
-  width: 2rem;
-  height: 2rem;
+  width: 2.5rem;
+  height: 2.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 50%;
   border: 1px solid var(--border);
-  background: none;
+  background: var(--bg-card);
   color: var(--site-ink-3);
-  font-size: 1.1rem;
+  font-size: 1.2rem;
   line-height: 1;
+  padding: 0;
   cursor: pointer;
+  transition: all 0.2s ease;
 }
 
 .jx-fleche-nav:hover {
   border-color: var(--accent);
   color: #fff;
+  background: color-mix(in srgb, var(--accent) 15%, var(--bg-card));
 }
 
 .jx-vignettes {

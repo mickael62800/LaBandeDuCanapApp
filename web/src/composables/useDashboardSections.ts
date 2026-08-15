@@ -80,9 +80,6 @@ const ALL_SECTIONS: DashboardSection[] = [
   { key: "config.server-builder", path: "/server-builder", label: "Constructeur de salons", icon: "grid", universe: "sentinel" },
   { key: "config.guild-backup", path: "/guild-backup", label: "Sauvegardes du serveur Discord", icon: "save", universe: "sentinel" },
   { key: "config.ai-dataset", path: "/ai-dataset", label: "Dataset IA", icon: "cpu", universe: "sentinel" },
-  // Module sans page dediee : la tuile ouvre directement sa config (lien
-  // profond ?bot= gere par ComponentConfigPage). Masquee si le bot est off.
-  { key: "config.nasa-apod", path: "/component-config?bot=nasa-apod-bot", label: "Photo de l'espace", icon: "image", universe: "sentinel", requiredBot: "nasa-apod-bot" },
 
   // ── Exploitation : la machine hote ──
   // Ces ecrans ne parlent pas de Discord : Docker, disques, CPU, certificats

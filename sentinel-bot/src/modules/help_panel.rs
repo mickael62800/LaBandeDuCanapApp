@@ -143,10 +143,6 @@ const CATEGORIES: &[Section] = &[
             ("voice-bot", "🔊 Vocal"),
         ],
     ),
-    (
-        "🌌 Espace",
-        &[("nasa-apod-bot", "🌌 Photo de l'espace (NASA)")],
-    ),
     ("💾 Sauvegarde", &[("guild-backup-bot", "💾 Sauvegarde")]),
     ("📊 Audit", &[("audit-bot", "📊 Audit")]),
     ("🧹 Nettoyage", &[("cleanup", "🧹 Nettoyage")]),

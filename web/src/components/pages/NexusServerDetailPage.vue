@@ -44,6 +44,9 @@ const template = ref<GameTemplate | null>(null);
 const stats = ref<GameServerStats | null>(null);
 const logs = ref<string[]>([]);
 const sessions = ref<PlayerSession[]>([]);
+/// La fermeture planifiee vit dans l'evenement communautaire associe au
+/// serveur (Nexus ne stocke pour l'instant que l'heure d'ouverture).
+const plannedStopAt = ref<string | null>(null);
 
 const loading = ref(false);
 const errorMessage = ref("");
@@ -102,6 +105,30 @@ async function load() {
     const detail = await nexusGamesService.getServer(selectedGuildId.value, serverId.value);
     server.value = detail.server;
     config.value = { ...detail.config };
+
+    // Retrouver l'evenement cree avec le serveur. Plusieurs anciens formats de
+    // titre existent, mais ils contiennent tous le nom exact du serveur. Si
+    // plusieurs correspondent, prendre celui dont le debut est le plus proche
+    // de l'ouverture Nexus evite d'afficher une ancienne session homonyme.
+    plannedStopAt.value = null;
+    const openingMs = detail.server.ip_reveal_at
+      ? new Date(detail.server.ip_reveal_at).getTime()
+      : new Date(detail.server.created_at).getTime();
+    const events = await communityAdminService
+      .listEvents(
+        selectedGuildId.value,
+        new Date(openingMs - 90 * 86400 * 1000),
+        new Date(openingMs + 180 * 86400 * 1000),
+      )
+      .catch(() => []);
+    const matchingEvent = events
+      .filter((event) => event.title.toLowerCase().includes(detail.server.name.toLowerCase()))
+      .sort(
+        (a, b) =>
+          Math.abs(new Date(a.starts_at).getTime() - openingMs)
+          - Math.abs(new Date(b.starts_at).getTime() - openingMs),
+      )[0];
+    plannedStopAt.value = matchingEvent?.ends_at ?? null;
 
     // Le template porte le schéma des réglages et le support RCON.
     const list = await nexusGamesService
@@ -590,8 +617,10 @@ function fmtDuration(secs: number | null): string {
 
         <dl class="sd-meta">
           <div><dt>Créé le</dt><dd>{{ fmtDate(server.created_at) }}</dd></div>
-          <div><dt>Démarré le</dt><dd>{{ fmtDate(server.started_at) }}</dd></div>
-          <div><dt>Fermé le</dt><dd>{{ fmtDate(server.stopped_at) }}</dd></div>
+          <div><dt>Ouverture prévue</dt><dd>{{ fmtDate(server.ip_reveal_at) }}</dd></div>
+          <div><dt>Fermeture prévue</dt><dd>{{ fmtDate(plannedStopAt) }}</dd></div>
+          <div><dt>Démarré réellement</dt><dd>{{ fmtDate(server.started_at) }}</dd></div>
+          <div><dt>Fermé réellement</dt><dd>{{ fmtDate(server.stopped_at) }}</dd></div>
           <div><dt>Dernière activité</dt><dd>{{ fmtDate(server.last_active_at) }}</dd></div>
           <div>
             <dt>Adresse</dt>

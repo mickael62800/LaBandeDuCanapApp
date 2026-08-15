@@ -1,6 +1,17 @@
 use super::*;
 
 impl ApiClient {
+    /// GET /api/games/{guild_id}/servers — utilise au demarrage du bot pour
+    /// rattraper les evenements de creation de salons manques.
+    pub async fn list_game_servers(&self, guild_id: &str) -> Result<Vec<GameServer>, String> {
+        let url = format!(
+            "{}/api/games/{}/servers",
+            self.base_url,
+            encode_segment(guild_id)
+        );
+        self.send(self.http.get(&url)).await
+    }
+
     /// GET /api/games/servers/{server_id}.
     pub async fn get_game_server(&self, server_id: &str) -> Result<ServerDetailResponse, String> {
         let url = format!(

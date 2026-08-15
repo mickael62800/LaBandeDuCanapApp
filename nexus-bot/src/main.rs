@@ -120,6 +120,19 @@ impl EventHandler for Handler {
             achievements::spawn(ctx.clone(), self.api.clone());
             games::spawn_listener(ctx.clone(), self.api.clone());
         }
+        // Un evenement Redis publie pendant une indisponibilite peut avoir ete
+        // manque. Rejouer les serveurs actifs/programmes garantit que leurs
+        // salons Discord finissent quand meme par exister.
+        game_portal::reconcile(
+            ctx.clone(),
+            self.api.clone(),
+            ready
+                .guilds
+                .iter()
+                .map(|g| g.id)
+                .filter(|id| guilde_autorisee(*id))
+                .collect(),
+        );
         let commands = vec![
             CreateCommand::new("roue")
                 .description("Tire la Roue du Destin — 1 spin par jour, le destin decide."),

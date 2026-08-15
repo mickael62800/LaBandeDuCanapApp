@@ -631,6 +631,30 @@ pub fn spawn(ctx: Context, api: Arc<ApiClient>) {
     });
 }
 
+/// Rattrape les evenements Redis manques pendant que le bot etait hors ligne.
+/// Les serveurs deja munis de salons sortent immediatement dans `on_started` ;
+/// l'operation est donc idempotente et peut etre rejouee a chaque `ready`.
+pub fn reconcile(ctx: Context, api: Arc<ApiClient>, guild_ids: Vec<GuildId>) {
+    tokio::spawn(async move {
+        for guild_id in guild_ids {
+            let guild_key = guild_id.to_string();
+            let servers = match api.list_game_servers(&guild_key).await {
+                Ok(servers) => servers,
+                Err(e) => {
+                    tracing::warn!(error = %e, guild = %guild_id, "game-portal: reconciliation impossible");
+                    continue;
+                }
+            };
+
+            for server in servers {
+                if matches!(server.status.as_str(), "scheduled" | "starting" | "running") {
+                    on_started(&ctx, &api, guild_id, &server.id).await;
+                }
+            }
+        }
+    });
+}
+
 async fn handle_event(ctx: &Context, api: &ApiClient, payload_json: &str) {
     let Ok(env) = serde_json::from_str::<serde_json::Value>(payload_json) else {
         return;
@@ -1011,10 +1035,7 @@ async fn on_started(ctx: &Context, api: &ApiClient, guild_id: GuildId, server_id
         .await
         .ok()
         .and_then(|template| {
-            public_cover_url_for_status(
-                template.cover_image_url.as_deref(),
-                server.status.as_str(),
-            )
+            public_cover_url_for_status(template.cover_image_url.as_deref(), server.status.as_str())
         });
 
     let cfg = api

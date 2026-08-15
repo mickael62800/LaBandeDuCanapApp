@@ -176,7 +176,24 @@ export const communityAdminService = {
     return httpPut<AdminNewsItem>(`/api/news/detail/${encodeURIComponent(id)}`, input);
   },
 
+  // ── Evénements ──
+
+  createEvent(guildId: string, input: CreateEventInput): Promise<{ id: string }> {
+    return httpPost<{ id: string }>(`/api/events/${encodeURIComponent(guildId)}`, input);
+  },
+
   deleteNews(id: string): Promise<{ deleted: boolean }> {
     return httpDelete<{ deleted: boolean }>(`/api/news/detail/${encodeURIComponent(id)}`);
   },
 };
+
+export interface CreateEventInput {
+  title: string;
+  description?: string | null;
+  game?: string | null;
+  color?: string | null;
+  starts_at: string;
+  ends_at: string;
+  all_day?: boolean;
+  is_public?: boolean;
+}

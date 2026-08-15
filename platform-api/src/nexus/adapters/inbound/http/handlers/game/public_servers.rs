@@ -38,8 +38,9 @@ pub struct PublicGameServerDto {
     /// Relatif et non absolu : le site le sert tel quel, et une URL absolue
     /// figerait le domaine en base.
     pub cover_image_url: Option<String>,
-    /// `running` | `stopped` — les etats transitoires sont ramenes a l'un des
-    /// deux : un visiteur n'a que faire de « stopping ».
+    /// `created` | `scheduled` | `starting` | `running` | `stopping` | `stopped` | `error`
+    pub status: String,
+    /// `running` — vrai si en ligne.
     pub online: bool,
     pub player_count: i32,
     /// Port public, uniquement si l'adresse a ete revelee.
@@ -79,6 +80,7 @@ pub async fn public_servers(
                 game: tpl.map(|t| t.name.clone()).unwrap_or_else(|| "Jeu".into()),
                 icon: tpl.and_then(|t| t.icon.clone()),
                 cover_image_url: tpl.and_then(|t| t.cover_image_url.clone()),
+                status: s.status.as_str().to_string(),
                 online: matches!(s.status, GameServerStatus::Running),
                 player_count: s.last_player_count,
                 port: if s.ip_revealed { s.host_port } else { None },

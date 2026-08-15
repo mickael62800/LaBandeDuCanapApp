@@ -22,6 +22,7 @@ import {
   type GameTemplate,
   type TemplateField,
 } from "@/services/nexusGamesService";
+import { communityAdminService } from "@/services/communityAdminService";
 import AdminPageShell from "../layouts/AdminPageShell.vue";
 
 const router = useRouter();
@@ -37,7 +38,10 @@ const chosen = ref<GameTemplate | null>(null);
 const name = ref("");
 const memoryMb = ref<number>(0);
 const cpuLimit = ref<number>(2);
-const ipRevealDays = ref<number | null>(null);
+/// Date et heure d'ouverture (révélation de l'IP & démarrage programmé)
+const openAt = ref("");
+/// Date et heure de fermeture (utilisée pour le calendrier)
+const closeAt = ref("");
 /// Valeurs des champs du template, indexées par clé.
 const values = ref<Record<string, string>>({});
 const submitting = ref(false);
@@ -67,6 +71,16 @@ function choose(t: GameTemplate) {
   }
   values.value = initial;
   if (!name.value) name.value = t.slug;
+
+  // Pré-remplissage des dates : ouverture à demain 20h00, fermeture à 23h00
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  tomorrow.setHours(20, 0, 0, 0);
+  openAt.value = tomorrow.toISOString().slice(0, 16);
+
+  const end = new Date(tomorrow);
+  end.setHours(23, 0, 0, 0);
+  closeAt.value = end.toISOString().slice(0, 16);
 }
 
 /// Le nom devient celui du conteneur : on impose ce que la base accepte
@@ -89,14 +103,38 @@ const memoryError = computed(() => {
   return "";
 });
 
+const dateError = computed(() => {
+  if (!openAt.value) return "Indique la date et l'heure d'ouverture.";
+  if (!closeAt.value) return "Indique la date et l'heure de fermeture.";
+  const openDate = new Date(openAt.value);
+  const closeDate = new Date(closeAt.value);
+  if (isNaN(openDate.getTime())) return "Date d'ouverture invalide.";
+  if (isNaN(closeDate.getTime())) return "Date de fermeture invalide.";
+  if (closeDate <= openDate) return "La date de fermeture doit être postérieure à l'ouverture.";
+  return "";
+});
+
 const canSubmit = computed(
-  () => !!chosen.value && !nameError.value && !memoryError.value && !submitting.value,
+  () =>
+    !!chosen.value &&
+    !nameError.value &&
+    !memoryError.value &&
+    !dateError.value &&
+    !submitting.value,
 );
 
 async function submit() {
   if (!canSubmit.value || !selectedGuildId.value || !chosen.value) return;
   submitting.value = true;
   try {
+    const openDate = new Date(openAt.value);
+    const closeDate = new Date(closeAt.value);
+
+    // Calcul du nombre de jours relatifs pour ip_reveal_days
+    const now = new Date();
+    const diffMs = openDate.getTime() - now.getTime();
+    const days = Math.max(0, Math.round(diffMs / (1000 * 60 * 60 * 24)));
+
     const created = await nexusGamesService.create(selectedGuildId.value, {
       template_slug: chosen.value.slug,
       name: name.value.trim(),
@@ -104,9 +142,24 @@ async function submit() {
       cpu_limit: cpuLimit.value,
       owner_user_id: user.value?.id ?? "",
       config: values.value,
-      ip_reveal_days: ipRevealDays.value ?? undefined,
+      ip_reveal_days: days,
     });
-    success(`Serveur « ${created.name} » créé.`);
+
+    // Remplissage automatique du calendrier communautaire avec l'événement
+    try {
+      await communityAdminService.createEvent(selectedGuildId.value, {
+        title: `Session ${chosen.value.name} - ${name.value.trim()}`,
+        description: `Serveur de jeu Nexus « ${name.value.trim()} ». Ouverture et accès au serveur à ${openDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`,
+        game: chosen.value.name,
+        starts_at: openDate.toISOString(),
+        ends_at: closeDate.toISOString(),
+        is_public: true,
+      });
+    } catch {
+      // Si la création d'événement échoue (ex: permissions), le serveur est quand même créé
+    }
+
+    success(`Serveur « ${created.name} » créé et événement ajouté au calendrier !`);
     router.push(`/nexus/servers/${created.id}`);
   } catch (e) {
     showError(e instanceof Error ? e.message : "Création impossible");
@@ -259,12 +312,24 @@ watch(selectedGuildId, loadTemplates, { immediate: true });
           </label>
 
           <label class="nc-field">
-            <span>Révélation de l'IP (jours)</span>
-            <input v-model.number="ipRevealDays" type="number" min="0" placeholder="défaut" />
+            <span>Date et heure d'ouverture *</span>
+            <input v-model="openAt" type="datetime-local" required />
             <small class="nc-note">
-              Vide = réglage du serveur Discord. 0 = adresse visible tout de suite.
+              Heure de démarrage et de publication automatique de l'IP du serveur.
             </small>
           </label>
+
+          <label class="nc-field">
+            <span>Date et heure de fermeture *</span>
+            <input v-model="closeAt" type="datetime-local" required />
+            <small class="nc-note">
+              Heure de fin pour alimenter automatiquement le calendrier de la communauté.
+            </small>
+          </label>
+
+          <div v-if="dateError" class="nc-field nc-field-full">
+            <small class="nc-err">{{ dateError }}</small>
+          </div>
 
         </div>
 

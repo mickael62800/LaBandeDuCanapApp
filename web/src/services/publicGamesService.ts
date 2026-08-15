@@ -15,6 +15,7 @@ export interface PublicGameServer {
   /// Jaquette du jeu, chemin relatif servi par le site (`/imgs/...`).
   /// Absente : la page retombe sur l'emoji `icon`.
   cover_image_url: string | null;
+  status?: string;
   online: boolean;
   player_count: number;
   /// Renseigné uniquement si l'adresse a été révélée.

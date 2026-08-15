@@ -176,6 +176,8 @@ onUnmounted(() => {
             ></div>
           </div>
         </div>
+      </section>
+
       <!-- ── Save & Rechargement BDD ── -->
       <section class="card full-width">
         <h2>💾 Sauvegarde & Rechargement Système BDD</h2>

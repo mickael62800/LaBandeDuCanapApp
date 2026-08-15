@@ -16,7 +16,7 @@ use crate::sentinel::ports::inbound::community::manage_announcements::{
 use crate::sentinel::ports::outbound::community::announcement_repository::AnnouncementRepository;
 use crate::sentinel::ports::outbound::system::bot_config_repository::BotConfigRepository;
 
-const ANNOUNCEMENTS_BOT: &str = "announcements";
+use crate::sentinel::domain::entities::system::bot_names::ANNOUNCEMENTS_BOT;
 const DEFAULT_FETCH_LIMIT_PER_GUILD: i64 = 50;
 
 pub struct ManageAnnouncementsService {

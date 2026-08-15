@@ -17,7 +17,7 @@ use crate::sentinel::ports::outbound::audit::analytics_repository::AnalyticsRepo
 use crate::sentinel::ports::outbound::audit::snapshot_repository::SnapshotRepository;
 use crate::sentinel::ports::outbound::system::bot_config_repository::BotConfigRepository;
 
-const ANALYTICS_BOT: &str = "analytics";
+use crate::sentinel::domain::entities::system::bot_names::ANALYTICS_BOT;
 /// Cle de state (hors schema UI) memorisant le dernier post Top users.
 const LAST_PUBLISH_KEY: &str = "top_users_last_published_at";
 /// Couleur de l'embed Top infracteurs (rouge Discord).

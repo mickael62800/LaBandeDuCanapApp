@@ -3,8 +3,8 @@
 //! une config silencieusement vide, pas une erreur de compilation — d'où des
 //! constantes plutôt que des littéraux nus.
 
-pub const ANALYTICS_BOT: &str = "analytics-bot";
-pub const ANNOUNCEMENTS_BOT: &str = "announcements-bot";
+pub const ANALYTICS_BOT: &str = "analytics";
+pub const ANNOUNCEMENTS_BOT: &str = "announcements";
 pub const AUDIT_BOT: &str = "audit-bot";
 pub const AUTOMOD_BOT: &str = "automod-bot";
 pub const BUMP_BOT: &str = "bump-bot";

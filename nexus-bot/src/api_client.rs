@@ -209,6 +209,7 @@ pub struct GameServer {
     pub guild_id: String,
     pub template_id: String,
     pub name: String,
+    pub status: String,
     pub owner_user_id: String,
     pub host_port: Option<u16>,
     pub public_host: Option<String>,

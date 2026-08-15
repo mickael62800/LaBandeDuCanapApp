@@ -87,10 +87,11 @@ pub async fn on_component(api: &ApiClient, ctx: &Context, component: &ComponentI
             .as_ref()
             .map(|t| t.name.clone())
             .unwrap_or_else(|| "Jeu".into());
-        let cover_url = public_cover_url(
+        let cover_url = public_cover_url_for_status(
             template
                 .as_ref()
                 .and_then(|template| template.cover_image_url.as_deref()),
+            detail.server.status.as_str(),
         );
         grant_session_role(ctx, component, server_id, &game_name).await;
         let embed = build_public_panel_embed(
@@ -327,16 +328,40 @@ fn chunk_options(options: &[String]) -> Vec<String> {
 }
 
 fn public_cover_url(path: Option<&str>) -> Option<String> {
+    public_cover_url_for_status(path, "running")
+}
+
+fn public_cover_url_for_status(path: Option<&str>, status: &str) -> Option<String> {
     let path = path?.trim();
-    if path.starts_with("https://") || path.starts_with("http://") {
-        return Some(path.to_string());
-    }
-    let base = std::env::var("WEB_FRONT_URL").ok()?;
-    let base = base.trim().trim_end_matches('/');
-    if base.is_empty() {
+    if path.is_empty() {
         return None;
     }
-    Some(format!("{base}/{}", path.trim_start_matches('/')))
+    let full_url = if path.starts_with("https://") || path.starts_with("http://") {
+        path.to_string()
+    } else {
+        let base = std::env::var("WEB_FRONT_URL").ok()?;
+        let base = base.trim().trim_end_matches('/');
+        if base.is_empty() {
+            return None;
+        }
+        format!("{base}/{}", path.trim_start_matches('/'))
+    };
+
+    if status == "running" {
+        return Some(full_url);
+    }
+
+    let dot = full_url.rfind('.')?;
+    let base = &full_url[..dot];
+    let ext = &full_url[dot..];
+
+    let suffix = if status == "scheduled" || status == "starting" {
+        "_waiting"
+    } else {
+        "_offline"
+    };
+
+    Some(format!("{base}{suffix}{ext}"))
 }
 
 async fn grant_session_role(
@@ -984,7 +1009,12 @@ async fn on_started(ctx: &Context, api: &ApiClient, guild_id: GuildId, server_id
         .get_game_template(&server.template_id)
         .await
         .ok()
-        .and_then(|template| public_cover_url(template.cover_image_url.as_deref()));
+        .and_then(|template| {
+            public_cover_url_for_status(
+                template.cover_image_url.as_deref(),
+                server.status.as_str(),
+            )
+        });
 
     let cfg = api
         .get_guild_config(&server.guild_id, MODULE_BOT_NAME)
@@ -1213,10 +1243,11 @@ async fn on_ip_reveal(ctx: &Context, api: &ApiClient, server_id: &str) {
         .as_ref()
         .map(|t| t.name.clone())
         .unwrap_or_else(|| "Jeu".into());
-    let cover_url = public_cover_url(
+    let cover_url = public_cover_url_for_status(
         template
             .as_ref()
             .and_then(|template| template.cover_image_url.as_deref()),
+        server.status.as_str(),
     );
 
     // Publie l'adresse uniquement dans le salon textuel prive des inscrits.

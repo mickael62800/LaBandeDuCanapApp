@@ -473,10 +473,66 @@ function fmtDuration(secs: number | null): string {
         </template>
       </section>
 
-      <!-- Logs -->
+      <!-- Logs & Surveillance Système -->
       <section v-else-if="onglet === 'logs'" class="sd-pane">
-        <AppButton variant="ghost" size="sm" @click="loadLogs">Rafraîchir</AppButton>
-        <pre class="sd-logs">{{ logs.join("\n") || "Aucune ligne." }}</pre>
+        <div class="sd-logs-layout">
+          <!-- Colonne gauche : Logs du serveur -->
+          <div class="sd-logs-col">
+            <div class="sd-col-header">
+              <h3>📜 Logs du conteneur</h3>
+              <AppButton variant="ghost" size="sm" @click="loadLogs">Rafraîchir</AppButton>
+            </div>
+            <pre class="sd-logs">{{ logs.join("\n") || "Aucune ligne de log disponible." }}</pre>
+          </div>
+
+          <!-- Colonne droite : Surveillance Système (RAM, CPU, etc.) -->
+          <div class="sd-surveillance-col">
+            <div class="sd-col-header">
+              <h3>📊 Surveillance système</h3>
+              <span v-if="stats" class="sd-live-badge">En direct (5s)</span>
+            </div>
+
+            <div v-if="stats" class="sd-surveillance-grid">
+              <div class="sd-surv-card">
+                <div class="sd-surv-label">Processeur (CPU)</div>
+                <div class="sd-surv-val">{{ stats.cpu_percent.toFixed(1) }} %</div>
+                <div class="sd-meter">
+                  <div class="sd-meter-bar" :style="{ width: `${Math.min(stats.cpu_percent, 100)}%` }"></div>
+                </div>
+              </div>
+
+              <div class="sd-surv-card">
+                <div class="sd-surv-label">Mémoire RAM</div>
+                <div class="sd-surv-val">{{ stats.memory_used_mb }} / {{ stats.memory_limit_mb }} Mo</div>
+                <div class="sd-meter">
+                  <div
+                    class="sd-meter-bar ram-bar"
+                    :style="{ width: `${Math.min((stats.memory_used_mb / Math.max(stats.memory_limit_mb, 1)) * 100, 100)}%` }"
+                  ></div>
+                </div>
+              </div>
+
+              <div class="sd-surv-card">
+                <div class="sd-surv-label">Joueurs en jeu</div>
+                <div class="sd-surv-val">{{ server.last_player_count }}</div>
+              </div>
+
+              <div class="sd-surv-card">
+                <div class="sd-surv-label">Statut conteneur</div>
+                <div class="sd-surv-val">
+                  <span class="sd-status" :class="`st-${server.status}`">
+                    {{ STATUS_LABELS[server.status] ?? server.status }}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div v-else class="sd-surv-empty">
+              <p v-if="!isRunning">Le serveur est éteint. Démarrez-le pour observer le processeur et la mémoire RAM en direct.</p>
+              <p v-else>Mesure des ressources du conteneur en cours…</p>
+            </div>
+          </div>
+        </div>
       </section>
 
       <!-- Console RCON -->

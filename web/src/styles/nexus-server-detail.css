@@ -262,3 +262,106 @@
 .sd-table th {
   color: var(--text-secondary);
 }
+
+.sd-logs-layout {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: var(--space-md);
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .sd-logs-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.sd-col-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-xs);
+}
+
+.sd-col-header h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.sd-live-badge {
+  font-size: 0.72rem;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--success) 20%, transparent);
+  color: var(--success);
+  font-weight: 600;
+}
+
+.sd-logs-col .sd-logs {
+  margin-top: 0;
+  height: 28rem;
+  max-height: 28rem;
+}
+
+.sd-surveillance-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.sd-surveillance-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.sd-surv-card {
+  padding: var(--space-sm) var(--space-md);
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--bg-hover);
+}
+
+.sd-surv-label {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.sd-surv-val {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.sd-meter {
+  width: 100%;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+  margin-top: 6px;
+  overflow: hidden;
+}
+
+.sd-meter-bar {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+  transition: width 0.4s ease;
+}
+
+.sd-meter-bar.ram-bar {
+  background: var(--warning, #eab308);
+}
+
+.sd-surv-empty {
+  padding: var(--space-md);
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--bg-hover);
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+

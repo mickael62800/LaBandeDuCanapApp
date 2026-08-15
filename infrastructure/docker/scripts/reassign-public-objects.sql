@@ -5,9 +5,12 @@
 -- par des extensions et echoue notamment quand l'ancien proprietaire est le
 -- superuser d'initialisation du cluster.
 
+SELECT set_config('vars.target_role', :'target_role', false);
+
 DO $$
 DECLARE
     r RECORD;
+    target_role text := current_setting('vars.target_role');
 BEGIN
     FOR r IN
         SELECT format(
@@ -21,7 +24,7 @@ BEGIN
             END,
             n.nspname,
             c.relname,
-            :'target_role'
+            target_role
         ) AS stmt
         FROM pg_catalog.pg_class AS c
         JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace
@@ -47,6 +50,7 @@ END $$;
 DO $$
 DECLARE
     r RECORD;
+    target_role text := current_setting('vars.target_role');
 BEGIN
     FOR r IN
         SELECT format(
@@ -55,7 +59,7 @@ BEGIN
             n.nspname,
             p.proname,
             pg_catalog.pg_get_function_identity_arguments(p.oid),
-            :'target_role'
+            target_role
         ) AS stmt
         FROM pg_catalog.pg_proc AS p
         JOIN pg_catalog.pg_namespace AS n ON n.oid = p.pronamespace
@@ -81,6 +85,7 @@ END $$;
 DO $$
 DECLARE
     r RECORD;
+    target_role text := current_setting('vars.target_role');
 BEGIN
     FOR r IN
         SELECT format(
@@ -88,7 +93,7 @@ BEGIN
             CASE t.typtype WHEN 'd' THEN 'DOMAIN' ELSE 'TYPE' END,
             n.nspname,
             t.typname,
-            :'target_role'
+            target_role
         ) AS stmt
         FROM pg_catalog.pg_type AS t
         JOIN pg_catalog.pg_namespace AS n ON n.oid = t.typnamespace

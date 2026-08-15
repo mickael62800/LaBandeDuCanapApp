@@ -6,9 +6,12 @@
 //!
 //! Commandes :
 //!   - `/haut-faits`               mes hauts faits (reponse ephemere) ;
-//!   - `/haut-faits membre`        ceux d'un autre membre, si la config l'autorise ;
-//!   - `/haut-faits lier`          declarer son identite de jeu (SteamID64 Palworld) ;
-//!   - `/haut-faits delier`        retirer cette identite.
+//!   - `/haut-faits membre`        ceux d'un autre membre, si la config l'autorise.
+//!
+//! La liaison d'une identite de jeu (SteamID64, XUID) n'est plus exposee ici :
+//! les hauts faits sont Discord. Le backend correspondant reste en place
+//! (routes `/api/achievements/{guild}/links/...`, table `game_player_links`)
+//! pour un jeu dont les evenements seraient un jour verifiables.
 
 use std::sync::Arc;
 
@@ -23,43 +26,9 @@ use crate::api_client::ApiClient;
 /// Module dans `bot_guild_config` : salon d'annonce, mention, toggles.
 const MODULE_BOT_NAME: &str = "nexus-achievements";
 
-/// Jeux pour lesquels une identite peut etre liee. Palworld est le premier
-/// adaptateur ; la liste s'etendra avec les autres jeux du portail.
-const JEUX_LIABLES: &[(&str, &str)] = &[("Palworld", "palworld")];
-
 pub fn register() -> CreateCommand {
-    let mut lier = CreateCommandOption::new(
-        CommandOptionType::SubCommand,
-        "lier",
-        "Lier ton compte de jeu (SteamID64 pour Palworld)",
-    );
-    let mut jeu_option =
-        CreateCommandOption::new(CommandOptionType::String, "jeu", "Le jeu").required(true);
-    let mut jeu_option_delier =
-        CreateCommandOption::new(CommandOptionType::String, "jeu", "Le jeu").required(true);
-    for (label, value) in JEUX_LIABLES {
-        jeu_option = jeu_option.add_string_choice(*label, *value);
-        jeu_option_delier = jeu_option_delier.add_string_choice(*label, *value);
-    }
-    lier = lier
-        .add_sub_option(jeu_option)
-        .add_sub_option(
-            CreateCommandOption::new(CommandOptionType::String, "plateforme", "Ou tu joues")
-                .required(true)
-                .add_string_choice("Steam", "steam")
-                .add_string_choice("Xbox / Microsoft Store", "xbox"),
-        )
-        .add_sub_option(
-            CreateCommandOption::new(
-                CommandOptionType::String,
-                "identifiant",
-                "SteamID64 (17 chiffres) ou XUID / Gamertag Xbox",
-            )
-            .required(true),
-        );
-
     CreateCommand::new("haut-faits")
-        .description("Consulter tes hauts faits et lier ton compte de jeu")
+        .description("Consulter tes hauts faits")
         .default_member_permissions(serenity::all::Permissions::empty())
         .add_option(CreateCommandOption::new(
             CommandOptionType::SubCommand,
@@ -77,20 +46,6 @@ pub fn register() -> CreateCommand {
                     .required(true),
             ),
         )
-        .add_option(CreateCommandOption::new(
-            CommandOptionType::SubCommand,
-            "compte",
-            "Voir le compte de jeu que tu as lie",
-        ))
-        .add_option(lier)
-        .add_option(
-            CreateCommandOption::new(
-                CommandOptionType::SubCommand,
-                "delier",
-                "Retirer ton identite de jeu",
-            )
-            .add_sub_option(jeu_option_delier),
-        )
 }
 
 pub async fn handle_command(api: &ApiClient, ctx: &Context, cmd: &CommandInteraction) {
@@ -107,9 +62,6 @@ pub async fn handle_command(api: &ApiClient, ctx: &Context, cmd: &CommandInterac
         .unwrap_or("moi");
 
     match sub {
-        "compte" => compte(api, ctx, cmd, &guild_id).await,
-        "lier" => lier(api, ctx, cmd, &guild_id).await,
-        "delier" => delier(api, ctx, cmd, &guild_id).await,
         "membre" => {
             // Le membre vise vient de l'option ; la config decide si consulter
             // le profil d'autrui est permis.
@@ -224,101 +176,7 @@ fn liste(items: &[&crate::api_client::AchievementProgress], vide: &str) -> Strin
     out
 }
 
-/// Rappelle au membre l'identite qu'il a liee pour chaque jeu supporte.
-async fn compte(api: &ApiClient, ctx: &Context, cmd: &CommandInteraction, guild_id: &str) {
-    let user_id = cmd.user.id.to_string();
-    let mut lignes = Vec::new();
-    for (label, slug) in JEUX_LIABLES {
-        let ligne = match api.get_player_link(guild_id, &user_id, slug).await {
-            Ok(Some(link)) => format!(
-                "**{label}** : `{}` ({})",
-                link.game_player_id, link.platform
-            ),
-            Ok(None) => format!("**{label}** : _aucun compte lie_"),
-            Err(e) => format!("**{label}** : indisponible ({e})"),
-        };
-        lignes.push(ligne);
-    }
-    repondre(
-        ctx,
-        cmd,
-        &format!(
-            "{}
-
-Pour lier ou changer : `/haut-faits lier`.",
-            lignes.join(
-                "
-"
-            )
-        ),
-    )
-    .await;
-}
-
-async fn lier(api: &ApiClient, ctx: &Context, cmd: &CommandInteraction, guild_id: &str) {
-    let (Some(jeu), Some(identifiant)) = (
-        sous_option_str(cmd, "jeu"),
-        sous_option_str(cmd, "identifiant"),
-    ) else {
-        repondre(ctx, cmd, "Jeu et identifiant requis.").await;
-        return;
-    };
-    let plateforme = sous_option_str(cmd, "plateforme").unwrap_or_else(|| "steam".to_string());
-
-    match api
-        .link_player(
-            guild_id,
-            &cmd.user.id.to_string(),
-            &jeu,
-            &plateforme,
-            &identifiant,
-        )
-        .await
-    {
-        Ok(link) => {
-            repondre(
-                ctx,
-                cmd,
-                &format!(
-                    "✅ Compte lie pour **{}** : `{}`.\nTes hauts faits {} pourront maintenant t'etre attribues.",
-                    link.game, link.game_player_id, link.game
-                ),
-            )
-            .await;
-        }
-        // L'API porte le message utile (format du SteamID, identite deja
-        // prise) : on le relaie tel quel plutot que de le reformuler.
-        Err(e) => repondre(ctx, cmd, &format!("❌ Liaison impossible : {e}")).await,
-    }
-}
-
-async fn delier(api: &ApiClient, ctx: &Context, cmd: &CommandInteraction, guild_id: &str) {
-    let Some(jeu) = sous_option_str(cmd, "jeu") else {
-        repondre(ctx, cmd, "Jeu requis.").await;
-        return;
-    };
-    match api
-        .unlink_player(guild_id, &cmd.user.id.to_string(), &jeu)
-        .await
-    {
-        Ok(()) => repondre(ctx, cmd, &format!("✅ Identite **{jeu}** retiree.")).await,
-        Err(e) => repondre(ctx, cmd, &format!("❌ Suppression impossible : {e}")).await,
-    }
-}
-
 // ── Options ──────────────────────────────────────────────────────────────
-
-fn sous_option_str(cmd: &CommandInteraction, nom: &str) -> Option<String> {
-    let sub = cmd.data.options.first()?;
-    let serenity::all::CommandDataOptionValue::SubCommand(options) = &sub.value else {
-        return None;
-    };
-    options
-        .iter()
-        .find(|o| o.name == nom)
-        .and_then(|o| o.value.as_str())
-        .map(str::to_owned)
-}
 
 fn sous_option_user(cmd: &CommandInteraction) -> Option<u64> {
     let sub = cmd.data.options.first()?;

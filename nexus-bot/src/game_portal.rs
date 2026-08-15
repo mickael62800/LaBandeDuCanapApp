@@ -24,11 +24,10 @@
 use std::sync::Arc;
 
 use serenity::all::{
-    ActionRowComponent, ButtonStyle, ChannelId, ChannelType, Colour, ComponentInteraction, Context,
-    CreateActionRow, CreateButton, CreateChannel, CreateEmbed, CreateEmbedFooter, CreateInputText,
-    CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, CreateModal,
-    EditMessage, EditRole, GuildId, InputTextStyle, ModalInteraction, PermissionOverwrite,
-    PermissionOverwriteType, Permissions, RoleId,
+    ButtonStyle, ChannelId, ChannelType, Colour, ComponentInteraction, Context, CreateActionRow,
+    CreateButton, CreateChannel, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse,
+    CreateInteractionResponseMessage, CreateMessage, EditMessage, EditRole, GuildId,
+    PermissionOverwrite, PermissionOverwriteType, Permissions, RoleId,
 };
 
 use crate::api_client::{ApiClient, GameServer};
@@ -39,36 +38,14 @@ const MODULE_BOT_NAME: &str = "game-portal";
 /// custom_id du bouton d'inscription : `gp_register:{server_id}`.
 pub const REGISTER_PREFIX: &str = "gp_register:";
 pub const REVEAL_IP_PREFIX: &str = "gp_reveal_ip:";
-/// Bouton d'ouverture de la modale de liaison : `gp_link:{server_id}:{plateforme}`.
-pub const LINK_PREFIX: &str = "gp_link:";
-/// Modale de saisie de l'identifiant : `gp_link_modal:{server_id}:{plateforme}`.
-pub const LINK_MODAL_PREFIX: &str = "gp_link_modal:";
-/// Champ de la modale.
-const CHAMP_IDENTIFIANT: &str = "identifiant";
-
-/// Plateformes proposees sur le panneau : libelle, emoji, valeur envoyee a
-/// l'API. Ajouter une plateforme ici suffit a la proposer aux joueurs.
-const PLATEFORMES: &[(&str, char, &str)] =
-    &[("ID Steam", '🎮', "steam"), ("ID Xbox", '🟩', "xbox")];
 
 pub fn handles_component(custom_id: &str) -> bool {
-    custom_id.starts_with(REGISTER_PREFIX)
-        || custom_id.starts_with(REVEAL_IP_PREFIX)
-        || custom_id.starts_with(LINK_PREFIX)
-}
-
-pub fn handles_modal(custom_id: &str) -> bool {
-    custom_id.starts_with(LINK_MODAL_PREFIX)
+    custom_id.starts_with(REGISTER_PREFIX) || custom_id.starts_with(REVEAL_IP_PREFIX)
 }
 
 pub async fn on_component(api: &ApiClient, ctx: &Context, component: &ComponentInteraction) {
     if let Some(server_id) = component.data.custom_id.strip_prefix(REVEAL_IP_PREFIX) {
         on_reveal_ip_component(api, ctx, component, server_id).await;
-        return;
-    }
-
-    if let Some(reste) = component.data.custom_id.strip_prefix(LINK_PREFIX) {
-        on_link_button(ctx, component, reste).await;
         return;
     }
 
@@ -504,152 +481,14 @@ async fn edit_deferred(
         .await;
 }
 
-// ── Liaison d'un compte de jeu depuis le panneau ──
-
-/// Libelle et exemple attendus pour une plateforme, affiches dans la modale.
-fn aide_plateforme(plateforme: &str) -> (&'static str, &'static str) {
-    match plateforme {
-        "xbox" => (
-            "XUID (16 chiffres) ou Gamertag",
-            "DarkPoney ou 2533274800000000",
-        ),
-        _ => (
-            "SteamID64 : 17 chiffres commencant par 7656119",
-            "76561198000000000",
-        ),
-    }
-}
-
-/// Clic sur « ID Steam » / « ID Xbox » : ouvre la modale de saisie.
-///
-/// `reste` vaut `{server_id}:{plateforme}`.
-async fn on_link_button(ctx: &Context, component: &ComponentInteraction, reste: &str) {
-    let Some((server_id, plateforme)) = reste.rsplit_once(':') else {
-        return;
-    };
-    let (aide, exemple) = aide_plateforme(plateforme);
-    let label = PLATEFORMES
-        .iter()
-        .find(|(_, _, valeur)| *valeur == plateforme)
-        .map(|(label, _, _)| *label)
-        .unwrap_or("Identifiant");
-
-    let champ = CreateInputText::new(InputTextStyle::Short, aide, CHAMP_IDENTIFIANT)
-        .placeholder(exemple)
-        .required(true)
-        .max_length(64);
-
-    let modal = CreateModal::new(
-        format!("{LINK_MODAL_PREFIX}{server_id}:{plateforme}"),
-        label,
-    )
-    .components(vec![CreateActionRow::InputText(champ)]);
-
-    if let Err(e) = component
-        .create_response(&ctx.http, CreateInteractionResponse::Modal(modal))
-        .await
-    {
-        tracing::warn!(error = %e, "game-portal: ouverture de la modale de liaison impossible");
-    }
-}
-
-/// Validation de la modale : enregistre l'identite aupres de l'API.
-///
-/// L'identifiant saisi n'est PAS renvoye dans la reponse d'erreur au-dela de ce
-/// que l'API dit elle-meme, et la reponse est ephemere : l'identifiant d'un
-/// joueur n'a pas a s'afficher dans un salon public.
-pub async fn on_link_modal(api: &ApiClient, ctx: &Context, modal: &ModalInteraction) {
-    let Some(reste) = modal.data.custom_id.strip_prefix(LINK_MODAL_PREFIX) else {
-        return;
-    };
-    let Some((server_id, plateforme)) = reste.rsplit_once(':') else {
-        return;
-    };
-    let Some(guild_id) = modal.guild_id else {
-        return;
-    };
-
-    let identifiant = modal
-        .data
-        .components
-        .iter()
-        .flat_map(|row| row.components.iter())
-        .find_map(|composant| match composant {
-            ActionRowComponent::InputText(input) if input.custom_id == CHAMP_IDENTIFIANT => {
-                input.value.clone()
-            }
-            _ => None,
-        })
-        .unwrap_or_default();
-
-    // Le jeu vient du serveur de session porteur du panneau : le joueur n'a
-    // pas a le choisir, et il ne peut pas se tromper de jeu.
-    let jeu = match api.get_game_server(server_id).await {
-        Ok(detail) => api
-            .get_game_template(&detail.server.template_id)
-            .await
-            .map(|t| t.slug)
-            .unwrap_or_default(),
-        Err(e) => {
-            repondre_modal(ctx, modal, &format!("❌ Serveur introuvable : {e}")).await;
-            return;
-        }
-    };
-    if jeu.is_empty() {
-        repondre_modal(ctx, modal, "❌ Jeu du serveur introuvable.").await;
-        return;
-    }
-
-    match api
-        .link_player(
-            &guild_id.to_string(),
-            &modal.user.id.to_string(),
-            &jeu,
-            plateforme,
-            identifiant.trim(),
-        )
-        .await
-    {
-        Ok(link) => {
-            repondre_modal(
-                ctx,
-                modal,
-                &format!(
-                    "✅ Compte **{}** lie pour **{}** : `{}`.
-Tes hauts faits pourront maintenant t'etre attribues.",
-                    link.platform, link.game, link.game_player_id
-                ),
-            )
-            .await;
-        }
-        // L'API porte le message utile (format attendu, identite deja prise) :
-        // on le relaie tel quel.
-        Err(e) => repondre_modal(ctx, modal, &format!("❌ Liaison impossible : {e}")).await,
-    }
-}
-
-async fn repondre_modal(ctx: &Context, modal: &ModalInteraction, contenu: &str) {
-    let _ = modal
-        .create_response(
-            &ctx.http,
-            CreateInteractionResponse::Message(
-                CreateInteractionResponseMessage::new()
-                    .content(contenu)
-                    .ephemeral(true),
-            ),
-        )
-        .await;
-}
-
 // ── Panneau ──
 
-/// Composants du panneau d'inscription : une rangee d'actions de session, une
-/// rangee de liaison de compte (une entree par plateforme).
+/// Composants du panneau d'inscription.
 ///
-/// La liaison est proposee ICI parce que c'est le moment ou le joueur pense a
-/// la session : lui demander d'aller taper une commande ailleurs, c'est perdre
-/// la moitie des liaisons — et sans liaison verifiee, aucun haut fait ne peut
-/// lui etre attribue.
+/// Les boutons de liaison de compte de jeu (ID Steam / ID Xbox) ont ete retires
+/// avec le catalogue Palworld : les hauts faits sont desormais Discord. Le
+/// backend de liaison reste en place (routes, table `game_player_links`) — les
+/// remettre revient a rajouter une rangee de boutons ici.
 pub fn panel_rows(server_id: &str, ip_revealed: bool) -> Vec<CreateActionRow> {
     let mut buttons = vec![CreateButton::new(format!("{REGISTER_PREFIX}{server_id}"))
         .label("Je m'inscris")
@@ -664,20 +503,7 @@ pub fn panel_rows(server_id: &str, ip_revealed: bool) -> Vec<CreateActionRow> {
         );
     }
 
-    let liaison: Vec<CreateButton> = PLATEFORMES
-        .iter()
-        .map(|(label, emoji, valeur)| {
-            CreateButton::new(format!("{LINK_PREFIX}{server_id}:{valeur}"))
-                .label(*label)
-                .emoji(*emoji)
-                .style(ButtonStyle::Secondary)
-        })
-        .collect();
-
-    vec![
-        CreateActionRow::Buttons(buttons),
-        CreateActionRow::Buttons(liaison),
-    ]
+    vec![CreateActionRow::Buttons(buttons)]
 }
 
 pub fn build_panel_embed(

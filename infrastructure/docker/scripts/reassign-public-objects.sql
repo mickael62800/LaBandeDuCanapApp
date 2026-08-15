@@ -46,7 +46,7 @@ BEGIN
     LOOP
         BEGIN
             EXECUTE r.stmt;
-        EXCEPTION WHEN concurrent_transaction_relationship_object_reorganization OR others THEN
+        EXCEPTION WHEN others THEN
             RAISE NOTICE 'Erreur ignorée sur stmt: % (%)', r.stmt, SQLERRM;
         END;
     END LOOP;

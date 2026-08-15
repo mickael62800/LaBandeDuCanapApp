@@ -117,6 +117,12 @@ const JOURNAUX: &[Journal] = &[
         quoi: "publications planifiees",
     },
     Journal {
+        nom: "log-alertes-jeux",
+        module: "ops-api",
+        cle: "game_alerts_log_channel_id",
+        quoi: "alertes RAM/CPU et statut des serveurs de jeu",
+    },
+    Journal {
         nom: "log-general",
         module: "audit-bot",
         cle: "log_channel_id",

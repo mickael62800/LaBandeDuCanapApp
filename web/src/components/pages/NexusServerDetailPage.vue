@@ -13,7 +13,7 @@ import AppButton from "../atoms/AppButton.vue";
 //   - la console RCON n'apparaît que si le jeu la supporte ET que le serveur
 //     tourne : afficher un champ qui échouera à coup sûr n'aide personne.
 
-import { computed, onUnmounted, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useGuildSelector } from "../../composables/useGuildSelector";
 import { useToast } from "../../composables/useToast";
@@ -249,6 +249,83 @@ let statsTimer: ReturnType<typeof setInterval> | null = null;
 const cpuHistory = ref<number[]>([]);
 const ramHistory = ref<number[]>([]);
 
+// ── Alertes Webhook Discord ──
+const cpuThreshold = ref<number>(85);
+const ramThreshold = ref<number>(90);
+const webhookUrl = ref<string>("");
+const webhookCooldownMs = 5 * 60 * 1000; // 5 min de cooldown anti-spam par métrique
+let lastCpuAlertTime = 0;
+let lastRamAlertTime = 0;
+
+// Charger les paramètres Webhook depuis le localStorage
+onMounted(() => {
+  const savedUrl = localStorage.getItem("nexus_webhook_url");
+  if (savedUrl) webhookUrl.value = savedUrl;
+  const savedCpu = localStorage.getItem("nexus_cpu_threshold");
+  if (savedCpu) cpuThreshold.value = Number(savedCpu) || 85;
+  const savedRam = localStorage.getItem("nexus_ram_threshold");
+  if (savedRam) ramThreshold.value = Number(savedRam) || 90;
+});
+
+function saveAlertSettings() {
+  localStorage.setItem("nexus_webhook_url", webhookUrl.value.trim());
+  localStorage.setItem("nexus_cpu_threshold", cpuThreshold.value.toString());
+  localStorage.setItem("nexus_ram_threshold", ramThreshold.value.toString());
+  success("Paramètres d'alerte Webhook enregistrés.");
+}
+
+async function triggerDiscordWebhook(title: string, message: string, color: number) {
+  if (!webhookUrl.value.trim()) return;
+  try {
+    await fetch(webhookUrl.value.trim(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username: "Nexus Games · Alerte Serveur",
+        embeds: [
+          {
+            title: `⚠️ ${title}`,
+            description: message,
+            color,
+            fields: [
+              { name: "Serveur", value: server.value?.name ?? "Serveur de jeu", inline: true },
+              { name: "Statut", value: server.value?.status ?? "Inconnu", inline: true },
+            ],
+            timestamp: new Date().toISOString(),
+          },
+        ],
+      }),
+    });
+  } catch (e) {
+    console.warn("Échec envoi webhook alerte:", e);
+  }
+}
+
+async function checkAlertThresholds(newStats: GameServerStats) {
+  const now = Date.now();
+  const ramPct = (newStats.memory_used_mb / Math.max(newStats.memory_limit_mb, 1)) * 100;
+
+  // Alerte CPU
+  if (newStats.cpu_percent >= cpuThreshold.value && now - lastCpuAlertTime > webhookCooldownMs) {
+    lastCpuAlertTime = now;
+    void triggerDiscordWebhook(
+      "Dépassement de Seuil CPU",
+      `Le serveur **${server.value?.name}** consomme **${newStats.cpu_percent.toFixed(1)}%** de CPU (seuil configuré: ${cpuThreshold.value}%).`,
+      0xe74c3c,
+    );
+  }
+
+  // Alerte RAM
+  if (ramPct >= ramThreshold.value && now - lastRamAlertTime > webhookCooldownMs) {
+    lastRamAlertTime = now;
+    void triggerDiscordWebhook(
+      "Dépassement de Seuil RAM",
+      `Le serveur **${server.value?.name}** consomme **${ramPct.toFixed(1)}%** de sa mémoire RAM (**${newStats.memory_used_mb} Mo** / ${newStats.memory_limit_mb} Mo) (seuil configuré: ${ramThreshold.value}%).`,
+      0xe67e22,
+    );
+  }
+}
+
 async function refreshStats() {
   if (!selectedGuildId.value || !server.value || !isRunning.value) {
     stats.value = null;
@@ -269,6 +346,9 @@ async function refreshStats() {
     const ramPct = (newStats.memory_used_mb / Math.max(newStats.memory_limit_mb, 1)) * 100;
     ramHistory.value.push(ramPct);
     if (ramHistory.value.length > 20) ramHistory.value.shift();
+
+    // Vérification des seuils
+    void checkAlertThresholds(newStats);
   }
 }
 
@@ -585,6 +665,31 @@ function fmtDuration(secs: number | null): string {
             <div v-else class="sd-surv-empty">
               <p v-if="!isRunning">Le serveur est éteint. Démarrez-le pour observer le processeur et la mémoire RAM en direct.</p>
               <p v-else>Mesure des ressources du conteneur en cours…</p>
+            </div>
+
+            <!-- Configuration des Alertes Webhook Discord -->
+            <div class="sd-webhook-card">
+              <h4>🔔 Alertes Webhook Discord</h4>
+              <p class="sd-note">Recevez une notification automatique sur Discord lorsque le CPU ou la RAM dépasse les seuils.</p>
+              <div class="sd-webhook-form">
+                <label class="sd-field">
+                  <span>URL du Webhook Discord</span>
+                  <input v-model="webhookUrl" type="url" placeholder="https://discord.com/api/webhooks/..." />
+                </label>
+                <div class="sd-thresholds-row">
+                  <label class="sd-field">
+                    <span>Seuil CPU (%)</span>
+                    <input v-model.number="cpuThreshold" type="number" min="1" max="100" />
+                  </label>
+                  <label class="sd-field">
+                    <span>Seuil RAM (%)</span>
+                    <input v-model.number="ramThreshold" type="number" min="1" max="100" />
+                  </label>
+                </div>
+                <AppButton variant="secondary" size="sm" @click="saveAlertSettings">
+                  Enregistrer l'alerte
+                </AppButton>
+              </div>
             </div>
           </div>
         </div>

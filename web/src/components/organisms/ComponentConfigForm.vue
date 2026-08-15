@@ -64,6 +64,12 @@ const configFields = computed<ConfigField[]>(() => {
   if (dedicated.value) {
     return all.filter((f) => f.key === "enabled");
   }
+  // Les poids et seuils AutoMod ont deja une interface dediee dans
+  // « Regles ». Ne pas les rendre une seconde fois dans « Composants » :
+  // les deux ecrans modifieraient les memes valeurs avec deux UX differentes.
+  if (props.definition.bot_name === "automod-bot") {
+    return all.filter((f) => !f.key.startsWith("score_"));
+  }
   return all;
 });
 
@@ -99,9 +105,8 @@ const booleanSections = computed(() => {
     .map((title) => ({ title, fields: booleanFields.value.filter((field) => automodToggleGroup(field.key) === title) }))
     .filter((section) => section.fields.length > 0);
 });
-/// Champs de scoring de la moderation (`score_weight_*`, `score_threshold_*`) :
-/// sortis dans LEUR PROPRE section pour ne pas etre noyes parmi les dizaines
-/// d'autres nombres d'automod (l'utilisateur les cherchait sans les trouver).
+/// Champs de scoring eventuellement exposes par un autre composant. Ceux de
+/// l'AutoMod sont filtres plus haut car leur interface vit dans « Regles ».
 const isScoringKey = (key: string) => key.startsWith("score_");
 const scoringFields = computed(() =>
   configFields.value.filter((f) => f.type === "number" && isScoringKey(f.key)),

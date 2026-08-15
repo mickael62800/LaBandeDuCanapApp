@@ -60,9 +60,12 @@ async function handleToggle(rule: Parameters<typeof toggleRule>[0]) {
         <p class="muted small">
           Exemple : <code>spam (poids 2.0) + insult (poids 2.0) = score 4.0</code>
           &rarr; si le seuil <code>delete</code> = 4.0, le message est supprime.
-          Une regle peut etre desactivee (toggle) si tu ne veux pas que ce flag
-          contribue au score. Si plusieurs regles sont actives sur un meme
-          message, c'est le seuil le plus strict qui gagne.
+          Desactiver une regle retire sa surcharge personnalisee : si ce flag
+          est detecte, le moteur revient alors au poids et aux seuils AutoMod
+          par defaut. Pour neutraliser sa contribution tout en gardant la
+          regle active, regle son poids sur <code>0</code>. Si plusieurs regles
+          sont actives sur un meme message, c'est le seuil le plus strict qui
+          gagne.
         </p>
         <p class="muted small">
           Les regles par defaut sont creees automatiquement quand le bot rejoint

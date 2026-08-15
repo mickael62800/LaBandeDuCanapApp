@@ -29,12 +29,38 @@ export interface EditRoleParams {
 const enCours = new Map<string, Promise<DiscordRole[]>>();
 const DUREE_PARTAGE_MS = 3000;
 
+type LiveDiscordRole = Pick<DiscordRole, "id" | "name" | "color" | "position" | "managed">;
+
+/**
+ * La table `discord_roles` est alimentee par une synchronisation du bot. Elle
+ * peut etre vide au demarrage ou apres une interruption de cette synchro.
+ * Dans ce cas, lire directement Discord evite de rendre tous les selecteurs
+ * de roles inutilisables. Les champs absents de la reponse live ne sont pas
+ * necessaires aux selecteurs ; on les complete pour conserver le contrat
+ * partage `DiscordRole`.
+ */
+async function chargerRoles(guildId: string): Promise<DiscordRole[]> {
+  const synchronises = await httpGet<DiscordRole[]>(`/api/discord-roles/${guildId}`);
+  if (synchronises.length > 0) return synchronises;
+
+  const directs = await httpGet<LiveDiscordRole[]>(`/api/guild-structure/${guildId}/roles`);
+  return directs.map((role) => ({
+    ...role,
+    guild_id: guildId,
+    permissions: "0",
+    mentionable: false,
+    icon: null,
+    member_count: 0,
+    synced_at: "",
+  }));
+}
+
 export const discordRolesService = {
   getAll(guildId: string): Promise<DiscordRole[]> {
     const partagee = enCours.get(guildId);
     if (partagee) return partagee;
 
-    const promesse = httpGet<DiscordRole[]>(`/api/discord-roles/${guildId}`);
+    const promesse = chargerRoles(guildId);
     enCours.set(guildId, promesse);
     // Un echec ne doit pas rester en cache : le prochain appel doit reessayer.
     promesse.catch(() => enCours.delete(guildId));

@@ -62,8 +62,8 @@ onUnmounted(stopPolling);
       subtitle="Ressources, disques, services et conteneurs de la machine hôte — celle qui héberge Sentinel, Nexus et Atrium."
       logo="/exploration_logo.png"
       universe="ops"
-    />
-    <template #actions>
+    >
+      <template #actions>
         <button
           class="auto-toggle"
           :class="{ active: autoRefresh }"
@@ -89,14 +89,13 @@ onUnmounted(stopPolling);
             width="14"
             height="14"
           >
-            <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
-            <path d="M21 3v5h-5" />
-            <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
-            <path d="M3 21v-5h5" />
+            <polyline points="23 4 23 10 17 10"></polyline>
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
           </svg>
-          <span>Actualiser</span>
+          Actualiser
         </button>
-    </template>
+      </template>
+    </DashboardHero>
 
     <div v-if="loading" class="loading">Chargement…</div>
 

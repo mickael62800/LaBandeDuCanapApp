@@ -302,12 +302,13 @@ watch(selectedGuildId, load, { immediate: true });
       subtitle="Accueil assisté par Intelligence Artificielle et base de connaissances communautaire."
       logo="/atrium_logo.png"
       universe="atrium"
-    />
-    <template #actions>
-      <AppButton variant="secondary" :disabled="loading" @click="load">
-        Actualiser
-      </AppButton>
-    </template>
+    >
+      <template #actions>
+        <AppButton variant="secondary" :disabled="loading" @click="load">
+          Actualiser
+        </AppButton>
+      </template>
+    </DashboardHero>
 
     <ErrorState
       v-if="loadError"

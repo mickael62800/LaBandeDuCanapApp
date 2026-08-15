@@ -31,6 +31,9 @@ const { disabledBots, disabledCount } = useBotEnabledStatus();
         <h1>{{ props.title }}</h1>
         <p>{{ props.subtitle }}</p>
       </div>
+      <div v-if="$slots.actions" class="hero-actions">
+        <slot name="actions" />
+      </div>
     </header>
 
     <!-- Bandeau "X composants desactives" — discret, cliquable vers /component-config.
@@ -281,6 +284,16 @@ const { disabledBots, disabledCount } = useBotEnabledStatus();
 .hero-text {
   position: relative;
   z-index: 1;
+  flex: 1;
+  min-width: 0;
+}
+.hero-actions {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
 }
 .hero-text h1 {
   /* Gradient text + shimmer qui balaie la couleur. */

@@ -32,22 +32,14 @@
 -- Name: moderation_gravity; Type: TYPE; Schema: public; Owner: -
 --
 
-CREATE TYPE public.moderation_gravity AS ENUM (
-    'low',
-    'medium',
-    'high',
-    'critical'
-);
-
-
---
--- Name: voice_channel_kind; Type: TYPE; Schema: public; Owner: -
---
-
-CREATE TYPE public.voice_channel_kind AS ENUM (
-    'public',
-    'private'
-);
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'moderation_gravity') THEN
+        CREATE TYPE public.moderation_gravity AS ENUM ('low', 'medium', 'high', 'critical');
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'voice_channel_kind') THEN
+        CREATE TYPE public.voice_channel_kind AS ENUM ('public', 'private');
+    END IF;
+END $$;
 
 
 --

@@ -58,7 +58,7 @@ pub async fn public_pulse(
     ensure_guild_id(&guild_id)?;
 
     let anniv_days = query.anniversary_days.unwrap_or(14);
-    let join_days = query.join_days.unwrap_or(7);
+    let join_days = query.join_days.unwrap_or(30);
 
     let anniversaries_data = state
         .members_uc

@@ -48,8 +48,8 @@ defineProps<{
   </section>
 
   <section class="mb-block">
-    <h2>Ils nous ont rejoints cette semaine <span class="mb-count">{{ newcomers.length }} nouveau(x)</span></h2>
-    <p v-if="!newcomers.length" class="mb-vide">Personne de nouveau cette semaine.</p>
+    <h2>Ils nous ont rejoints récemment <span class="mb-count">{{ newcomers.length }} nouveau(x)</span></h2>
+    <p v-if="!newcomers.length" class="mb-vide">Personne de nouveau récemment.</p>
     <div v-else class="mb-nouveaux">
       <span v-for="newcomer in newcomers" :key="newcomer.username" class="mb-nv">
         <PublicMemberAvatar :name="newcomer.username" /><span>{{ newcomer.username }}</span>

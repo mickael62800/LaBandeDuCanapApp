@@ -100,6 +100,7 @@ onMounted(async () => {
       />
 
       <ComponentSelectorSection
+        v-if="workerDefinitions.length > 0"
         title="Workers"
         :definitions="workerDefinitions"
         :selected-key="selectedComponent"

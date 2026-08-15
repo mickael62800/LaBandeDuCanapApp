@@ -104,7 +104,7 @@ pub fn register() -> CreateCommand {
             CreateCommandOption::new(
                 CommandOptionType::SubCommand,
                 "bots",
-                "Supprimer les messages de bots",
+                "Supprimer les messages de bots (tous les bots ou un bot specifique)",
             )
             .add_sub_option(
                 CreateCommandOption::new(
@@ -115,7 +115,17 @@ pub fn register() -> CreateCommand {
                 .min_int_value(1)
                 .max_int_value(100)
                 .required(true),
-            ),
+            )
+            .add_sub_option(CreateCommandOption::new(
+                CommandOptionType::User,
+                "bot",
+                "Bot specifique a cibler (laisser vide pour TOUS les bots)",
+            ))
+            .add_sub_option(CreateCommandOption::new(
+                CommandOptionType::String,
+                "bot_id",
+                "ID du bot specifique (utile si non mentionnable)",
+            )),
         )
         .add_option(
             CreateCommandOption::new(
@@ -408,7 +418,33 @@ pub async fn handle(ctx: &Context, command: &CommandInteraction) {
                 .filter(|m| m.content.to_lowercase().contains(&texte_lower))
                 .collect()
         }
-        "bots" => messages.into_iter().filter(|m| m.author.bot).collect(),
+        "bots" => {
+            let target_picker = sub_opts
+                .iter()
+                .find(|o| o.name == "bot")
+                .and_then(|o| match &o.value {
+                    CommandDataOptionValue::User(id) => Some(*id),
+                    _ => None,
+                });
+            let target_id = sub_opts
+                .iter()
+                .find(|o| o.name == "bot_id")
+                .and_then(|o| o.value.as_str())
+                .map(|s| {
+                    s.trim()
+                        .trim_start_matches("<@")
+                        .trim_start_matches('!')
+                        .trim_end_matches('>')
+                })
+                .and_then(|s| s.parse::<u64>().ok())
+                .map(serenity::all::UserId::new);
+            let specific_bot = target_picker.or(target_id);
+
+            messages
+                .into_iter()
+                .filter(|m| m.author.bot && specific_bot.map_or(true, |uid| m.author.id == uid))
+                .collect()
+        }
         "links" => messages
             .into_iter()
             .filter(|m| m.content.contains("http://") || m.content.contains("https://"))

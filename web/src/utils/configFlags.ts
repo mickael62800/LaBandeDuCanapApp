@@ -15,3 +15,20 @@ export function parseBoolConfig(value: string | null | undefined): boolean {
   const v = value.trim().toLowerCase();
   return v === "true" || v === "1" || v === "yes";
 }
+
+/**
+ * Calcule la valeur effective affichee par le formulaire de configuration.
+ *
+ * `enabled` est le coupe-circuit global des modules : son absence signifie
+ * toujours OFF, meme si un ancien schema de definition annonce encore un
+ * default a true. Cette regle doit rester identique au store et au backend.
+ */
+export function effectiveConfigValue(
+  key: string,
+  storedValue: string | undefined,
+  schemaDefault: string | undefined,
+): string | undefined {
+  if (storedValue !== undefined) return storedValue;
+  if (key === "enabled") return "false";
+  return schemaDefault !== undefined && schemaDefault !== "" ? schemaDefault : undefined;
+}

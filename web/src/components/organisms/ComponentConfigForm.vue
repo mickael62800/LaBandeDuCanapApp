@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from "vue";
-import { parseBoolConfig } from "@/utils/configFlags";
+import { effectiveConfigValue, parseBoolConfig } from "@/utils/configFlags";
 import { botConfigService } from "@/services/botConfigService";
 import { useToast } from "../../composables/useToast";
 import { clampNumberValue } from "../../utils/clampNumber";
@@ -246,6 +246,10 @@ const changesCount = computed(() =>
 function fieldStatus(field: ConfigField): { text: string; source: "db" | "default" | "none" } {
   const dbValue = dbValues.value[field.key];
 
+  if (field.key === "enabled" && (dbValue === undefined || dbValue === "")) {
+    return { text: "Par defaut : false (module desactive)", source: "default" };
+  }
+
   if (isWorker.value) {
     if (dbValue !== undefined && dbValue !== "") {
       const unit = field.label.includes("heure") ? "heure(s)" : "minute(s)";
@@ -282,7 +286,9 @@ function loadFormValues() {
   dbValues.value = { ...stored };
 
   // Le formulaire doit montrer l'etat EFFECTIF, pas seulement ce qui est
-  // stocke : cote backend, une cle absente vaut le `default` du schema.
+  // stocke. Exception de securite : le coupe-circuit global `enabled` est
+  // fail-closed et vaut false quand aucune ligne explicite n'existe, meme si
+  // un ancien schema porte encore `default: "true"`.
   //
   // Sans ce remplissage, un interrupteur dont le defaut est `true` s'affichait
   // ETEINT alors que le service le considerait ALLUME — et l'eteindre pour de
@@ -292,13 +298,8 @@ function loadFormValues() {
   // sur off.
   const effective = { ...stored };
   for (const field of configFields.value) {
-    if (
-      effective[field.key] === undefined
-      && field.default !== undefined
-      && field.default !== ""
-    ) {
-      effective[field.key] = field.default;
-    }
+    const value = effectiveConfigValue(field.key, effective[field.key], field.default);
+    if (value !== undefined) effective[field.key] = value;
   }
   savedValues.value = { ...effective };
   formValues.value = { ...effective };

@@ -21,12 +21,8 @@ use super::constants::*;
 ///
 /// Fail-closed : sans role configure ou sans membre resolu, seule la permission
 /// Discord « Gerer le serveur » ouvre les boutons.
-async fn is_staff(
-    ctx: &Context,
-    component: &ComponentInteraction,
-    cfg: &HashMap<String, String>,
-) -> bool {
-    let member = match &component.member {
+fn is_staff_member(member: Option<&serenity::all::Member>, cfg: &HashMap<String, String>) -> bool {
+    let member = match member {
         Some(m) => m,
         None => return false,
     };
@@ -39,7 +35,6 @@ async fn is_staff(
         Some(r) => serenity::model::id::RoleId::new(r),
         None => return false,
     };
-    let _ = ctx;
     member.roles.contains(&staff_role)
 }
 
@@ -65,7 +60,7 @@ pub async fn handle_status_button(ctx: &Context, component: &ComponentInteractio
         }
     };
 
-    if !is_staff(ctx, component, &cfg).await {
+    if !is_staff_member(component.member.as_ref(), &cfg) {
         let resp = CreateInteractionResponse::Message(
             CreateInteractionResponseMessage::new()
                 .content("Seul le staff peut statuer sur une idee.")
@@ -152,6 +147,19 @@ pub async fn handle_reason_modal(ctx: &Context, modal: &ModalInteraction) {
             .unwrap_or_default();
         (grpc, cfg)
     };
+
+    // La permission est revalidee a la soumission : un utilisateur dont le
+    // role staff a ete retire apres l'ouverture de la modale ne peut pas
+    // encore appliquer une decision administrative.
+    if !is_staff_member(modal.member.as_ref(), &cfg) {
+        edit(ctx, modal, "Seul le staff peut statuer sur une idee.").await;
+        warn!(
+            user = %modal.user.name,
+            user_id = %modal.user.id,
+            "Tentative de decision d'idee sans permission staff"
+        );
+        return;
+    }
     let api = ApiClient::new(grpc);
 
     // L'idee est retrouvee par le salon d'ou vient le clic.

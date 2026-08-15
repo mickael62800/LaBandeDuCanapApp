@@ -36,11 +36,29 @@ use constants::*;
 pub fn register_commands() -> Vec<CreateCommand> {
     vec![CreateCommand::new("idee")
         .description("Boite a idees du serveur")
+        .default_member_permissions(serenity::all::Permissions::MANAGE_GUILD)
         .add_option(CreateCommandOption::new(
             CommandOptionType::SubCommand,
             "panneau",
             "Poste le panneau de proposition d'idees dans ce salon",
         ))]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn commande_idee_est_reservee_aux_gestionnaires_du_serveur() {
+        let commands = register_commands();
+        let json = serde_json::to_value(&commands[0]).expect("commande serialisable");
+
+        assert_eq!(
+            json.get("default_member_permissions")
+                .and_then(|v| v.as_str()),
+            Some("32")
+        );
+    }
 }
 
 pub async fn handle_command(ctx: &Context, command: &CommandInteraction) {

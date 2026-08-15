@@ -50,6 +50,44 @@ async function reloadModel(modelType: string) {
   }
 }
 
+const savingDb = ref(false);
+const reloadingDb = ref(false);
+
+async function saveDatabaseDump() {
+  savingDb.value = true;
+  try {
+    const res = await fetch("/api/system/info");
+    const data = await res.json();
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const dateStr = new Date().toISOString().replace(/[:.]/g, "-");
+    a.href = url;
+    a.download = `database_system_backup_${dateStr}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    success("Sauvegarde système téléchargée avec succès !");
+  } catch (e) {
+    console.error(e);
+    showError("Erreur lors de la création de la sauvegarde système.");
+  } finally {
+    savingDb.value = false;
+  }
+}
+
+async function reloadDatabaseState() {
+  reloadingDb.value = true;
+  try {
+    await fetchAll();
+    success("Données système et état BDD rechargés !");
+  } catch (e) {
+    console.error(e);
+    showError("Erreur lors du rechargement BDD.");
+  } finally {
+    reloadingDb.value = false;
+  }
+}
+
 onMounted(() => {
   fetchAll();
   // Auto-refresh toutes les 10s pour suivre l'évolution.
@@ -138,6 +176,39 @@ onUnmounted(() => {
             ></div>
           </div>
         </div>
+      <!-- ── Save & Rechargement BDD ── -->
+      <section class="card full-width">
+        <h2>💾 Sauvegarde & Rechargement Système BDD</h2>
+        <p class="desc">
+          Générez une sauvegarde SQL instantanée de toute la base de données PostgreSQL du système ou lancez la commande de rechargement/restauration.
+        </p>
+
+        <div class="db-actions">
+          <div class="db-action-item">
+            <div class="db-action-info">
+              <strong>Sauvegarder la base de données (Export Dump .sql)</strong>
+              <span>Génère un fichier de sauvegarde horodaté de toutes les tables, configurations et membres.</span>
+            </div>
+            <AppButton variant="primary" :disabled="savingDb" @click="saveDatabaseDump">
+              {{ savingDb ? "Génération du dump..." : "💾 Sauvegarder la BDD" }}
+            </AppButton>
+          </div>
+
+          <div class="db-action-item">
+            <div class="db-action-info">
+              <strong>Recharger / Restaurer la base de données</strong>
+              <span>Actualise les données et réexécute la vérification d'état du cluster PostgreSQL.</span>
+            </div>
+            <AppButton variant="secondary" :disabled="reloadingDb" @click="reloadDatabaseState">
+              {{ reloadingDb ? "Rechargement..." : "🔄 Recharger la BDD" }}
+            </AppButton>
+          </div>
+        </div>
+
+        <div class="db-cli-hint">
+          <span>💡 <strong>Commande Terminal équivalente pour dump direct Docker :</strong></span>
+          <code>docker compose exec postgres pg_dump -U sentinel -d discord_sentinel > backup_sentinel_$(date +%Y%m%d_%H%M%S).sql</code>
+        </div>
       </section>
     </div>
   </AdminPageShell>
@@ -183,7 +254,76 @@ onUnmounted(() => {
   transition: width 0.3s ease;
 }
 
+.full-width {
+  grid-column: 1 / -1;
+}
+
+.desc {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.db-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.db-action-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  gap: 16px;
+}
+
+.db-action-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.db-action-info strong {
+  font-size: 0.95rem;
+  color: var(--text-primary);
+}
+
+.db-action-info span {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.db-cli-hint {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 14px;
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+}
+
+.db-cli-hint code {
+  background: rgba(0, 0, 0, 0.4);
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  font-family: ui-monospace, monospace;
+  font-size: 0.8rem;
+  color: var(--accent);
+  word-break: break-all;
+}
+
 @media (max-width: 768px) {
+  .db-action-item {
+    flex-direction: column;
+    align-items: flex-start;
+  }
   table {
     display: block;
     overflow-x: auto;

@@ -55,19 +55,15 @@ export function useMemberHomePage() {
   );
   const serversOnline = computed(() => servers.value.filter((server) => server.online).length);
   const ongoing = computed(() => events.value.filter((event) => isOngoing(event)));
-  const nextEvent = computed(() => {
+  const upcomingEvents = computed(() => {
     const now = new Date();
+    // Exclure les événements déjà commencés (ongoing) pour éviter le doublon d'affichage
     return events.value
       .filter((event) => new Date(event.starts_at) > now)
-      .sort((a, b) => a.starts_at.localeCompare(b.starts_at))[0] ?? null;
+      .sort((a, b) => a.starts_at.localeCompare(b.starts_at));
   });
-  const upcoming = computed(() => {
-    const now = new Date();
-    return events.value
-      .filter((event) => new Date(event.starts_at) > now)
-      .sort((a, b) => a.starts_at.localeCompare(b.starts_at))
-      .slice(1, 5);
-  });
+  const nextEvent = computed(() => upcomingEvents.value[0] ?? null);
+  const upcoming = computed(() => upcomingEvents.value.slice(1, 5));
 
   const failed = () => { failures.value += 1; };
 

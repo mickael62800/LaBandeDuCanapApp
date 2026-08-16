@@ -1035,6 +1035,52 @@ async fn on_started(ctx: &Context, api: &ApiClient, guild_id: GuildId, server_id
     // et le game-portal resterait casse en silence.
     if let Some(existing) = parse_channel(server.text_channel_id.as_ref()) {
         if channel_exists(ctx, existing).await {
+            // Salon existant : on en profite pour forcer la mise a jour du panel
+            // s'il y a eu un changement de code ou une desynchro.
+            let (game_name, _) = game_name_and_role(api, &server).await;
+            let cover_url = api
+                .get_game_template(&server.template_id)
+                .await
+                .ok()
+                .and_then(|template| {
+                    public_cover_url_for_status(
+                        template.cover_image_url.as_deref(),
+                        server.status.as_str(),
+                    )
+                });
+            let registered_user_ids: Vec<String> = api
+                .list_server_registrations(server_id)
+                .await
+                .unwrap_or_default()
+                .into_iter()
+                .map(|r| r.user_id)
+                .collect();
+            let embed = build_public_panel_embed(
+                &game_name,
+                &server.name,
+                &registered_user_ids,
+                server.ip_reveal_at.as_deref(),
+                server.ip_revealed,
+                cover_url.as_deref(),
+            );
+            if let Ok(pins) = existing.pins(&ctx.http).await {
+                for mut msg in pins {
+                    let is_panel = msg.components.iter().any(|row| {
+                        row.components.iter().any(|c| {
+                            if let serenity::model::application::ActionRowComponent::Button(b) = c {
+                                if let serenity::all::ButtonKind::NonLink { custom_id, .. } = &b.data {
+                                    return custom_id.starts_with(REGISTER_PREFIX) && custom_id.contains(server_id);
+                                }
+                            }
+                            false
+                        })
+                    });
+                    if is_panel {
+                        let _ = msg.edit(&ctx.http, serenity::builder::EditMessage::new().embed(embed).components(panel_rows(server_id, server.ip_revealed))).await;
+                        break;
+                    }
+                }
+            }
             return;
         }
         // Salon fantome : on libere les references avant de recreer, sinon le

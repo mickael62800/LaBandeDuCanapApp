@@ -198,6 +198,24 @@ async function revealIpNow() {
   }
 }
 
+async function startAndRevealIpNow() {
+  if (!selectedGuildId.value || !server.value || busy.value || revealingIp.value) return;
+  if (!confirm(`Démarrer « ${server.value.name} » et révéler immédiatement l'adresse IP à tous les membres ? Le rôle du jeu sera mentionné s'il existe.`)) return;
+  busy.value = true;
+  try {
+    // 1. Démarre le serveur
+    await nexusGamesService.start(selectedGuildId.value, server.value.id);
+    // 2. Révèle l'IP sur Discord
+    await nexusGamesService.revealIp(selectedGuildId.value, server.value.id);
+    
+    success("Serveur démarré et IP révélée.");
+    setTimeout(load, 1500);
+  } catch (e) {
+    showError(e instanceof Error ? e.message : "Action impossible");
+  } finally {
+    busy.value = false;
+  }
+}
 /// Programme l'ouverture. Sur un serveur au repos -> mode « Préparation »
 /// (le conteneur démarrera ~5 min avant, l'IP sera révélée à l'heure). Sur un
 /// serveur déjà en ligne -> programme seulement la révélation auto de l'IP.
@@ -554,6 +572,9 @@ function fmtDuration(secs: number | null): string {
           <template v-else>
             <button :disabled="busy || isTransient" @click="act('start')">
               {{ isScheduled ? "Lancer maintenant" : "Démarrer" }}
+            </button>
+            <button :disabled="busy || isTransient" @click="startAndRevealIpNow">
+              Démarrer + IP
             </button>
             <button
               :disabled="busy || isTransient"

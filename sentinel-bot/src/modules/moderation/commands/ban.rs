@@ -141,15 +141,9 @@ pub async fn handle(ctx: &Context, command: &CommandInteraction) {
         return;
     }
 
-    let target = match target_id.to_user(&ctx.http).await {
-        Ok(u) => u,
-        Err(_) => {
-            edit_response_text(ctx, command, "Utilisateur introuvable.").await;
-            return;
-        }
-    };
+    let target = target_id.to_user(&ctx.http).await.ok();
 
-    if let Some(role_id) = super::find_immune_role(ctx, guild_id, target.id).await {
+    if let Some(role_id) = super::find_immune_role(ctx, guild_id, target_id).await {
         edit_response_text(ctx, command, &super::immunity_message(role_id, "Ban")).await;
         return;
     }
@@ -181,11 +175,16 @@ pub async fn handle(ctx: &Context, command: &CommandInteraction) {
         None => BaseApiClient::config_u64(&guild_config, "ban_delete_message_days", 7) as u8,
     };
 
-    if let Some(risk_reason) = risk_check::check_target_risk(ctx, guild_id, &target).await {
+    let mut risk_reason_opt = None;
+    if let Some(ref u) = target {
+        risk_reason_opt = risk_check::check_target_risk(ctx, guild_id, u).await;
+    }
+
+    if let Some(risk_reason) = risk_reason_opt {
         defer_with_confirmation(
             ctx,
             command,
-            &target,
+            target.as_ref().unwrap(),
             reason,
             duration_secs,
             &duration_label,
@@ -203,7 +202,8 @@ pub async fn handle(ctx: &Context, command: &CommandInteraction) {
         command.user.id.to_string(),
         command.user.name.clone(),
         guild_id,
-        &target,
+        target_id,
+        target.as_ref(),
         reason,
         duration_secs,
         &duration_label,
@@ -307,7 +307,8 @@ pub async fn execute_ban(
     moderator_id: String,
     moderator_name: String,
     guild_id: serenity::model::id::GuildId,
-    target: &User,
+    target_id: serenity::model::id::UserId,
+    target_opt: Option<&User>,
     reason: &str,
     duration_secs: Option<u64>,
     duration_label: &str,
@@ -321,14 +322,20 @@ pub async fn execute_ban(
         .map(|g| g.name)
         .unwrap_or_else(|_| "le serveur".into());
 
+    let target_name = target_opt.map(|u| u.name.clone()).unwrap_or_else(|| format!("Utilisateur {}", target_id));
+
     // Ouvre le canal DM AVANT le ban (le bot partage encore un serveur avec la
     // cible). L'envoi du message est differe apres la journalisation pour
     // embarquer l'action_id reel dans le bouton d'appel ; un canal DM deja
     // ouvert reste joignable meme apres le ban.
-    let dm_channel = target.create_dm_channel(&ctx.http).await.ok();
+    let dm_channel = if let Some(u) = target_opt {
+        u.create_dm_channel(&ctx.http).await.ok()
+    } else {
+        None
+    };
 
     if let Err(e) = guild_id
-        .ban_with_reason(&ctx.http, target.id, ban_delete_message_days, reason)
+        .ban_with_reason(&ctx.http, target_id, ban_delete_message_days, reason)
         .await
     {
         error!(error = %e, "Impossible de bannir");
@@ -352,8 +359,8 @@ pub async fn execute_ban(
         channel_id,
         moderator_id: moderator_id.clone(),
         moderator_name: moderator_name.clone(),
-        target_id: target.id.to_string(),
-        target_name: target.name.clone(),
+        target_id: target_id.to_string(),
+        target_name: target_name.clone(),
         action_type: if is_permanent {
             "ban_permanent".to_string()
         } else {
@@ -388,15 +395,19 @@ pub async fn execute_ban(
         }
     }
 
-    info!(target = %target.name, duration = %duration_label, "Ban applique");
+    info!(target = %target_name, duration = %duration_label, "Ban applique");
 
     let mut channel_embed = critical_embed(format!("🔨 Ban ({duration_label})"))
-        .thumbnail(target.face())
-        .field("Cible", format!("<@{}>", target.id), true)
+        .field("Cible", format!("<@{}>", target_id), true)
         .field("Moderateur", format!("<@{}>", moderator_id), true)
         .field("Duree", duration_label.to_string(), true)
-        .field("ID Cible", target.id.to_string(), true)
+        .field("ID Cible", target_id.to_string(), true)
         .field("Raison", reason, false);
+    
+    if let Some(u) = target_opt {
+        channel_embed = channel_embed.thumbnail(u.face());
+    }
+
     if let Some(cmd) = command {
         channel_embed = channel_embed.field("Salon", format!("<#{}>", cmd.channel_id), true);
     }
@@ -410,7 +421,7 @@ pub async fn execute_ban(
                 &ctx.http,
                 serenity::builder::EditInteractionResponse::new().content(format!(
                     "✅ Ban applique sur <@{}> ({}).",
-                    target.id, duration_label
+                    target_id, duration_label
                 )),
             )
             .await
@@ -425,8 +436,8 @@ pub async fn execute_ban(
         ctx,
         &guild_id.to_string(),
         crate::shared::discord_helpers::SanctionKind::Ban,
-        target.id.get(),
-        Some(&target.name),
+        target_id.get(),
+        Some(&target_name),
         &moderator_name,
         reason,
         Some(duration_label),

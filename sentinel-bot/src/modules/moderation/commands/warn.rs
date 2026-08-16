@@ -120,15 +120,10 @@ pub async fn handle(ctx: &Context, command: &CommandInteraction) {
         return;
     }
 
-    let target = match target_id.to_user(&ctx.http).await {
-        Ok(u) => u,
-        Err(_) => {
-            edit_response_text(ctx, command, "Utilisateur introuvable.").await;
-            return;
-        }
-    };
+    let target_opt = target_id.to_user(&ctx.http).await.ok();
+    let target_name = target_opt.as_ref().map(|u| u.name.clone()).unwrap_or_else(|| format!("Utilisateur {}", target_id));
 
-    if let Some(role_id) = super::find_immune_role(ctx, guild_id, target.id).await {
+    if let Some(role_id) = super::find_immune_role(ctx, guild_id, target_id).await {
         edit_response_text(ctx, command, &super::immunity_message(role_id, "Warn")).await;
         return;
     }
@@ -147,8 +142,8 @@ pub async fn handle(ctx: &Context, command: &CommandInteraction) {
         channel_id: command.channel_id.to_string(),
         moderator_id: command.user.id.to_string(),
         moderator_name: command.user.name.clone(),
-        target_id: target.id.to_string(),
-        target_name: target.name.clone(),
+        target_id: target_id.to_string(),
+        target_name: target_name.clone(),
         action_type: "warn".to_string(),
         reason: reason.to_string(),
         gravity: Some(gravity.to_string()),
@@ -159,7 +154,7 @@ pub async fn handle(ctx: &Context, command: &CommandInteraction) {
         Ok(resp) => {
             info!(
                 action_id = %resp.id,
-                target = %target.name,
+                target = %target_name,
                 gravity = gravity,
                 strikes = ?resp.strikes_count,
                 escalation = ?resp.escalation_action,
@@ -172,32 +167,32 @@ pub async fn handle(ctx: &Context, command: &CommandInteraction) {
                 .map(|g| g.name)
                 .unwrap_or_else(|_| "le serveur".into());
 
-            if let Ok(dm) = target.create_dm_channel(&ctx.http).await {
-                let dm_embed = sentinel_embed(
-                    format!(
-                        "{} Avertissement sur **{guild_name}**",
-                        gravity_emoji(gravity)
-                    ),
-                    gravity_color(gravity),
-                )
-                .field("Gravite", gravity, true)
-                .field("Raison", reason, false);
-
-                // Bouton d'appel : guild_id + action_id embarques dans le
-                // custom_id pour router l'appel vers le bon serveur.
-                let appeal_row =
-                    super::appeal::build_appeal_button(&guild_id.to_string(), &resp.id);
-
-                if let Err(e) = dm
-                    .send_message(
-                        &ctx.http,
-                        CreateMessage::new()
-                            .embed(dm_embed)
-                            .components(vec![appeal_row]),
+            if let Some(ref u) = target_opt {
+                if let Ok(dm) = u.create_dm_channel(&ctx.http).await {
+                    let dm_embed = sentinel_embed(
+                        format!(
+                            "{} Avertissement sur **{guild_name}**",
+                            gravity_emoji(gravity)
+                        ),
+                        gravity_color(gravity),
                     )
-                    .await
-                {
-                    warn!(error = %e, "Failed to send warn DM to user");
+                    .field("Gravite", gravity, true)
+                    .field("Raison", reason, false);
+
+                    let appeal_row =
+                        super::appeal::build_appeal_button(&guild_id.to_string(), &resp.id);
+
+                    if let Err(e) = dm
+                        .send_message(
+                            &ctx.http,
+                            CreateMessage::new()
+                                .embed(dm_embed)
+                                .components(vec![appeal_row]),
+                        )
+                        .await
+                    {
+                        warn!(error = %e, "Failed to send warn DM to user");
+                    }
                 }
             }
 
@@ -205,15 +200,14 @@ pub async fn handle(ctx: &Context, command: &CommandInteraction) {
                 .strikes_count
                 .map(|c| format!(" — Strike {c}"))
                 .unwrap_or_default();
-            let channel_embed = sentinel_embed(
+            let mut channel_embed = sentinel_embed(
                 format!("{} Warn ({gravity}){strikes_label}", gravity_emoji(gravity)),
                 gravity_color(gravity),
             )
-            .thumbnail(target.face())
-            .field("Cible", format!("<@{}>", target.id), true)
+            .field("Cible", format!("<@{}>", target_id), true)
             .field("Moderateur", format!("<@{}>", command.user.id), true)
             .field("Gravite", gravity, true)
-            .field("ID Cible", target.id.to_string(), true)
+            .field("ID Cible", target_id.to_string(), true)
             .field("Salon", format!("<#{}>", command.channel_id), true)
             .field(
                 "Strikes",
@@ -226,11 +220,15 @@ pub async fn handle(ctx: &Context, command: &CommandInteraction) {
             .timestamp(serenity::model::Timestamp::now())
             .footer(CreateEmbedFooter::new("Moderation | Sentinel"));
 
+            if let Some(ref u) = target_opt {
+                channel_embed = channel_embed.thumbnail(u.face());
+            }
+
             if let Err(e) = command
                 .edit_response(
                     &ctx.http,
                     serenity::builder::EditInteractionResponse::new()
-                        .content(format!("✅ Avertissement envoye a <@{}>.", target.id)),
+                        .content(format!("✅ Avertissement envoye a <@{}>.", target_id)),
                 )
                 .await
             {
@@ -243,8 +241,8 @@ pub async fn handle(ctx: &Context, command: &CommandInteraction) {
                 ctx,
                 &guild_id.to_string(),
                 crate::shared::discord_helpers::SanctionKind::Warn,
-                target.id.get(),
-                Some(&target.name),
+                target_id.get(),
+                Some(&target_name),
                 &command.user.name,
                 reason,
                 None,
@@ -252,7 +250,7 @@ pub async fn handle(ctx: &Context, command: &CommandInteraction) {
             .await;
 
             if let Some(ref esc_action) = resp.escalation_action {
-                let mut member = match guild_id.member(&ctx.http, target.id).await {
+                let mut member = match guild_id.member(&ctx.http, target_id).await {
                     Ok(m) => m,
                     Err(_) => return,
                 };
@@ -273,29 +271,33 @@ pub async fn handle(ctx: &Context, command: &CommandInteraction) {
                         {
                             warn!(error = %e, "Escalation mute echouee");
                         } else {
-                            let esc_embed = moderate_embed(format!(
+                            let mut esc_embed = moderate_embed(format!(
                                 "🔇 Mute auto (escalation — {} strikes)",
                                 resp.strikes_count.unwrap_or(0)
                             ))
-                            .field("Cible", format!("<@{}>", target.id), true)
-                            .field("ID Cible", target.id.to_string(), true)
+                            .field("Cible", format!("<@{}>", target_id), true)
+                            .field("ID Cible", target_id.to_string(), true)
                             .field("Duree", format!("{}min", secs / 60), true)
                             .field(
                                 "Declencheur",
                                 format!("/warn par <@{}>", command.user.id),
                                 false,
                             )
-                            .thumbnail(target.face())
                             .timestamp(serenity::model::Timestamp::now())
                             .footer(CreateEmbedFooter::new("Moderation | Sentinel"));
+                            
+                            if let Some(ref u) = target_opt {
+                                esc_embed = esc_embed.thumbnail(u.face());
+                            }
+
                             super::log_to_channel(ctx, &guild_id.to_string(), esc_embed).await;
 
                             crate::shared::discord_helpers::post_sanction_card(
                                 ctx,
                                 &guild_id.to_string(),
                                 crate::shared::discord_helpers::SanctionKind::Mute,
-                                target.id.get(),
-                                Some(&target.name),
+                                target_id.get(),
+                                Some(&target_name),
                                 "Escalade auto",
                                 &format!(
                                     "Escalade auto: {} strikes",
@@ -305,16 +307,13 @@ pub async fn handle(ctx: &Context, command: &CommandInteraction) {
                             )
                             .await;
 
-                            // BUG #3 — journaliser l'action d'escalade (sans
-                            // rejouer de strike : le strike declencheur est deja
-                            // compte). Le mute Discord auto-expire -> pas d'unban.
                             let esc_log = ModerationAction {
                                 guild_id: guild_id.to_string(),
                                 channel_id: command.channel_id.to_string(),
                                 moderator_id: command.user.id.to_string(),
                                 moderator_name: command.user.name.clone(),
-                                target_id: target.id.to_string(),
-                                target_name: target.name.clone(),
+                                target_id: target_id.to_string(),
+                                target_name: target_name.clone(),
                                 action_type: "mute_temp".to_string(),
                                 reason: format!(
                                     "Escalade auto: {} strikes",
@@ -329,23 +328,27 @@ pub async fn handle(ctx: &Context, command: &CommandInteraction) {
                         }
                     }
                     "ban" => {
-                        let esc_embed = danger_embed(format!(
+                        let mut esc_embed = danger_embed(format!(
                             "🔨 Ban auto (escalation — {} strikes)",
                             resp.strikes_count.unwrap_or(0)
                         ))
-                        .field("Cible", format!("<@{}>", target.id), true)
-                        .field("ID Cible", target.id.to_string(), true)
+                        .field("Cible", format!("<@{}>", target_id), true)
+                        .field("ID Cible", target_id.to_string(), true)
                         .field(
                             "Declencheur",
                             format!("/warn par <@{}>", command.user.id),
                             false,
                         )
-                        .thumbnail(target.face())
                         .timestamp(serenity::model::Timestamp::now())
                         .footer(CreateEmbedFooter::new("Moderation | Sentinel"));
+                        
+                        if let Some(ref u) = target_opt {
+                            esc_embed = esc_embed.thumbnail(u.face());
+                        }
+
                         super::log_to_channel(ctx, &guild_id.to_string(), esc_embed).await;
                         match guild_id
-                            .ban_with_reason(&ctx.http, target.id, 7, reason)
+                            .ban_with_reason(&ctx.http, target_id, 7, reason)
                             .await
                         {
                             Err(e) => {
@@ -359,8 +362,8 @@ pub async fn handle(ctx: &Context, command: &CommandInteraction) {
                                     ctx,
                                     &guild_id.to_string(),
                                     crate::shared::discord_helpers::SanctionKind::Ban,
-                                    target.id.get(),
-                                    Some(&target.name),
+                                    target_id.get(),
+                                    Some(&target_name),
                                     "Escalade auto",
                                     &format!(
                                         "Escalade auto: {} strikes",
@@ -383,8 +386,8 @@ pub async fn handle(ctx: &Context, command: &CommandInteraction) {
                                     channel_id: command.channel_id.to_string(),
                                     moderator_id: command.user.id.to_string(),
                                     moderator_name: command.user.name.clone(),
-                                    target_id: target.id.to_string(),
-                                    target_name: target.name.clone(),
+                                    target_id: target_id.to_string(),
+                                    target_name: target_name.clone(),
                                     action_type,
                                     reason: format!(
                                         "Escalade auto: {} strikes",

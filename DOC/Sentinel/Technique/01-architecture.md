@@ -5,7 +5,7 @@
 - `platform-api` : API HTTP, authentification, persistance et appels Discord.
 - `platform-core::sentinel` : règles métier de modération, communauté et système.
 - `sentinel-bot` : commandes et événements Discord.
-- `sentinel-worker` : tâches périodiques, expirations, rappels et nettoyage.
+- `platform-scheduler` : tâches périodiques, expirations, rappels et nettoyage via les jobs internes de `platform-api`.
 - PostgreSQL : données métier, historiques, tickets et configuration.
 - Redis : événements, cache, files et diffusion temps réel.
 - web : dashboard d'administration.

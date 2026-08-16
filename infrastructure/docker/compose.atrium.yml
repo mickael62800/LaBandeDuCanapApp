@@ -146,7 +146,7 @@ services:
           -c "ALTER SCHEMA public OWNER TO atrium"
 
         $$PSQL -c "GRANT CONNECT ON DATABASE atrium TO atrium"
-        $$PSQL -c "REVOKE CONNECT ON DATABASE discord_sentinel FROM PUBLIC"
+        $$PSQL -c "REVOKE CONNECT ON DATABASE discord_sentinel FROM PUBLIC" || true
     depends_on:
       postgres:
         condition: service_healthy

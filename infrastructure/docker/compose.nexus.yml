@@ -108,7 +108,7 @@ services:
         #    une session sur discord_sentinel. Il n'y lirait rien (aucune table
         #    n'est accordee a PUBLIC), mais une session ouverte est deja une
         #    surface. Le proprietaire et les superusers ne sont pas concernes.
-        $$PSQL -c "REVOKE CONNECT ON DATABASE discord_sentinel FROM PUBLIC"
+        $$PSQL -c "REVOKE CONNECT ON DATABASE discord_sentinel FROM PUBLIC" || true
         $$PSQL -c "GRANT CONNECT ON DATABASE nexus TO nexus"
     depends_on:
       postgres:

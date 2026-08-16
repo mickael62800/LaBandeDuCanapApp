@@ -200,16 +200,36 @@ async function revealIpNow() {
 
 async function startAndRevealIpNow() {
   if (!selectedGuildId.value || !server.value || busy.value || revealingIp.value) return;
-  if (!confirm(`Démarrer « ${server.value.name} » et révéler immédiatement l'adresse IP à tous les membres ? Le rôle du jeu sera mentionné s'il existe.`)) return;
+  if (!confirm(`Démarrer « ${server.value.name} » et révéler l'adresse IP dès que le port sera alloué ?`)) return;
+  
   busy.value = true;
+  const guildId = selectedGuildId.value;
+  const srvId = server.value.id;
+  
   try {
     // 1. Démarre le serveur
-    await nexusGamesService.start(selectedGuildId.value, server.value.id);
-    // 2. Révèle l'IP sur Discord
-    await nexusGamesService.revealIp(selectedGuildId.value, server.value.id);
+    await nexusGamesService.start(guildId, srvId);
+    success("Démarrage en cours... L'adresse sera révélée dès que le serveur sera en ligne.");
     
-    success("Serveur démarré et IP révélée.");
-    setTimeout(load, 1500);
+    // 2. Poll l'état jusqu'à ce qu'il soit 'running'
+    let attempts = 0;
+    while (attempts < 60) { // Timeout de 2 min max (60 * 2s)
+      await new Promise(r => setTimeout(r, 2000));
+      await load();
+      if (!server.value) break;
+      if (server.value.status === 'running') {
+        // 3. Révèle l'IP sur Discord une fois le port alloué !
+        await nexusGamesService.revealIp(guildId, srvId);
+        success("Serveur démarré et IP révélée avec succès !");
+        break;
+      } else if (server.value.status === 'error' || server.value.status === 'stopped') {
+        showError("Le serveur n'a pas pu démarrer.");
+        break;
+      }
+      attempts++;
+    }
+    
+    await load();
   } catch (e) {
     showError(e instanceof Error ? e.message : "Action impossible");
   } finally {

@@ -37,10 +37,11 @@ const MODULE_BOT_NAME: &str = "game-portal";
 
 /// custom_id du bouton d'inscription : `gp_register:{server_id}`.
 pub const REGISTER_PREFIX: &str = "gp_register:";
+pub const UNREGISTER_PREFIX: &str = "gp_unregister:";
 pub const REVEAL_IP_PREFIX: &str = "gp_reveal_ip:";
 
 pub fn handles_component(custom_id: &str) -> bool {
-    custom_id.starts_with(REGISTER_PREFIX) || custom_id.starts_with(REVEAL_IP_PREFIX)
+    custom_id.starts_with(REGISTER_PREFIX) || custom_id.starts_with(UNREGISTER_PREFIX) || custom_id.starts_with(REVEAL_IP_PREFIX)
 }
 
 pub async fn on_component(api: &ApiClient, ctx: &Context, component: &ComponentInteraction) {
@@ -49,22 +50,32 @@ pub async fn on_component(api: &ApiClient, ctx: &Context, component: &ComponentI
         return;
     }
 
-    let Some(server_id) = component.data.custom_id.strip_prefix(REGISTER_PREFIX) else {
+    let mut is_register = true;
+    let server_id = if let Some(id) = component.data.custom_id.strip_prefix(REGISTER_PREFIX) {
+        id
+    } else if let Some(id) = component.data.custom_id.strip_prefix(UNREGISTER_PREFIX) {
+        is_register = false;
+        id
+    } else {
         return;
     };
 
-    let reg_result = api
-        .register_to_server(server_id, &component.user.id.to_string())
-        .await;
+    let reg_result = if is_register {
+        api.register_to_server(server_id, &component.user.id.to_string()).await
+    } else {
+        api.unregister_from_server(server_id, &component.user.id.to_string()).await
+    };
+
     // L'API peut refuser (serveur ferme, capacite, etc.) : on ne pretend pas
     // que l'inscription a reussi -> message ephemere et on s'arrete.
     if let Err(e) = reg_result {
+        let action = if is_register { "Inscription" } else { "Désinscription" };
         let _ = component
             .create_response(
                 &ctx.http,
                 CreateInteractionResponse::Message(
                     CreateInteractionResponseMessage::new()
-                        .content(format!("❌ Inscription impossible : {e}"))
+                        .content(format!("❌ {action} impossible : {e}"))
                         .ephemeral(true),
                 ),
             )
@@ -116,12 +127,13 @@ pub async fn on_component(api: &ApiClient, ctx: &Context, component: &ComponentI
     }
 
     // Fallback : simple accuse ephemere.
+    let action_msg = if is_register { "Inscription enregistrée" } else { "Désinscription enregistrée" };
     let _ = component
         .create_response(
             &ctx.http,
             CreateInteractionResponse::Message(
                 CreateInteractionResponseMessage::new()
-                    .content("✅ Inscription enregistree.")
+                    .content(format!("✅ {action_msg}."))
                     .ephemeral(true),
             ),
         )
@@ -356,7 +368,7 @@ fn public_cover_url_for_status(path: Option<&str>, status: &str) -> Option<Strin
     let base = &full_url[..dot];
     let ext = &full_url[dot..];
 
-    let suffix = if status == "scheduled" || status == "starting" {
+    let suffix = if status == "scheduled" || status == "starting" || status == "created" {
         "_waiting"
     } else {
         "_offline"
@@ -516,10 +528,16 @@ async fn edit_deferred(
 /// backend de liaison reste en place (routes, table `game_player_links`) — les
 /// remettre revient a rajouter une rangee de boutons ici.
 pub fn panel_rows(server_id: &str, ip_revealed: bool) -> Vec<CreateActionRow> {
-    let mut buttons = vec![CreateButton::new(format!("{REGISTER_PREFIX}{server_id}"))
-        .label("Je m'inscris")
-        .emoji('✅')
-        .style(ButtonStyle::Success)];
+    let mut buttons = vec![
+        CreateButton::new(format!("{REGISTER_PREFIX}{server_id}"))
+            .label("Je m'inscris")
+            .emoji('✅')
+            .style(ButtonStyle::Success),
+        CreateButton::new(format!("{UNREGISTER_PREFIX}{server_id}"))
+            .label("Me désinscrire")
+            .emoji('❌')
+            .style(ButtonStyle::Secondary),
+    ];
     if !ip_revealed {
         buttons.push(
             CreateButton::new(format!("{REVEAL_IP_PREFIX}{server_id}"))

@@ -47,6 +47,23 @@ impl ApiClient {
         self.send(self.http.post(&url).json(&body)).await
     }
 
+    /// DELETE /api/games/servers/{server_id}/registrations/{user_id}.
+    pub async fn unregister_from_server(
+        &self,
+        server_id: &str,
+        user_id: &str,
+    ) -> Result<serde_json::Value, String> {
+        // Le endpoint exact dans platform-api est :
+        // DELETE /api/games/servers/{server_id}/registrations/{user_id}
+        let url = format!(
+            "{}/api/games/servers/{}/registrations/{}",
+            self.base_url,
+            encode_segment(server_id),
+            encode_segment(user_id)
+        );
+        self.send(self.http.delete(&url)).await
+    }
+
     /// POST /api/games/servers/{server_id}/reveal-ip/request.
     ///
     /// Flux du bouton : demarre le serveur si besoin et programme la revelation

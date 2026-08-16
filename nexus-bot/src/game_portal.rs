@@ -558,7 +558,14 @@ pub fn build_panel_embed(
         }
     } else {
         match ip_reveal_at {
-            Some(d) => format!("🔒 Masquee — revelee le **{}**", &d[..10.min(d.len())]),
+            Some(d) => {
+                if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(d) {
+                    let ts = dt.timestamp();
+                    format!("🔒 Masquee — revelee le <t:{ts}:F> (<t:{ts}:R>)")
+                } else {
+                    format!("🔒 Masquee — revelee le **{}**", &d[..10.min(d.len())])
+                }
+            }
             None => "🔒 Masquee".to_string(),
         }
     };
@@ -650,6 +657,12 @@ pub fn reconcile(ctx: Context, api: Arc<ApiClient>, guild_ids: Vec<GuildId>) {
                 if matches!(server.status.as_str(), "scheduled" | "starting" | "running") {
                     on_started(&ctx, &api, guild_id, &server.id).await;
                 }
+                if server.status == "scheduled" && !server.ip_revealed {
+                    if let Some(reveal_at) = server.ip_reveal_at.as_deref() {
+                        let (game_name, _) = game_name_and_role(&api, &server).await;
+                        schedule_opening_soon(ctx.clone(), guild_id, server.id.clone(), game_name, reveal_at.to_string());
+                    }
+                }
             }
         }
     });
@@ -680,7 +693,15 @@ async fn handle_event(ctx: &Context, api: &ApiClient, payload_json: &str) {
         // ouvre les inscriptions a l'avance ; le garde anti-doublon de
         // `on_started` evite qu'un demarrage ulterieur ne recree quoi que ce soit.
         Some(ev::SERVER_SCHEDULED) | Some(ev::SERVER_STARTED) => {
-            on_started(ctx, api, GuildId::new(guild_id), &server_id).await
+            on_started(ctx, api, GuildId::new(guild_id), &server_id).await;
+            if let Ok(detail) = api.get_game_server(&server_id).await {
+                if detail.server.status == "scheduled" && !detail.server.ip_revealed {
+                    if let Some(reveal_at) = detail.server.ip_reveal_at.as_deref() {
+                        let (game_name, _) = game_name_and_role(api, &detail.server).await;
+                        schedule_opening_soon(ctx.clone(), GuildId::new(guild_id), server_id, game_name, reveal_at.to_string());
+                    }
+                }
+            }
         }
         Some(ev::SERVER_STOPPED) => on_stopped(ctx, api, &server_id).await,
         Some(ev::SERVER_DELETED) => on_deleted(ctx, api, &server_id).await,
@@ -1357,18 +1378,8 @@ async fn on_daily_ping(ctx: &Context, api: &ApiClient, server_id: &str) {
     let (game_name, role_id) = game_name_and_role(api, &server).await;
     let Some(rid) = role_id else { return };
 
-    // Jours restants avant la revelation (calendaires).
-    let remaining = server.ip_reveal_at.as_deref().and_then(|d| {
-        chrono::DateTime::parse_from_rfc3339(d).ok().map(|dt| {
-            let target_date = dt.with_timezone(&chrono::Local).date_naive();
-            let today = chrono::Local::now().date_naive();
-            (target_date - today).num_days().max(0)
-        })
-    });
-    let when = match remaining {
-        Some(0) => "aujourd'hui".to_string(),
-        Some(1) => "demain".to_string(),
-        Some(n) => format!("dans **{n}** jour(s)"),
+    let when = match server.ip_reveal_at.as_deref().and_then(|d| chrono::DateTime::parse_from_rfc3339(d).ok()) {
+        Some(dt) => format!("<t:{}:R>", dt.timestamp()),
         None => "bientôt".to_string(),
     };
 
@@ -1380,6 +1391,56 @@ async fn on_daily_ping(ctx: &Context, api: &ApiClient, server_id: &str) {
             )),
         )
         .await;
+}
+
+static SCHEDULED_PINGS: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> = std::sync::OnceLock::new();
+
+fn get_scheduled_pings() -> &'static std::sync::Mutex<std::collections::HashSet<String>> {
+    SCHEDULED_PINGS.get_or_init(|| std::sync::Mutex::new(std::collections::HashSet::new()))
+}
+
+fn schedule_opening_soon(
+    ctx: Context,
+    guild_id: GuildId,
+    server_id: String,
+    game_name: String,
+    reveal_at: String,
+) {
+    let Ok(dt) = chrono::DateTime::parse_from_rfc3339(&reveal_at) else { return };
+    let dt_utc = dt.with_timezone(&chrono::Utc);
+    let now = chrono::Utc::now();
+    let ping_time = dt_utc - chrono::Duration::hours(1);
+    
+    if ping_time > now {
+        let mut pings = get_scheduled_pings().lock().unwrap();
+        if !pings.insert(server_id.clone()) {
+            return;
+        }
+        drop(pings);
+        
+        tokio::spawn(async move {
+            let sleep_dur = (ping_time - chrono::Utc::now()).to_std().unwrap_or(std::time::Duration::from_secs(0));
+            tokio::time::sleep(sleep_dur).await;
+            
+            let private_name = private_text_name(&game_name);
+            let channels = guild_id.channels(&ctx.http).await.unwrap_or_default();
+            let mut private_ch_id = None;
+            for (id, ch) in channels {
+                if ch.name == private_name {
+                    if ch.topic.as_deref().unwrap_or("").contains(&format!("session:{}", server_id)) {
+                        private_ch_id = Some(id);
+                        break;
+                    }
+                }
+            }
+            
+            if let Some(ch_id) = private_ch_id {
+                let _ = ch_id.send_message(&ctx.http, CreateMessage::new().content(
+                    format!("@everyone Le serveur **{game_name}** ouvre dans moins d'une heure !")
+                )).await;
+            }
+        });
+    }
 }
 
 #[cfg(test)]

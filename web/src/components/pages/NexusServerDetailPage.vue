@@ -29,6 +29,30 @@ import {
 } from "@/services/nexusGamesService";
 import AdminPageShell from "../layouts/AdminPageShell.vue";
 
+import { Line } from 'vue-chartjs'
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler
+} from 'chart.js'
+
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler
+);
+
 const route = useRoute();
 const router = useRouter();
 const { selectedGuildId } = useGuildSelector();
@@ -61,7 +85,7 @@ const stopAtInput = ref("");
 const rconCommand = ref("");
 const rconOutput = ref("");
 
-type Onglet = "apercu" | "config" | "logs" | "console" | "joueurs";
+type Onglet = "apercu" | "config" | "surveillance" | "logs" | "console" | "joueurs";
 const onglet = ref<Onglet>("apercu");
 
 const isRunning = computed(() => server.value?.status === "running");
@@ -478,28 +502,57 @@ async function refreshStats() {
   }
 }
 
-const cpuPolyline = computed(() => {
-  if (cpuHistory.value.length < 2) return "";
-  const max = 100;
-  return cpuHistory.value
-    .map((val, idx) => {
-      const x = (idx / (cpuHistory.value.length - 1)) * 260;
-      const y = 50 - (Math.min(val, max) / max) * 44;
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(" ");
+const chartOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  animation: { duration: 0 },
+  scales: {
+    y: { 
+      min: 0, 
+      max: 100, 
+      grid: { color: 'rgba(255, 255, 255, 0.1)' },
+      ticks: { color: 'rgba(255, 255, 255, 0.5)' }
+    },
+    x: { display: false }
+  },
+  plugins: { legend: { display: false } },
+  elements: {
+    point: { radius: 0 }
+  }
+};
+
+const cpuChartData = computed(() => {
+  return {
+    labels: cpuHistory.value.map((_, i) => i.toString()),
+    datasets: [
+      {
+        label: 'CPU (%)',
+        backgroundColor: 'rgba(52, 152, 219, 0.2)',
+        borderColor: '#3498db',
+        data: cpuHistory.value,
+        fill: true,
+        tension: 0.4,
+        borderWidth: 2,
+      }
+    ]
+  };
 });
 
-const ramPolyline = computed(() => {
-  if (ramHistory.value.length < 2) return "";
-  const max = 100;
-  return ramHistory.value
-    .map((val, idx) => {
-      const x = (idx / (ramHistory.value.length - 1)) * 260;
-      const y = 50 - (Math.min(val, max) / max) * 44;
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(" ");
+const ramChartData = computed(() => {
+  return {
+    labels: ramHistory.value.map((_, i) => i.toString()),
+    datasets: [
+      {
+        label: 'RAM (%)',
+        backgroundColor: 'rgba(241, 196, 15, 0.2)',
+        borderColor: '#f1c40f',
+        data: ramHistory.value,
+        fill: true,
+        tension: 0.4,
+        borderWidth: 2,
+      }
+    ]
+  };
 });
 
 function syncStatsTimer() {
@@ -634,14 +687,14 @@ function fmtDuration(secs: number | null): string {
       <!-- Onglets -->
       <div class="sd-tabs">
         <button
-          v-for="t in (['apercu', 'config', 'logs', 'console', 'joueurs'] as Onglet[])"
+          v-for="t in (['apercu', 'config', 'surveillance', 'logs', 'console', 'joueurs'] as Onglet[])"
           :key="t"
           type="button"
           :class="{ active: onglet === t }"
           @click="onglet = t"
         >
           {{
-            { apercu: "Aperçu", config: "Configuration", logs: "Logs", console: "Console", joueurs: "Joueurs" }[t]
+            { apercu: "Aperçu", config: "Configuration", surveillance: "Surveillance", logs: "Logs", console: "Console", joueurs: "Joueurs" }[t]
           }}
         </button>
       </div>
@@ -729,105 +782,96 @@ function fmtDuration(secs: number | null): string {
         </template>
       </section>
 
-      <!-- Logs & Surveillance Système -->
-      <section v-else-if="onglet === 'logs'" class="sd-pane">
-        <div class="sd-logs-layout">
-          <!-- Colonne gauche : Logs du serveur -->
-          <div class="sd-logs-col">
-            <div class="sd-col-header">
-              <h3>📜 Logs du conteneur</h3>
-              <AppButton variant="ghost" size="sm" @click="loadLogs">Rafraîchir</AppButton>
+      <!-- Surveillance Système -->
+      <section v-else-if="onglet === 'surveillance'" class="sd-pane">
+        <div class="sd-col-header">
+          <h3>📊 Surveillance système</h3>
+          <span v-if="stats" class="sd-live-badge">En direct (5s)</span>
+        </div>
+
+        <div v-if="stats" class="sd-surveillance-full-grid">
+          <div class="sd-surv-card sd-surv-large">
+            <div class="sd-surv-header">
+              <span class="sd-surv-label">Processeur (CPU)</span>
+              <span class="sd-surv-val">{{ stats.cpu_percent.toFixed(1) }} %</span>
             </div>
-            <pre class="sd-logs">{{ logs.join("\n") || "Aucune ligne de log disponible." }}</pre>
+            <div class="sd-meter">
+              <div class="sd-meter-bar" :style="{ width: `${Math.min(stats.cpu_percent, 100)}%` }"></div>
+            </div>
+            <div class="sd-chart-large-box">
+              <Line :data="cpuChartData" :options="chartOptions" />
+            </div>
           </div>
 
-          <!-- Colonne droite : Surveillance Système (RAM, CPU, etc.) -->
-          <div class="sd-surveillance-col">
-            <div class="sd-col-header">
-              <h3>📊 Surveillance système</h3>
-              <span v-if="stats" class="sd-live-badge">En direct (5s)</span>
+          <div class="sd-surv-card sd-surv-large">
+            <div class="sd-surv-header">
+              <span class="sd-surv-label">Mémoire RAM</span>
+              <span class="sd-surv-val">{{ stats.memory_used_mb }} / {{ stats.memory_limit_mb }} Mo</span>
             </div>
-
-            <div v-if="stats" class="sd-surveillance-grid">
-              <div class="sd-surv-card">
-                <div class="sd-surv-header">
-                  <span class="sd-surv-label">Processeur (CPU)</span>
-                  <span class="sd-surv-val">{{ stats.cpu_percent.toFixed(1) }} %</span>
-                </div>
-                <div class="sd-meter">
-                  <div class="sd-meter-bar" :style="{ width: `${Math.min(stats.cpu_percent, 100)}%` }"></div>
-                </div>
-                <div class="sd-chart-box">
-                  <svg viewBox="0 0 260 50" class="sd-chart-svg">
-                    <polyline v-if="cpuPolyline" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" :points="cpuPolyline" />
-                  </svg>
-                </div>
-              </div>
-
-              <div class="sd-surv-card">
-                <div class="sd-surv-header">
-                  <span class="sd-surv-label">Mémoire RAM</span>
-                  <span class="sd-surv-val">{{ stats.memory_used_mb }} / {{ stats.memory_limit_mb }} Mo</span>
-                </div>
-                <div class="sd-meter">
-                  <div
-                    class="sd-meter-bar ram-bar"
-                    :style="{ width: `${Math.min((stats.memory_used_mb / Math.max(stats.memory_limit_mb, 1)) * 100, 100)}%` }"
-                  ></div>
-                </div>
-                <div class="sd-chart-box">
-                  <svg viewBox="0 0 260 50" class="sd-chart-svg">
-                    <polyline v-if="ramPolyline" fill="none" stroke="var(--warning, #eab308)" stroke-width="2" stroke-linejoin="round" :points="ramPolyline" />
-                  </svg>
-                </div>
-              </div>
-
-              <div class="sd-surv-card">
-                <div class="sd-surv-label">Joueurs en jeu</div>
-                <div class="sd-surv-val">{{ server.last_player_count }}</div>
-              </div>
-
-              <div class="sd-surv-card">
-                <div class="sd-surv-label">Statut conteneur</div>
-                <div class="sd-surv-val">
-                  <span class="sd-status" :class="`st-${server.status}`">
-                    {{ STATUS_LABELS[server.status] ?? server.status }}
-                  </span>
-                </div>
-              </div>
+            <div class="sd-meter">
+              <div
+                class="sd-meter-bar ram-bar"
+                :style="{ width: `${Math.min((stats.memory_used_mb / Math.max(stats.memory_limit_mb, 1)) * 100, 100)}%` }"
+              ></div>
             </div>
-
-            <div v-else class="sd-surv-empty">
-              <p v-if="!isRunning">Le serveur est éteint. Démarrez-le pour observer le processeur et la mémoire RAM en direct.</p>
-              <p v-else>Mesure des ressources du conteneur en cours…</p>
+            <div class="sd-chart-large-box">
+              <Line :data="ramChartData" :options="chartOptions" />
             </div>
+          </div>
 
-            <!-- Configuration des Alertes Webhook Discord -->
-            <div class="sd-webhook-card">
-              <h4>🔔 Alertes Webhook Discord</h4>
-              <p class="sd-note">Recevez une notification automatique sur Discord lorsque le CPU ou la RAM dépasse les seuils.</p>
-              <div class="sd-webhook-form">
-                <label class="sd-field">
-                  <span>URL du Webhook Discord</span>
-                  <input v-model="webhookUrl" type="url" placeholder="https://discord.com/api/webhooks/..." />
-                </label>
-                <div class="sd-thresholds-row">
-                  <label class="sd-field">
-                    <span>Seuil CPU (%)</span>
-                    <input v-model.number="cpuThreshold" type="number" min="1" max="100" />
-                  </label>
-                  <label class="sd-field">
-                    <span>Seuil RAM (%)</span>
-                    <input v-model.number="ramThreshold" type="number" min="1" max="100" />
-                  </label>
-                </div>
-                <AppButton variant="secondary" size="sm" @click="saveAlertSettings">
-                  Enregistrer l'alerte
-                </AppButton>
-              </div>
+          <div class="sd-surv-card">
+            <div class="sd-surv-label">Joueurs en jeu</div>
+            <div class="sd-surv-val">{{ server.last_player_count }}</div>
+          </div>
+
+          <div class="sd-surv-card">
+            <div class="sd-surv-label">Statut conteneur</div>
+            <div class="sd-surv-val">
+              <span class="sd-status" :class="`st-${server.status}`">
+                {{ STATUS_LABELS[server.status] ?? server.status }}
+              </span>
             </div>
           </div>
         </div>
+
+        <div v-else class="sd-surv-empty">
+          <p v-if="!isRunning">Le serveur est éteint. Démarrez-le pour observer le processeur et la mémoire RAM en direct.</p>
+          <p v-else>Mesure des ressources du conteneur en cours…</p>
+        </div>
+
+        <!-- Configuration des Alertes Webhook Discord -->
+        <div class="sd-webhook-card sd-surv-card" style="margin-top: 2rem;">
+          <h4>🔔 Alertes Webhook Discord</h4>
+          <p class="sd-note">Recevez une notification automatique sur Discord lorsque le CPU ou la RAM dépasse les seuils.</p>
+          <div class="sd-webhook-form">
+            <label class="sd-field">
+              <span>URL du Webhook Discord</span>
+              <input v-model="webhookUrl" type="url" placeholder="https://discord.com/api/webhooks/..." />
+            </label>
+            <div class="sd-thresholds-row">
+              <label class="sd-field">
+                <span>Seuil CPU (%)</span>
+                <input v-model.number="cpuThreshold" type="number" min="1" max="100" />
+              </label>
+              <label class="sd-field">
+                <span>Seuil RAM (%)</span>
+                <input v-model.number="ramThreshold" type="number" min="1" max="100" />
+              </label>
+            </div>
+            <AppButton variant="secondary" size="sm" @click="saveAlertSettings">
+              Enregistrer l'alerte
+            </AppButton>
+          </div>
+        </div>
+      </section>
+
+      <!-- Logs -->
+      <section v-else-if="onglet === 'logs'" class="sd-pane">
+        <div class="sd-col-header">
+          <h3>📜 Logs du conteneur</h3>
+          <AppButton variant="ghost" size="sm" @click="loadLogs">Rafraîchir</AppButton>
+        </div>
+        <pre class="sd-logs full-width-logs">{{ logs.join("\n") || "Aucune ligne de log disponible." }}</pre>
       </section>
 
       <!-- Console RCON -->

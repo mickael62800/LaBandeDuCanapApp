@@ -580,6 +580,7 @@ async fn single_guild(
         .uri()
         .path()
         .split('/')
+        .take(5) // guild_id se trouve max au 4eme segment
         .find(|seg| (17..=20).contains(&seg.len()) && seg.chars().all(|c| c.is_ascii_digit()))
         .map(str::to_string);
 

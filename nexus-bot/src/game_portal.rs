@@ -1357,18 +1357,19 @@ async fn on_daily_ping(ctx: &Context, api: &ApiClient, server_id: &str) {
     let (game_name, role_id) = game_name_and_role(api, &server).await;
     let Some(rid) = role_id else { return };
 
-    // Jours restants avant la revelation.
+    // Jours restants avant la revelation (calendaires).
     let remaining = server.ip_reveal_at.as_deref().and_then(|d| {
         chrono::DateTime::parse_from_rfc3339(d).ok().map(|dt| {
-            (dt.with_timezone(&chrono::Utc) - chrono::Utc::now())
-                .num_days()
-                .max(0)
+            let target_date = dt.with_timezone(&chrono::Local).date_naive();
+            let today = chrono::Local::now().date_naive();
+            (target_date - today).num_days().max(0)
         })
     });
     let when = match remaining {
-        Some(0) => "aujourd hui".to_string(),
+        Some(0) => "aujourd'hui".to_string(),
+        Some(1) => "demain".to_string(),
         Some(n) => format!("dans **{n}** jour(s)"),
-        None => "bientot".to_string(),
+        None => "bientôt".to_string(),
     };
 
     let _ = text_ch

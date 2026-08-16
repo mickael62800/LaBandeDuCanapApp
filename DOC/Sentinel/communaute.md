@@ -2,27 +2,31 @@
 
 Ce domaine regroupe les outils qui servent à accueillir les membres, publier des informations et faire vivre le serveur.
 
-## Fonctionnalités incluses
+## Comment ça marche
 
-- **Bienvenue :** personnaliser l'accueil des nouveaux membres.
-- **Annonces planifiées :** préparer un message à publier à une date choisie.
-- **Messages et embeds :** rédiger et envoyer des messages mis en forme.
-- **Vie de la communauté :** gérer les nouvelles, sondages, événements et contenus visibles sur l'espace membre.
-- **Confessions :** recevoir et gérer des messages anonymisés selon les règles prévues.
-- **Tickets :** suivre les demandes d'aide ouvertes par les membres.
-- **Idées :** recueillir, classer et suivre les propositions de la communauté.
-- **Vocaux :** gérer les salons vocaux et leurs réglages.
-- **Panneaux de rôles :** permettre aux membres de choisir certains rôles.
-- **Niveaux :** suivre la progression liée à l'activité des membres.
-- **Parrainages :** suivre les membres qui en invitent d'autres.
-- **Rôles temporaires :** attribuer un rôle pour une durée limitée.
+Ce domaine agit comme le centre d'animation du serveur. Il connecte les modules du bot Sentinel (comme `welcome-bot`, `roles-bot`, `levels-bot`) à la base de données PostgreSQL via `platform-api`. Lorsqu'un événement survient sur Discord (arrivée d'un membre, activité vocale/écrite, création de ticket), le bot envoie la requête à l'API. L'API valide les règles métier et met à jour l'état. `platform-scheduler` intervient en arrière-plan pour traiter les événements asynchrones (publication planifiée, expiration de rôles temporaires). 
 
-## Informations clés pour une IA
+## Les actions des utilisateurs
 
-- **Utilisateurs principaux :** administrateurs, animateurs, modérateurs et membres.
-- **But principal :** organiser les échanges et automatiser les animations répétitives.
-- **Règle importante :** un message planifié, un rôle ou une publication doit toujours être associé au bon serveur et, si nécessaire, au bon salon.
-- **Règle importante :** les contenus anonymes ou privés doivent être traités avec discrétion et ne pas être attribués publiquement à leur auteur.
+- **Administrateurs / Animateurs :** configurer le message de bienvenue, planifier des annonces, créer et publier des embeds, gérer les panneaux de rôles, modérer les confessions, configurer les paliers de niveaux et les récompenses.
+- **Modérateurs :** traiter les tickets d'aide, répondre aux confessions, valider ou refuser les idées proposées.
+- **Membres :** rejoindre le serveur (déclenche l'accueil), choisir des rôles via les panneaux, soumettre des idées, envoyer des confessions, ouvrir des tickets de support, gagner de l'expérience (XP) en participant.
+
+## Les options
+
+- **Bienvenue :** activation du module, salon d'accueil, message personnalisé, carte de bienvenue générée dynamiquement, attribution d'un rôle automatique.
+- **Annonces :** date/heure de publication, salon cible, contenu du message, mentions autorisées.
+- **Confessions :** anonymat strict, salon de réception privé pour les modérateurs, salon de publication public.
+- **Niveaux :** activation du gain d'XP vocal/écrit, configuration des paliers, rôles de récompense associés.
+- **Rôles temporaires :** sélection du rôle, durée d'attribution (ex: 7 jours, 1 mois).
+- **Panneaux de rôles :** création de catégories, ajout de rôles sélectionnables (exclusifs ou multiples).
+
+## Les conditions
+
+- **Permissions :** la création d'annonces, d'embeds et de panneaux nécessite des droits administrateur ou des rôles configurés (ex: `@Animateur`).
+- **Dépendances :** les fonctionnalités requièrent l'activation préalable du composant correspondant dans l'onglet Configuration (ex: `levels-bot`, `welcome-bot`).
+- **Contexte :** toute publication ou attribution de rôle doit désigner un identifiant Discord (ID de salon ou ID de rôle) valide et existant sur le serveur.
+- **Confidentialité :** pour les confessions, le nom de l'auteur original est masqué de la base de données lors de la publication publique pour garantir l'anonymat, conformément aux règles du serveur.
 
 ## Résultat attendu
 

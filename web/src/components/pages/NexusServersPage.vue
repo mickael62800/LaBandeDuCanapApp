@@ -6,7 +6,7 @@
 // fait donc pas de controle de droits : il refleterait un etat qu'il ne peut
 // pas garantir. Un refus remonte en 403 et est affiche tel quel.
 
-import { computed, ref, watch } from "vue";
+import { computed, onUnmounted, ref, watch } from "vue";
 import { useGuildSelector } from "../../composables/useGuildSelector";
 import { useToast } from "../../composables/useToast";
 import {
@@ -100,6 +100,19 @@ async function act(server: GameServer, action: "start" | "stop" | "restart") {
   }
 }
 
+const hasTransient = computed(() => servers.value.some(isTransient));
+let transientTimer: ReturnType<typeof setInterval> | null = null;
+watch(hasTransient, (transient) => {
+  if (transientTimer) {
+    clearInterval(transientTimer);
+    transientTimer = null;
+  }
+  if (transient) {
+    transientTimer = setInterval(load, 2000);
+  }
+}, { immediate: true });
+onUnmounted(() => transientTimer && clearInterval(transientTimer));
+
 watch(selectedGuildId, load, { immediate: true });
 </script>
 
@@ -118,7 +131,7 @@ watch(selectedGuildId, load, { immediate: true });
 
     <p v-else-if="errorMessage" class="ns-error">{{ errorMessage }}</p>
 
-    <p v-else-if="loading" class="ns-hint">Chargement…</p>
+    <p v-else-if="loading && !servers.length" class="ns-hint">Chargement…</p>
 
     <template v-else>
       <RouterLink to="/nexus/servers/nouveau" class="ns-new">+ Nouveau serveur</RouterLink>

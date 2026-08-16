@@ -2,31 +2,28 @@
 
 Le Grand Salon est un espace communautaire où les membres peuvent participer à une vie de groupe légère et ludique.
 
-## Informations clés pour une IA
+## Comment ça marche
 
-- **Utilisateurs principaux :** membres de la communauté et administrateurs.
-- **Objets gérés :** profil du membre, motions, cercles, dossiers et articles de la Gazette.
-- **But principal :** encourager la participation et organiser des décisions ou des animations communautaires.
-- **Ressources :** rayonnement, jetons, réputation, bons plans et réseau sont des valeurs virtuelles.
-- **Règle importante :** une information ne peut être révélée dans la Gazette qu'après avoir été vérifiée.
+Le Grand Salon regroupe des modules de jeu de rôle (RPG) social et d'interactions communautaires ("Le Canapé"). Il s'appuie sur `platform-api` pour stocker des ressources complexes (rayonnement, jetons, réputation, réseau), des objets sociaux (Cercles/Guildes) et des événements de gouvernance (Motions/Votes). Lorsqu'un membre propose une motion sur Discord, l'événement est enregistré et soumis aux votes. Le module de la "Gazette" permet aux administrateurs de transformer des événements de jeu ou des dossiers en articles publics publiés sur le serveur Discord.
 
-## Ce que l'on peut faire
+## Les actions des utilisateurs
 
-- Rejoindre le Grand Salon.
-- Participer chaque jour pour gagner des ressources virtuelles.
-- Consulter son rayonnement, ses jetons, sa réputation et son réseau.
-- Proposer une motion, c'est-à-dire une idée ou une décision à discuter.
-- Voter pour ou contre les motions proposées.
-- Créer un cercle avec un nom et une devise.
-- Ouvrir un dossier sur un sujet à vérifier.
-- Publier une information vérifiée dans la Gazette du Canapé.
-- Lire les articles déjà publiés.
+- **Membres :** se connecter quotidiennement (daily) pour collecter des ressources, dépenser leur influence pour proposer une Motion (une idée), voter avec leur réputation sur les motions des autres, créer ou rejoindre un Cercle avec une devise, soumettre un "Dossier" (sujet de discussion ou théorie).
+- **Administrateurs / Animateurs :** utiliser le dashboard web pour superviser les Cercles créés, valider et vérifier les Dossiers, rédiger et publier la Gazette (newsletter RP) à partir des dossiers approuvés.
 
-## En résumé
+## Les options
 
-Le Grand Salon transforme les échanges de la communauté en une animation participative avec des votes, des groupes et une petite gazette.
+- **Gestion des Dossiers :** interface pour lister les dossiers ouverts par les membres, les lire, les marquer comme "vérifiés" ou "rejetés".
+- **La Gazette :** éditeur web permettant aux administrateurs de rédiger un article structuré, de l'associer à un dossier vérifié, et de le publier officiellement sur un canal Discord dédié.
+- **Configuration (via onglet config) :** activer/désactiver le Grand Salon, paramétrer le coût de création d'un Cercle ou d'une Motion.
+
+## Les conditions
+
+- **Économie distincte :** les ressources du Grand Salon (Jetons, Réputation) sont séparées de l'économie classique de NEXUS (Pièces), car elles traduisent l'influence sociale et l'investissement RP du joueur.
+- **Vérification :** un "Dossier" soumis par un joueur reste privé (entre lui et l'administration) tant qu'il n'est pas utilisé pour rédiger un article de la Gazette.
+- **Clôture :** une motion possède une durée de vie limitée. Une fois expirée, les votes sont arrêtés automatiquement par le `platform-scheduler` et le résultat est entériné.
 
 ## Résultat attendu
 
-Chaque participation doit mettre à jour le profil du membre ou l'état de l'objet concerné : motion soumise ou votée, cercle créé, dossier vérifié ou article publié.
+Chaque participation (vote, création de cercle, soumission de dossier) doit mettre à jour le profil du membre ou l'état de l'objet concerné. La validation d'un dossier et la publication d'un article doivent déclencher l'envoi du message correspondant sur le bon salon Discord par le bot.
 

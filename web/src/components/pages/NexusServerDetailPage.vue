@@ -84,6 +84,18 @@ const isTransient = computed(
   () => server.value?.status === "starting" || server.value?.status === "stopping",
 );
 
+let transientTimer: ReturnType<typeof setInterval> | null = null;
+watch(isTransient, (transient) => {
+  if (transientTimer) {
+    clearInterval(transientTimer);
+    transientTimer = null;
+  }
+  if (transient) {
+    transientTimer = setInterval(load, 2000);
+  }
+}, { immediate: true });
+onUnmounted(() => transientTimer && clearInterval(transientTimer));
+
 const isScheduled = computed(() => server.value?.status === "scheduled");
 
 const STATUS_LABELS: Record<string, string> = {
@@ -511,7 +523,7 @@ function fmtDuration(secs: number | null): string {
     :subtitle="template?.name ?? ''"
   >
     <p v-if="errorMessage" class="sd-error">{{ errorMessage }}</p>
-    <p v-else-if="loading" class="sd-hint">Chargement…</p>
+    <p v-else-if="loading && !server" class="sd-hint">Chargement…</p>
 
     <template v-else-if="server">
       <!-- Barre d'état + actions -->

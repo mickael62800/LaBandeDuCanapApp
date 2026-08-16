@@ -15,6 +15,9 @@ Les autres routes utilisent le préfixe `/` propre à la passerelle Ops et sont 
 - `/security/...` : IP, authentification, trafic, TLS et audit.
 - `/alert-rules` : lecture et modification des règles d'alerte.
 - `/system-logs` ou routes de logs : journaux techniques par service et catégorie.
+- `/api/system/info` : état détaillé système (bots/workers, CPU/RAM, BDD size, backup JSON).
+- `/api/models/status` & `/api/models/reload` : statut et rechargement à chaud des modèles IA.
+- `/api/cache/stats` : statistiques et taux de hit du cache Redis.
 
 ## Règle d'accès
 

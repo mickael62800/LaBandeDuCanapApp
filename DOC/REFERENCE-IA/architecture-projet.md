@@ -95,14 +95,14 @@ Une tâche doit pouvoir être relancée sans créer de doublon lorsque le métie
 - Les événements ne doivent pas être envoyés sur le bus d'une autre plateforme.
 - Redis, PostgreSQL et les tokens sont des dépendances d'infrastructure, pas des règles métier.
 
-## Règles d'orientation pour une IA
+## Rules d'orientation pour une IA
 
-- Une règle de décision va dans le `*-core` de la plateforme concernée.
-- Une route HTTP appartient a `platform-api`, dans le module du domaine concerne.
-- Une interaction Discord appartient au `*-bot`.
-- Une tâche périodique appartient au `*-worker`.
+- Une règle de décision va dans `platform-core` sous le module du domaine concerné (`sentinel`, `nexus`, `atrium`, `ops`).
+- Une route HTTP ou gRPC appartient à `platform-api`, dans le module de domaine correspondant.
+- Une interaction Discord appartient au bot concerné (`sentinel-bot`, `nexus-bot`, `atrium-bot`).
+- Une tâche périodique appartient au domaine dans `platform-scheduler` (qui déclenche les endpoints internes de `platform-api`).
 - Une opération machine appartient à Ops, même si elle sert NEXUS ou Atrium.
-- L'identité et les sessions appartiennent à `auth`, pas à Sentinel localement.
+- L'identité et les sessions appartiennent à `auth-api` / `auth-core`.
 
 
 

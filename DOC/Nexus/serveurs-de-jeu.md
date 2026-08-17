@@ -38,6 +38,12 @@ La validation refuse notamment tout caractère de contrôle : un retour à la li
 
 Ce lot couvre **Palworld**. Les autres jeux gardent leur console libre jusqu'à ce que leur catalogue soit écrit : mieux vaut un jeu dont chaque commande a été vérifiée que sept jeux approximatifs.
 
+### Tout est en français
+
+Les libellés, descriptions et avertissements du catalogue sont écrits en français, accents compris — ce sont des textes lus à l'écran, pas du code. La commande Discord `/game parametres` suit la même règle : elle affichait les clés techniques du jeu (`SPAWN_MONSTERS`, `DEATH_PENALTY`), elle affiche désormais leur nom français, regroupé par section comme la page de configuration, et les valeurs `true`/`false` se lisent « Oui » / « Non ».
+
+Un réglage que le modèle de jeu ne décrit pas garde son nom technique : mieux vaut une ligne au nom obscur qu'une ligne disparue.
+
 ### Combien de commandes, et pourquoi si peu
 
 Le serveur dédié Palworld expose **onze commandes RCON**, pas une de plus : annoncer, expulser, bannir, lever un bannissement, faire venir un joueur, le rejoindre, sauvegarder, arrêter avec préavis, arrêter immédiatement, lister les joueurs, afficher la version. Elles y sont toutes.

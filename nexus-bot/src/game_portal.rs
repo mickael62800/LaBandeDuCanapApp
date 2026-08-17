@@ -223,21 +223,92 @@ fn is_safe_game_option(key: &str) -> bool {
         && key != "OPS"
 }
 
-fn public_game_options(config: &std::collections::HashMap<String, String>) -> Vec<String> {
-    let mut options: Vec<_> = config
+/// Nomme un reglage en francais, d'apres le modele du jeu.
+///
+/// Sans cela, la carte affichait `SPAWN_MONSTERS` ou `DEATH_PENALTY` : des
+/// cles techniques, en anglais, qui ne disent rien a un joueur venu savoir
+/// comment se joue la partie. Le libelle existe deja dans le schema du jeu, il
+/// suffisait de s'en servir.
+///
+/// Repli sur la cle brute si le modele ne decrit pas ce reglage : mieux vaut
+/// un nom technique qu'une ligne disparue.
+fn nom_du_reglage(schema: &[crate::api_client::TemplateField], key: &str) -> String {
+    schema
+        .iter()
+        .find(|f| f.key.eq_ignore_ascii_case(key))
+        .map(|f| f.label.clone())
+        .unwrap_or_else(|| key.to_string())
+}
+
+/// Section d'un reglage, pour regrouper la carte.
+fn section_du_reglage(schema: &[crate::api_client::TemplateField], key: &str) -> String {
+    schema
+        .iter()
+        .find(|f| f.key.eq_ignore_ascii_case(key))
+        .and_then(|f| f.group.clone())
+        .filter(|g| !g.trim().is_empty())
+        .unwrap_or_else(|| "Reglages generaux".to_string())
+}
+
+/// Rend une valeur lisible : un `true` brut n'apprend rien a personne.
+fn valeur_lisible(value: &str) -> String {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "true" | "1" => "Oui".to_string(),
+        "false" | "0" => "Non".to_string(),
+        "" => "—".to_string(),
+        _ => value.trim().to_string(),
+    }
+}
+
+/// Une ligne de la carte des parametres, prete a etre triee.
+struct LigneReglage {
+    section: String,
+    texte: String,
+}
+
+fn lignes_reglages(
+    config: &std::collections::HashMap<String, String>,
+    schema: &[crate::api_client::TemplateField],
+    avec_mot_de_passe: bool,
+) -> Vec<String> {
+    let mut lignes: Vec<LigneReglage> = config
         .iter()
         .filter(|(key, _)| is_safe_game_option(key))
+        .filter(|(key, _)| avec_mot_de_passe || !is_player_password_key(key))
         .map(|(key, value)| {
-            let shown = if is_player_password_key(key) && value.trim().is_empty() {
-                "Aucun (accès libre)"
+            let affichee = if is_player_password_key(key) && value.trim().is_empty() {
+                "Aucun (accès libre)".to_string()
             } else {
-                value.as_str()
+                valeur_lisible(value)
             };
-            format!("**{key}** : `{shown}`")
+            LigneReglage {
+                section: section_du_reglage(schema, key),
+                texte: format!("**{}** : `{}`", nom_du_reglage(schema, key), affichee),
+            }
         })
         .collect();
-    options.sort_unstable();
-    options
+
+    // Par section, puis par libelle a l'interieur : la carte se lit alors comme
+    // la page de configuration, et non comme un vidage de base de donnees.
+    lignes.sort_by(|a, b| a.section.cmp(&b.section).then(a.texte.cmp(&b.texte)));
+
+    let mut sortie = Vec::new();
+    let mut section_courante = String::new();
+    for ligne in lignes {
+        if ligne.section != section_courante {
+            section_courante = ligne.section.clone();
+            sortie.push(format!("__**{section_courante}**__"));
+        }
+        sortie.push(ligne.texte);
+    }
+    sortie
+}
+
+fn public_game_options(
+    config: &std::collections::HashMap<String, String>,
+    schema: &[crate::api_client::TemplateField],
+) -> Vec<String> {
+    lignes_reglages(config, schema, true)
 }
 
 /// Footer des embeds de la commande `/game parametres`.
@@ -247,14 +318,11 @@ const OPTIONS_FOOTER: &str = "Game Portal | Paramètres";
 /// `public_game_options` mais SANS le mot de passe. Ce salon est visible de tout
 /// le rôle du jeu ; le mot de passe ne doit apparaître qu'au salon privé des
 /// inscrits.
-fn registration_options(config: &std::collections::HashMap<String, String>) -> Vec<String> {
-    let mut options: Vec<_> = config
-        .iter()
-        .filter(|(key, _)| is_safe_game_option(key) && !is_player_password_key(key))
-        .map(|(key, value)| format!("**{key}** : `{value}`"))
-        .collect();
-    options.sort_unstable();
-    options
+fn registration_options(
+    config: &std::collections::HashMap<String, String>,
+    schema: &[crate::api_client::TemplateField],
+) -> Vec<String> {
+    lignes_reglages(config, schema, false)
 }
 
 /// Construit la carte des paramètres (un ou plusieurs embeds, un par chunk).
@@ -328,15 +396,16 @@ pub async fn params_embeds_for_channel(
         .get_game_server(server_id)
         .await
         .map_err(|_| "Serveur introuvable.")?;
-    let game_name = api
-        .get_game_template(&detail.server.template_id)
-        .await
-        .map(|t| t.name)
-        .unwrap_or_else(|_| "Jeu".into());
+    let template = api.get_game_template(&detail.server.template_id).await.ok();
+    let game_name = template
+        .as_ref()
+        .map(|t| t.name.clone())
+        .unwrap_or_else(|| "Jeu".into());
+    let schema = template.map(|t| t.config_schema).unwrap_or_default();
     let options = if is_private {
-        public_game_options(&detail.config)
+        public_game_options(&detail.config, &schema)
     } else {
-        registration_options(&detail.config)
+        registration_options(&detail.config, &schema)
     };
     Ok(build_options_embeds(
         &game_name,
@@ -1593,7 +1662,66 @@ fn schedule_opening_soon(
 
 #[cfg(test)]
 mod tests {
-    use super::{private_text_name, registration_channel_name};
+    use super::{lignes_reglages, private_text_name, registration_channel_name, valeur_lisible};
+    use crate::api_client::TemplateField;
+
+    fn champ(key: &str, label: &str, group: Option<&str>) -> TemplateField {
+        TemplateField {
+            key: key.into(),
+            label: label.into(),
+            group: group.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn les_reglages_prennent_leur_nom_francais() {
+        // Avant, la carte affichait `SPAWN_MONSTERS` : une cle technique, en
+        // anglais, qui ne dit rien a un joueur venu savoir comment se joue la
+        // partie. Le libelle existait deja dans le schema du jeu.
+        let schema = vec![champ("SPAWN_MONSTERS", "Spawn monstres", Some("Monde"))];
+        let config =
+            std::collections::HashMap::from([("SPAWN_MONSTERS".to_string(), "true".to_string())]);
+
+        let lignes = lignes_reglages(&config, &schema, true);
+        assert!(lignes.iter().any(|l| l.contains("Spawn monstres")));
+        assert!(
+            !lignes.iter().any(|l| l.contains("SPAWN_MONSTERS")),
+            "la cle technique ne doit plus apparaitre"
+        );
+        // Regroupe sous sa section, comme la page de configuration.
+        assert!(lignes.iter().any(|l| l.contains("Monde")));
+    }
+
+    #[test]
+    fn un_reglage_inconnu_du_schema_reste_affiche() {
+        // Repli sur la cle brute : mieux vaut un nom technique qu'une ligne
+        // disparue de la carte.
+        let config = std::collections::HashMap::from([("MYSTERE".to_string(), "42".to_string())]);
+        let lignes = lignes_reglages(&config, &[], true);
+        assert!(lignes.iter().any(|l| l.contains("MYSTERE")));
+    }
+
+    #[test]
+    fn les_valeurs_booleennes_se_lisent_en_francais() {
+        assert_eq!(valeur_lisible("true"), "Oui");
+        assert_eq!(valeur_lisible("false"), "Non");
+        assert_eq!(valeur_lisible("1"), "Oui");
+        assert_eq!(valeur_lisible(""), "—");
+        assert_eq!(valeur_lisible("normal"), "normal");
+    }
+
+    #[test]
+    fn le_mot_de_passe_ne_sort_pas_du_salon_prive() {
+        // SECURITE : le salon d'inscription est visible de tout le role du jeu.
+        let config = std::collections::HashMap::from([(
+            "SERVER_PASSWORD".to_string(),
+            "secret".to_string(),
+        )]);
+        let prive = lignes_reglages(&config, &[], true);
+        let inscription = lignes_reglages(&config, &[], false);
+        assert!(prive.iter().any(|l| l.contains("secret")));
+        assert!(!inscription.iter().any(|l| l.contains("secret")));
+    }
 
     #[test]
     fn session_channels_use_the_game_name() {

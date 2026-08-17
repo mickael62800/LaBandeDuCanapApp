@@ -250,6 +250,20 @@ pub struct GameTemplate {
     pub slug: String,
     pub name: String,
     pub cover_image_url: Option<String>,
+    /// Description des reglages du jeu. Sert a nommer les parametres en
+    /// francais : sans elle, `/game parametres` afficherait `SPAWN_MONSTERS`,
+    /// ce qui ne dit rien a un joueur.
+    #[serde(default)]
+    pub config_schema: Vec<TemplateField>,
+}
+
+/// Un reglage du jeu, tel que le decrit son modele.
+#[derive(Debug, Deserialize)]
+pub struct TemplateField {
+    pub key: String,
+    pub label: String,
+    #[serde(default)]
+    pub group: Option<String>,
 }
 
 /// Reglage d'un template pour une guild : role Discord a pinguer.

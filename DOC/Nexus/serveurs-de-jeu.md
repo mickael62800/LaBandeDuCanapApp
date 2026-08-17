@@ -38,6 +38,18 @@ La validation refuse notamment tout caractère de contrôle : un retour à la li
 
 Ce lot couvre **Palworld**. Les autres jeux gardent leur console libre jusqu'à ce que leur catalogue soit écrit : mieux vaut un jeu dont chaque commande a été vérifiée que sept jeux approximatifs.
 
+### Combien de commandes, et pourquoi si peu
+
+Le serveur dédié Palworld expose **onze commandes RCON**, pas une de plus : annoncer, expulser, bannir, lever un bannissement, faire venir un joueur, le rejoindre, sauvegarder, arrêter avec préavis, arrêter immédiatement, lister les joueurs, afficher la version. Elles y sont toutes.
+
+`PalServer` ne sait ni changer la météo, ni donner un objet, ni téléporter quelqu'un ailleurs qu'auprès de l'administrateur : la liste est courte parce que le jeu est avare, pas parce que la page l'est. Un jeu comme Minecraft en expose des dizaines — son catalogue sera bien plus fourni le jour où il sera écrit.
+
+Tout le reste de l'administration d'un serveur Palworld ne passe pas par RCON :
+
+- **l'onglet Configuration** porte la centaine de réglages du monde (taux d'expérience, dégâts, densité de Pals, mot de passe, plateformes autorisées, sauvegardes automatiques, mises à jour) ; ils s'appliquent au redémarrage du serveur ;
+- **le cycle de vie** (démarrer, arrêter, redémarrer, supprimer) vit sur la fiche du serveur ;
+- **la liste de bannis communautaire** se règle par `BAN_LIST_URL` dans la configuration.
+
 ## Les conditions
 
 - **Infrastructure :** nécessite que le service `docker-agent` soit fonctionnel sur la machine hébergeant les jeux, et qu'il puisse communiquer avec `platform-api`.

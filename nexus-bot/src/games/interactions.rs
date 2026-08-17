@@ -8,6 +8,25 @@ pub fn handles_component(cid: &str) -> bool {
 
 pub async fn on_component(api: &ApiClient, ctx: &Context, component: &ComponentInteraction) {
     let cid = component.data.custom_id.as_str();
+
+    // ACCUSE IMMEDIAT, avant le moindre appel reseau.
+    //
+    // S'abonner a un jeu demande de retrouver le panneau, lister les jeux,
+    // lire le membre puis poser ou retirer son role : cinq allers-retours, la
+    // ou Discord ferme l'interaction au bout de 3 secondes. Sans cet accuse,
+    // le clic echoue en « n'a pas repondu a temps » alors que le role, lui,
+    // a bien ete change.
+    if !handles_component(cid) {
+        return;
+    }
+    if let Err(error) = component
+        .create_response(&ctx.http, CreateInteractionResponse::Acknowledge)
+        .await
+    {
+        warn!(%error, "games: accuse de reception impossible");
+        return;
+    }
+
     if cid.starts_with(PANEL_BUTTON_PREFIX) {
         handle_panel_button(api, ctx, component).await;
     } else if cid.starts_with(PANEL_SELECT_PREFIX) {

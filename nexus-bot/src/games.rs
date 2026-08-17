@@ -573,13 +573,17 @@ async fn reply_embed(ctx: &Context, cmd: &CommandInteraction, embed: CreateEmbed
     }
 }
 
+/// Reponse ephemere a un clic de panneau.
+///
+/// Un followup, et non une reponse initiale : l'interaction a deja ete
+/// acquittee des le premier instant du handler (cf. `on_component`), sans quoi
+/// les appels API et Discord qui suivent depassent les 3 s accordees par
+/// Discord et le clic echoue en « n'a pas repondu a temps ».
 async fn reply_component(ctx: &Context, component: &ComponentInteraction, content: &str) {
-    let response = CreateInteractionResponse::Message(
-        CreateInteractionResponseMessage::new()
-            .content(content)
-            .ephemeral(true),
-    );
-    if let Err(e) = component.create_response(&ctx.http, response).await {
+    let response = serenity::all::CreateInteractionResponseFollowup::new()
+        .content(content)
+        .ephemeral(true);
+    if let Err(e) = component.create_followup(&ctx.http, response).await {
         warn!(error = %e, "Erreur reponse ephemeral games panel");
     }
 }

@@ -329,6 +329,16 @@ impl Handler {
         }
         let (attempt_id, victim_id) = (parts[2], parts[3]);
 
+        // ACCUSE IMMEDIAT : la resolution passe par l'API, et Discord ferme
+        // l'interaction au bout de 3 secondes.
+        if let Err(error) = component
+            .create_response(&ctx.http, CreateInteractionResponse::Acknowledge)
+            .await
+        {
+            tracing::warn!(%error, "fouille: accuse de reception impossible");
+            return;
+        }
+
         if component.user.id.to_string() != victim_id {
             self.component_error(ctx, component, "Ce sont les coussins de quelqu'un d'autre.")
                 .await;
@@ -354,13 +364,11 @@ impl Handler {
                     outcome.thief_total, outcome.victim_total
                 );
                 let _ = component
-                    .create_response(
+                    .edit_response(
                         &ctx.http,
-                        CreateInteractionResponse::UpdateMessage(
-                            CreateInteractionResponseMessage::new()
-                                .content(format!("{recit}{detail}"))
-                                .components(vec![]),
-                        ),
+                        serenity::all::EditInteractionResponse::new()
+                            .content(format!("{recit}{detail}"))
+                            .components(vec![]),
                     )
                     .await;
             }
@@ -487,16 +495,20 @@ impl Handler {
         }
         let (action, combat_id, defender_id, attacker_id) =
             (parts[1], parts[2], parts[3], parts[4]);
+
+        // ACCUSE IMMEDIAT : accepter un defi enchaine l'acceptation puis la
+        // resolution, soit deux allers-retours API la ou Discord ferme
+        // l'interaction au bout de 3 secondes.
+        if let Err(error) = component
+            .create_response(&ctx.http, CreateInteractionResponse::Acknowledge)
+            .await
+        {
+            tracing::warn!(%error, "coussin: accuse de reception impossible");
+            return;
+        }
+
         if component.user.id.to_string() != defender_id {
-            let _ = component
-                .create_response(
-                    &ctx.http,
-                    CreateInteractionResponse::Message(
-                        CreateInteractionResponseMessage::new()
-                            .content("Seul l'adversaire peut repondre a ce defi.")
-                            .ephemeral(true),
-                    ),
-                )
+            self.component_error(ctx, component, "Seul l'adversaire peut repondre a ce defi.")
                 .await;
             return;
         }
@@ -504,13 +516,11 @@ impl Handler {
             match self.api.refuse_coussin(combat_id, defender_id).await {
                 Ok(true) => {
                     let _ = component
-                        .create_response(
+                        .edit_response(
                             &ctx.http,
-                            CreateInteractionResponse::UpdateMessage(
-                                CreateInteractionResponseMessage::new()
-                                    .content("👊 Duel refuse.")
-                                    .components(vec![]),
-                            ),
+                            serenity::all::EditInteractionResponse::new()
+                                .content("👊 Duel refuse.")
+                                .components(vec![]),
                         )
                         .await;
                 }
@@ -533,7 +543,18 @@ impl Handler {
                 };
                 match self.api.resolve_coussin(combat_id).await {
                     Ok(true) => {
-                        let _ = component.create_response(&ctx.http, CreateInteractionResponse::UpdateMessage(CreateInteractionResponseMessage::new().content(format!("👊 Duel resolu entre <@{}> et <@{}>. Consultez /profil pour voir les consequences.", attacker_id, component.user.id)).components(vec![]))).await;
+                        let _ = component
+                            .edit_response(
+                                &ctx.http,
+                                serenity::all::EditInteractionResponse::new()
+                                    .content(format!(
+                                        "👊 Duel resolu entre <@{}> et <@{}>. Consultez /profil pour voir les consequences.",
+                                        attacker_id,
+                                        component.user.id
+                                    ))
+                                    .components(vec![]),
+                            )
+                            .await;
                     }
                     Ok(false) => {
                         self.component_error(ctx, component, "Le duel n'a pas pu etre resolu.")
@@ -550,6 +571,11 @@ impl Handler {
         }
     }
 
+    /// Message d'erreur prive apres un clic.
+    ///
+    /// Un followup, et non une reponse initiale : l'interaction est acquittee
+    /// des l'entree du handler, sans quoi les appels API qui suivent depassent
+    /// les 3 s accordees par Discord.
     async fn component_error(
         &self,
         ctx: &Context,
@@ -557,13 +583,11 @@ impl Handler {
         message: &str,
     ) {
         let _ = component
-            .create_response(
+            .create_followup(
                 &ctx.http,
-                CreateInteractionResponse::Message(
-                    CreateInteractionResponseMessage::new()
-                        .content(message)
-                        .ephemeral(true),
-                ),
+                serenity::all::CreateInteractionResponseFollowup::new()
+                    .content(message)
+                    .ephemeral(true),
             )
             .await;
     }

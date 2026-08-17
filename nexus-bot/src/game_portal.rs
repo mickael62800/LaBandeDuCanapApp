@@ -26,8 +26,9 @@ use std::sync::Arc;
 use serenity::all::{
     ButtonStyle, ChannelId, ChannelType, Colour, ComponentInteraction, Context, CreateActionRow,
     CreateButton, CreateChannel, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse,
-    CreateInteractionResponseMessage, CreateMessage, EditMessage, EditRole, GuildId,
-    PermissionOverwrite, PermissionOverwriteType, Permissions, RoleId,
+    CreateInteractionResponseFollowup, CreateInteractionResponseMessage, CreateMessage,
+    EditInteractionResponse, EditMessage, EditRole, GuildId, PermissionOverwrite,
+    PermissionOverwriteType, Permissions, RoleId,
 };
 
 use crate::api_client::{ApiClient, GameServer};
@@ -62,6 +63,24 @@ pub async fn on_component(api: &ApiClient, ctx: &Context, component: &ComponentI
         return;
     };
 
+    // ACCUSE IMMEDIAT, avant le moindre appel reseau.
+    //
+    // Discord ferme l'interaction au bout de 3 secondes. Or reconstruire le
+    // panneau demande une inscription, la liste des inscrits, le serveur, son
+    // modele et l'attribution d'un role : bien plus que 3 s des que l'API
+    // repond lentement, et le clic echouait alors en « NexusBot n'a pas
+    // repondu a temps » alors que l'inscription, elle, avait bien eu lieu.
+    //
+    // `Acknowledge` plutot que `Defer` : le message garde son apparence, sans
+    // etat de chargement, et reste modifiable ensuite.
+    if let Err(error) = component
+        .create_response(&ctx.http, CreateInteractionResponse::Acknowledge)
+        .await
+    {
+        tracing::warn!(%error, server_id, "game-portal: accuse de reception impossible");
+        return;
+    }
+
     let reg_result = if is_register {
         api.register_to_server(server_id, &component.user.id.to_string())
             .await
@@ -79,13 +98,11 @@ pub async fn on_component(api: &ApiClient, ctx: &Context, component: &ComponentI
             "Désinscription"
         };
         let _ = component
-            .create_response(
+            .create_followup(
                 &ctx.http,
-                CreateInteractionResponse::Message(
-                    CreateInteractionResponseMessage::new()
-                        .content(format!("❌ {action} impossible : {e}"))
-                        .ephemeral(true),
-                ),
+                CreateInteractionResponseFollowup::new()
+                    .content(format!("❌ {action} impossible : {e}"))
+                    .ephemeral(true),
             )
             .await;
         return;
@@ -121,14 +138,14 @@ pub async fn on_component(api: &ApiClient, ctx: &Context, component: &ComponentI
             detail.server.ip_revealed,
             cover_url.as_deref(),
         );
+        // Le panneau est le message d'origine : on l'edite, l'accuse de
+        // reception ayant deja consomme la reponse initiale.
         let _ = component
-            .create_response(
+            .edit_response(
                 &ctx.http,
-                CreateInteractionResponse::UpdateMessage(
-                    CreateInteractionResponseMessage::new()
-                        .embed(embed)
-                        .components(panel_rows(server_id, detail.server.ip_revealed)),
-                ),
+                EditInteractionResponse::new()
+                    .embed(embed)
+                    .components(panel_rows(server_id, detail.server.ip_revealed)),
             )
             .await;
         return;
@@ -141,13 +158,11 @@ pub async fn on_component(api: &ApiClient, ctx: &Context, component: &ComponentI
         "Désinscription enregistrée"
     };
     let _ = component
-        .create_response(
+        .create_followup(
             &ctx.http,
-            CreateInteractionResponse::Message(
-                CreateInteractionResponseMessage::new()
-                    .content(format!("✅ {action_msg}."))
-                    .ephemeral(true),
-            ),
+            CreateInteractionResponseFollowup::new()
+                .content(format!("✅ {action_msg}."))
+                .ephemeral(true),
         )
         .await;
 }

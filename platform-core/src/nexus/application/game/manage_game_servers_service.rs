@@ -985,8 +985,14 @@ impl ManageGameServersUseCase for ManageGameServersService {
         let pwd = server
             .rcon_password
             .ok_or_else(|| DomainError::Conflict("rcon_password non defini".into()))?;
+        // Joint par le reseau Docker des jeux, pas par le loopback : l'API est
+        // elle-meme dans un conteneur (cf. `presence::rcon_endpoint`).
+        let (host, port) = crate::nexus::domain::entities::game::presence::rcon_endpoint(
+            server.container_name.as_deref(),
+            port,
+        );
         let params = RconConnectionParams {
-            host: "127.0.0.1".to_string(),
+            host,
             port,
             password: pwd,
             timeout_secs: 5,

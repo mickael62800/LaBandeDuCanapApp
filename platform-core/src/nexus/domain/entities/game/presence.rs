@@ -13,6 +13,28 @@
 /// mappe ; c'est cette valeur qui est passee a l'image.
 pub const CONTAINER_RCON_PORT: u16 = 25575;
 
+/// Ou joindre la console RCON d'un serveur de jeu.
+///
+/// Le port RCON est publie sur le loopback de l'HOTE (choix de securite : la
+/// console d'administration n'est jamais exposee au reseau). Mais l'API tourne
+/// elle-meme dans un conteneur, ou `127.0.0.1` la designe ELLE, pas l'hote :
+/// toute connexion y echouait donc en « connection refused », silencieusement,
+/// a chaque controle de sante.
+///
+/// On passe par le reseau Docker des jeux : le conteneur se joint par son NOM,
+/// sur le port INTERNE du serveur. Rien n'a besoin d'etre publie pour cela, et
+/// l'adresse ne quitte jamais le reseau prive.
+///
+/// Repli sur le loopback et le port publie quand le nom du conteneur est
+/// inconnu (serveur jamais demarre, ou cree avant ce changement) : c'est
+/// l'ancien comportement, qui reste valable si l'API tourne hors conteneur.
+pub fn rcon_endpoint(container_name: Option<&str>, published_port: u16) -> (String, u16) {
+    match container_name.map(str::trim).filter(|n| !n.is_empty()) {
+        Some(name) => (name.to_string(), CONTAINER_RCON_PORT),
+        None => ("127.0.0.1".to_string(), published_port),
+    }
+}
+
 /// Noms des variables d'environnement qui pilotent RCON, selon l'image.
 ///
 /// Chaque image de jeu a sa propre convention. Injecter celle d'un autre jeu
@@ -162,6 +184,28 @@ mod tests {
         let mc = rcon_env("minecraft-vanilla");
         assert_eq!(mc.enable_key, "ENABLE_RCON");
         assert_eq!(mc.password_key, "RCON_PASSWORD");
+    }
+
+    #[test]
+    fn le_rcon_passe_par_le_reseau_docker_quand_le_conteneur_est_connu() {
+        // L'API tourne dans un conteneur : `127.0.0.1` la designe ELLE, pas
+        // l'hote ou le port est publie. On joint donc le conteneur par son nom,
+        // sur le port interne.
+        assert_eq!(
+            rcon_endpoint(Some("sentinel-game-palworld"), 25701),
+            ("sentinel-game-palworld".to_string(), CONTAINER_RCON_PORT)
+        );
+    }
+
+    #[test]
+    fn sans_nom_de_conteneur_on_retombe_sur_le_port_publie() {
+        // Serveur jamais demarre, ou cree avant ce changement : l'ancien
+        // chemin reste valable si l'API tourne hors conteneur.
+        assert_eq!(rcon_endpoint(None, 25701), ("127.0.0.1".to_string(), 25701));
+        assert_eq!(
+            rcon_endpoint(Some("   "), 25701),
+            ("127.0.0.1".to_string(), 25701)
+        );
     }
 
     #[test]

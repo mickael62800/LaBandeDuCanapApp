@@ -27,8 +27,9 @@ pub async fn run_health_check(ctx: &JobContext) -> Result<JobReport, DomainError
         }
         let port = server.rcon_port.unwrap();
         let pwd = server.rcon_password.clone().unwrap();
+        let (host, port) = presence::rcon_endpoint(server.container_name.as_deref(), port);
         let params = RconConnectionParams {
-            host: RCON_HOST.to_string(),
+            host,
             port,
             password: pwd,
             timeout_secs: cfg.rcon_timeout_secs,

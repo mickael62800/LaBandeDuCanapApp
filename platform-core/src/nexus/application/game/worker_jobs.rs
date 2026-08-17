@@ -25,8 +25,6 @@ use crate::nexus::ports::outbound::game::port_allocator::{PortAllocator, PortKin
 use crate::nexus::ports::outbound::game::rcon_client::{RconClient, RconConnectionParams};
 use crate::nexus::ports::outbound::system::bot_config_repository::BotConfigRepository;
 
-const RCON_HOST: &str = "127.0.0.1";
-
 fn managed_server_id_label(labels: &HashMap<String, String>) -> Option<&str> {
     labels
         .get("nexus.server_id")

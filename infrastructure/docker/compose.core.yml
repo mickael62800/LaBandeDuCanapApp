@@ -613,9 +613,18 @@ services:
     # SECURITE — API a besoin d'internet (Discord OAuth, get_user_guilds).
     # internal : Redis + pgbouncer + autres services internes.
     # default : sortie internet (Discord).
+    # games : consoles RCON des serveurs de jeu.
+    #
+    # Le port RCON est publie sur le loopback de l'HOTE, jamais expose au
+    # reseau. Mais l'API tourne elle-meme dans un conteneur, ou `127.0.0.1` la
+    # designe ELLE : chaque connexion echouait en « connection refused », a
+    # chaque controle de sante, sans que rien ne l'explique. Elle rejoint donc
+    # le reseau des jeux et joint chaque conteneur par son NOM, sur le port
+    # interne — sans qu'aucun port ait besoin d'etre publie pour cela.
     networks:
       internal: {}
       default: {}
+      games: {}
 
   # ── Agent Docker ────────────────────────────────────────────────────────
   #
@@ -951,6 +960,12 @@ networks:
   default:
     name: sentinel
     driver: bridge
+  # Reseau des serveurs de jeu, cree et gere par `docker-agent`
+  # (DOCKER_AGENT_GAME_NETWORK). Declare `external` ici : c'est l'agent qui en
+  # est proprietaire, ce compose ne fait que s'y raccorder pour le RCON.
+  games:
+    name: ${DOCKER_AGENT_GAME_NETWORK:-sentinel-games}
+    external: true
   internal:
     name: sentinel-internal
     driver: bridge

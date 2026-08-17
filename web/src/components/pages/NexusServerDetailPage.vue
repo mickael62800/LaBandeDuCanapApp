@@ -25,8 +25,9 @@ import {
   type GameServerStats,
   type GameTemplate,
   type PlayerSession,
-  type TemplateField,
 } from "@/services/nexusGamesService";
+import { useTemplateFieldGroups } from "@/composables/useTemplateFieldGroups";
+import GameConfigField from "../molecules/GameConfigField.vue";
 import AdminPageShell from "../layouts/AdminPageShell.vue";
 
 import { Line } from 'vue-chartjs'
@@ -579,20 +580,8 @@ watch(onglet, (o) => {
   if (o === "joueurs") void loadSessions();
 });
 
-/// Mêmes sections que le formulaire de création.
-const groupesConfig = computed(() => {
-  const out: { nom: string; champs: TemplateField[] }[] = [];
-  for (const f of template.value?.config_schema ?? []) {
-    const nom = f.group || "Réglages";
-    let g = out.find((x) => x.nom === nom);
-    if (!g) {
-      g = { nom, champs: [] };
-      out.push(g);
-    }
-    g.champs.push(f);
-  }
-  return out;
-});
+/// Mêmes sections, même ordre et mêmes contrôles que le formulaire de création.
+const groupesConfig = useTemplateFieldGroups(computed(() => template.value?.config_schema));
 
 function fmtDate(iso: string | null): string {
   if (!iso) return "—";
@@ -754,23 +743,17 @@ function fmtDuration(secs: number | null): string {
         </p>
         <template v-else>
           <details v-for="g in groupesConfig" :key="g.nom" class="sd-group" open>
-            <summary>{{ g.nom }}</summary>
+            <summary>
+              {{ g.nom }}
+              <span class="sd-group-count">{{ g.champs.length }}</span>
+            </summary>
             <div class="sd-form">
-            <label v-for="f in g.champs" :key="f.key" class="sd-field">
-              <span>{{ f.label || f.key }}</span>
-              <select v-if="f.type === 'enum'" v-model="config[f.key]">
-                <option v-for="o in f.options ?? []" :key="o" :value="o">{{ o }}</option>
-              </select>
-              <input
-                v-else-if="f.type === 'number'"
+              <GameConfigField
+                v-for="f in g.champs"
+                :key="f.key"
+                :field="f"
                 v-model="config[f.key]"
-                type="number"
-                :min="f.min"
-                :max="f.max"
               />
-              <input v-else v-model="config[f.key]" type="text" :maxlength="f.max_length" />
-              <small v-if="f.description" class="sd-note">{{ f.description }}</small>
-            </label>
             </div>
           </details>
           <AppButton variant="secondary" size="sm" :disabled="savingConfig" @click="saveConfig">

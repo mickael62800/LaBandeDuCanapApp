@@ -22,6 +22,22 @@ pub struct ConfigField {
     pub label: String,
     #[serde(rename = "type")]
     pub field_type: ConfigFieldType,
+    /// Section d'affichage du formulaire. Un jeu expose jusqu'a une
+    /// cinquantaine de reglages : sans regroupement, la page est inutilisable.
+    ///
+    /// Absent du schema = pas de section connue, le front regroupe le reste
+    /// sous une rubrique generale. Ce champ etait ecrit dans les migrations
+    /// mais manquait ici : la lecture le supprimait donc AVANT que le front ne
+    /// le voie, et toutes les sections etaient perdues.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
+    /// Aide affichee sous le champ : ce que le reglage fait.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Ce que le reglage CASSE, par opposition a `description`. Affiche
+    /// distinctement : noye dans le texte courant, il ne serait pas lu.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub warning: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default: Option<serde_json::Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -233,12 +249,46 @@ mod tests {
             key: key.into(),
             label: key.into(),
             field_type: ty,
+            group: None,
+            description: None,
+            warning: None,
             default: None,
             options: None,
             min: None,
             max: None,
             max_length: None,
         }
+    }
+
+    #[test]
+    fn presentation_fields_survive_a_round_trip() {
+        // Ces trois cles sont ecrites dans les migrations mais n'existaient pas
+        // sur `ConfigField` : la lecture du schema les supprimait, et le front
+        // recevait des reglages sans section, sans aide et sans avertissement.
+        let brut = serde_json::json!({
+            "key": "ADMIN_PASSWORD",
+            "label": "Mot de passe administrateur",
+            "type": "text",
+            "group": "Acces",
+            "description": "Laisser vide pour desactiver.",
+            "warning": "Donne le controle TOTAL du serveur."
+        });
+
+        let champ: ConfigField = serde_json::from_value(brut).expect("schema lisible");
+        assert_eq!(champ.group.as_deref(), Some("Acces"));
+        assert_eq!(
+            champ.description.as_deref(),
+            Some("Laisser vide pour desactiver.")
+        );
+        assert_eq!(
+            champ.warning.as_deref(),
+            Some("Donne le controle TOTAL du serveur.")
+        );
+
+        // Et elles doivent ressortir telles quelles vers le front.
+        let renvoye = serde_json::to_value(&champ).expect("schema serialisable");
+        assert_eq!(renvoye["group"], "Acces");
+        assert_eq!(renvoye["warning"], "Donne le controle TOTAL du serveur.");
     }
 
     #[test]

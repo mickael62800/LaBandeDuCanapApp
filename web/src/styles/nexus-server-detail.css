@@ -210,6 +210,17 @@
   font-weight: 600;
 }
 
+/* Combien de reglages se cachent derriere une section repliee. */
+.sd-group-count {
+  margin-left: var(--space-sm);
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+
 .sd-note {
   font-size: 0.76rem;
   color: var(--text-secondary);

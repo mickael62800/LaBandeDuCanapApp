@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import AppToggle from "../atoms/AppToggle.vue";
 import AppButton from "../atoms/AppButton.vue";
+import GameConfigField from "../molecules/GameConfigField.vue";
 // Création d'un serveur de jeu — choix du jeu puis réglages.
 //
 // Le formulaire est ENTIÈREMENT piloté par le `config_schema` du template
@@ -17,11 +17,8 @@ import { useRouter } from "vue-router";
 import { useGuildSelector } from "../../composables/useGuildSelector";
 import { useAuth } from "../../composables/useAuth";
 import { useToast } from "../../composables/useToast";
-import {
-  nexusGamesService,
-  type GameTemplate,
-  type TemplateField,
-} from "@/services/nexusGamesService";
+import { nexusGamesService, type GameTemplate } from "@/services/nexusGamesService";
+import { useTemplateFieldGroups } from "@/composables/useTemplateFieldGroups";
 import { communityAdminService } from "@/services/communityAdminService";
 import AdminPageShell from "../layouts/AdminPageShell.vue";
 
@@ -178,63 +175,9 @@ async function submit() {
   }
 }
 
-/// Ordre d'affichage à l'intérieur d'une section.
-///
-/// Les interrupteurs se lisent d'un coup d'œil, les champs de saisie
-/// demandent de s'arrêter. Les alterner obligeait l'œil à changer de mode à
-/// chaque ligne — d'où l'impression de fouillis sur une section de vingt
-/// réglages.
-///
-/// Regrouper par nature met les interrupteurs en tête, en bloc compact, puis
-/// les listes, puis les nombres, puis les textes libres qui prennent le plus
-/// de place.
-const ORDRE_TYPES: Record<string, number> = {
-  boolean: 0,
-  enum: 1,
-  number: 2,
-  text: 3,
-};
-
 /// Champs regroupés par section, puis par nature à l'intérieur de chacune.
-/// Un jeu peut avoir cinquante réglages : sans cela, le formulaire devient
-/// illisible.
-const groupes = computed(() => {
-  const out: { nom: string; champs: TemplateField[] }[] = [];
-  for (const f of chosen.value?.config_schema ?? []) {
-    const nom = f.group || "Réglages";
-    let g = out.find((x) => x.nom === nom);
-    if (!g) {
-      g = { nom, champs: [] };
-      out.push(g);
-    }
-    g.champs.push(f);
-  }
-
-  // Tri STABLE : à nature égale, l'ordre du schéma est conservé. C'est lui
-  // qui porte l'intention de celui qui a écrit les réglages — un tri
-  // alphabétique séparerait `SPAWN_ANIMALS` de `SPAWN_MONSTERS`.
-  for (const g of out) {
-    g.champs = g.champs
-      .map((f, i) => ({ f, i }))
-      .sort((a, b) => {
-        const ta = ORDRE_TYPES[a.f.type] ?? 9;
-        const tb = ORDRE_TYPES[b.f.type] ?? 9;
-        return ta !== tb ? ta - tb : a.i - b.i;
-      })
-      .map(({ f }) => f);
-  }
-
-  return out;
-});
-
-/// Un champ booléen du schéma vaut "true"/"false" en base : on convertit pour
-/// la case à cocher.
-function boolValue(f: TemplateField): boolean {
-  return values.value[f.key] === "true";
-}
-function setBool(f: TemplateField, checked: boolean) {
-  values.value[f.key] = checked ? "true" : "false";
-}
+/// Même découpage que la page de détail : voir `useTemplateFieldGroups`.
+const groupes = useTemplateFieldGroups(computed(() => chosen.value?.config_schema));
 
 watch(selectedGuildId, loadTemplates, { immediate: true });
 </script>
@@ -299,13 +242,24 @@ watch(selectedGuildId, loadTemplates, { immediate: true });
 
           <label class="nc-field">
             <span>Mémoire allouée (Mo)</span>
-            <input
-              v-model.number="memoryMb"
-              type="number"
-              :min="chosen.min_memory_mb"
-              :max="chosen.max_memory_mb"
-              step="512"
-            />
+            <span class="nc-slider">
+              <input
+                v-model.number="memoryMb"
+                type="range"
+                class="nc-range"
+                :min="chosen.min_memory_mb"
+                :max="chosen.max_memory_mb"
+                step="512"
+              />
+              <input
+                v-model.number="memoryMb"
+                type="number"
+                class="nc-slider-value"
+                :min="chosen.min_memory_mb"
+                :max="chosen.max_memory_mb"
+                step="512"
+              />
+            </span>
             <small v-if="memoryError" class="nc-err">{{ memoryError }}</small>
             <small v-else class="nc-note">
               Entre {{ chosen.min_memory_mb }} et {{ chosen.max_memory_mb }} Mo.
@@ -314,7 +268,24 @@ watch(selectedGuildId, loadTemplates, { immediate: true });
 
           <label class="nc-field">
             <span>Cœurs processeur</span>
-            <input v-model.number="cpuLimit" type="number" min="0.5" max="6" step="0.5" />
+            <span class="nc-slider">
+              <input
+                v-model.number="cpuLimit"
+                type="range"
+                class="nc-range"
+                min="0.5"
+                max="6"
+                step="0.5"
+              />
+              <input
+                v-model.number="cpuLimit"
+                type="number"
+                class="nc-slider-value"
+                min="0.5"
+                max="6"
+                step="0.5"
+              />
+            </span>
             <small class="nc-note">
               Plafond (0.5 à 6 cœurs). Minecraft n'exploite quasiment qu'un
               cœur : 2 suffisent. Palworld est multithreadé : 4 sont utiles.
@@ -345,52 +316,17 @@ watch(selectedGuildId, loadTemplates, { immediate: true });
 
         <!-- Champs propres au jeu, générés depuis le schéma et regroupés. -->
         <details v-for="g in groupes" :key="g.nom" class="nc-group" open>
-          <summary>{{ g.nom }}</summary>
+          <summary>
+            {{ g.nom }}
+            <span class="nc-group-count">{{ g.champs.length }}</span>
+          </summary>
           <div class="nc-form">
-          <label
-            v-for="f in g.champs"
-            :key="f.key"
-            class="nc-field"
-            :class="`nc-${f.type}`"
-          >
-            <span>{{ f.label || f.key }}</span>
-
-            <select v-if="f.type === 'enum'" v-model="values[f.key]">
-              <option v-for="o in f.options ?? []" :key="o" :value="o">{{ o }}</option>
-            </select>
-
-            <!-- Interrupteur et non case a cocher : ces reglages ACTIVENT un
-                 comportement du serveur (PvP, vol, feu ami). Un interrupteur
-                 montre son etat de loin, une case demande de la regarder. -->
-            <AppToggle
-              v-else-if="f.type === 'boolean'"
-              :model-value="boolValue(f)"
-              @update:model-value="setBool(f, $event)"
-            />
-
-            <input
-              v-else-if="f.type === 'number'"
+            <GameConfigField
+              v-for="f in g.champs"
+              :key="f.key"
+              :field="f"
               v-model="values[f.key]"
-              type="number"
-              :min="f.min"
-              :max="f.max"
             />
-
-            <input
-              v-else
-              v-model="values[f.key]"
-              type="text"
-              :maxlength="f.max_length"
-            />
-
-            <small v-if="f.description" class="nc-note">{{ f.description }}</small>
-
-            <!-- Ce que le réglage casse, pas ce qu'il fait. Séparé de la
-                 description : c'est précisément la ligne à ne pas rater. -->
-            <small v-if="f.warning" class="nc-warning">
-              <span aria-hidden="true">⚠️</span> {{ f.warning }}
-            </small>
-          </label>
           </div>
         </details>
 
@@ -544,6 +480,39 @@ watch(selectedGuildId, loadTemplates, { immediate: true });
   margin-top: var(--space-md);
 }
 
+/* Combien de reglages se cachent derriere une section repliee. */
+.nc-group-count {
+  margin-left: var(--space-sm);
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+
+/* Curseur + valeur chiffree, comme les reglages du jeu (GameConfigField) :
+   la plage autorisee se lit d'un coup d'oeil, la saisie exacte reste possible. */
+.nc-slider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.nc-range {
+  flex: 1;
+  accent-color: var(--accent);
+  cursor: pointer;
+  padding: 0;
+  border: none;
+  background: none;
+}
+
+.nc-slider-value {
+  width: 6.5rem;
+  flex-shrink: 0;
+}
+
 .nc-actions {
   display: flex;
   align-items: center;
@@ -563,35 +532,4 @@ watch(selectedGuildId, loadTemplates, { immediate: true });
   color: var(--text-secondary);
 }
 
-.nc-warning {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-sm);
-  margin-top: var(--space-xs);
-  padding: var(--space-sm) var(--space-md);
-  border-radius: var(--radius-sm);
-  background: var(--accent-warm-bg);
-  border-left: 3px solid var(--accent-warm);
-  color: var(--text-primary);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-/* Un interrupteur tient sur une ligne : le laisser occuper une colonne de
-   16 rem gaspillait la moitie de la largeur et etirait les sections. */
-.nc-field.nc-boolean {
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-md);
-  padding: var(--space-sm) var(--space-md);
-  border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.025);
-}
-
-/* Un texte libre — liste de mods, URL de modpack — se saisit mal dans une
-   colonne etroite. Il prend toute la largeur. */
-.nc-field.nc-text {
-  grid-column: 1 / -1;
-}
 </style>

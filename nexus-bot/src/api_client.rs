@@ -124,6 +124,31 @@ pub struct CoussinStealRequest {
     pub thief_name: String,
     pub victim_id: String,
     pub victim_name: String,
+    /// Salon de la fouille : le denouement doit pouvoir y etre publie meme si
+    /// le bot redemarre pendant la fenetre de defense.
+    pub channel_id: String,
+}
+
+/// Fouille ouverte. Seul ce dont le bot a besoin pour poser son bouton : la
+/// reponse de l'API en dit plus, mais deserialiser ce qu'on n'affiche pas ne
+/// ferait que du code mort.
+#[derive(Debug, serde::Deserialize)]
+pub struct CoussinStealOpened {
+    pub attempt_id: String,
+    pub defense_window_seconds: i64,
+}
+
+/// Denouement d'une fouille resolue par un clic, avec le detail du jet.
+///
+/// La resolution DIFFEREE (fenetre fermee sans reaction) ne passe pas par ici :
+/// elle arrive par le bus et se lit en JSON brut dans `coussin_steal_events`.
+#[derive(Debug, serde::Deserialize)]
+pub struct CoussinStealOutcome {
+    pub thief_id: String,
+    pub success: bool,
+    pub amount: i64,
+    pub thief_total: i32,
+    pub victim_total: i32,
 }
 #[derive(Debug, Serialize)]
 pub struct CoussinPrimeRequest {

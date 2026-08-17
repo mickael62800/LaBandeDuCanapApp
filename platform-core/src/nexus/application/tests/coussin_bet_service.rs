@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use std::sync::{Arc, Mutex};
 
 use crate::nexus::application::coussin_bet_service::CoussinBetService;
-use crate::nexus::application::economy_config::EmptyBotConfigRepository;
+use crate::nexus::application::economy_config::EnabledBotConfigRepository;
 use crate::nexus::domain::errors::DomainError;
 use crate::nexus::ports::inbound::coussin_bet::CoussinBetUseCase;
 use crate::nexus::ports::outbound::coussin_bet_repository::CoussinBetRepository;
@@ -52,7 +52,7 @@ impl CoussinBetRepository for MockBetRepo {
 async fn test_cannot_place_bet_below_min() {
     let service = CoussinBetService::new(
         Arc::new(MockBetRepo::default()),
-        Arc::new(EmptyBotConfigRepository),
+        Arc::new(EnabledBotConfigRepository),
         Arc::new(MockCooldownRepo),
     );
     // Min is 10 by default
@@ -67,7 +67,7 @@ async fn test_place_bet_success() {
     let repo = Arc::new(MockBetRepo::default());
     let service = CoussinBetService::new(
         repo.clone(),
-        Arc::new(EmptyBotConfigRepository),
+        Arc::new(EnabledBotConfigRepository),
         Arc::new(MockCooldownRepo),
     );
     let combat_id = uuid::Uuid::new_v4();

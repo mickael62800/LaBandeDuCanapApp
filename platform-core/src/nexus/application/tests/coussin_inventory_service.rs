@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use std::sync::{Arc, Mutex};
 
 use crate::nexus::application::coussin_inventory_service::CoussinInventoryService;
-use crate::nexus::application::economy_config::EmptyBotConfigRepository;
+use crate::nexus::application::economy_config::EnabledBotConfigRepository;
 use crate::nexus::domain::errors::DomainError;
 use crate::nexus::ports::inbound::coussin_inventory::CoussinInventoryUseCase;
 use crate::nexus::ports::outbound::coussin_inventory_repository::{
@@ -37,7 +37,7 @@ impl CoussinInventoryRepository for MockInventoryRepo {
 async fn test_buy_unknown_item_fails() {
     let service = CoussinInventoryService::new(
         Arc::new(MockInventoryRepo::default()),
-        Arc::new(EmptyBotConfigRepository),
+        Arc::new(EnabledBotConfigRepository),
     );
     let res = service.buy("g1", "u1", "unknown_item").await;
     assert!(res.is_err());
@@ -46,7 +46,7 @@ async fn test_buy_unknown_item_fails() {
 #[tokio::test]
 async fn test_buy_valid_item_success() {
     let repo = Arc::new(MockInventoryRepo::default());
-    let service = CoussinInventoryService::new(repo.clone(), Arc::new(EmptyBotConfigRepository));
+    let service = CoussinInventoryService::new(repo.clone(), Arc::new(EnabledBotConfigRepository));
     let res = service.buy("g1", "u1", "rage").await;
     assert!(res.is_ok());
 

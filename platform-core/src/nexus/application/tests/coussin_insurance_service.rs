@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use std::sync::{Arc, Mutex};
 
 use crate::nexus::application::coussin_insurance_service::CoussinInsuranceService;
-use crate::nexus::application::economy_config::EmptyBotConfigRepository;
+use crate::nexus::application::economy_config::EnabledBotConfigRepository;
 use crate::nexus::domain::errors::DomainError;
 use crate::nexus::ports::inbound::coussin_insurance::CoussinInsuranceUseCase;
 use crate::nexus::ports::outbound::coussin_insurance_repository::{
@@ -39,7 +39,7 @@ impl CoussinInsuranceRepository for MockInsuranceRepo {
 #[tokio::test]
 async fn test_buy_insurance_success() {
     let repo = Arc::new(MockInsuranceRepo::default());
-    let service = CoussinInsuranceService::new(repo.clone(), Arc::new(EmptyBotConfigRepository));
+    let service = CoussinInsuranceService::new(repo.clone(), Arc::new(EnabledBotConfigRepository));
 
     let ins = service.buy("g1", "u1").await.unwrap();
     let active = service.active("g1", "u1").await.unwrap();

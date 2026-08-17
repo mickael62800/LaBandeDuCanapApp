@@ -137,4 +137,36 @@ impl ApiClient {
         );
         self.send(self.http.get(&url)).await
     }
+
+    // ── Consolidation base <-> Discord ──
+
+    /// PUT /api/games/{guild_id}/sync/inventory — depose la photographie de la
+    /// guilde. Le bot est le seul a voir Discord : sans ce depot, l'API ne peut
+    /// constater aucune divergence.
+    pub async fn put_sync_inventory(
+        &self,
+        guild_id: &str,
+        inventory: &serde_json::Value,
+    ) -> Result<(), String> {
+        let url = format!(
+            "{}/api/games/{}/sync/inventory",
+            self.base_url,
+            encode_segment(guild_id)
+        );
+        self.send_no_content(self.http.put(&url).json(inventory))
+            .await
+    }
+
+    /// DELETE /api/games/{guild_id}/sync/roles/{role_id} — signale un role
+    /// disparu de Discord, pour que la liaison cesse tout de suite d'etre
+    /// utilisee. Le jeu n'est pas supprime : cela reste une decision humaine.
+    pub async fn report_vanished_role(&self, guild_id: &str, role_id: &str) -> Result<(), String> {
+        let url = format!(
+            "{}/api/games/{}/sync/roles/{}",
+            self.base_url,
+            encode_segment(guild_id),
+            encode_segment(role_id)
+        );
+        self.send_no_content(self.http.delete(&url)).await
+    }
 }

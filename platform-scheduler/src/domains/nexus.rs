@@ -27,6 +27,28 @@ pub fn start(config: DomainConfig) {
         ("reveal-ip", env("GAME_REVEAL_IP_INTERVAL_SECS", 300)),
         ("daily-ping", env("GAME_DAILY_PING_INTERVAL_SECS", 3_600)),
         ("auto-start", env("GAME_AUTO_START_INTERVAL_SECS", 60)),
+        // Verification des jeux mentionnables : demande aux guildes leur
+        // inventaire Discord, pour que les divergences se voient sans attendre
+        // qu'un humain les soupconne. Espacee : une desynchronisation n'est pas
+        // une urgence, et chaque passage fait travailler le bot.
+        (
+            "mention-sync",
+            env("GAME_MENTION_SYNC_INTERVAL_SECS", 21_600),
+        ),
+        // Defis de Coussin Piege laisses sans reponse : ils bloquent le tour
+        // de l'attaquant tant qu'ils trainent. Toutes les 15 min, ce qui borne
+        // le blocage residuel bien en dessous de l'echeance elle-meme (24 h).
+        (
+            "coussin-expire-combats",
+            env("COUSSIN_EXPIRE_COMBATS_INTERVAL_SECS", 900),
+        ),
+        // Fouilles dont la fenetre de defense s'est fermee. Passage court :
+        // la fenetre dure une minute, un denouement qui arrive dix minutes
+        // plus tard ne raconte plus rien a personne.
+        (
+            "coussin-expire-steals",
+            env("COUSSIN_EXPIRE_STEALS_INTERVAL_SECS", 20),
+        ),
     ] {
         let client = config.client.clone();
         crate::schedule::spawn_interval(job_name(job), interval, move || {
@@ -71,6 +93,9 @@ fn job_name(job: &str) -> &'static str {
         "reveal-ip" => "nexus.reveal-ip",
         "daily-ping" => "nexus.daily-ping",
         "auto-start" => "nexus.auto-start",
+        "mention-sync" => "nexus.mention-sync",
+        "coussin-expire-combats" => "nexus.coussin-expire-combats",
+        "coussin-expire-steals" => "nexus.coussin-expire-steals",
         _ => "nexus.unknown",
     }
 }

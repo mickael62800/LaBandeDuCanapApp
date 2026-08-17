@@ -151,24 +151,58 @@ impl ApiClient {
             value["expires_at"].as_str().unwrap_or("").to_string(),
         ))
     }
+    /// OUVRE une fouille : aucun coin ne bouge encore, la victime a le temps
+    /// de reagir.
     pub async fn steal_coussin(
         &self,
         guild: &str,
         user: &str,
         body: &CoussinStealRequest,
-    ) -> Result<(bool, i64), String> {
+    ) -> Result<CoussinStealOpened, String> {
         let url = format!(
             "{}/api/coussin/{}/{}/steal",
             self.base_url,
             encode_segment(guild),
             encode_segment(user)
         );
-        let v: serde_json::Value = self.send(self.http.post(url).json(body)).await?;
-        Ok((
-            v["success"].as_bool().unwrap_or(false),
-            v["amount"].as_i64().unwrap_or(0),
-        ))
+        self.send(self.http.post(url).json(body)).await
     }
+
+    /// Rattache le message Discord a la fouille, pour que le denouement puisse
+    /// etre publie au bon endroit.
+    pub async fn attach_steal_message(
+        &self,
+        attempt_id: &str,
+        message_id: &str,
+    ) -> Result<(), String> {
+        let url = format!(
+            "{}/api/coussin/steals/{}/message",
+            self.base_url,
+            encode_segment(attempt_id)
+        );
+        self.send_no_content(
+            self.http
+                .put(url)
+                .json(&serde_json::json!({ "message_id": message_id })),
+        )
+        .await
+    }
+
+    /// La victime serre les coussins avant la fin de la fenetre.
+    pub async fn defend_steal(
+        &self,
+        attempt_id: &str,
+        victim_id: &str,
+    ) -> Result<CoussinStealOutcome, String> {
+        let url = format!(
+            "{}/api/coussin/steals/{}/defend/{}",
+            self.base_url,
+            encode_segment(attempt_id),
+            encode_segment(victim_id)
+        );
+        self.send(self.http.post(url)).await
+    }
+
     pub async fn prime_coussin(
         &self,
         guild: &str,

@@ -322,7 +322,9 @@ pub async fn execute_ban(
         .map(|g| g.name)
         .unwrap_or_else(|_| "le serveur".into());
 
-    let target_name = target_opt.map(|u| u.name.clone()).unwrap_or_else(|| format!("Utilisateur {}", target_id));
+    let target_name = target_opt
+        .map(|u| u.name.clone())
+        .unwrap_or_else(|| format!("Utilisateur {}", target_id));
 
     // Ouvre le canal DM AVANT le ban (le bot partage encore un serveur avec la
     // cible). L'envoi du message est differe apres la journalisation pour
@@ -403,7 +405,7 @@ pub async fn execute_ban(
         .field("Duree", duration_label.to_string(), true)
         .field("ID Cible", target_id.to_string(), true)
         .field("Raison", reason, false);
-    
+
     if let Some(u) = target_opt {
         channel_embed = channel_embed.thumbnail(u.face());
     }

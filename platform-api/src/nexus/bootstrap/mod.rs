@@ -28,6 +28,7 @@ use platform_core::nexus::ports::inbound::transfer_coins::TransferCoinsUseCase;
 use platform_core::nexus::ports::inbound::wallet_history::GetWalletHistoryUseCase;
 use platform_core::nexus::ports::inbound::wallet_leaderboard::GetWalletLeaderboardUseCase;
 use platform_core::nexus::ports::outbound::casino::game_repository::GameRepository;
+use platform_core::nexus::ports::outbound::casino::game_sync_repository::GameSyncRepository;
 use platform_core::nexus::ports::outbound::coussin_bet_repository::CoussinBetRepository;
 use platform_core::nexus::ports::outbound::coussin_insurance_repository::CoussinInsuranceRepository;
 use platform_core::nexus::ports::outbound::coussin_inventory_repository::CoussinInventoryRepository;
@@ -55,6 +56,7 @@ use crate::nexus::adapters::outbound::game_runtime::noop_runtime::NoopContainerR
 use crate::nexus::adapters::outbound::game_runtime::rcon_pooled::PooledRconClient;
 use crate::nexus::adapters::outbound::game_runtime::redis_port_allocator::RedisPortAllocator;
 use crate::nexus::adapters::outbound::postgres::casino::game_repository::PgGameRepository;
+use crate::nexus::adapters::outbound::postgres::casino::game_sync_repository::PgGameSyncRepository;
 use crate::nexus::adapters::outbound::postgres::coussin_bet_repository::PgCoussinBetRepository;
 use crate::nexus::adapters::outbound::postgres::coussin_insurance_repository::PgCoussinInsuranceRepository;
 use crate::nexus::adapters::outbound::postgres::coussin_inventory_repository::PgCoussinInventoryRepository;
@@ -85,6 +87,9 @@ pub struct AppState {
     pub wallet_history: Arc<dyn GetWalletHistoryUseCase>,
     pub wallet_leaderboard: Arc<dyn GetWalletLeaderboardUseCase>,
     pub coussin_profile: Arc<dyn CoussinProfileUseCase>,
+    /// Acces direct au depot des bagarres, pour le job qui ferme les defis
+    /// restes sans reponse. Les cas d'usage joueur passent par les services.
+    pub coussin_repo: Arc<dyn CoussinRepository>,
     pub coussin_combat: Arc<dyn CoussinCombatUseCase>,
     pub coussin_inventory: Arc<dyn CoussinInventoryUseCase>,
     pub coussin_insurance: Arc<dyn CoussinInsuranceUseCase>,
@@ -112,6 +117,9 @@ pub struct AppState {
     pub bot_config_repo: Arc<dyn BotConfigRepository>,
     /// Catalogue des jeux mentionnables (games/panels).
     pub game_repo: Arc<dyn GameRepository>,
+    /// Derniere photographie Discord de chaque guilde, deposee par le bot.
+    /// Sert a constater les divergences ; ne repare rien par elle-meme.
+    pub game_sync_repo: Arc<dyn GameSyncRepository>,
     /// Publie les evenements consommes par le bot (salons de session).
     pub events: Arc<dyn EventPublisher>,
     pub discord_api:
@@ -193,7 +201,7 @@ pub async fn build_state() -> Result<AppState, Box<dyn std::error::Error>> {
         Arc::new(crate::nexus::adapters::outbound::postgres::coussin_cooldown_repository::PgCoussinCooldownRepository::new(pool.clone()));
     let coussin_repo: Arc<dyn CoussinRepository> = Arc::new(PgCoussinRepository::new(pool.clone()));
     let coussin_profile: Arc<dyn CoussinProfileUseCase> = Arc::new(CoussinService::new(
-        coussin_repo,
+        coussin_repo.clone(),
         bot_config_repo.clone(),
         coussin_cooldowns.clone(),
     ));
@@ -216,6 +224,9 @@ pub async fn build_state() -> Result<AppState, Box<dyn std::error::Error>> {
         Arc::new(PgCoussinStealRepository::new(pool.clone()));
     let coussin_steal: Arc<dyn CoussinStealUseCase> = Arc::new(CoussinStealService::new(
         coussin_steal_repo,
+        // La defense de la victime pese sur le jet : la fouille a besoin des
+        // profils, pas seulement des porte-monnaie.
+        coussin_repo.clone(),
         bot_config_repo.clone(),
     ));
     let coussin_prime_repo: Arc<dyn CoussinPrimeRepository> =
@@ -248,6 +259,8 @@ pub async fn build_state() -> Result<AppState, Box<dyn std::error::Error>> {
     let game_session_reg_repo: Arc<dyn GameSessionRegistrationRepository> =
         Arc::new(PgGameSessionRegistrationRepository::new(pool.clone()));
     let game_repo: Arc<dyn GameRepository> = Arc::new(PgGameRepository::new(pool.clone()));
+    let game_sync_repo: Arc<dyn GameSyncRepository> =
+        Arc::new(PgGameSyncRepository::new(pool.clone()));
 
     // ── Game Portal : runtime container (docker | noop) ──
     // NEXUS_GAME_RUNTIME=docker passe par `docker-agent` ; toute autre valeur
@@ -391,6 +404,7 @@ pub async fn build_state() -> Result<AppState, Box<dyn std::error::Error>> {
         wallet_history: wallet_service.clone(),
         wallet_leaderboard: wallet_service,
         coussin_profile,
+        coussin_repo,
         coussin_combat,
         coussin_inventory,
         coussin_insurance,
@@ -411,6 +425,7 @@ pub async fn build_state() -> Result<AppState, Box<dyn std::error::Error>> {
         game_port_allocator: port_allocator,
         bot_config_repo,
         game_repo,
+        game_sync_repo,
         events,
         discord_api,
         api_key,

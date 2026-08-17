@@ -231,6 +231,13 @@ impl Handler {
             )
             .await;
     }
+    /// `/chiper` — ouvre une fouille et laisse a la cible le temps de reagir.
+    ///
+    /// Rien n'est joue a cet instant : la victime peut serrer les coussins
+    /// pendant la fenetre et garder toute sa defense. Si elle ne dit rien, le
+    /// job tranche avec le malus d'absence et le voleur passe beaucoup plus
+    /// facilement. Le vol se decidait avant sur un simple tirage, sans que la
+    /// cible puisse quoi que ce soit.
     pub(super) async fn handle_steal(&self, ctx: &Context, cmd: &CommandInteraction) {
         let Some(guild) = self.require_guild(ctx, cmd).await else {
             return;
@@ -248,7 +255,8 @@ impl Handler {
         if cmd.defer(&ctx.http).await.is_err() {
             return;
         }
-        let text = match self
+
+        let opened = match self
             .api
             .steal_coussin(
                 &guild,
@@ -257,21 +265,109 @@ impl Handler {
                     thief_name: cmd.user.display_name().into(),
                     victim_id: target.to_string(),
                     victim_name: name,
+                    channel_id: cmd.channel_id.to_string(),
                 },
             )
             .await
         {
-            Ok((true, n)) => format!("🪙 Trouvé sous les coussins : {n} coins."),
-            Ok((false, n)) => format!("🙈 Pris la main dans le canapé : {n} coins perdus."),
-            Err(e) => e,
+            Ok(opened) => opened,
+            Err(message) => {
+                let _ = cmd
+                    .create_followup(
+                        &ctx.http,
+                        serenity::all::CreateInteractionResponseFollowup::new().content(message),
+                    )
+                    .await;
+                return;
+            }
         };
-        let _ = cmd
-            .create_followup(
-                &ctx.http,
-                serenity::all::CreateInteractionResponseFollowup::new().content(text),
-            )
-            .await;
+
+        // Le bouton ne s'adresse qu'a la victime : son identifiant est dans le
+        // custom_id, et l'API revalide qui clique. Un bouton visible de tous
+        // n'est pas un bouton ouvert a tous.
+        let bouton = CreateActionRow::Buttons(vec![CreateButton::new(format!(
+            "cs:d:{}:{}",
+            opened.attempt_id, target
+        ))
+        .label("Serrer les coussins")
+        .style(ButtonStyle::Primary)]);
+
+        let message = serenity::all::CreateInteractionResponseFollowup::new()
+            .content(format!(
+                "🛋️ <@{}> fouille les coussins de <@{}> !
+                 <@{}>, tu as **{} secondes** pour réagir — sans quoi tu te feras chiper bien plus facilement.",
+                cmd.user.id, target, target, opened.defense_window_seconds
+            ))
+            .components(vec![bouton]);
+
+        match cmd.create_followup(&ctx.http, message).await {
+            Ok(posted) => {
+                // Rattache le message : le denouement doit pouvoir etre publie
+                // au bon endroit meme si le bot redemarre entre-temps.
+                if let Err(error) = self
+                    .api
+                    .attach_steal_message(&opened.attempt_id, &posted.id.to_string())
+                    .await
+                {
+                    tracing::warn!(%error, "fouille : message non rattache");
+                }
+            }
+            Err(error) => tracing::error!(%error, "envoi de la fouille impossible"),
+        }
     }
+
+    /// Clic sur « Serrer les coussins » : la victime resout tout de suite, avec
+    /// sa defense pleine.
+    pub(super) async fn handle_steal_component(
+        &self,
+        ctx: &Context,
+        component: &serenity::all::ComponentInteraction,
+    ) {
+        let parts: Vec<_> = component.data.custom_id.split(':').collect();
+        if parts.len() != 4 || parts[0] != "cs" || parts[1] != "d" {
+            return;
+        }
+        let (attempt_id, victim_id) = (parts[2], parts[3]);
+
+        if component.user.id.to_string() != victim_id {
+            self.component_error(ctx, component, "Ce sont les coussins de quelqu'un d'autre.")
+                .await;
+            return;
+        }
+
+        match self.api.defend_steal(attempt_id, victim_id).await {
+            Ok(outcome) => {
+                let recit = if outcome.success {
+                    format!(
+                        "🪙 Trop tard : <@{}> repart avec **{}** coins.",
+                        outcome.thief_id, outcome.amount
+                    )
+                } else {
+                    format!(
+                        "🛡️ Coussins bien serrés ! <@{}> repart bredouille et perd **{}** coins.",
+                        outcome.thief_id, outcome.amount
+                    )
+                };
+                let detail = format!(
+                    "
+🎲 Voleur : **{}** — Défense : **{}**",
+                    outcome.thief_total, outcome.victim_total
+                );
+                let _ = component
+                    .create_response(
+                        &ctx.http,
+                        CreateInteractionResponse::UpdateMessage(
+                            CreateInteractionResponseMessage::new()
+                                .content(format!("{recit}{detail}"))
+                                .components(vec![]),
+                        ),
+                    )
+                    .await;
+            }
+            Err(message) => self.component_error(ctx, component, &message).await,
+        }
+    }
+
     pub(super) async fn handle_prime(&self, ctx: &Context, cmd: &CommandInteraction) {
         let Some(guild) = self.require_guild(ctx, cmd).await else {
             return;

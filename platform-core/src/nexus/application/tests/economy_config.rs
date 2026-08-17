@@ -83,24 +83,19 @@ fn transferts_desactives_refusent_tout() {
 #[test]
 fn defauts_du_vol_reproduisent_le_comportement_historique() {
     let c = CoussinConfig::default();
-    assert_eq!(c.steal_chance(false), 30);
-    assert_eq!(c.steal_chance(true), 50);
     // victim/5 == 20 %
     assert_eq!(c.steal_gain(100), 20);
     // thief * 15 / 100
     assert_eq!(c.steal_penalty(100), 15);
 }
 
-/// Ni 0 ni 100 : le vol doit garder une part de risque des deux cotes.
+/// La fenetre de defense doit laisser le temps de voir une notification, et le
+/// malus doit peser assez pour que reagir en vaille la peine.
 #[test]
-fn chance_de_vol_reste_dans_des_bornes_jouables() {
-    let c = CoussinConfig {
-        steal_success_pct: 0,
-        steal_success_pct_piegeur: 100,
-        ..Default::default()
-    };
-    assert_eq!(c.steal_chance(false), 1);
-    assert_eq!(c.steal_chance(true), 99);
+fn defauts_de_la_fenetre_de_defense() {
+    let c = CoussinConfig::default();
+    assert_eq!(c.steal_defense_window_seconds, 60);
+    assert_eq!(c.steal_absence_malus, 8);
 }
 
 /// Un vol reussi qui ne rapporte rien serait indistinguable d'un echec.
@@ -165,4 +160,15 @@ fn booleen_accepte_les_deux_ecritures() {
 #[test]
 fn booleen_illisible_retombe_sur_le_defaut() {
     assert!(b(&kv(&[("steal_enabled", "oui")]), "steal_enabled", true));
+}
+
+#[test]
+fn un_module_sans_cle_enabled_est_eteint() {
+    // FAIL CLOSED. Le defaut valait `true` : le dashboard affichait « inactif »
+    // (il applique bien la regle) pendant que Discord repondait normalement.
+    // Les deux se contredisaient sans que rien ne permette de trancher.
+    assert!(!CoussinConfig::default().enabled);
+    assert!(!EconomyConfig::default().enabled);
+
+    assert!(CoussinConfig::default().ensure_enabled().is_err());
 }

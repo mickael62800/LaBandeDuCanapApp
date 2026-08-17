@@ -132,3 +132,97 @@ async fn run_auto_start(
         details: serde_json::json!({ "due": due.len() }),
     })
 }
+
+/// Verification periodique des jeux mentionnables.
+///
+/// Le job ne repare RIEN : il demande a chaque guilde son inventaire Discord,
+/// que le bot deposera ensuite. Le rapport de divergence s'en trouve rafraichi
+/// tout seul, et une desynchronisation cesse d'attendre qu'un humain la
+/// soupconne pour etre visible. Le sens de la reparation reste un choix humain
+/// (cf. `game_sync_service`).
+pub async fn job_mention_sync(State(state): State<AppState>) -> Result<Json<JobReport>, ApiError> {
+    locked(&state, "mention-sync", || async {
+        let service = platform_core::nexus::application::game_sync_service::GameSyncService::new(
+            state.game_repo.clone(),
+            state.game_sync_repo.clone(),
+            state.events.clone(),
+        );
+        let guilds = state.game_sync_repo.guilds_with_games().await?;
+        for guild_id in &guilds {
+            service.request_inventory(guild_id).await;
+        }
+        Ok(JobReport {
+            job: "mention_sync",
+            processed: guilds.len(),
+            errors: 0,
+            details: serde_json::json!({ "guilds": guilds.len() }),
+        })
+    })
+    .await
+}
+
+/// Ferme les defis de Coussin Piege restes sans reponse.
+///
+/// Lancer un defi pose immediatement le delai d'attente de l'attaquant. Tant
+/// que l'adversaire ne repond ni oui ni non, l'attaquant reste donc puni d'une
+/// bagarre qui n'a jamais eu lieu, et le defi traine indefiniment. Le job les
+/// ferme passe leur echeance (24 h) et rend son tour a l'attaquant.
+///
+/// Rien n'est preleve a personne : un defi en attente n'a debite aucune mise,
+/// et les paris ne s'ouvrent qu'une fois le defi accepte.
+pub async fn job_coussin_expire_combats(
+    State(state): State<AppState>,
+) -> Result<Json<JobReport>, ApiError> {
+    locked(&state, "coussin-expire-combats", || async {
+        let expired = state.coussin_repo.expire_pending_combats().await?;
+        for combat in &expired {
+            tracing::info!(
+                combat_id = %combat.id,
+                guild_id = %combat.guild_id,
+                mise = combat.mise,
+                "defi Coussin ferme faute de reponse"
+            );
+        }
+        Ok(JobReport {
+            job: "coussin_expire_combats",
+            processed: expired.len(),
+            errors: 0,
+            details: serde_json::json!({ "expired": expired.len() }),
+        })
+    })
+    .await
+}
+
+/// Resout les fouilles dont la fenetre de defense s'est fermee sans reaction.
+///
+/// C'est ce passage qui donne son sens au bouton : ne pas reagir n'est pas
+/// « il ne se passe rien », c'est une reponse — celle qui coute son malus a la
+/// victime et laisse passer le voleur beaucoup plus facilement.
+///
+/// Le denouement est publie sur le bus pour que le bot puisse le raconter dans
+/// le salon d'origine, meme s'il a redemarre entre-temps.
+pub async fn job_coussin_expire_steals(
+    State(state): State<AppState>,
+) -> Result<Json<JobReport>, ApiError> {
+    locked(&state, "coussin-expire-steals", || async {
+        let outcomes = state.coussin_steal.resolve_expired(100).await?;
+        for outcome in &outcomes {
+            state
+                .events
+                .publish(
+                    platform_core::nexus::ports::outbound::events::coussin_events::STEAL_RESOLVED,
+                    crate::nexus::adapters::inbound::http::handlers::coussin::steal_outcome_json(
+                        outcome,
+                    ),
+                )
+                .await;
+        }
+        Ok(JobReport {
+            job: "coussin_expire_steals",
+            processed: outcomes.len(),
+            errors: 0,
+            details: serde_json::json!({ "resolved": outcomes.len() }),
+        })
+    })
+    .await
+}

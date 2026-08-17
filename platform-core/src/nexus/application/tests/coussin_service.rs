@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use std::sync::{Arc, Mutex};
 
 use crate::nexus::application::coussin_service::CoussinService;
-use crate::nexus::application::economy_config::EmptyBotConfigRepository;
+use crate::nexus::application::economy_config::EnabledBotConfigRepository;
 use crate::nexus::domain::entities::coussin::PlayerClass;
 use crate::nexus::domain::errors::DomainError;
 use crate::nexus::ports::inbound::coussin_profile::{CoussinCombatUseCase, CoussinProfileUseCase};
@@ -140,6 +140,9 @@ impl CoussinRepository for MockCoussinRepo {
         self.combats.lock().unwrap().push(c.clone());
         Ok(c)
     }
+    async fn expire_pending_combats(&self) -> Result<Vec<ExpiredCombat>, DomainError> {
+        Ok(vec![])
+    }
     async fn accept_combat(&self, id: uuid::Uuid, _defender_id: &str) -> Result<bool, DomainError> {
         let mut list = self.combats.lock().unwrap();
         if let Some(c) = list.iter_mut().find(|c| c.id == id) {
@@ -214,7 +217,7 @@ async fn test_choose_class_success() {
 
     let service = CoussinService::new(
         repo.clone(),
-        Arc::new(EmptyBotConfigRepository),
+        Arc::new(EnabledBotConfigRepository),
         Arc::new(MockCooldownRepo::default()),
     );
 
@@ -234,7 +237,7 @@ async fn test_train_stat_point() {
 
     let service = CoussinService::new(
         repo.clone(),
-        Arc::new(EmptyBotConfigRepository),
+        Arc::new(EnabledBotConfigRepository),
         Arc::new(MockCooldownRepo::default()),
     );
 
@@ -255,7 +258,7 @@ async fn test_challenge_creation() {
 
     let service = CoussinService::new(
         repo.clone(),
-        Arc::new(EmptyBotConfigRepository),
+        Arc::new(EnabledBotConfigRepository),
         Arc::new(MockCooldownRepo::default()),
     );
 

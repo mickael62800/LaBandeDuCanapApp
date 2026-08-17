@@ -78,4 +78,8 @@ pub trait GameRepository: Send + Sync {
         message_id: &str,
     ) -> Result<Option<GamePanel>, DomainError>;
     async fn list_panels(&self, guild_id: &str) -> Result<Vec<GamePanel>, DomainError>;
+    /// Oublie un panneau dont le message n'existe plus dans Discord. Sans cela,
+    /// la reconciliation signalerait indefiniment le meme ecart.
+    /// Retourne `false` si aucun panneau ne portait ce message.
+    async fn delete_panel(&self, guild_id: &str, message_id: &str) -> Result<bool, DomainError>;
 }

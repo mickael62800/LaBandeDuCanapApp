@@ -33,6 +33,18 @@ pub struct CoussinCombat {
     pub mise: i64,
     pub status: String,
 }
+/// Un defi ferme faute de reponse. Sert au journal du job et, plus tard, a
+/// prevenir le salon ou il avait ete lance.
+#[derive(Debug, Clone)]
+pub struct ExpiredCombat {
+    pub id: uuid::Uuid,
+    pub guild_id: String,
+    pub channel_id: String,
+    pub attacker_id: String,
+    pub defender_id: String,
+    pub mise: i64,
+}
+
 #[derive(Debug, Clone)]
 pub struct CoussinCombatSnapshot {
     pub combat: CoussinCombat,
@@ -168,6 +180,16 @@ pub trait CoussinRepository: Send + Sync {
         cooldown_minutes: i64,
     ) -> Result<CoussinCombat, DomainError>;
     async fn accept_combat(&self, id: uuid::Uuid, defender_id: &str) -> Result<bool, DomainError>;
+    /// Ferme les defis restes sans reponse au-dela de leur `expires_at`.
+    ///
+    /// Un defi lance pose immediatement le delai d'attente de l'attaquant.
+    /// Tant que le defenseur ne repond ni oui ni non, l'attaquant reste donc
+    /// puni d'une bagarre qui n'a jamais eu lieu : c'est ce blocage que la
+    /// fermeture leve, en rendant son tour a l'attaquant.
+    ///
+    /// Reclamation atomique (`UPDATE ... RETURNING`) : deux passages
+    /// simultanes du job ne peuvent pas fermer le meme defi deux fois.
+    async fn expire_pending_combats(&self) -> Result<Vec<ExpiredCombat>, DomainError>;
     async fn refuse_combat(&self, id: uuid::Uuid, defender_id: &str) -> Result<bool, DomainError>;
     async fn resolution_snapshot(
         &self,

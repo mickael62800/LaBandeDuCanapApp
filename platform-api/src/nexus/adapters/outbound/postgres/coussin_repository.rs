@@ -4,7 +4,7 @@ use platform_core::nexus::{
     domain::{entities::coussin::PlayerClass, errors::DomainError},
     ports::outbound::coussin_repository::{
         CoussinBet, CoussinCombat, CoussinCombatResult, CoussinCombatSnapshot, CoussinPrime,
-        CoussinProfile, CoussinProgress, CoussinRepository,
+        CoussinProfile, CoussinProgress, CoussinRepository, ExpiredCombat,
     },
 };
 use sqlx::PgPool;
@@ -310,6 +310,51 @@ impl CoussinRepository for PgCoussinRepository {
             status: row.5,
         })
     }
+    async fn expire_pending_combats(&self) -> Result<Vec<ExpiredCombat>, DomainError> {
+        let mut tx = self.pool.begin().await.map_err(pg_err)?;
+
+        // Reclamation atomique : le statut change dans la meme requete que la
+        // lecture, deux passages du job ne peuvent donc pas fermer le meme
+        // defi. `expires_at IS NULL` couvre les defis d'avant l'ajout de la
+        // colonne : sans borne, ils resteraient ouverts pour toujours.
+        let rows: Vec<(uuid::Uuid, String, String, String, String, i64)> = sqlx::query_as(
+            "UPDATE nexus_coussin_combats SET status='expired', resolved_at=NOW()              WHERE status='pending' AND (expires_at IS NULL OR expires_at <= NOW())              RETURNING id, guild_id, channel_id, attacker_id, defender_id, mise",
+        )
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(pg_err)?;
+
+        // Le delai d'attente avait ete pose des le lancement du defi : sans
+        // bagarre, il n'a plus lieu d'etre. Le lever rend son tour a
+        // l'attaquant, qui etait puni de l'inaction d'un autre.
+        for (_, guild_id, _, attacker_id, _, _) in &rows {
+            sqlx::query(
+                "UPDATE nexus_coussin_cooldowns SET available_at = NOW()                  WHERE guild_id=$1 AND user_id=$2 AND action='combat' AND available_at > NOW()",
+            )
+            .bind(guild_id)
+            .bind(attacker_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(pg_err)?;
+        }
+
+        tx.commit().await.map_err(pg_err)?;
+
+        Ok(rows
+            .into_iter()
+            .map(
+                |(id, guild_id, channel_id, attacker_id, defender_id, mise)| ExpiredCombat {
+                    id,
+                    guild_id,
+                    channel_id,
+                    attacker_id,
+                    defender_id,
+                    mise,
+                },
+            )
+            .collect())
+    }
+
     async fn accept_combat(&self, id: uuid::Uuid, defender_id: &str) -> Result<bool, DomainError> {
         let mut tx = self.pool.begin().await.map_err(pg_err)?;
         let combat: Option<(String, String, String, i64)> = sqlx::query_as(
@@ -323,10 +368,33 @@ impl CoussinRepository for PgCoussinRepository {
         let balances: Vec<(String, i64)> = sqlx::query_as(
             "SELECT user_id, coins FROM nexus_wallets WHERE guild_id=$1 AND user_id IN ($2, $3) ORDER BY user_id FOR UPDATE",
         ).bind(&guild_id).bind(&attacker_id).bind(&defender_id).fetch_all(&mut *tx).await.map_err(pg_err)?;
-        if balances.len() != 2 || balances.iter().any(|(_, coins)| *coins < mise) {
-            return Err(DomainError::Validation(
-                "coins insuffisants pour accepter ce defi".into(),
-            ));
+        // Un message qui NOMME l'obstacle. « coins insuffisants » couvrait
+        // aussi le cas d'un joueur sans portefeuille du tout : le defenseur
+        // cliquait, recevait un refus qu'il ne s'expliquait pas, et l'autre ne
+        // voyait rien du tout puisque la reponse est privee.
+        let solde = |user: &str| {
+            balances
+                .iter()
+                .find(|(id, _)| id == user)
+                .map(|(_, coins)| *coins)
+        };
+        for (participant, role) in [
+            (&attacker_id, "L'attaquant"),
+            (&defender_id, "Le defenseur"),
+        ] {
+            match solde(participant) {
+                None => {
+                    return Err(DomainError::Validation(format!(
+                        "{role} <@{participant}> n'a pas encore de porte-monnaie : il lui faut une premiere piece avant de se battre."
+                    )))
+                }
+                Some(coins) if coins < mise => {
+                    return Err(DomainError::Validation(format!(
+                        "{role} <@{participant}> n'a que {coins} coins, la mise est de {mise}."
+                    )))
+                }
+                Some(_) => {}
+            }
         }
         let result = sqlx::query(
             "UPDATE nexus_coussin_combats SET status='accepted' WHERE id=$1 AND status='pending'",

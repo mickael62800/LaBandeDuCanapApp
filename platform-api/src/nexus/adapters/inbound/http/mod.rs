@@ -309,6 +309,16 @@ pub fn build_router_with(state: AppState, config: HttpConfig) -> Router {
             "/api/coussin/{guild_id}/{user_id}/steal",
             post(handlers::coussin::steal),
         )
+        // Fenetre de defense de la fouille. Le segment litteral `steals` prime
+        // sur `{guild_id}` : ces routes ne peuvent pas etre confondues.
+        .route(
+            "/api/coussin/steals/{attempt_id}/message",
+            put(handlers::coussin::attach_steal_message),
+        )
+        .route(
+            "/api/coussin/steals/{attempt_id}/defend/{victim_id}",
+            post(handlers::coussin::defend_steal),
+        )
         .route(
             "/api/coussin/{guild_id}/{user_id}/prime",
             post(handlers::coussin::place_prime),
@@ -368,6 +378,29 @@ pub fn build_router_with(state: AppState, config: HttpConfig) -> Router {
         .route(
             "/api/games/{guild_id}/panel/deploy",
             post(handlers::casino::games::deploy_panel),
+        )
+        // ── Consolidation base <-> Discord ──
+        // Le segment litteral `sync` prime sur `{game_id}` : ces routes ne
+        // peuvent pas etre confondues avec un identifiant de jeu.
+        .route(
+            "/api/games/{guild_id}/sync",
+            get(handlers::casino::game_sync::get_report),
+        )
+        .route(
+            "/api/games/{guild_id}/sync/check",
+            post(handlers::casino::game_sync::request_check),
+        )
+        .route(
+            "/api/games/{guild_id}/sync/inventory",
+            put(handlers::casino::game_sync::put_inventory),
+        )
+        .route(
+            "/api/games/{guild_id}/sync/roles/{role_id}",
+            delete(handlers::casino::game_sync::role_vanished),
+        )
+        .route(
+            "/api/games/{guild_id}/sync/resolve",
+            post(handlers::casino::game_sync::resolve),
         )
         .route(
             "/api/games/{guild_id}/upload-emoji",
@@ -459,6 +492,18 @@ pub fn build_router_with(state: AppState, config: HttpConfig) -> Router {
         .route(
             "/api/games/internal/jobs/auto-start",
             post(handlers::game::jobs::job_auto_start),
+        )
+        .route(
+            "/api/games/internal/jobs/mention-sync",
+            post(handlers::game::jobs::job_mention_sync),
+        )
+        .route(
+            "/api/games/internal/jobs/coussin-expire-combats",
+            post(handlers::game::jobs::job_coussin_expire_combats),
+        )
+        .route(
+            "/api/games/internal/jobs/coussin-expire-steals",
+            post(handlers::game::jobs::job_coussin_expire_steals),
         )
         // Les routes de cycle de vie des conteneurs rejoignent le groupe
         // protege : elles heritent du Bearer et du verrou mono-serveur, et

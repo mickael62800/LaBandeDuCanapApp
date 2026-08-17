@@ -204,13 +204,24 @@ pub struct StealRequest {
     pub thief_name: String,
     pub victim_id: String,
     pub victim_name: String,
+    /// Salon ou la fouille est lancee : le denouement doit pouvoir y etre
+    /// publie meme si le bot redemarre pendant la fenetre de defense.
+    pub channel_id: String,
 }
+
+/// POST /api/coussin/{guild}/{thief}/steal — OUVRE une fouille.
+///
+/// Aucun coin ne bouge ici : la victime a quelques dizaines de secondes pour
+/// serrer les coussins. Le vol se jouait auparavant en un tirage immediat, ce
+/// qui ne laissait aucune prise a la cible.
 pub async fn steal(
     State(state): State<AppState>,
     Path((guild_id, thief_id)): Path<(String, String)>,
     Json(req): Json<StealRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let profile = state
+    // Les deux profils sont crees au besoin : la classe du voleur et la
+    // defense de la victime pesent sur le jet.
+    state
         .coussin_profile
         .profile(&guild_id, &thief_id, &req.thief_name)
         .await?;
@@ -218,19 +229,70 @@ pub async fn steal(
         .coussin_profile
         .profile(&guild_id, &req.victim_id, &req.victim_name)
         .await?;
-    let result = state
+
+    let opened = state
         .coussin_steal
-        .steal(
-            &guild_id,
-            &thief_id,
-            &req.victim_id,
-            profile.class == platform_core::nexus::domain::entities::coussin::PlayerClass::Piegeur,
-        )
+        .open(&guild_id, &thief_id, &req.victim_id, &req.channel_id)
         .await?;
-    Ok(Json(
-        serde_json::json!({"success":result.success,"amount":result.amount}),
-    ))
+
+    Ok(Json(serde_json::json!({
+        "attempt_id": opened.attempt_id,
+        "victim_id": opened.victim_id,
+        "expires_at": opened.expires_at,
+        "defense_window_seconds": opened.defense_window_seconds,
+    })))
 }
+
+#[derive(Deserialize)]
+pub struct AttachMessageRequest {
+    pub message_id: String,
+}
+
+/// PUT /api/coussin/steals/{attempt_id}/message — rattache le message Discord.
+pub async fn attach_steal_message(
+    State(state): State<AppState>,
+    Path(attempt_id): Path<uuid::Uuid>,
+    Json(req): Json<AttachMessageRequest>,
+) -> Result<axum::http::StatusCode, ApiError> {
+    state
+        .coussin_steal
+        .attach_message(attempt_id, &req.message_id)
+        .await?;
+    Ok(axum::http::StatusCode::NO_CONTENT)
+}
+
+/// POST /api/coussin/steals/{attempt_id}/defend — la victime serre les coussins.
+///
+/// L'identite de la victime vient du chemin serveur, jamais du corps : sans
+/// cela, n'importe qui pourrait se defendre a la place d'un autre.
+pub async fn defend_steal(
+    State(state): State<AppState>,
+    Path((attempt_id, victim_id)): Path<(uuid::Uuid, String)>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let outcome = state.coussin_steal.defend(attempt_id, &victim_id).await?;
+    Ok(Json(steal_outcome_json(&outcome)))
+}
+
+/// Denouement d'une fouille, tel que le bot le raconte.
+pub fn steal_outcome_json(
+    outcome: &platform_core::nexus::ports::inbound::coussin_steal::StealOutcome,
+) -> serde_json::Value {
+    serde_json::json!({
+        "attempt_id": outcome.attempt_id,
+        "guild_id": outcome.guild_id,
+        "thief_id": outcome.thief_id,
+        "victim_id": outcome.victim_id,
+        "channel_id": outcome.channel_id,
+        "message_id": outcome.message_id,
+        "defended": outcome.defended,
+        "success": outcome.success,
+        "amount": outcome.amount,
+        "thief_total": outcome.thief_total,
+        "victim_total": outcome.victim_total,
+        "absence_malus": outcome.absence_malus,
+    })
+}
+
 #[derive(Deserialize)]
 pub struct PrimeRequest {
     pub target_id: String,

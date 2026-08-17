@@ -419,13 +419,14 @@ pub async fn handle(ctx: &Context, command: &CommandInteraction) {
                 .collect()
         }
         "bots" => {
-            let target_picker = sub_opts
-                .iter()
-                .find(|o| o.name == "bot")
-                .and_then(|o| match &o.value {
-                    CommandDataOptionValue::User(id) => Some(*id),
-                    _ => None,
-                });
+            let target_picker =
+                sub_opts
+                    .iter()
+                    .find(|o| o.name == "bot")
+                    .and_then(|o| match &o.value {
+                        CommandDataOptionValue::User(id) => Some(*id),
+                        _ => None,
+                    });
             let target_id = sub_opts
                 .iter()
                 .find(|o| o.name == "bot_id")

@@ -68,6 +68,7 @@ fn option_string(cmd: &CommandInteraction, name: &str) -> Option<String> {
 }
 
 mod coussin_commands;
+mod coussin_steal_events;
 mod economy_commands;
 
 /// La guilde est-elle celle servie par cette installation ?
@@ -119,6 +120,7 @@ impl EventHandler for Handler {
             game_portal::spawn(ctx.clone(), self.api.clone());
             achievements::spawn(ctx.clone(), self.api.clone());
             games::spawn_listener(ctx.clone(), self.api.clone());
+            coussin_steal_events::spawn(ctx.clone(), self.api.clone());
         }
         // Un evenement Redis publie pendant une indisponibilite peut avoir ete
         // manque. Rejouer les serveurs actifs/programmes garantit que leurs
@@ -311,7 +313,9 @@ impl EventHandler for Handler {
             },
             Interaction::Component(component) => {
                 let cid = component.data.custom_id.as_str();
-                if cid.starts_with("c:") {
+                if cid.starts_with("cs:") {
+                    self.handle_steal_component(&ctx, &component).await;
+                } else if cid.starts_with("c:") {
                     self.handle_coussin_component(&ctx, &component).await;
                 } else if wheel_panel::handles_component(cid) {
                     wheel_panel::handle_spin(&self.api, &ctx, &component).await;
@@ -323,6 +327,28 @@ impl EventHandler for Handler {
             }
             _ => {}
         }
+    }
+
+    /// Un role vient de disparaitre de la guilde.
+    ///
+    /// C'est le chemin qui rattrape le cas courant : quelqu'un fait le menage
+    /// dans les roles, et la liaison jeu -> role devient morte sans que rien ne
+    /// le signale. Prevenir l'API tout de suite evite que chaque abonnement
+    /// echoue jusqu'a ce qu'un humain soupconne le probleme.
+    ///
+    /// Aucun jeu n'est supprime ici : seule la liaison est coupee, la decision
+    /// de recreer le role ou d'abandonner le jeu reste humaine.
+    async fn guild_role_delete(
+        &self,
+        _ctx: Context,
+        guild_id: serenity::all::GuildId,
+        removed_role_id: serenity::all::RoleId,
+        _removed_role: Option<serenity::model::guild::Role>,
+    ) {
+        if !guilde_autorisee(guild_id) {
+            return;
+        }
+        games::sync::on_role_deleted(&self.api, guild_id, removed_role_id).await;
     }
 
     async fn reaction_add(&self, ctx: Context, add_reaction: serenity::all::Reaction) {

@@ -74,6 +74,16 @@ pub fn spawn_listener(ctx: Context, api: std::sync::Arc<ApiClient>) {
                                             .await;
                                     }
                                 }
+                                game_events::GAMES_SYNC_REQUESTED => {
+                                    if let Some(guild_id) =
+                                        data.get("guild_id").and_then(|v| v.as_str())
+                                    {
+                                        super::sync::report_inventory(
+                                            &ctx_clone, &api_clone, guild_id,
+                                        )
+                                        .await;
+                                    }
+                                }
                                 game_events::GAME_ROLE_DELETE => {
                                     if let (Some(guild_id), Some(role_id)) = (
                                         data.get("guild_id").and_then(|v| v.as_str()),

@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use std::sync::{Arc, Mutex};
 
 use crate::nexus::application::coussin_prime_service::CoussinPrimeService;
-use crate::nexus::application::economy_config::EmptyBotConfigRepository;
+use crate::nexus::application::economy_config::EnabledBotConfigRepository;
 use crate::nexus::domain::errors::DomainError;
 use crate::nexus::ports::inbound::coussin_prime::CoussinPrimeUseCase;
 use crate::nexus::ports::outbound::coussin_cooldown_repository::CoussinCooldownRepository;
@@ -51,7 +51,7 @@ impl CoussinPrimeRepository for MockPrimeRepo {
 async fn test_cannot_place_prime_on_self() {
     let service = CoussinPrimeService::new(
         Arc::new(MockPrimeRepo::default()),
-        Arc::new(EmptyBotConfigRepository),
+        Arc::new(EnabledBotConfigRepository),
         Arc::new(MockCooldownRepo),
     );
     let res = service
@@ -64,7 +64,7 @@ async fn test_cannot_place_prime_on_self() {
 async fn test_cannot_place_prime_below_min() {
     let service = CoussinPrimeService::new(
         Arc::new(MockPrimeRepo::default()),
-        Arc::new(EmptyBotConfigRepository),
+        Arc::new(EnabledBotConfigRepository),
         Arc::new(MockCooldownRepo),
     );
     // Min is 10 by default
@@ -77,7 +77,7 @@ async fn test_place_prime_success() {
     let repo = Arc::new(MockPrimeRepo::default());
     let service = CoussinPrimeService::new(
         repo.clone(),
-        Arc::new(EmptyBotConfigRepository),
+        Arc::new(EnabledBotConfigRepository),
         Arc::new(MockCooldownRepo),
     );
     let res = service

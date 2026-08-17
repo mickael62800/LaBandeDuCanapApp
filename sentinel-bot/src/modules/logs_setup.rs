@@ -237,10 +237,10 @@ async fn trouver_ou_creer_categorie(ctx: &Context, guild_id: GuildId) -> Result<
         .await
         .map_err(|e| e.to_string())?;
 
-    if let Some(c) = salons
-        .values()
-        .find(|c| c.kind == ChannelType::Category && (c.name.contains("Logs") || c.name.contains("Coulisses") || c.name == NOM_CATEGORIE))
-    {
+    if let Some(c) = salons.values().find(|c| {
+        c.kind == ChannelType::Category
+            && (c.name.contains("Logs") || c.name.contains("Coulisses") || c.name == NOM_CATEGORIE)
+    }) {
         return Ok(c.id);
     }
 

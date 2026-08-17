@@ -121,7 +121,10 @@ pub async fn handle(ctx: &Context, command: &CommandInteraction) {
     }
 
     let target_opt = target_id.to_user(&ctx.http).await.ok();
-    let target_name = target_opt.as_ref().map(|u| u.name.clone()).unwrap_or_else(|| format!("Utilisateur {}", target_id));
+    let target_name = target_opt
+        .as_ref()
+        .map(|u| u.name.clone())
+        .unwrap_or_else(|| format!("Utilisateur {}", target_id));
 
     if let Some(role_id) = super::find_immune_role(ctx, guild_id, target_id).await {
         edit_response_text(ctx, command, &super::immunity_message(role_id, "Warn")).await;
@@ -285,7 +288,7 @@ pub async fn handle(ctx: &Context, command: &CommandInteraction) {
                             )
                             .timestamp(serenity::model::Timestamp::now())
                             .footer(CreateEmbedFooter::new("Moderation | Sentinel"));
-                            
+
                             if let Some(ref u) = target_opt {
                                 esc_embed = esc_embed.thumbnail(u.face());
                             }
@@ -341,7 +344,7 @@ pub async fn handle(ctx: &Context, command: &CommandInteraction) {
                         )
                         .timestamp(serenity::model::Timestamp::now())
                         .footer(CreateEmbedFooter::new("Moderation | Sentinel"));
-                        
+
                         if let Some(ref u) = target_opt {
                             esc_embed = esc_embed.thumbnail(u.face());
                         }

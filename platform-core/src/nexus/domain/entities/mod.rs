@@ -4,6 +4,7 @@ pub mod achievement;
 pub mod casino;
 pub mod coussin;
 pub mod coussin_shop;
+pub mod coussin_steal;
 pub mod game;
 pub mod grand_salon;
 pub mod system;

@@ -154,7 +154,7 @@ fn service(
         PlayWheelService::new(
             wheel.clone(),
             wallet.clone(),
-            Arc::new(crate::nexus::application::economy_config::EmptyBotConfigRepository),
+            Arc::new(crate::nexus::application::economy_config::EnabledBotConfigRepository),
         ),
         wheel,
         wallet,

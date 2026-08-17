@@ -225,14 +225,32 @@ impl CoussinInsuranceUseCase for DummyCoussinInsurance {
 struct DummyCoussinSteal;
 #[async_trait]
 impl CoussinStealUseCase for DummyCoussinSteal {
-    async fn steal(
+    async fn open(
         &self,
         _: &str,
         _: &str,
         _: &str,
-        _: bool,
-    ) -> Result<platform_core::nexus::ports::inbound::coussin_steal::StealResult, DomainError> {
+        _: &str,
+    ) -> Result<platform_core::nexus::ports::inbound::coussin_steal::OpenedSteal, DomainError> {
         todo!()
+    }
+    async fn attach_message(&self, _: uuid::Uuid, _: &str) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn defend(
+        &self,
+        _: uuid::Uuid,
+        _: &str,
+    ) -> Result<platform_core::nexus::ports::inbound::coussin_steal::StealOutcome, DomainError>
+    {
+        todo!()
+    }
+    async fn resolve_expired(
+        &self,
+        _: i64,
+    ) -> Result<Vec<platform_core::nexus::ports::inbound::coussin_steal::StealOutcome>, DomainError>
+    {
+        Ok(vec![])
     }
 }
 
@@ -678,6 +696,39 @@ impl GameRepository for DummyGameRepo {
     async fn list_panels(&self, _: &str) -> Result<Vec<GamePanel>, DomainError> {
         Ok(vec![])
     }
+    async fn delete_panel(&self, _: &str, _: &str) -> Result<bool, DomainError> {
+        Ok(false)
+    }
+}
+
+/// Aucune photographie Discord : le rapport de synchronisation doit alors dire
+/// « etat inconnu », jamais « tout va bien ».
+struct DummyGameSyncRepo;
+#[async_trait]
+impl platform_core::nexus::ports::outbound::casino::game_sync_repository::GameSyncRepository
+    for DummyGameSyncRepo
+{
+    async fn save_inventory(
+        &self,
+        _: &str,
+        _: &platform_core::nexus::domain::entities::casino::game_sync::DiscordInventory,
+    ) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn latest_inventory(
+        &self,
+        _: &str,
+    ) -> Result<
+        Option<
+            platform_core::nexus::ports::outbound::casino::game_sync_repository::StoredInventory,
+        >,
+        DomainError,
+    > {
+        Ok(None)
+    }
+    async fn guilds_with_games(&self) -> Result<Vec<String>, DomainError> {
+        Ok(vec![])
+    }
 }
 
 struct DummyEventPublisher;
@@ -951,6 +1002,16 @@ fn create_test_app_state(api_key: impl Into<String>) -> AppState {
         wallet_history: Arc::new(DummyWalletUseCase),
         wallet_leaderboard: Arc::new(DummyWalletUseCase),
         coussin_profile: Arc::new(DummyCoussinProfile),
+        // Depot reel branche sur un pool paresseux : aucune connexion n'est
+        // ouverte tant qu'aucun job ne l'interroge, et ces tests n'exercent que
+        // la couche HTTP. Un faux depot demanderait quatorze methodes vides.
+        coussin_repo: Arc::new(
+            platform_api::nexus::adapters::outbound::postgres::coussin_repository::PgCoussinRepository::new(
+                sqlx::postgres::PgPoolOptions::new()
+                    .connect_lazy("postgres://localhost/nexus_test")
+                    .unwrap(),
+            ),
+        ),
         coussin_combat: Arc::new(DummyCoussinCombat),
         coussin_inventory: Arc::new(DummyCoussinInventory),
         coussin_insurance: Arc::new(DummyCoussinInsurance),
@@ -975,6 +1036,7 @@ fn create_test_app_state(api_key: impl Into<String>) -> AppState {
         game_port_allocator: Arc::new(DummyPortAllocator),
         bot_config_repo: Arc::new(DummyBotConfigRepo),
         game_repo: Arc::new(DummyGameRepo),
+        game_sync_repo: Arc::new(DummyGameSyncRepo),
         events: Arc::new(DummyEventPublisher),
         discord_api: Arc::new(DummyDiscordApi),
         api_key,

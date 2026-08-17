@@ -494,6 +494,7 @@ async fn handle_leave(ctx: &Context, cmd: &CommandInteraction, api: &ApiClient, 
 mod interactions;
 mod panels;
 mod reactions;
+pub(crate) mod sync;
 
 pub(crate) use interactions::{handles_component, on_component};
 pub(crate) use panels::{build_panel_embed, ensure_game_roles};

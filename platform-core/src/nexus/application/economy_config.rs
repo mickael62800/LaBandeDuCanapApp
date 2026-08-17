@@ -37,7 +37,12 @@ pub struct EconomyConfig {
 impl Default for EconomyConfig {
     fn default() -> Self {
         Self {
-            enabled: true,
+            // FAIL CLOSED : sans ligne `enabled` explicite pour la guilde, le
+            // module est eteint. Le defaut valait `true` : le dashboard
+            // affichait donc « inactif » (lui applique bien la regle) pendant
+            // que Discord repondait normalement — les deux se contredisaient,
+            // et personne ne pouvait savoir lequel disait vrai.
+            enabled: false,
             starting_coins: 100,
             transfer_enabled: true,
             transfer_min: 1,
@@ -87,12 +92,16 @@ impl EconomyConfig {
 pub struct CoussinConfig {
     pub enabled: bool,
     pub steal_enabled: bool,
-    pub steal_success_pct: u32,
-    pub steal_success_pct_piegeur: u32,
     pub steal_gain_pct: i64,
     pub steal_penalty_pct: i64,
     pub steal_cooldown_minutes: i64,
     pub steal_min_victim_coins: i64,
+    /// Secondes laissees a la victime pour serrer les coussins. Passe ce
+    /// delai, son absence vaut reponse et elle encaisse le malus.
+    pub steal_defense_window_seconds: i64,
+    /// Ce que coute a la victime de n'avoir pas reagi, retire de son bonus
+    /// defensif. C'est le reglage qui decide si etre attentif paie.
+    pub steal_absence_malus: i32,
     pub prime_enabled: bool,
     pub prime_min: i64,
     pub prime_max: i64,
@@ -141,15 +150,21 @@ pub struct CoussinConfig {
 impl Default for CoussinConfig {
     fn default() -> Self {
         Self {
-            enabled: true,
+            // FAIL CLOSED, comme l'economie ci-dessus : une cle de module
+            // absente signifie module desactive.
+            enabled: false,
             steal_enabled: true,
             // Les quatre valeurs historiques du service de vol.
-            steal_success_pct: 30,
-            steal_success_pct_piegeur: 50,
             steal_gain_pct: 20,
             steal_penalty_pct: 15,
             steal_cooldown_minutes: 30,
             steal_min_victim_coins: 10,
+            // Une minute : assez pour reagir a une notification, trop court
+            // pour monter la garde en permanence.
+            steal_defense_window_seconds: 60,
+            // Valeur de l'ancien Coup de Coude, ou elle avait fait ses
+            // preuves : lourde sans etre fatale.
+            steal_absence_malus: 8,
             prime_enabled: true,
             prime_min: 50,
             prime_max: 0,
@@ -253,18 +268,6 @@ impl CoussinConfig {
             dice_faces: self.dice_faces,
             classes: self.classes,
         }
-    }
-
-    /// Chance de reussite d'un vol, selon la classe du voleur.
-    pub fn steal_chance(&self, is_piegeur: bool) -> u32 {
-        if is_piegeur {
-            self.steal_success_pct_piegeur
-        } else {
-            self.steal_success_pct
-        }
-        // Un taux de 0 ou 100 rendrait le vol inutile ou infaillible : on
-        // garde toujours une part de risque des deux cotes.
-        .clamp(1, 99)
     }
 
     /// Montant vole a une victime. Au moins 1 : un vol reussi qui ne rapporte
@@ -407,16 +410,17 @@ pub async fn load_coussin(
     Ok(CoussinConfig {
         enabled: b(&items, "enabled", d.enabled),
         steal_enabled: b(&items, "steal_enabled", d.steal_enabled),
-        steal_success_pct: n(&items, "steal_success_pct", d.steal_success_pct),
-        steal_success_pct_piegeur: n(
-            &items,
-            "steal_success_pct_piegeur",
-            d.steal_success_pct_piegeur,
-        ),
         steal_gain_pct: n(&items, "steal_gain_pct", d.steal_gain_pct),
         steal_penalty_pct: n(&items, "steal_penalty_pct", d.steal_penalty_pct),
         steal_cooldown_minutes: n(&items, "steal_cooldown_minutes", d.steal_cooldown_minutes),
         steal_min_victim_coins: n(&items, "steal_min_victim_coins", d.steal_min_victim_coins),
+        steal_defense_window_seconds: n(
+            &items,
+            "steal_defense_window_seconds",
+            d.steal_defense_window_seconds,
+        )
+        .clamp(10, 600),
+        steal_absence_malus: n(&items, "steal_absence_malus", d.steal_absence_malus).clamp(0, 20),
         prime_enabled: b(&items, "prime_enabled", d.prime_enabled),
         prime_min: n(&items, "prime_min", d.prime_min),
         prime_max: n(&items, "prime_max", d.prime_max),
@@ -485,6 +489,53 @@ impl BotConfigRepository for EmptyBotConfigRepository {
     }
     async fn get_all_config(&self, _: &str) -> Result<Vec<BotGuildConfig>, DomainError> {
         Ok(vec![])
+    }
+    async fn set_config(&self, _: &str, _: &str, _: &str, _: &str) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn delete_config(&self, _: &str, _: &str, _: &str) -> Result<(), DomainError> {
+        Ok(())
+    }
+}
+
+/// Depot de test ou les modules sont EXPLICITEMENT actifs.
+///
+/// Depuis que l'absence de cle vaut module eteint (fail closed), un test qui
+/// exerce une regle de jeu doit d'abord allumer le jeu — sinon il ne teste
+/// plus que le refus. `EmptyBotConfigRepository` reste a cote, precisement
+/// pour verifier ce refus.
+#[cfg(test)]
+pub(crate) struct EnabledBotConfigRepository;
+
+#[cfg(test)]
+#[async_trait::async_trait]
+impl BotConfigRepository for EnabledBotConfigRepository {
+    async fn get_definitions(
+        &self,
+    ) -> Result<Vec<crate::nexus::domain::entities::system::bot_config::BotDefinition>, DomainError>
+    {
+        Ok(vec![])
+    }
+    async fn get_config(
+        &self,
+        guild_id: &str,
+        bot_name: &str,
+    ) -> Result<Vec<BotGuildConfig>, DomainError> {
+        Ok(vec![BotGuildConfig {
+            id: uuid::Uuid::nil(),
+            guild_id: guild_id.to_string().into(),
+            bot_name: bot_name.to_string(),
+            config_key: "enabled".into(),
+            config_value: "true".into(),
+            updated_at: chrono::Utc::now(),
+        }])
+    }
+    async fn get_all_config(&self, guild_id: &str) -> Result<Vec<BotGuildConfig>, DomainError> {
+        let mut out = Vec::new();
+        for bot_name in [ECONOMY_BOT, COUSSIN_BOT] {
+            out.extend(self.get_config(guild_id, bot_name).await?);
+        }
+        Ok(out)
     }
     async fn set_config(&self, _: &str, _: &str, _: &str, _: &str) -> Result<(), DomainError> {
         Ok(())

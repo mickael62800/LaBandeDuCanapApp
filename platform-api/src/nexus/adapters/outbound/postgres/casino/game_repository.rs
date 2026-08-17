@@ -288,4 +288,14 @@ impl GameRepository for PgGameRepository {
         .fetch_all(&self.pool).await.map_err(pg_err)?;
         Ok(rows.into_iter().map(Into::into).collect())
     }
+
+    async fn delete_panel(&self, guild_id: &str, message_id: &str) -> Result<bool, DomainError> {
+        let result = sqlx::query("DELETE FROM game_panels WHERE guild_id = $1 AND message_id = $2")
+            .bind(guild_id)
+            .bind(message_id)
+            .execute(&self.pool)
+            .await
+            .map_err(pg_err)?;
+        Ok(result.rows_affected() > 0)
+    }
 }

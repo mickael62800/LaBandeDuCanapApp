@@ -118,6 +118,13 @@ mod tests {
         ) -> Result<GamePanel, DomainError> {
             Err(DomainError::NotImplemented("test".into()))
         }
+        async fn delete_panel(
+            &self,
+            _guild_id: &str,
+            _message_id: &str,
+        ) -> Result<bool, DomainError> {
+            Ok(false)
+        }
     }
 
     fn sample_game(id: &str, name: &str) -> Game {

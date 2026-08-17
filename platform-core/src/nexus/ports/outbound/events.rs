@@ -22,6 +22,19 @@ pub mod game_events {
     pub const GAMES_PANEL_DEPLOY: &str = "games_panel_deploy";
     pub const GAMES_ROLES_ENSURE: &str = "games_roles_ensure";
     pub const GAME_ROLE_DELETE: &str = "game_role_delete";
+    /// Demande au bot l'inventaire reel de la guilde (roles et panneaux
+    /// vivants). Lui seul voit Discord : sans cette photographie, l'API ne peut
+    /// constater aucune divergence.
+    pub const GAMES_SYNC_REQUESTED: &str = "games_sync_requested";
+}
+
+/// Coussin Piege.
+pub mod coussin_events {
+    /// Une fouille vient d'etre tranchee faute de reaction de la victime. Le
+    /// bot en fait le recit dans le salon d'origine : sans cela, la fenetre de
+    /// defense se refermerait dans le silence et personne ne saurait ce qui
+    /// s'est passe.
+    pub const STEAL_RESOLVED: &str = "coussin_steal_resolved";
 }
 
 /// Hauts faits (cf. DOC/Nexus/haut-faits.md).

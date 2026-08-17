@@ -41,7 +41,9 @@ pub const UNREGISTER_PREFIX: &str = "gp_unregister:";
 pub const REVEAL_IP_PREFIX: &str = "gp_reveal_ip:";
 
 pub fn handles_component(custom_id: &str) -> bool {
-    custom_id.starts_with(REGISTER_PREFIX) || custom_id.starts_with(UNREGISTER_PREFIX) || custom_id.starts_with(REVEAL_IP_PREFIX)
+    custom_id.starts_with(REGISTER_PREFIX)
+        || custom_id.starts_with(UNREGISTER_PREFIX)
+        || custom_id.starts_with(REVEAL_IP_PREFIX)
 }
 
 pub async fn on_component(api: &ApiClient, ctx: &Context, component: &ComponentInteraction) {
@@ -61,15 +63,21 @@ pub async fn on_component(api: &ApiClient, ctx: &Context, component: &ComponentI
     };
 
     let reg_result = if is_register {
-        api.register_to_server(server_id, &component.user.id.to_string()).await
+        api.register_to_server(server_id, &component.user.id.to_string())
+            .await
     } else {
-        api.unregister_from_server(server_id, &component.user.id.to_string()).await
+        api.unregister_from_server(server_id, &component.user.id.to_string())
+            .await
     };
 
     // L'API peut refuser (serveur ferme, capacite, etc.) : on ne pretend pas
     // que l'inscription a reussi -> message ephemere et on s'arrete.
     if let Err(e) = reg_result {
-        let action = if is_register { "Inscription" } else { "Désinscription" };
+        let action = if is_register {
+            "Inscription"
+        } else {
+            "Désinscription"
+        };
         let _ = component
             .create_response(
                 &ctx.http,
@@ -127,7 +135,11 @@ pub async fn on_component(api: &ApiClient, ctx: &Context, component: &ComponentI
     }
 
     // Fallback : simple accuse ephemere.
-    let action_msg = if is_register { "Inscription enregistrée" } else { "Désinscription enregistrée" };
+    let action_msg = if is_register {
+        "Inscription enregistrée"
+    } else {
+        "Désinscription enregistrée"
+    };
     let _ = component
         .create_response(
             &ctx.http,
@@ -368,13 +380,30 @@ fn public_cover_url_for_status(path: Option<&str>, status: &str) -> Option<Strin
     let base = &full_url[..dot];
     let ext = &full_url[dot..];
 
-    let suffix = if status == "scheduled" || status == "starting" || status == "created" {
-        "_waiting"
+    // Les jaquettes livrees dans `web/public/imgs/` portent le suffixe
+    // `_attente` / `_offline`. Le web applique la meme regle
+    // (MemberGameServersPanel.vue) : les deux surfaces doivent rester alignees,
+    // sinon Discord recoit une URL absente et n'affiche aucune image.
+    let base = strip_status_suffix(base);
+
+    let suffix = if status == "scheduled" || status == "starting" {
+        "_attente"
     } else {
         "_offline"
     };
 
     Some(format!("{base}{suffix}{ext}"))
+}
+
+/// Retire un suffixe d'etat deja present, pour ne jamais produire
+/// `..._offline_offline.jpg`.
+fn strip_status_suffix(base: &str) -> &str {
+    for suffix in ["_attente", "_waiting", "_offline"] {
+        if let Some(stripped) = base.strip_suffix(suffix) {
+            return stripped;
+        }
+    }
+    base
 }
 
 async fn grant_session_role(
@@ -678,7 +707,13 @@ pub fn reconcile(ctx: Context, api: Arc<ApiClient>, guild_ids: Vec<GuildId>) {
                 if server.status == "scheduled" && !server.ip_revealed {
                     if let Some(reveal_at) = server.ip_reveal_at.as_deref() {
                         let (game_name, _) = game_name_and_role(&api, &server).await;
-                        schedule_opening_soon(ctx.clone(), guild_id, server.id.clone(), game_name, reveal_at.to_string());
+                        schedule_opening_soon(
+                            ctx.clone(),
+                            guild_id,
+                            server.id.clone(),
+                            game_name,
+                            reveal_at.to_string(),
+                        );
                     }
                 }
             }
@@ -716,7 +751,13 @@ async fn handle_event(ctx: &Context, api: &ApiClient, payload_json: &str) {
                 if detail.server.status == "scheduled" && !detail.server.ip_revealed {
                     if let Some(reveal_at) = detail.server.ip_reveal_at.as_deref() {
                         let (game_name, _) = game_name_and_role(api, &detail.server).await;
-                        schedule_opening_soon(ctx.clone(), GuildId::new(guild_id), server_id, game_name, reveal_at.to_string());
+                        schedule_opening_soon(
+                            ctx.clone(),
+                            GuildId::new(guild_id),
+                            server_id,
+                            game_name,
+                            reveal_at.to_string(),
+                        );
                     }
                 }
             }
@@ -1086,15 +1127,25 @@ async fn on_started(ctx: &Context, api: &ApiClient, guild_id: GuildId, server_id
                     let is_panel = msg.components.iter().any(|row| {
                         row.components.iter().any(|c| {
                             if let serenity::model::application::ActionRowComponent::Button(b) = c {
-                                if let serenity::all::ButtonKind::NonLink { custom_id, .. } = &b.data {
-                                    return custom_id.starts_with(REGISTER_PREFIX) && custom_id.contains(server_id);
+                                if let serenity::all::ButtonKind::NonLink { custom_id, .. } =
+                                    &b.data
+                                {
+                                    return custom_id.starts_with(REGISTER_PREFIX)
+                                        && custom_id.contains(server_id);
                                 }
                             }
                             false
                         })
                     });
                     if is_panel {
-                        let _ = msg.edit(&ctx.http, serenity::builder::EditMessage::new().embed(embed).components(panel_rows(server_id, server.ip_revealed))).await;
+                        let _ = msg
+                            .edit(
+                                &ctx.http,
+                                serenity::builder::EditMessage::new()
+                                    .embed(embed)
+                                    .components(panel_rows(server_id, server.ip_revealed)),
+                            )
+                            .await;
                         break;
                     }
                 }
@@ -1442,7 +1493,11 @@ async fn on_daily_ping(ctx: &Context, api: &ApiClient, server_id: &str) {
     let (game_name, role_id) = game_name_and_role(api, &server).await;
     let Some(rid) = role_id else { return };
 
-    let when = match server.ip_reveal_at.as_deref().and_then(|d| chrono::DateTime::parse_from_rfc3339(d).ok()) {
+    let when = match server
+        .ip_reveal_at
+        .as_deref()
+        .and_then(|d| chrono::DateTime::parse_from_rfc3339(d).ok())
+    {
         Some(dt) => format!("<t:{}:R>", dt.timestamp()),
         None => "bientôt".to_string(),
     };
@@ -1457,7 +1512,8 @@ async fn on_daily_ping(ctx: &Context, api: &ApiClient, server_id: &str) {
         .await;
 }
 
-static SCHEDULED_PINGS: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> = std::sync::OnceLock::new();
+static SCHEDULED_PINGS: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> =
+    std::sync::OnceLock::new();
 
 fn get_scheduled_pings() -> &'static std::sync::Mutex<std::collections::HashSet<String>> {
     SCHEDULED_PINGS.get_or_init(|| std::sync::Mutex::new(std::collections::HashSet::new()))
@@ -1470,38 +1526,51 @@ fn schedule_opening_soon(
     game_name: String,
     reveal_at: String,
 ) {
-    let Ok(dt) = chrono::DateTime::parse_from_rfc3339(&reveal_at) else { return };
+    let Ok(dt) = chrono::DateTime::parse_from_rfc3339(&reveal_at) else {
+        return;
+    };
     let dt_utc = dt.with_timezone(&chrono::Utc);
     let now = chrono::Utc::now();
     let ping_time = dt_utc - chrono::Duration::hours(1);
-    
+
     if ping_time > now {
         let mut pings = get_scheduled_pings().lock().unwrap();
         if !pings.insert(server_id.clone()) {
             return;
         }
         drop(pings);
-        
+
         tokio::spawn(async move {
-            let sleep_dur = (ping_time - chrono::Utc::now()).to_std().unwrap_or(std::time::Duration::from_secs(0));
+            let sleep_dur = (ping_time - chrono::Utc::now())
+                .to_std()
+                .unwrap_or(std::time::Duration::from_secs(0));
             tokio::time::sleep(sleep_dur).await;
-            
+
             let private_name = private_text_name(&game_name);
             let channels = guild_id.channels(&ctx.http).await.unwrap_or_default();
             let mut private_ch_id = None;
             for (id, ch) in channels {
-                if ch.name == private_name {
-                    if ch.topic.as_deref().unwrap_or("").contains(&format!("session:{}", server_id)) {
-                        private_ch_id = Some(id);
-                        break;
-                    }
+                if ch.name == private_name
+                    && ch
+                        .topic
+                        .as_deref()
+                        .unwrap_or("")
+                        .contains(&format!("session:{server_id}"))
+                {
+                    private_ch_id = Some(id);
+                    break;
                 }
             }
-            
+
             if let Some(ch_id) = private_ch_id {
-                let _ = ch_id.send_message(&ctx.http, CreateMessage::new().content(
-                    format!("@everyone Le serveur **{game_name}** ouvre dans moins d'une heure !")
-                )).await;
+                let _ = ch_id
+                    .send_message(
+                        &ctx.http,
+                        CreateMessage::new().content(format!(
+                            "@everyone Le serveur **{game_name}** ouvre dans moins d'une heure !"
+                        )),
+                    )
+                    .await;
             }
         });
     }

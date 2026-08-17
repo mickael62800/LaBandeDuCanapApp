@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import AppButton from "@/components/atoms/AppButton.vue";
 import type { PublicGameServer } from "@/services/publicGamesService";
 
@@ -20,35 +20,49 @@ const playersOnline = computed(() =>
 );
 
 /**
- * Calcule l'image spécifique selon l'état du serveur :
+ * Jaquettes candidates selon l'état du serveur, de la plus précise à la moins :
  * - En ligne (Running) : jaquette normale "LE SERVEUR EST OUVERT !" (ex: palworld_game.jpg)
  * - En attente (Scheduled / Starting) : jaquette "LE SERVEUR OUVRE BIENTÔT !" (ex: palworld_game_attente.jpg)
  * - Hors ligne (Stopped / Created / Error) : jaquette "LE SERVEUR EST FERMÉ !" (ex: palworld_game_offline.jpg)
+ *
+ * Les variantes existent tantôt en .jpg, tantôt en .png : on tente les deux.
+ * On ne retombe jamais sur la jaquette "ouvert" pour un serveur fermé, sinon la
+ * carte annonce le contraire de l'état réel ; à défaut, l'icône prend le relais.
+ * `nexus-bot/src/game_portal.rs` applique la même règle côté Discord.
  */
-function coverImageFor(server: PublicGameServer): string | null {
-  if (!server.cover_image_url) return null;
+function coverCandidates(server: PublicGameServer): string[] {
   const url = server.cover_image_url;
+  if (!url) return [];
   const status = server.status || (server.online ? "running" : "stopped");
 
   // Si le serveur tourne actuellement
   if (status === "running") {
-    return url;
+    return [url];
   }
 
   const dot = url.lastIndexOf(".");
-  if (dot === -1) return url;
+  if (dot === -1) return [];
 
-  const base = url.substring(0, dot);
-  const ext = url.substring(dot);
-  const cleanBase = base.replace(/_(offline|waiting|attente)$/i, "");
+  const base = url.substring(0, dot).replace(/_(offline|waiting|attente)$/i, "");
+  const ext = url.substring(dot).toLowerCase();
 
-  // En attente d'ouverture -> affiche la jaquette _attente.jpg / _attente.png ("Bientôt ouvert")
-  if (status === "scheduled" || status === "starting") {
-    return `${cleanBase}_attente${ext}`;
-  } else {
-    // Tout autre état (arrêté, coupé entre les dates, créé, erreur) -> affiche la jaquette _offline.jpg / _offline.png ("Fermé")
-    return `${cleanBase}_offline${ext}`;
-  }
+  // En attente d'ouverture -> jaquette _attente ("Bientôt ouvert").
+  // Tout autre état (arrêté, coupé entre les dates, créé, erreur) -> _offline ("Fermé").
+  const suffix = status === "scheduled" || status === "starting" ? "_attente" : "_offline";
+  const alt = ext === ".png" ? ".jpg" : ".png";
+  return [`${base}${suffix}${ext}`, `${base}${suffix}${alt}`];
+}
+
+/** Index de la candidate en cours par serveur, avancé à chaque échec de chargement. */
+const coverStep = ref<Record<string, number>>({});
+
+function coverImageFor(server: PublicGameServer): string | null {
+  const candidates = coverCandidates(server);
+  return candidates[coverStep.value[server.id] ?? 0] ?? null;
+}
+
+function onCoverError(server: PublicGameServer): void {
+  coverStep.value[server.id] = (coverStep.value[server.id] ?? 0) + 1;
 }
 
 /** Libellé d'état lisible */
@@ -85,10 +99,10 @@ function stateLabel(server: PublicGameServer): string {
       <li v-for="server in sortedServers" :key="server.id" class="mb-game" :class="{ off: !server.online, waiting: server.status === 'scheduled' || server.status === 'starting' }">
         <span v-if="server.online && server.player_count" class="mb-badge">{{ server.player_count }} EN JEU</span>
         <img
-          v-if="server.cover_image_url"
+          v-if="coverImageFor(server)"
           :src="coverImageFor(server)!"
           :alt="server.game"
-          @error="($event.target as HTMLImageElement).src = server.cover_image_url!"
+          @error="onCoverError(server)"
         />
         <div v-else class="mb-game-fallback" aria-hidden="true">{{ server.icon || "🎮" }}</div>
         <div class="mb-game-in">

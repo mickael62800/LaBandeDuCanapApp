@@ -135,8 +135,14 @@ function update(value: string | number | boolean): void {
   font-size: 0.9rem;
 }
 
+/* Le libelle absorbe la hauteur libre de la cellule, ce qui colle tous les
+   controles d'une meme rangee sur la meme ligne.
+   Sans cela, un libelle sur trois lignes (« Regeneration au repos (joueur) »)
+   poussait son curseur plus bas que ses voisins et toute la section paraissait
+   decalee. */
 .gcf-label {
   color: var(--text-secondary);
+  flex-grow: 1;
 }
 
 .gcf-input {

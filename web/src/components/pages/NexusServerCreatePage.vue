@@ -426,10 +426,12 @@ watch(selectedGuildId, loadTemplates, { immediate: true });
   font-size: 0.9rem;
 }
 
+/* Colonnes un peu plus larges que le strict necessaire : a 16 rem, les
+   libelles longs passaient a trois lignes et hachaient la grille. */
 .nc-form {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
-  gap: var(--space-md);
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  gap: var(--space-md) var(--space-lg);
 }
 
 .nc-field {

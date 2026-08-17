@@ -130,6 +130,10 @@ pub struct GameServer {
     pub ip_reveal_at: Option<DateTime<Utc>>,
     /// True une fois l'IP revelee dans le salon.
     pub ip_revealed: bool,
+    /// Heure de fin annoncee de la session. Sert a distinguer un conteneur
+    /// arrete « en pause, ca reprend » d'un conteneur arrete « c'est fini » :
+    /// les deux ne se racontent pas de la meme facon aux joueurs.
+    pub closes_at: Option<DateTime<Utc>>,
 }
 
 /// Nombre maximal PAR DEFAUT de redemarrages auto consecutifs avant abandon

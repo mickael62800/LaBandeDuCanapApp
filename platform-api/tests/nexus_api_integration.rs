@@ -333,6 +333,7 @@ impl ManageGameServersUseCase for DummyManageGameServers {
         &self,
         _: Uuid,
         _: chrono::DateTime<chrono::Utc>,
+        _: Option<chrono::DateTime<chrono::Utc>>,
         _: &str,
     ) -> Result<(), DomainError> {
         Ok(())
@@ -490,6 +491,13 @@ impl GameServerRepository for DummyGameServerRepo {
         Ok(vec![])
     }
     async fn mark_daily_ping(&self, _: Uuid) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn set_closes_at(
+        &self,
+        _: Uuid,
+        _: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> Result<(), DomainError> {
         Ok(())
     }
     async fn set_ip_reveal_at(

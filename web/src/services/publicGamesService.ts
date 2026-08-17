@@ -17,6 +17,14 @@ export interface PublicGameServer {
   cover_image_url: string | null;
   status?: string;
   online: boolean;
+  /**
+   * Ce que la session annonce : `waiting` | `open` | `closed`.
+   *
+   * Calculé par l'API à partir de la fenêtre horaire ET du conteneur. C'est
+   * lui qui choisit la jaquette : quand chaque surface avait sa propre règle,
+   * Discord et le site racontaient la même session différemment.
+   */
+  display_state?: "waiting" | "open" | "closed";
   player_count: number;
   /// Renseigné uniquement si l'adresse a été révélée.
   port: number | null;

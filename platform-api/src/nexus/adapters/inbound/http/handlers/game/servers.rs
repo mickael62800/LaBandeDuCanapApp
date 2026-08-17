@@ -391,6 +391,10 @@ pub async fn request_reveal_ip(
 #[derive(Debug, Deserialize)]
 pub struct ScheduleDto {
     pub reveal_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// Heure de fin annoncee. Absente = aucune fin prevue ; un conteneur
+    /// arrete est alors annonce ferme, faute de pouvoir promettre une reprise.
+    #[serde(default)]
+    pub closes_at: Option<chrono::DateTime<chrono::Utc>>,
     pub actor_id: Option<String>,
 }
 
@@ -417,7 +421,7 @@ pub async fn schedule_server(
     let actor = acteur(&state, &headers, server_id, dto.actor_id.as_deref()).await?;
     state
         .game_servers_uc
-        .schedule(server_id, reveal_at, &actor)
+        .schedule(server_id, reveal_at, dto.closes_at, &actor)
         .await?;
     publish_lifecycle(&state, SERVER_SCHEDULED, server_id, &detail.server.guild_id).await;
     Ok(StatusCode::NO_CONTENT)

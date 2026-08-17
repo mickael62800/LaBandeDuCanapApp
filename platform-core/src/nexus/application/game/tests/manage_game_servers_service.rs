@@ -106,6 +106,7 @@ fn sample_server(host_port: Option<u16>) -> GameServer {
         voice_channel_id: None,
         ip_reveal_at: None,
         ip_revealed: false,
+        closes_at: None,
     }
 }
 
@@ -312,6 +313,13 @@ impl GameServerRepository for DummyServerRepo {
         Ok(vec![])
     }
     async fn mark_daily_ping(&self, _: Uuid) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn set_closes_at(
+        &self,
+        _: uuid::Uuid,
+        _: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> Result<(), DomainError> {
         Ok(())
     }
     async fn set_ip_reveal_at(&self, _: Uuid, _: Option<DateTime<Utc>>) -> Result<(), DomainError> {

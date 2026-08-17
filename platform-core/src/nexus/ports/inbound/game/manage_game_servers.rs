@@ -68,10 +68,14 @@ pub trait ManageGameServersUseCase: Send + Sync {
     /// ~5 min avant l'heure, et l'IP sera révélée à l'heure dite. Les salons
     /// Discord et le panneau d'inscription sont créés dès maintenant (par le
     /// bot, sur l'événement `game_server_scheduled` publié par la couche HTTP).
+    /// Programme l'ouverture, et l'heure de fin annoncee quand elle est
+    /// connue. Sans cette derniere, un conteneur arrete ne peut pas etre
+    /// distingue d'une session terminee (cf. `session_state`).
     async fn schedule(
         &self,
         id: Uuid,
         reveal_at: chrono::DateTime<chrono::Utc>,
+        closes_at: Option<chrono::DateTime<chrono::Utc>>,
         actor_user_id: &str,
     ) -> Result<(), DomainError>;
 

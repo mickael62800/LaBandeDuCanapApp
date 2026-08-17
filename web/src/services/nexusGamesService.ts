@@ -221,11 +221,22 @@ export const nexusGamesService = {
    * `scheduled`, les salons/panneau sont créés tout de suite, et le worker
    * démarre le conteneur ~5 min avant `revealAt` (ISO 8601).
    */
-  schedule(guildId: string, serverId: string, revealAt: string): Promise<void> {
+  /**
+   * Programme l'ouverture, et l'heure de fin quand elle est connue.
+   *
+   * Sans heure de fin, un conteneur arrêté ne peut pas être distingué d'une
+   * session terminée : la carte annoncerait « fermé » au milieu d'une soirée.
+   */
+  schedule(
+    guildId: string,
+    serverId: string,
+    revealAt: string,
+    closesAt?: string | null,
+  ): Promise<void> {
     return nexusPost<void>(
       `/api/games/servers/${encodeURIComponent(serverId)}/schedule`,
       guildId,
-      { reveal_at: revealAt },
+      { reveal_at: revealAt, closes_at: closesAt ?? null },
     );
   },
 

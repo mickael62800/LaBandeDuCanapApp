@@ -127,7 +127,7 @@ pub async fn on_component(api: &ApiClient, ctx: &Context, component: &ComponentI
             template
                 .as_ref()
                 .and_then(|template| template.cover_image_url.as_deref()),
-            detail.server.status.as_str(),
+            etat_affiche(&detail.server),
         );
         grant_session_role(ctx, component, server_id, &game_name).await;
         let embed = build_public_panel_embed(
@@ -440,7 +440,16 @@ fn public_cover_url(path: Option<&str>) -> Option<String> {
     public_cover_url_for_status(path, "running")
 }
 
-fn public_cover_url_for_status(path: Option<&str>, status: &str) -> Option<String> {
+/// Jaquette correspondant a l'etat ANNONCE de la session.
+///
+/// L'etat vient de l'API (`display_state`), qui l'a calcule a partir de la
+/// fenetre horaire ET du conteneur — voir `session_state` cote domaine. Le bot
+/// ne rejoue pas cette regle : quand chacun avait la sienne, Discord et le site
+/// racontaient la meme session differemment.
+///
+/// Repli sur le statut brut si l'API ne renseigne pas l'etat (reponse d'une
+/// version anterieure) : mieux vaut l'ancienne approximation qu'aucune image.
+fn public_cover_url_for_status(path: Option<&str>, etat_ou_statut: &str) -> Option<String> {
     let path = path?.trim();
     if path.is_empty() {
         return None;
@@ -456,27 +465,36 @@ fn public_cover_url_for_status(path: Option<&str>, status: &str) -> Option<Strin
         format!("{base}/{}", path.trim_start_matches('/'))
     };
 
-    if status == "running" {
+    let suffixe = match etat_ou_statut {
+        // Etats de session (source de verite).
+        "open" => "",
+        "waiting" => "_attente",
+        "closed" => "_offline",
+        // Repli : statuts bruts du conteneur.
+        "running" => "",
+        "scheduled" | "starting" => "_attente",
+        _ => "_offline",
+    };
+
+    if suffixe.is_empty() {
         return Some(full_url);
     }
 
     let dot = full_url.rfind('.')?;
-    let base = &full_url[..dot];
+    let base = strip_status_suffix(&full_url[..dot]);
     let ext = &full_url[dot..];
 
     // Les jaquettes livrees dans `web/public/imgs/` portent le suffixe
-    // `_attente` / `_offline`. Le web applique la meme regle
-    // (MemberGameServersPanel.vue) : les deux surfaces doivent rester alignees,
-    // sinon Discord recoit une URL absente et n'affiche aucune image.
-    let base = strip_status_suffix(base);
+    // `_attente` / `_offline`.
+    Some(format!("{base}{suffixe}{ext}"))
+}
 
-    let suffix = if status == "scheduled" || status == "starting" {
-        "_attente"
-    } else {
-        "_offline"
-    };
-
-    Some(format!("{base}{suffix}{ext}"))
+/// Etat a utiliser pour choisir la jaquette d'un serveur.
+fn etat_affiche(server: &GameServer) -> &str {
+    server
+        .display_state
+        .as_deref()
+        .unwrap_or(server.status.as_str())
 }
 
 /// Retire un suffixe d'etat deja present, pour ne jamais produire
@@ -1188,7 +1206,7 @@ async fn on_started(ctx: &Context, api: &ApiClient, guild_id: GuildId, server_id
                 .and_then(|template| {
                     public_cover_url_for_status(
                         template.cover_image_url.as_deref(),
-                        server.status.as_str(),
+                        etat_affiche(&server),
                     )
                 });
             let registered_user_ids: Vec<String> = api
@@ -1255,7 +1273,7 @@ async fn on_started(ctx: &Context, api: &ApiClient, guild_id: GuildId, server_id
         .await
         .ok()
         .and_then(|template| {
-            public_cover_url_for_status(template.cover_image_url.as_deref(), server.status.as_str())
+            public_cover_url_for_status(template.cover_image_url.as_deref(), etat_affiche(&server))
         });
 
     let cfg = api
@@ -1489,7 +1507,7 @@ async fn on_ip_reveal(ctx: &Context, api: &ApiClient, server_id: &str) {
         template
             .as_ref()
             .and_then(|template| template.cover_image_url.as_deref()),
-        server.status.as_str(),
+        etat_affiche(&server),
     );
 
     // Publie l'adresse uniquement dans le salon textuel prive des inscrits.

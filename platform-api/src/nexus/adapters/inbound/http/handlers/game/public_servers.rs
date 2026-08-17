@@ -22,6 +22,7 @@ use serde::Serialize;
 use crate::nexus::adapters::inbound::http::handlers::ApiError;
 use crate::nexus::bootstrap::AppState;
 use platform_core::nexus::domain::entities::game::server::GameServerStatus;
+use platform_core::nexus::domain::entities::game::session_state::session_display_state;
 use platform_core::nexus::domain::errors::DomainError;
 
 #[derive(Debug, Serialize)]
@@ -50,6 +51,14 @@ pub struct PublicGameServerDto {
     pub address: Option<String>,
     /// Vrai quand l'adresse est publiable (fin du delai de revelation).
     pub address_revealed: bool,
+    /// Ce que la session annonce : `waiting` | `open` | `closed`.
+    ///
+    /// Calcule par le domaine a partir de la fenetre horaire ET du conteneur.
+    /// C'est cet etat, et non `status`, qui choisit la jaquette : Discord et le
+    /// site racontaient la meme session differemment.
+    pub display_state: String,
+    /// Heure de fin annoncee, quand elle est connue.
+    pub closes_at: Option<String>,
 }
 
 /// GET /api/public/games/{guild_id}/servers
@@ -93,6 +102,15 @@ pub async fn public_servers(
                     None
                 },
                 address_revealed: s.ip_revealed,
+                display_state: session_display_state(
+                    s.status,
+                    s.ip_reveal_at,
+                    s.closes_at,
+                    chrono::Utc::now(),
+                )
+                .as_str()
+                .to_string(),
+                closes_at: s.closes_at.map(|d| d.to_rfc3339()),
             }
         })
         .collect();

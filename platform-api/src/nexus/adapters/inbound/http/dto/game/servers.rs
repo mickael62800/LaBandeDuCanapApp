@@ -123,6 +123,11 @@ pub struct GameServerDto {
     pub voice_channel_id: Option<String>,
     pub ip_reveal_at: Option<DateTime<Utc>>,
     pub ip_revealed: bool,
+    /// Heure de fin annoncee de la session.
+    pub closes_at: Option<DateTime<Utc>>,
+    /// Ce que la session annonce : `waiting` | `open` | `closed`. Calcule par
+    /// le domaine a partir de la fenetre horaire ET du conteneur.
+    pub display_state: String,
     /// Hote public du serveur, tel qu'il sera annonce aux joueurs.
     ///
     /// Renseigne independamment de `ip_revealed` : la revelation programmee
@@ -157,6 +162,16 @@ impl From<GameServer> for GameServerDto {
             voice_channel_id: s.voice_channel_id,
             ip_reveal_at: s.ip_reveal_at,
             ip_revealed: s.ip_revealed,
+            closes_at: s.closes_at,
+            display_state:
+                platform_core::nexus::domain::entities::game::session_state::session_display_state(
+                    s.status,
+                    s.ip_reveal_at,
+                    s.closes_at,
+                    Utc::now(),
+                )
+                .as_str()
+                .to_string(),
             // L'hote ne vit pas sur l'entite : il est commun a la guild et
             // releve de la configuration. Renseigne par `avec_hote`.
             public_host: None,

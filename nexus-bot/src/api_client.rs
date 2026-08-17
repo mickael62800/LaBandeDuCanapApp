@@ -241,6 +241,15 @@ pub struct GameServer {
     pub public_host: Option<String>,
     pub ip_reveal_at: Option<String>,
     pub ip_revealed: bool,
+    /// Ce que la session annonce : `waiting` | `open` | `closed`.
+    ///
+    /// Calcule par l'API a partir de la fenetre horaire ET du conteneur. Le
+    /// bot ne le recalcule pas : Discord et le site racontaient la meme
+    /// session differemment, chacun avec sa propre regle.
+    ///
+    /// Absent d'une reponse ancienne : on retombe alors sur le statut brut.
+    #[serde(default)]
+    pub display_state: Option<String>,
     pub text_channel_id: Option<String>,
     pub voice_channel_id: Option<String>,
 }

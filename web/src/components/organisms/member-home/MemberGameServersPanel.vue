@@ -33,10 +33,20 @@ const playersOnline = computed(() =>
 function coverCandidates(server: PublicGameServer): string[] {
   const url = server.cover_image_url;
   if (!url) return [];
-  const status = server.status || (server.online ? "running" : "stopped");
 
-  // Si le serveur tourne actuellement
-  if (status === "running") {
+  // L'état vient de l'API, qui l'a calculé à partir de la fenêtre horaire ET
+  // du conteneur. Le site ne rejoue pas cette règle : quand chacun avait la
+  // sienne, Discord et le site racontaient la même session différemment.
+  // Repli sur le statut brut si l'API ne le renseigne pas encore.
+  const state =
+    server.display_state
+    ?? (server.status === "running"
+      ? "open"
+      : server.status === "scheduled" || server.status === "starting"
+        ? "waiting"
+        : "closed");
+
+  if (state === "open") {
     return [url];
   }
 
@@ -46,9 +56,7 @@ function coverCandidates(server: PublicGameServer): string[] {
   const base = url.substring(0, dot).replace(/_(offline|waiting|attente)$/i, "");
   const ext = url.substring(dot).toLowerCase();
 
-  // En attente d'ouverture -> jaquette _attente ("Bientôt ouvert").
-  // Tout autre état (arrêté, coupé entre les dates, créé, erreur) -> _offline ("Fermé").
-  const suffix = status === "scheduled" || status === "starting" ? "_attente" : "_offline";
+  const suffix = state === "waiting" ? "_attente" : "_offline";
   const alt = ext === ".png" ? ".jpg" : ".png";
   return [`${base}${suffix}${ext}`, `${base}${suffix}${alt}`];
 }

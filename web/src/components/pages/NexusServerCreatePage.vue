@@ -146,10 +146,14 @@ async function submit() {
     // qui publie `game_server_scheduled` vers nexus-bot : le bot cree alors
     // immediatement les salons Discord et le panneau d'inscription, tandis que
     // le conteneur attend l'heure d'ouverture.
+    // La date de fermeture part avec la programmation : elle ne servait
+    // jusqu'ici qu'au calendrier communautaire, alors que c'est elle qui
+    // permet de distinguer « la soirée continue » de « c'est fini ».
     await nexusGamesService.schedule(
       selectedGuildId.value,
       created.id,
       openDate.toISOString(),
+      closeDate.toISOString(),
     );
 
     // Remplissage automatique du calendrier communautaire avec l'événement

@@ -294,6 +294,7 @@ async function submitSchedule() {
         selectedGuildId.value,
         server.value.id,
         iso,
+        stopAtInput.value ? new Date(stopAtInput.value).toISOString() : null,
       );
       success(isScheduled.value ? "Ouverture reprogrammée !" : "Ouverture programmée : les inscriptions sont ouvertes.");
     }

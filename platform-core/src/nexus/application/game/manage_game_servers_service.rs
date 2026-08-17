@@ -275,6 +275,7 @@ impl ManageGameServersUseCase for ManageGameServersService {
         &self,
         id: Uuid,
         reveal_at: chrono::DateTime<chrono::Utc>,
+        closes_at: Option<chrono::DateTime<chrono::Utc>>,
         actor_user_id: &str,
     ) -> Result<(), DomainError> {
         let server = self
@@ -287,6 +288,16 @@ impl ManageGameServersUseCase for ManageGameServersService {
             return Err(DomainError::ValidationError(
                 "l'heure d'ouverture doit etre dans le futur".into(),
             ));
+        }
+
+        // Une session qui se termine avant de commencer n'existe pas, et la
+        // regle d'affichage la rendrait « fermee » des sa programmation.
+        if let Some(fin) = closes_at {
+            if fin <= reveal_at {
+                return Err(DomainError::ValidationError(
+                    "l'heure de fermeture doit suivre l'heure d'ouverture".into(),
+                ));
+            }
         }
 
         // On ne programme que depuis un etat au repos (jamais un serveur en
@@ -315,15 +326,19 @@ impl ManageGameServersUseCase for ManageGameServersService {
         self.server_repo
             .set_ip_reveal_at(id, Some(reveal_at))
             .await?;
+        // Ecrite meme absente : reprogrammer sans heure de fin doit effacer
+        // celle de la session precedente, sinon la carte resterait « bientot »
+        // en s'appuyant sur une fenetre perimee.
+        self.server_repo.set_closes_at(id, closes_at).await?;
         self.audit(
             &server.guild_id,
             Some(id),
             Some(actor_user_id),
             GameAuditAction::Schedule,
-            serde_json::json!({ "reveal_at": reveal_at }),
+            serde_json::json!({ "reveal_at": reveal_at, "closes_at": closes_at }),
         )
         .await;
-        info!(server_id = %id, %reveal_at, "game_server programme (scheduled)");
+        info!(server_id = %id, %reveal_at, ?closes_at, "game_server programme (scheduled)");
         Ok(())
     }
 

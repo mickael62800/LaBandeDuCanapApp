@@ -124,6 +124,17 @@ fn container_lifecycle_routes() -> Router<AppState> {
             "/api/games/servers/{server_id}/command",
             post(handlers::game::servers::execute_rcon),
         )
+        // Catalogue d'administration : le navigateur envoie une CLE et des
+        // parametres, jamais une commande. Meme rate limit strict que la
+        // console libre — derriere, c'est le meme RCON.
+        .route(
+            "/api/games/servers/{server_id}/commands/{command_key}",
+            post(handlers::game::servers::run_catalog_command),
+        )
+        .route(
+            "/api/games/servers/{server_id}/players/online",
+            get(handlers::game::servers::list_online_players),
+        )
         .route(
             "/api/games/servers/{server_id}/stream-logs",
             get(handlers::game::servers::stream_logs_sse),
@@ -412,6 +423,10 @@ pub fn build_router_with(state: AppState, config: HttpConfig) -> Router {
         .route(
             "/api/games/{guild_id}/servers",
             get(handlers::game::servers::list_servers),
+        )
+        .route(
+            "/api/games/servers/{server_id}/commands",
+            get(handlers::game::servers::list_commands),
         )
         .route(
             "/api/games/{guild_id}/templates",

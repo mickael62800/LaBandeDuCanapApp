@@ -368,6 +368,32 @@ impl ManageGameServersUseCase for DummyManageGameServers {
     async fn execute_rcon(&self, _: Uuid, _: &str, _: &str) -> Result<String, DomainError> {
         Ok("OK".into())
     }
+    async fn list_commands(
+        &self,
+        _: Uuid,
+    ) -> Result<Vec<platform_core::nexus::domain::entities::game::command::GameCommand>, DomainError>
+    {
+        Ok(vec![])
+    }
+    async fn run_catalog_command(
+        &self,
+        _: Uuid,
+        _: &str,
+        _: &[(String, String)],
+        _: &str,
+    ) -> Result<String, DomainError> {
+        Ok("OK".into())
+    }
+    async fn list_online_players(
+        &self,
+        _: Uuid,
+        _: &str,
+    ) -> Result<
+        Vec<platform_core::nexus::domain::entities::game::presence::PlayerPresence>,
+        DomainError,
+    > {
+        Ok(vec![])
+    }
 }
 
 struct DummyManageGameTemplates;

@@ -106,4 +106,33 @@ pub trait ManageGameServersUseCase: Send + Sync {
         command: &str,
         actor_user_id: &str,
     ) -> Result<String, DomainError>;
+
+    // ── Catalogue de commandes ────────────────────────────────────────
+    /// Commandes d'administration proposees pour ce serveur, telles que
+    /// decrites par son modele de jeu. Vide si le jeu n'en declare aucune.
+    async fn list_commands(
+        &self,
+        id: Uuid,
+    ) -> Result<Vec<crate::nexus::domain::entities::game::command::GameCommand>, DomainError>;
+
+    /// Execute une commande DU CATALOGUE, designee par sa cle.
+    ///
+    /// Le gabarit est retrouve cote serveur et compose a partir des parametres
+    /// valides : le navigateur n'envoie jamais de commande, seulement une cle
+    /// et des valeurs. Sans cela, un bouton « bannir » serait une console RCON
+    /// ouverte a quiconque sait forger une requete.
+    async fn run_catalog_command(
+        &self,
+        id: Uuid,
+        command_key: &str,
+        params: &[(String, String)],
+        actor_user_id: &str,
+    ) -> Result<String, DomainError>;
+
+    /// Joueurs actuellement connectes, lus par la commande RCON propre au jeu.
+    async fn list_online_players(
+        &self,
+        id: Uuid,
+        actor_user_id: &str,
+    ) -> Result<Vec<crate::nexus::domain::entities::game::presence::PlayerPresence>, DomainError>;
 }

@@ -99,6 +99,11 @@ pub struct GameTemplate {
     pub max_memory_mb: i32,
     pub default_env: serde_json::Value,
     pub config_schema: Vec<ConfigField>,
+    /// Commandes d'administration proposees a l'ecran pour ce jeu. Vide tant
+    /// qu'aucun catalogue n'a ete ecrit : le jeu n'expose alors que la console
+    /// libre, comme avant.
+    #[serde(default)]
+    pub command_schema: Vec<crate::nexus::domain::entities::game::command::GameCommand>,
     pub supports_rcon: bool,
     pub supports_mods: bool,
     pub idle_shutdown_days: i32,
@@ -234,6 +239,7 @@ mod tests {
             max_memory_mb: 4096,
             default_env: serde_json::json!({}),
             config_schema: fields,
+            command_schema: vec![],
             supports_rcon: true,
             supports_mods: false,
             idle_shutdown_days: 7,

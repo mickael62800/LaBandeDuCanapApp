@@ -29,6 +29,7 @@ import {
 import { useTemplateFieldGroups } from "@/composables/useTemplateFieldGroups";
 import GameConfigField from "../molecules/GameConfigField.vue";
 import AdminPageShell from "../layouts/AdminPageShell.vue";
+import GameCommandPanel from "../organisms/GameCommandPanel.vue";
 
 import { Line } from 'vue-chartjs'
 import {
@@ -86,7 +87,14 @@ const stopAtInput = ref("");
 const rconCommand = ref("");
 const rconOutput = ref("");
 
-type Onglet = "apercu" | "config" | "surveillance" | "logs" | "console" | "joueurs";
+type Onglet =
+  | "apercu"
+  | "config"
+  | "surveillance"
+  | "logs"
+  | "commandes"
+  | "console"
+  | "joueurs";
 const onglet = ref<Onglet>("apercu");
 
 const isRunning = computed(() => server.value?.status === "running");
@@ -676,14 +684,14 @@ function fmtDuration(secs: number | null): string {
       <!-- Onglets -->
       <div class="sd-tabs">
         <button
-          v-for="t in (['apercu', 'config', 'surveillance', 'logs', 'console', 'joueurs'] as Onglet[])"
+          v-for="t in (['apercu', 'config', 'surveillance', 'logs', 'commandes', 'console', 'joueurs'] as Onglet[])"
           :key="t"
           type="button"
           :class="{ active: onglet === t }"
           @click="onglet = t"
         >
           {{
-            { apercu: "Aperçu", config: "Configuration", surveillance: "Surveillance", logs: "Logs", console: "Console", joueurs: "Joueurs" }[t]
+            { apercu: "Aperçu", config: "Configuration", surveillance: "Surveillance", logs: "Logs", commandes: "Commandes", console: "Console", joueurs: "Joueurs" }[t]
           }}
         </button>
       </div>
@@ -858,6 +866,19 @@ function fmtDuration(secs: number | null): string {
       </section>
 
       <!-- Console RCON -->
+      <!-- Commandes d'administration, déclarées par le jeu -->
+      <section v-if="onglet === 'commandes'" class="sd-pane">
+        <p v-if="!template?.supports_rcon" class="sd-hint">
+          Ce jeu ne supporte pas RCON : aucune commande ne peut lui être envoyée.
+        </p>
+        <GameCommandPanel
+          v-else-if="selectedGuildId && server"
+          :guild-id="selectedGuildId"
+          :server-id="server.id"
+          :running="isRunning"
+        />
+      </section>
+
       <section v-else-if="onglet === 'console'" class="sd-pane">
         <p v-if="!template?.supports_rcon" class="sd-hint">
           Ce jeu ne supporte pas RCON.

@@ -4,6 +4,7 @@
 //! pas de reqwest). Logique metier + types.
 
 pub mod audit;
+pub mod command;
 pub mod config;
 pub mod player_session;
 pub mod presence;

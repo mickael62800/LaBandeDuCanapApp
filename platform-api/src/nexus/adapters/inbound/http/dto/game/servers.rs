@@ -77,6 +77,25 @@ pub struct RconCommandDto {
     pub command: String,
 }
 
+/// Exécution d'une commande DU CATALOGUE.
+///
+/// Le navigateur envoie une clé et des paramètres, jamais une commande : le
+/// gabarit est retrouvé et composé côté serveur.
+#[derive(Debug, Deserialize)]
+pub struct CatalogCommandDto {
+    #[serde(default)]
+    pub params: std::collections::HashMap<String, String>,
+}
+
+/// Un joueur actuellement connecté au serveur de jeu.
+#[derive(Debug, Serialize)]
+pub struct OnlinePlayerDto {
+    pub name: String,
+    /// Identifiant vérifiable dans le jeu quand le serveur l'expose (SteamID64
+    /// pour Palworld). C'est lui que prennent les commandes de modération.
+    pub game_player_id: Option<String>,
+}
+
 /// Vue publique côté administration d'un serveur de jeu.
 ///
 /// Le runtime et le mot de passe RCON ne sont jamais exposés dans ce DTO.

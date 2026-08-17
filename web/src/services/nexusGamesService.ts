@@ -95,6 +95,43 @@ export interface GameTemplate {
   config_schema: TemplateField[];
 }
 
+/** Paramètre d'une commande d'administration. */
+export interface CommandParam {
+  key: string;
+  label: string;
+  type: "player" | "text" | "number" | "enum";
+  description?: string | null;
+  options?: string[];
+  min?: number;
+  max?: number;
+  max_length?: number;
+  required?: boolean;
+}
+
+/**
+ * Une commande proposée par le jeu.
+ *
+ * Le gabarit RCON n'est volontairement pas exposé : l'écran n'en a pas besoin,
+ * et le connaître inviterait à le rejouer à la main.
+ */
+export interface GameCommand {
+  key: string;
+  label: string;
+  group?: string | null;
+  description?: string | null;
+  warning?: string | null;
+  confirm?: boolean;
+  danger?: boolean;
+  params?: CommandParam[];
+}
+
+/** Un joueur actuellement connecté, tel que le serveur de jeu le rapporte. */
+export interface OnlinePlayer {
+  name: string;
+  /** SteamID64 pour Palworld. C'est lui que prennent les commandes. */
+  game_player_id: string | null;
+}
+
 export interface GameServerDetail {
   server: GameServer;
   config: Record<string, string>;
@@ -260,6 +297,40 @@ export const nexusGamesService = {
       `/api/games/servers/${encodeURIComponent(serverId)}/command`,
       guildId,
       { command },
+    );
+  },
+
+  /** GET /api/games/servers/{id}/commands — catalogue d'administration du jeu. */
+  commands(guildId: string, serverId: string): Promise<GameCommand[]> {
+    return nexusGet<GameCommand[]>(
+      `/api/games/servers/${encodeURIComponent(serverId)}/commands`,
+      guildId,
+    );
+  },
+
+  /**
+   * POST /api/games/servers/{id}/commands/{key} — exécute une commande du
+   * catalogue. On envoie une clé et des paramètres, jamais une commande :
+   * c'est l'API qui compose, à partir du gabarit qu'elle seule connaît.
+   */
+  runCommand(
+    guildId: string,
+    serverId: string,
+    commandKey: string,
+    params: Record<string, string>,
+  ): Promise<{ response: string }> {
+    return nexusPost<{ response: string }>(
+      `/api/games/servers/${encodeURIComponent(serverId)}/commands/${encodeURIComponent(commandKey)}`,
+      guildId,
+      { params },
+    );
+  },
+
+  /** GET /api/games/servers/{id}/players/online — interroge le jeu en direct. */
+  onlinePlayers(guildId: string, serverId: string): Promise<OnlinePlayer[]> {
+    return nexusGet<OnlinePlayer[]>(
+      `/api/games/servers/${encodeURIComponent(serverId)}/players/online`,
+      guildId,
     );
   },
 

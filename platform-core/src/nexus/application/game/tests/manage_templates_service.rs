@@ -50,6 +50,7 @@ fn sample_template(slug: &str, name: &str) -> GameTemplate {
         max_memory_mb: 4096,
         default_env: serde_json::json!({}),
         config_schema: vec![],
+        command_schema: vec![],
         supports_rcon: false,
         supports_mods: false,
         idle_shutdown_days: 7,

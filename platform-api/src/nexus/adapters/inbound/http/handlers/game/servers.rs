@@ -15,8 +15,8 @@ use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::nexus::adapters::inbound::http::dto::game::servers::{
-    CreateGameServerDto, GameServerDetailDto, GameServerDto, GameServerStatsDto, RconCommandDto,
-    RconCommandResponseDto, UpdateConfigDto,
+    CatalogCommandDto, CreateGameServerDto, GameServerDetailDto, GameServerDto, GameServerStatsDto,
+    OnlinePlayerDto, RconCommandDto, RconCommandResponseDto, UpdateConfigDto,
 };
 use crate::nexus::adapters::inbound::http::handlers::ApiError;
 use crate::nexus::bootstrap::AppState;
@@ -514,6 +514,60 @@ pub async fn execute_rcon(
         .execute_rcon(server_id, &dto.command, &actor)
         .await?;
     Ok(Json(RconCommandResponseDto { response: resp }))
+}
+
+/// GET /api/games/servers/{server_id}/commands
+///
+/// Catalogue d'administration du jeu. Les gabarits RCON ne sont pas dans la
+/// reponse : le navigateur n'a besoin que des libelles et des parametres.
+pub async fn list_commands(
+    State(state): State<AppState>,
+    Path(server_id): Path<Uuid>,
+) -> Result<Json<Vec<platform_core::nexus::domain::entities::game::command::GameCommand>>, ApiError>
+{
+    Ok(Json(state.game_servers_uc.list_commands(server_id).await?))
+}
+
+/// POST /api/games/servers/{server_id}/commands/{command_key}
+pub async fn run_catalog_command(
+    State(state): State<AppState>,
+    Path((server_id, command_key)): Path<(Uuid, String)>,
+    headers: HeaderMap,
+    Query(q): Query<ActorQuery>,
+    Json(dto): Json<CatalogCommandDto>,
+) -> Result<Json<RconCommandResponseDto>, ApiError> {
+    let actor = acteur(&state, &headers, server_id, q.actor_id.as_deref()).await?;
+    let params: Vec<(String, String)> = dto.params.into_iter().collect();
+    let response = state
+        .game_servers_uc
+        .run_catalog_command(server_id, &command_key, &params, &actor)
+        .await?;
+    Ok(Json(RconCommandResponseDto { response }))
+}
+
+/// GET /api/games/servers/{server_id}/players/online
+///
+/// Interroge le serveur de jeu en direct, avec la commande propre a ce jeu.
+pub async fn list_online_players(
+    State(state): State<AppState>,
+    Path(server_id): Path<Uuid>,
+    headers: HeaderMap,
+    Query(q): Query<ActorQuery>,
+) -> Result<Json<Vec<OnlinePlayerDto>>, ApiError> {
+    let actor = acteur(&state, &headers, server_id, q.actor_id.as_deref()).await?;
+    let players = state
+        .game_servers_uc
+        .list_online_players(server_id, &actor)
+        .await?;
+    Ok(Json(
+        players
+            .into_iter()
+            .map(|p| OnlinePlayerDto {
+                name: p.name,
+                game_player_id: p.game_player_id,
+            })
+            .collect(),
+    ))
 }
 
 use axum::response::sse::{Event, Sse};

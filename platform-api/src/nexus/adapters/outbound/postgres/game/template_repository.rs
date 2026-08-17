@@ -40,6 +40,7 @@ struct TemplateRow {
     max_memory_mb: i32,
     default_env: serde_json::Value,
     config_schema: serde_json::Value,
+    command_schema: serde_json::Value,
     supports_rcon: bool,
     supports_mods: bool,
     idle_shutdown_days: i32,
@@ -54,6 +55,12 @@ impl TryFrom<TemplateRow> for GameTemplate {
     fn try_from(r: TemplateRow) -> Result<Self, DomainError> {
         let config_schema: Vec<ConfigField> = serde_json::from_value(r.config_schema)
             .map_err(|e| DomainError::Internal(format!("config_schema parse: {e}")))?;
+        // Un catalogue illisible ne doit pas rendre le modele entier
+        // inexploitable : le jeu perd ses boutons, pas sa fiche.
+        let command_schema = serde_json::from_value(r.command_schema).unwrap_or_else(|error| {
+            tracing::warn!(%error, slug = %r.slug, "command_schema illisible, catalogue ignore");
+            Vec::new()
+        });
         let init_files: Vec<InitFile> = serde_json::from_value(r.init_files)
             .map_err(|e| DomainError::Internal(format!("init_files parse: {e}")))?;
         let command: Option<Vec<String>> = match r.command_template.as_deref() {
@@ -84,6 +91,7 @@ impl TryFrom<TemplateRow> for GameTemplate {
             max_memory_mb: r.max_memory_mb,
             default_env: r.default_env,
             config_schema,
+            command_schema,
             supports_rcon: r.supports_rcon,
             supports_mods: r.supports_mods,
             idle_shutdown_days: r.idle_shutdown_days,
@@ -99,7 +107,7 @@ const SELECT_COLS: &str =
     "id, slug, name, description, image, category, icon, accent_color, cover_image_url, \
      container_port, port_protocol, volume_path, run_as_root, \
      default_memory_mb, min_memory_mb, max_memory_mb, \
-     default_env, config_schema, supports_rcon, supports_mods, idle_shutdown_days, \
+     default_env, config_schema, command_schema, supports_rcon, supports_mods, idle_shutdown_days, \
      init_files, command_template, created_at, updated_at";
 
 #[async_trait]

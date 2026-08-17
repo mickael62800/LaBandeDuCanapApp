@@ -997,6 +997,74 @@ impl ManageGameServersUseCase for ManageGameServersService {
 
         Ok(resultat?.raw)
     }
+
+    async fn list_commands(
+        &self,
+        id: Uuid,
+    ) -> Result<Vec<crate::nexus::domain::entities::game::command::GameCommand>, DomainError> {
+        let server = self
+            .server_repo
+            .find_by_id(id)
+            .await?
+            .ok_or_else(|| DomainError::NotFound(format!("game_server {id} introuvable")))?;
+        let template = self
+            .template_repo
+            .find_by_id(server.template_id)
+            .await?
+            .ok_or_else(|| DomainError::NotFound("modele de jeu introuvable".into()))?;
+        Ok(template.command_schema)
+    }
+
+    async fn run_catalog_command(
+        &self,
+        id: Uuid,
+        command_key: &str,
+        params: &[(String, String)],
+        actor_user_id: &str,
+    ) -> Result<String, DomainError> {
+        // Une cle absente du catalogue est REFUSEE, jamais interpretee : c'est
+        // ce qui empeche le navigateur de faire passer une commande de son
+        // choix pour une commande approuvee.
+        let commande = self
+            .list_commands(id)
+            .await?
+            .into_iter()
+            .find(|c| c.key == command_key)
+            .ok_or_else(|| {
+                DomainError::Validation(format!(
+                    "'{command_key}' ne fait pas partie des commandes de ce jeu"
+                ))
+            })?;
+
+        let rendue = commande.build(params)?;
+        self.execute_rcon(id, &rendue, actor_user_id).await
+    }
+
+    async fn list_online_players(
+        &self,
+        id: Uuid,
+        actor_user_id: &str,
+    ) -> Result<Vec<crate::nexus::domain::entities::game::presence::PlayerPresence>, DomainError>
+    {
+        use crate::nexus::domain::entities::game::presence;
+
+        let server = self
+            .server_repo
+            .find_by_id(id)
+            .await?
+            .ok_or_else(|| DomainError::NotFound(format!("game_server {id} introuvable")))?;
+        let template = self
+            .template_repo
+            .find_by_id(server.template_id)
+            .await?
+            .ok_or_else(|| DomainError::NotFound("modele de jeu introuvable".into()))?;
+
+        // Chaque jeu a sa commande : Palworld repond a `ShowPlayers`, pas a
+        // `list`. Interroger avec la mauvaise ne renvoie rien d'exploitable.
+        let commande = presence::players_command(&template.slug);
+        let brut = self.execute_rcon(id, commande, actor_user_id).await?;
+        Ok(presence::parse_players(&template.slug, &brut))
+    }
 }
 
 /// Longueur maximale d'une commande RCON.

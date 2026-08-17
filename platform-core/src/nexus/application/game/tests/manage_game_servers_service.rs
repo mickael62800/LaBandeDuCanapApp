@@ -65,6 +65,7 @@ fn sample_template(slug: &str, protocol: TemplatePortProtocol, run_as_root: bool
             "BOOL_VAR": true
         }),
         config_schema: vec![],
+        command_schema: vec![],
         supports_rcon: false,
         supports_mods: false,
         idle_shutdown_days: 7,

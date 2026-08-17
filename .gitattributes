@@ -12,3 +12,17 @@ Dockerfile text eol=lf
 *.sql text eol=lf
 *.rs text eol=lf
 *.toml text eol=lf
+
+# Meme traitement pour le web et la configuration. Ces extensions n'etaient
+# pas declarees : chaque fichier ecrit en LF sous Windows declenchait un
+# avertissement de conversion a l'ajout, et le depot se retrouvait avec deux
+# conventions selon la machine d'origine. Une seule regle vaut mieux qu'un
+# avertissement qu'on apprend a ignorer.
+*.vue text eol=lf
+*.ts text eol=lf
+*.js text eol=lf
+*.css text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf

@@ -734,6 +734,32 @@ impl ManageGameServersUseCase for ManageGameServersService {
             .clone()
             .ok_or_else(|| DomainError::Internal("container_id absent apres create".into()))?;
 
+        // La configuration a change depuis la creation du conteneur : le
+        // recreer est le SEUL moyen de la lui appliquer, Docker figeant les
+        // variables d'environnement a la creation. Le volume est conserve : le
+        // monde et les sauvegardes ne bougent pas.
+        //
+        // Un echec de recreation n'arrete pas le demarrage : mieux vaut un
+        // serveur qui tourne avec ses anciens reglages qu'un serveur eteint.
+        // Le drapeau reste alors pose, et la prochaine tentative reessaiera.
+        if !freshly_created && server.config_dirty {
+            info!(server_id = %id, "configuration modifiee : recreation du conteneur");
+            match self.recreate_container(id, &server, &template, &cfg).await {
+                Ok(new_cid) => {
+                    cid = new_cid;
+                    server.container_id = Some(cid.clone());
+                    self.server_repo.set_config_dirty(id, false).await?;
+                }
+                Err(error) => {
+                    warn!(
+                        %error,
+                        server_id = %id,
+                        "recreation impossible : demarrage avec la configuration precedente"
+                    );
+                }
+            }
+        }
+
         // Upload des init files puis start, avec UNE tentative de recreation si
         // le conteneur reutilise pointe sur un reseau disparu. Ce cas survient
         // apres une recreation du reseau Docker (migration de labels, ou un
@@ -944,6 +970,16 @@ impl ManageGameServersUseCase for ManageGameServersService {
         self.config_repo
             .replace_all(id, entries.clone(), Some(actor_user_id))
             .await?;
+
+        // Docker fige les variables d'environnement a la CREATION du
+        // conteneur : `docker start` repart avec celles d'origine. Sans ce
+        // marquage, un reglage modifie ici n'atteignait jamais le serveur, et
+        // l'ecran promettait un effet « au prochain redemarrage » qui
+        // n'arrivait pas. Le prochain demarrage recreera le conteneur.
+        if server.container_id.is_some() {
+            self.server_repo.set_config_dirty(id, true).await?;
+        }
+
         self.audit(
             &server.guild_id,
             Some(id),

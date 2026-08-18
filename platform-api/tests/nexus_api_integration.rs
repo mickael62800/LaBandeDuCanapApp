@@ -493,6 +493,9 @@ impl GameServerRepository for DummyGameServerRepo {
     async fn mark_daily_ping(&self, _: Uuid) -> Result<(), DomainError> {
         Ok(())
     }
+    async fn set_config_dirty(&self, _: uuid::Uuid, _: bool) -> Result<(), DomainError> {
+        Ok(())
+    }
     async fn set_closes_at(
         &self,
         _: Uuid,

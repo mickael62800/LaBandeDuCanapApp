@@ -109,6 +109,9 @@ pub trait GameServerRepository: Send + Sync {
     async fn mark_daily_ping(&self, id: Uuid) -> Result<(), DomainError>;
 
     /// Definit la date de revelation de l'IP (None pour desactiver).
+    /// Marque (ou lave) l'ecart entre la configuration et le conteneur.
+    async fn set_config_dirty(&self, id: uuid::Uuid, dirty: bool) -> Result<(), DomainError>;
+
     /// Fixe (ou efface) l'heure de fin annoncee de la session.
     async fn set_closes_at(
         &self,

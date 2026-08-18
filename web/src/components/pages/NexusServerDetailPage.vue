@@ -769,7 +769,10 @@ function fmtDuration(secs: number | null): string {
             {{ savingConfig ? "Enregistrement…" : "Enregistrer" }}
           </AppButton>
           <p class="sd-hint">
-            Les changements prennent effet au prochain redémarrage du serveur.
+            Les changements prennent effet au prochain démarrage du serveur, qui
+            reconstruit le conteneur pour les lui appliquer. Le monde et les
+            sauvegardes sont conservés. Un serveur qui tourne garde ses réglages
+            actuels jusqu'à son prochain arrêt puis démarrage.
           </p>
         </template>
       </section>

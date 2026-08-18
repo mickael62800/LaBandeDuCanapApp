@@ -134,6 +134,12 @@ pub struct GameServer {
     /// arrete « en pause, ca reprend » d'un conteneur arrete « c'est fini » :
     /// les deux ne se racontent pas de la meme facon aux joueurs.
     pub closes_at: Option<DateTime<Utc>>,
+    /// La configuration a change depuis la creation du conteneur.
+    ///
+    /// Les reglages passent en variables d'environnement Docker, figees a la
+    /// creation : redemarrer ne les relit pas. Ce drapeau force la RECREATION
+    /// du conteneur au prochain demarrage — le volume, donc le monde, reste.
+    pub config_dirty: bool,
 }
 
 /// Nombre maximal PAR DEFAUT de redemarrages auto consecutifs avant abandon

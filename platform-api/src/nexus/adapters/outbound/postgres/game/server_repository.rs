@@ -51,6 +51,7 @@ struct ServerRow {
     voice_channel_id: Option<String>,
     ip_reveal_at: Option<DateTime<Utc>>,
     closes_at: Option<DateTime<Utc>>,
+    config_dirty: bool,
     ip_revealed: bool,
 }
 
@@ -90,6 +91,7 @@ impl TryFrom<ServerRow> for GameServer {
             voice_channel_id: r.voice_channel_id,
             ip_reveal_at: r.ip_reveal_at,
             closes_at: r.closes_at,
+            config_dirty: r.config_dirty,
             ip_revealed: r.ip_revealed,
         })
     }
@@ -100,7 +102,7 @@ const SELECT_COLS: &str = "id, guild_id, template_id, name, status, container_id
      owner_user_id, idle_shutdown_days, last_active_at, last_player_count, \
      last_error, created_at, updated_at, started_at, stopped_at, \
      restart_attempts, last_restart_at, \
-     text_channel_id, voice_channel_id, ip_reveal_at, ip_revealed, closes_at";
+     text_channel_id, voice_channel_id, ip_reveal_at, ip_revealed, closes_at, config_dirty";
 
 #[async_trait]
 impl GameServerRepository for PgGameServerRepository {
@@ -517,6 +519,16 @@ impl GameServerRepository for PgGameServerRepository {
             .execute(&self.pool)
             .await
             .map_err(pg_ctx("mark_daily_ping"))?;
+        Ok(())
+    }
+
+    async fn set_config_dirty(&self, id: Uuid, dirty: bool) -> Result<(), DomainError> {
+        sqlx::query("UPDATE game_servers SET config_dirty = $2, updated_at = NOW() WHERE id = $1")
+            .bind(id)
+            .bind(dirty)
+            .execute(&self.pool)
+            .await
+            .map_err(pg_ctx("set_config_dirty"))?;
         Ok(())
     }
 

@@ -3,7 +3,7 @@
 //! (`system/info.rs`) ne fait plus que l'assemblage et le mapping DTO.
 
 use redis::AsyncCommands;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 const HOST_METRICS_KEY: &str = "ops:host-metrics";
 
@@ -80,6 +80,21 @@ pub struct HostMetrics {
     pub net_rx_bytes_per_sec: u64,
     #[serde(default)]
     pub net_tx_bytes_per_sec: u64,
+    /// Joignabilite des services dont la plateforme depend. Vide pour un
+    /// instantane d'avant cette sonde.
+    #[serde(default)]
+    pub internet: Vec<InternetProbe>,
+}
+
+/// Resultat d'une sonde vers l'exterieur, tel que l'agent le publie.
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct InternetProbe {
+    pub label: String,
+    pub target: String,
+    pub reachable: bool,
+    /// `None` si injoignable : mettre 0 laisserait croire a une latence
+    /// parfaite.
+    pub latency_ms: Option<u64>,
 }
 
 /// Lit l'instantane ephemere publie par ops-worker. La cle Redis expire si

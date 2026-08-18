@@ -26,6 +26,26 @@ struct HostMetricsSnapshot {
     /// coup d'oeil a un debit de ligne.
     net_rx_bytes_per_sec: u64,
     net_tx_bytes_per_sec: u64,
+    /// Joignabilite des services dont la plateforme depend.
+    internet: Vec<InternetProbe>,
+}
+
+/// Resultat d'une sonde vers l'exterieur.
+///
+/// Une connexion TCP, pas un ping ICMP : ICMP demande des privileges bruts
+/// (`setcap`, ou root), et surtout beaucoup de reseaux le filtrent — un ping
+/// perdu ne prouve alors rien. Ouvrir le port qu'on utilise vraiment mesure ce
+/// qui compte : « puis-je joindre Discord », pas « la machine repond-elle a
+/// une requete que personne ne fait ».
+#[derive(Debug, Serialize)]
+struct InternetProbe {
+    /// Nom lisible de la cible (« Discord », « DNS Cloudflare »).
+    label: String,
+    target: String,
+    reachable: bool,
+    /// Temps d'etablissement de la connexion. `None` si injoignable : mettre 0
+    /// laisserait croire a une latence parfaite.
+    latency_ms: Option<u64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -122,7 +142,71 @@ fn collect() -> Result<HostMetricsSnapshot, String> {
         disks: read_disks("/var/lib/sentinel/disks-current.json"),
         net_rx_bytes_per_sec,
         net_tx_bytes_per_sec,
+        internet: probe_internet(),
     })
+}
+
+/// Cibles sondees, surchargeables par `OPS_INTERNET_PROBES`
+/// (`Libelle=hote:port`, separes par des virgules).
+///
+/// Les defauts ne sont pas choisis au hasard : Discord est ce dont TOUT
+/// depend ici — bots, OAuth, moderation. Un DNS public sert de temoin : si
+/// Discord est injoignable mais pas lui, la panne est chez Discord, pas chez
+/// nous. C'est cette comparaison qui rend la mesure utile.
+const SONDES_PAR_DEFAUT: &str = "Discord=discord.com:443,Internet=1.1.1.1:443";
+
+/// Delai au-dela duquel on considere la cible injoignable.
+///
+/// Court a dessein : cette collecte tourne toutes les 30 s et ne doit pas s'y
+/// attarder. Une cible qui met plus de deux secondes a accepter une connexion
+/// est de toute facon inutilisable pour un bot.
+const SONDE_TIMEOUT: Duration = Duration::from_secs(2);
+
+fn probe_internet() -> Vec<InternetProbe> {
+    let brut = std::env::var("OPS_INTERNET_PROBES").unwrap_or_default();
+    let brut = if brut.trim().is_empty() {
+        SONDES_PAR_DEFAUT.to_string()
+    } else {
+        brut
+    };
+
+    brut.split(',')
+        .filter_map(|entree| {
+            let entree = entree.trim();
+            if entree.is_empty() {
+                return None;
+            }
+            let (label, target) = match entree.split_once('=') {
+                Some((l, t)) => (l.trim().to_string(), t.trim().to_string()),
+                None => (entree.to_string(), entree.to_string()),
+            };
+            Some(probe_target(label, target))
+        })
+        .collect()
+}
+
+fn probe_target(label: String, target: String) -> InternetProbe {
+    use std::net::{TcpStream, ToSocketAddrs};
+
+    let debut = std::time::Instant::now();
+
+    // La resolution DNS fait partie de la mesure : un nom qui ne se resout
+    // plus est une panne reseau comme une autre, et l'exclure la masquerait.
+    let adresse = target
+        .to_socket_addrs()
+        .ok()
+        .and_then(|mut adresses| adresses.next());
+
+    let reachable = adresse
+        .map(|adresse| TcpStream::connect_timeout(&adresse, SONDE_TIMEOUT).is_ok())
+        .unwrap_or(false);
+
+    InternetProbe {
+        label,
+        target,
+        latency_ms: reachable.then(|| debut.elapsed().as_millis() as u64),
+        reachable,
+    }
 }
 
 fn read_net(path: &str) -> Result<NetSample, String> {

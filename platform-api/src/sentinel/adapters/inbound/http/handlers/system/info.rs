@@ -21,7 +21,7 @@ use std::time::Instant;
 use crate::sentinel::adapters::inbound::http::errors::ApiError;
 use crate::sentinel::adapters::inbound::http::middleware::superadmin::WebUser;
 use crate::sentinel::adapters::outbound::system::host_metrics::{
-    load_host_metrics, parse_redis_info, DiskInfo, HostMetrics, RedisMetrics,
+    load_host_metrics, parse_redis_info, DiskInfo, HostMetrics, InternetProbe, RedisMetrics,
 };
 use crate::sentinel::bootstrap::state::OpsState;
 use axum::extract::{Extension, State};
@@ -63,6 +63,8 @@ pub struct HostMetricsDto {
     /// a qui les lit.
     pub net_rx_bytes_per_sec: u64,
     pub net_tx_bytes_per_sec: u64,
+    /// Joignabilite des services dont la plateforme depend (Discord d'abord).
+    pub internet: Vec<InternetProbe>,
 }
 
 #[derive(Debug, Serialize)]
@@ -226,6 +228,7 @@ pub async fn get_system_info(
         bots,
         workers,
         host: HostMetricsDto {
+            internet: host_metrics.internet.clone(),
             net_rx_bytes_per_sec: host_metrics.net_rx_bytes_per_sec,
             net_tx_bytes_per_sec: host_metrics.net_tx_bytes_per_sec,
             cpu_percent: host_metrics.cpu_percent,

@@ -75,6 +75,19 @@ function debit(octetsParSeconde: number): string {
           ↑ {{ debit(info.host.net_tx_bytes_per_sec) }}
         </div>
       </div>
+      <!-- Connectivité vers l'extérieur. Le témoin (DNS public) sert à situer
+           la panne : Discord injoignable alors que le témoin répond désigne
+           Discord, pas la machine. -->
+      <div v-for="probe in info.host.internet ?? []" :key="probe.target" class="metric-card">
+        <div class="metric-header">
+          <span class="metric-label">{{ probe.label }}</span>
+          <span class="metric-value" :style="{ color: probe.reachable ? undefined : 'var(--danger)' }">
+            {{ probe.reachable ? `${probe.latency_ms} ms` : "injoignable" }}
+          </span>
+        </div>
+        <div class="metric-sub">{{ probe.target }}</div>
+      </div>
+
       <div class="metric-card">
         <div class="metric-header">
           <span class="metric-label">CPU process API</span>

@@ -19,6 +19,23 @@ export interface HostMetrics {
    */
   net_rx_bytes_per_sec: number;
   net_tx_bytes_per_sec: number;
+  /** Joignabilité des services dont la plateforme dépend. */
+  internet: InternetProbe[];
+}
+
+/**
+ * Résultat d'une sonde vers l'extérieur.
+ *
+ * Une connexion TCP, pas un ping ICMP : beaucoup de réseaux filtrent l'ICMP,
+ * si bien qu'un ping perdu ne prouverait rien. On ouvre le port réellement
+ * utilisé.
+ */
+export interface InternetProbe {
+  label: string;
+  target: string;
+  reachable: boolean;
+  /** `null` si injoignable : 0 laisserait croire à une latence parfaite. */
+  latency_ms: number | null;
 }
 
 export interface ProcessMetrics {

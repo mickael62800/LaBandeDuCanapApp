@@ -34,9 +34,25 @@ const isSlider = computed(
     typeof props.field.max === "number",
 );
 
+/**
+ * Le réglage attend-il un nombre à virgule ?
+ *
+ * La plupart des taux Palworld sont des décimaux (gain d'expérience de 0,1 à
+ * 20, vitesse du jour, dégâts…). Avec un pas entier, le navigateur refusait
+ * « 1,5 » et le curseur sautait de 1 à 2 : la moitié des réglages du jeu
+ * étaient inatteignables. On le déduit des bornes et du défaut, qui portent
+ * déjà l'information.
+ */
+const isDecimal = computed(() =>
+  [props.field.min, props.field.max, Number(props.field.default)].some(
+    (v) => typeof v === "number" && Number.isFinite(v) && !Number.isInteger(v),
+  ),
+);
+
 /// Pas déduit de l'amplitude : un curseur de 0 à 100 se règle à l'unité, un
 /// curseur de 300 à 86400 secondes ne peut pas se parcourir pixel par pixel.
 const step = computed(() => {
+  if (isDecimal.value) return 0.1;
   const span = (props.field.max ?? 0) - (props.field.min ?? 0);
   if (span <= 50) return 1;
   if (span <= 500) return 5;
@@ -93,6 +109,7 @@ function update(value: string | number | boolean): void {
         class="gcf-input gcf-number"
         :min="field.min"
         :max="field.max"
+        :step="step"
         :value="modelValue"
         @input="update(($event.target as HTMLInputElement).value)"
       />
@@ -104,6 +121,7 @@ function update(value: string | number | boolean): void {
       class="gcf-input"
       :min="field.min"
       :max="field.max"
+      :step="step"
       :value="modelValue"
       @input="update(($event.target as HTMLInputElement).value)"
     />

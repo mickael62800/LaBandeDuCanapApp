@@ -10,6 +10,15 @@ export interface HostMetrics {
   cpu_cores: number;
   mem_used_mb: number;
   mem_total_mb: number;
+  /**
+   * Débit réseau instantané de l'hôte, en octets par seconde.
+   *
+   * Un débit, pas un compteur : les octets cumulés depuis le démarrage ne
+   * disent rien à qui les lit. Les interfaces virtuelles (boucle locale,
+   * ponts Docker) sont exclues — elles compteraient deux fois le même paquet.
+   */
+  net_rx_bytes_per_sec: number;
+  net_tx_bytes_per_sec: number;
 }
 
 export interface ProcessMetrics {

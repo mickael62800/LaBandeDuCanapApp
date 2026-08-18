@@ -18,6 +18,14 @@ struct HostMetricsSnapshot {
     mem_used_mb: u64,
     mem_total_mb: u64,
     disks: Vec<HostDisk>,
+    /// Debit reseau de l'hote, toutes interfaces physiques confondues.
+    ///
+    /// Un DEBIT, pas un compteur : `/proc/net/dev` donne des octets cumules
+    /// depuis le demarrage, un nombre qui ne dit rien a qui le lit. La
+    /// difference entre deux mesures, ramenee a la seconde, se compare d'un
+    /// coup d'oeil a un debit de ligne.
+    net_rx_bytes_per_sec: u64,
+    net_tx_bytes_per_sec: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -30,6 +38,13 @@ struct HostDisk {
     available_gb: f64,
     usage_percent: f32,
     is_removable: bool,
+}
+
+/// Octets cumules lus et ecrits, toutes interfaces retenues confondues.
+#[derive(Debug, Clone, Copy, Default)]
+struct NetSample {
+    rx: u64,
+    tx: u64,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -79,8 +94,13 @@ pub fn spawn(redis_client: redis::Client) {
 
 fn collect() -> Result<HostMetricsSnapshot, String> {
     let first = read_cpu("/host/proc/stat")?;
+    // Le reseau est echantillonne dans la MEME fenetre que le processeur :
+    // une seconde pause pour deux mesures, et les deux debits parlent du meme
+    // instant.
+    let net_first = read_net("/host/proc/net/dev").unwrap_or_default();
     std::thread::sleep(Duration::from_millis(200));
     let second = read_cpu("/host/proc/stat")?;
+    let net_second = read_net("/host/proc/net/dev").unwrap_or_default();
     let total_delta = second.total.saturating_sub(first.total);
     let idle_delta = second.idle.saturating_sub(first.idle);
     let cpu_percent = if total_delta == 0 {
@@ -90,13 +110,58 @@ fn collect() -> Result<HostMetricsSnapshot, String> {
     };
     let (mem_used_mb, mem_total_mb) = read_memory("/host/proc/meminfo")?;
 
+    // 200 ms d'ecart : on ramene a la seconde pour que le chiffre soit lisible.
+    let net_rx_bytes_per_sec = net_second.rx.saturating_sub(net_first.rx) * 5;
+    let net_tx_bytes_per_sec = net_second.tx.saturating_sub(net_first.tx) * 5;
+
     Ok(HostMetricsSnapshot {
         cpu_percent,
         cpu_cores: second.cores,
         mem_used_mb,
         mem_total_mb,
         disks: read_disks("/var/lib/sentinel/disks-current.json"),
+        net_rx_bytes_per_sec,
+        net_tx_bytes_per_sec,
     })
+}
+
+fn read_net(path: &str) -> Result<NetSample, String> {
+    let raw = std::fs::read_to_string(path).map_err(|error| error.to_string())?;
+    Ok(parse_net(&raw))
+}
+
+/// Additionne les octets de `/proc/net/dev`, interfaces virtuelles exclues.
+///
+/// `lo` est la boucle locale : la compter reviendrait a mesurer la machine se
+/// parlant a elle-meme. Les interfaces Docker (`docker0`, `veth*`, `br-*`)
+/// sont exclues pour la meme raison, et parce qu'elles comptent DEUX fois le
+/// meme paquet — une fois sur l'interface du conteneur, une fois sur le pont.
+fn parse_net(raw: &str) -> NetSample {
+    let mut sample = NetSample::default();
+    for line in raw.lines().skip(2) {
+        let Some((nom, chiffres)) = line.split_once(':') else {
+            continue;
+        };
+        let nom = nom.trim();
+        if nom == "lo"
+            || nom.starts_with("veth")
+            || nom.starts_with("docker")
+            || nom.starts_with("br-")
+        {
+            continue;
+        }
+        let colonnes: Vec<u64> = chiffres
+            .split_whitespace()
+            .map(|v| v.parse().unwrap_or(0))
+            .collect();
+        // Format /proc/net/dev : la 1re colonne est le total recu, la 9e le
+        // total emis.
+        if colonnes.len() >= 9 {
+            sample.rx = sample.rx.saturating_add(colonnes[0]);
+            sample.tx = sample.tx.saturating_add(colonnes[8]);
+        }
+    }
+    sample
 }
 
 fn read_cpu(path: &str) -> Result<CpuSample, String> {
@@ -189,6 +254,35 @@ fn read_disks(path: &str) -> Vec<HostDisk> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn le_reseau_ignore_la_boucle_locale_et_les_ponts_docker() {
+        // `lo` mesurerait la machine se parlant a elle-meme ; `docker0` et
+        // `veth*` comptent DEUX fois le meme paquet — une fois sur
+        // l'interface du conteneur, une fois sur le pont.
+        let raw = "Inter-|   Receive                                                |  Transmit
+ face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets
+    lo: 5000      50    0    0    0     0          0         0    5000      50
+  eth0: 1000      10    0    0    0     0          0         0     700       7
+docker0: 9999     99    0    0    0     0          0         0    9999      99
+veth123: 8888     88    0    0    0     0          0         0    8888      88
+";
+        let sample = super::parse_net(raw);
+        assert_eq!(sample.rx, 1000, "seule eth0 doit compter");
+        assert_eq!(sample.tx, 700);
+    }
+
+    #[test]
+    fn plusieurs_interfaces_physiques_s_additionnent() {
+        let raw = "Inter-|   Receive                                                |  Transmit
+ face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets
+  eth0: 1000      10    0    0    0     0          0         0     700       7
+  wlan0: 500       5    0    0    0     0          0         0     300       3
+";
+        let sample = super::parse_net(raw);
+        assert_eq!(sample.rx, 1500);
+        assert_eq!(sample.tx, 1000);
+    }
+
     use super::*;
 
     #[test]

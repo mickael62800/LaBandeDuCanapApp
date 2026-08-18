@@ -58,6 +58,11 @@ pub struct HostMetricsDto {
     pub cpu_cores: usize,
     pub mem_used_mb: u64,
     pub mem_total_mb: u64,
+    /// Debit reseau instantane de l'hote, en octets par seconde. Un debit et
+    /// non un compteur : les octets cumules depuis le demarrage ne disent rien
+    /// a qui les lit.
+    pub net_rx_bytes_per_sec: u64,
+    pub net_tx_bytes_per_sec: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -221,6 +226,8 @@ pub async fn get_system_info(
         bots,
         workers,
         host: HostMetricsDto {
+            net_rx_bytes_per_sec: host_metrics.net_rx_bytes_per_sec,
+            net_tx_bytes_per_sec: host_metrics.net_tx_bytes_per_sec,
             cpu_percent: host_metrics.cpu_percent,
             cpu_cores: host_metrics.cpu_cores,
             mem_used_mb: host_metrics.mem_used_mb,

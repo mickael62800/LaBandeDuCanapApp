@@ -25,6 +25,16 @@ const ramPct = computed(() =>
     : 0,
 );
 const cpuPct = computed(() => props.info.host.cpu_percent ?? 0);
+
+/**
+ * Rend un débit lisible : 2 300 000 o/s ne se lit pas, « 2,3 Mo/s » oui.
+ */
+function debit(octetsParSeconde: number): string {
+  const v = Number(octetsParSeconde) || 0;
+  if (v < 1024) return `${v} o/s`;
+  if (v < 1024 * 1024) return `${(v / 1024).toFixed(1)} Ko/s`;
+  return `${(v / (1024 * 1024)).toFixed(2)} Mo/s`;
+}
 </script>
 
 <template>
@@ -51,6 +61,18 @@ const cpuPct = computed(() => props.info.host.cpu_percent ?? 0);
         </div>
         <div class="metric-sub">
           {{ info.host.mem_used_mb.toLocaleString() }} / {{ info.host.mem_total_mb.toLocaleString() }} MB
+        </div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-header">
+          <span class="metric-label">Réseau host</span>
+          <span class="metric-value">{{ debit(info.host.net_rx_bytes_per_sec + info.host.net_tx_bytes_per_sec) }}</span>
+        </div>
+        <!-- Pas de barre : un débit n'a pas de plafond connu, et en inventer
+             un ferait lire « 80 % » là où il n'y a rien à comparer. -->
+        <div class="metric-sub">
+          ↓ {{ debit(info.host.net_rx_bytes_per_sec) }} &nbsp;·&nbsp;
+          ↑ {{ debit(info.host.net_tx_bytes_per_sec) }}
         </div>
       </div>
       <div class="metric-card">

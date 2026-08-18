@@ -604,6 +604,18 @@ watch(onglet, (o) => {
 /// Mêmes sections, même ordre et mêmes contrôles que le formulaire de création.
 const groupesConfig = useTemplateFieldGroups(computed(() => template.value?.config_schema));
 
+/**
+ * Rend un volume d'octets lisible : 2 300 000 000 ne se lit pas, « 2,14 Go »
+ * oui.
+ */
+function volume(octets: number | null | undefined): string {
+  const v = Number(octets) || 0;
+  if (v < 1024) return `${v} o`;
+  if (v < 1024 * 1024) return `${(v / 1024).toFixed(1)} Ko`;
+  if (v < 1024 * 1024 * 1024) return `${(v / (1024 * 1024)).toFixed(1)} Mo`;
+  return `${(v / (1024 * 1024 * 1024)).toFixed(2)} Go`;
+}
+
 function fmtDate(iso: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso);
@@ -824,6 +836,21 @@ function fmtDuration(secs: number | null): string {
             <div class="sd-chart-large-box">
               <Line :data="ramChartData" :options="chartOptions" />
             </div>
+          </div>
+
+          <!-- Trafic réseau du conteneur. Docker donne des octets CUMULÉS
+               depuis son démarrage : un total, pas un débit. On l'affiche tel
+               quel plutôt que d'inventer une vitesse à partir d'une seule
+               mesure — c'est la quantité échangée qui a du sens ici (un serveur
+               qui n'échange rien n'a personne dessus). -->
+          <div class="sd-surv-card">
+            <div class="sd-surv-label">Réseau reçu</div>
+            <div class="sd-surv-val">{{ volume(stats.network_rx_bytes) }}</div>
+          </div>
+
+          <div class="sd-surv-card">
+            <div class="sd-surv-label">Réseau envoyé</div>
+            <div class="sd-surv-val">{{ volume(stats.network_tx_bytes) }}</div>
           </div>
 
           <div class="sd-surv-card">

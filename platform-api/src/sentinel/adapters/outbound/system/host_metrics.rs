@@ -74,6 +74,12 @@ pub struct HostMetrics {
     pub mem_used_mb: u64,
     pub mem_total_mb: u64,
     pub disks: Vec<DiskInfo>,
+    /// Debit reseau de l'hote, interfaces virtuelles exclues. Absent des
+    /// instantanes d'avant sa collecte : `Default` vaut alors 0.
+    #[serde(default)]
+    pub net_rx_bytes_per_sec: u64,
+    #[serde(default)]
+    pub net_tx_bytes_per_sec: u64,
 }
 
 /// Lit l'instantane ephemere publie par ops-worker. La cle Redis expire si

@@ -32,7 +32,14 @@ export interface DeployPanelDto {
 export type SyncDivergence =
   | { kind: "role_missing"; key: string; game_id: string; game_name: string; role_id: string }
   | { kind: "role_unbound"; key: string; game_id: string; game_name: string }
-  | { kind: "role_orphan"; key: string; role_id: string; role_name: string }
+  | {
+      kind: "role_orphan";
+      key: string;
+      role_id: string;
+      role_name: string;
+      /** Nom du jeu homonyme rattaché à un AUTRE rôle : c'est alors un doublon. */
+      duplicate_of?: string | null;
+    }
   | {
       kind: "panel_message_missing";
       key: string;

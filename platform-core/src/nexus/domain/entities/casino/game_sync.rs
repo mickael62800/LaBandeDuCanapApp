@@ -53,9 +53,18 @@ pub enum Divergence {
     },
     /// Un jeu existe sans role : ses membres ne peuvent pas etre mentionnes.
     RoleUnbound { game_id: String, game_name: String },
-    /// Un role cree par le bot ne correspond a aucun jeu : reste d'une
-    /// suppression faite pendant que le bot ne pouvait pas suivre.
-    RoleOrphan { role_id: String, role_name: String },
+    /// Un role cree par le bot ne correspond a aucun jeu.
+    ///
+    /// La comparaison porte sur l'IDENTIFIANT, jamais sur le nom : deux roles
+    /// peuvent s'appeler « Factorio » sans etre le meme. `duplicate_of` dit
+    /// justement qu'un jeu de ce nom existe et pointe AILLEURS — c'est alors
+    /// un doublon, pas le reste d'un jeu supprime, et les deux ne se resolvent
+    /// pas de la meme facon.
+    RoleOrphan {
+        role_id: String,
+        role_name: String,
+        duplicate_of: Option<String>,
+    },
     /// Le message de panneau enregistre n'existe plus dans Discord.
     PanelMessageMissing {
         panel_id: String,
@@ -175,9 +184,17 @@ pub fn build_sync_report(
             .iter()
             .any(|game| game.role_id.as_deref() == Some(role.id.as_str()));
         if !claimed && role.color == role_color && role.mentionable {
+            // Un jeu du meme nom existe-t-il, rattache a un AUTRE role ? Si
+            // oui, ce role-ci est un doublon : le dire evite de faire croire
+            // que le jeu a disparu alors qu'il est parfaitement configure.
+            let duplicate_of = games
+                .iter()
+                .find(|game| game.name.eq_ignore_ascii_case(&role.name))
+                .map(|game| game.name.clone());
             divergences.push(Divergence::RoleOrphan {
                 role_id: role.id.clone(),
                 role_name: role.name.clone(),
+                duplicate_of,
             });
         }
     }
@@ -307,6 +324,30 @@ mod tests {
             vec![Divergence::RoleOrphan {
                 role_id: "200".into(),
                 role_name: "Role 200".into(),
+                duplicate_of: None,
+            }]
+        );
+    }
+
+    #[test]
+    fn un_role_homonyme_dun_jeu_configure_est_signale_comme_doublon() {
+        // Cas reel : deux roles « Factorio » existent dans Discord, le jeu ne
+        // pointe que vers l'un. Dire « role sans jeu » laisse croire que le jeu
+        // a disparu, alors qu'il est parfaitement configure.
+        let inventaire = DiscordInventory {
+            roles: vec![role("100", COULEUR, true), role("999", COULEUR, true)],
+            ..Default::default()
+        };
+        let mut jeu_factorio = jeu("1", Some("100"));
+        jeu_factorio.name = "Role 999".into(); // homonyme du role orphelin
+
+        let report = build_sync_report(&[jeu_factorio], &[], Some(&inventaire), None, COULEUR);
+        assert_eq!(
+            report.divergences,
+            vec![Divergence::RoleOrphan {
+                role_id: "999".into(),
+                role_name: "Role 999".into(),
+                duplicate_of: Some("Role 999".into()),
             }]
         );
     }

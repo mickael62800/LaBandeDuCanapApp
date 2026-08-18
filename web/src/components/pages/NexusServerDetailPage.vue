@@ -358,10 +358,22 @@ async function saveConfig() {
   if (!selectedGuildId.value || !server.value) return;
   savingConfig.value = true;
   try {
+    // N'envoyer que les clés que le jeu déclare encore.
+    //
+    // L'API refuse toute clé hors schéma — protection voulue, sans quoi
+    // n'importe quelle variable d'environnement pourrait être injectée dans le
+    // conteneur. Mais un réglage retiré du schéma laisse sa valeur en base :
+    // elle partait avec le reste et faisait échouer TOUT l'enregistrement, sur
+    // un réglage que l'écran n'affiche même plus.
+    const connues = new Set((template.value?.config_schema ?? []).map((f) => f.key));
+    const aEnvoyer = Object.fromEntries(
+      Object.entries(config.value).filter(([cle]) => connues.has(cle)),
+    );
+
     await nexusGamesService.updateConfig(
       selectedGuildId.value,
       server.value.id,
-      config.value,
+      aEnvoyer,
     );
     success("Configuration enregistrée. Redémarre le serveur pour l'appliquer.");
   } catch (e) {

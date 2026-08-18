@@ -239,7 +239,7 @@ function resolutionSummary(d: SyncDivergence, direction: SyncDirection): string 
       case "role_missing":
         return `Le rôle de « ${d.game_name} » n'existe plus dans Discord. Le dashboard oubliera cette liaison ; le jeu restera, sans rôle.`;
       case "role_orphan":
-        return `Le rôle « ${d.role_name} » sera conservé tel quel dans Discord. Cet écart réapparaîtra tant qu'il existe.`;
+        return `Le rôle « ${d.role_name} » (${d.role_id}) sera conservé tel quel dans Discord. Cet écart réapparaîtra tant qu'il existe.`;
       case "panel_message_missing":
         return "Le panneau disparu sera oublié côté dashboard. Aucun message ne sera republié.";
       default:
@@ -252,7 +252,9 @@ function resolutionSummary(d: SyncDivergence, direction: SyncDirection): string 
     case "role_unbound":
       return `Un rôle sera créé dans Discord pour « ${d.game_name} », puis rattaché au jeu.`;
     case "role_orphan":
-      return `Le rôle « ${d.role_name} » sera SUPPRIMÉ de Discord. Les membres qui le portent le perdront.`;
+      return d.duplicate_of
+        ? `Le rôle « ${d.role_name} » (${d.role_id}) sera SUPPRIMÉ de Discord. C'est le doublon : « ${d.duplicate_of} » garde le rôle auquel il est rattaché. Les membres qui portent ce doublon le perdront.`
+        : `Le rôle « ${d.role_name} » (${d.role_id}) sera SUPPRIMÉ de Discord. Les membres qui le portent le perdront.`;
     case "panel_message_missing":
       return "Un nouveau panneau sera publié dans le salon, et l'ancien message oublié.";
   }
@@ -294,7 +296,9 @@ function divergenceTitle(d: SyncDivergence): string {
     case "role_unbound":
       return `${d.game_name} — aucun rôle associé`;
     case "role_orphan":
-      return `${d.role_name} — rôle sans jeu`;
+      return d.duplicate_of
+        ? `${d.role_name} — rôle en double`
+        : `${d.role_name} — rôle sans jeu`;
     case "panel_message_missing":
       return "Panneau disparu de son salon";
   }
@@ -307,9 +311,13 @@ function divergenceDetail(d: SyncDivergence): string {
     case "role_unbound":
       return "Sans rôle, ce jeu ne peut être mentionné par personne.";
     case "role_orphan":
-      return "Ce rôle porte les marques d'un rôle de jeu, mais aucun jeu ne le réclame.";
+      // La comparaison porte sur l'identifiant, jamais sur le nom : sans lui
+      // affiché, impossible de distinguer ce rôle de son homonyme légitime.
+      return d.duplicate_of
+        ? `« ${d.duplicate_of} » est bien configuré, mais rattaché à un autre rôle : celui-ci (${d.role_id}) est un doublon resté dans Discord.`
+        : `Ce rôle porte les marques d'un rôle de jeu, mais aucun jeu ne le réclame (identifiant ${d.role_id}).`;
     case "panel_message_missing":
-      return "Le message enregistré n'existe plus : les boutons d'abonnement ont disparu avec lui.";
+      return `Le message enregistré n'existe plus dans le salon <#${d.channel_id}> : les boutons d'abonnement ont disparu avec lui.`;
   }
 }
 

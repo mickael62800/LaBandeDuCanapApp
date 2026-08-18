@@ -204,7 +204,12 @@ impl GameSyncService {
                     detail: format!("« {role_name} » est conserve tel quel dans Discord"),
                 }
             }
-            (Divergence::RoleOrphan { role_id, role_name }, SyncDirection::Dashboard) => {
+            (
+                Divergence::RoleOrphan {
+                    role_id, role_name, ..
+                },
+                SyncDirection::Dashboard,
+            ) => {
                 self.events
                     .publish(
                         game_events::GAME_ROLE_DELETE,

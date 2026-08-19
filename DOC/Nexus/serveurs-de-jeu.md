@@ -68,6 +68,14 @@ CPU et RAM disent ce que le conteneur **consomme**, pas ce que les joueurs **res
 
 Lu ensemble : un temps de réponse élevé **avec** une charge hôte supérieure aux cœurs désigne la machine, pas le jeu. Un temps de réponse élevé sur un hôte tranquille désigne le serveur lui-même — trop de joueurs, trop de constructions, ou un réglage trop généreux.
 
+## Ajuster mémoire et processeur
+
+La mémoire et le plafond de cœurs se règlent après coup, depuis l'aperçu du serveur : deux curseurs bornés par ce que le jeu accepte. Un serveur qui rame peut recevoir un cœur de plus, un serveur surdimensionné rendre de la mémoire aux autres.
+
+Docker fige ces limites à la **création** du conteneur : le changement s'applique donc au prochain démarrage, qui le reconstruit — le monde et les sauvegardes sont conservés. L'écran le dit plutôt que de laisser croire à un effet immédiat.
+
+Les bornes viennent du modèle de jeu : sous son minimum, le serveur plante au démarrage, et c'est le genre de réglage qu'on rate en confondant les unités. Le plafond processeur est un plafond, pas une réservation : le serveur n'utilise que ce dont il a besoin.
+
 ## Les alertes de supervision
 
 Chaque serveur peut prévenir sur Discord quand il dépasse un seuil : processeur, mémoire, ou **temps de réponse** — ce dernier étant celui qui correspond au lag ressenti.

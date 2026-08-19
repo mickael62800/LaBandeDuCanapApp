@@ -428,6 +428,12 @@ pub fn build_router_with(state: AppState, config: HttpConfig) -> Router {
             "/api/games/servers/{server_id}/commands",
             get(handlers::game::servers::list_commands),
         )
+        // Ressources : effet differe a la reconstruction du conteneur, mais
+        // l'ecriture elle-meme ne pilote aucun conteneur.
+        .route(
+            "/api/games/servers/{server_id}/resources",
+            put(handlers::game::servers::update_resources),
+        )
         .route(
             "/api/games/servers/{server_id}/alerts",
             get(handlers::game::servers::get_alert_settings)

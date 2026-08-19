@@ -638,6 +638,34 @@ pub async fn stream_stats_sse(
 // Handlers HTTP du cycle de vie des serveurs de jeu. Un handler convertit la
 // requête en commande et délègue la validité métier à platform_core::nexus.
 
+/// Ressources allouees a un serveur.
+#[derive(Debug, serde::Deserialize)]
+pub struct UpdateResourcesDto {
+    pub memory_mb: i32,
+    /// `null` = plafond par defaut de l'adapter.
+    #[serde(default)]
+    pub cpu_limit: Option<f64>,
+}
+
+/// PUT /api/games/servers/{server_id}/resources
+///
+/// Docker fige memoire et processeur a la creation du conteneur : le
+/// changement prend effet au prochain demarrage, qui le reconstruit.
+pub async fn update_resources(
+    State(state): State<AppState>,
+    Path(server_id): Path<Uuid>,
+    headers: HeaderMap,
+    Query(q): Query<ActorQuery>,
+    Json(dto): Json<UpdateResourcesDto>,
+) -> Result<StatusCode, ApiError> {
+    let actor = acteur(&state, &headers, server_id, q.actor_id.as_deref()).await?;
+    state
+        .game_servers_uc
+        .update_resources(server_id, dto.memory_mb, dto.cpu_limit, &actor)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 // ── Alertes de supervision ──
 
 /// Reglages d'alerte tels que l'ecran les voit.

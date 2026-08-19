@@ -334,6 +334,25 @@ export const nexusGamesService = {
     );
   },
 
+  /**
+   * PUT /api/games/servers/{id}/resources — ajuste mémoire et cœurs.
+   *
+   * Docker fige ces limites à la création du conteneur : le changement prend
+   * effet au prochain démarrage, qui le reconstruit.
+   */
+  updateResources(
+    guildId: string,
+    serverId: string,
+    memoryMb: number,
+    cpuLimit: number | null,
+  ): Promise<void> {
+    return nexusPut<void>(
+      `/api/games/servers/${encodeURIComponent(serverId)}/resources`,
+      guildId,
+      { memory_mb: memoryMb, cpu_limit: cpuLimit },
+    );
+  },
+
   /** GET /api/games/servers/{id}/alerts — seuils de supervision. */
   getAlertSettings(guildId: string, serverId: string): Promise<AlertSettings> {
     return nexusGet<AlertSettings>(

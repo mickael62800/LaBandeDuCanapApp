@@ -320,6 +320,14 @@ impl GameServerRepository for DummyServerRepo {
     async fn mark_daily_ping(&self, _: Uuid) -> Result<(), DomainError> {
         Ok(())
     }
+    async fn update_resources(
+        &self,
+        _: uuid::Uuid,
+        _: i32,
+        _: Option<f64>,
+    ) -> Result<(), DomainError> {
+        Ok(())
+    }
     async fn record_perf_sample(
         &self,
         _: uuid::Uuid,

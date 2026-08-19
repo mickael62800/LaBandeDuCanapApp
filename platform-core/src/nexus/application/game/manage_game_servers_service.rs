@@ -942,6 +942,64 @@ impl ManageGameServersUseCase for ManageGameServersService {
         self.container_runtime.stats(&cid).await
     }
 
+    async fn update_resources(
+        &self,
+        id: Uuid,
+        memory_mb: i32,
+        cpu_limit: Option<f64>,
+        actor_user_id: &str,
+    ) -> Result<(), DomainError> {
+        let server = self
+            .server_repo
+            .find_by_id(id)
+            .await?
+            .ok_or_else(|| DomainError::NotFound(format!("game_server {id} introuvable")))?;
+        let template = self
+            .template_repo
+            .find_by_id(server.template_id)
+            .await?
+            .ok_or_else(|| DomainError::Internal("template du serveur introuvable".into()))?;
+
+        // Les bornes viennent du jeu : sous son minimum, le serveur plante au
+        // demarrage — et c'est le genre de reglage qu'on rate en se trompant
+        // d'unite (Go pour Mo).
+        template
+            .validate_memory(memory_mb)
+            .map_err(DomainError::ValidationError)?;
+
+        // Meme plage que la creation. Zero coeur n'a pas de sens, et un
+        // plafond delirant prive les autres serveurs de la machine.
+        if let Some(cpu) = cpu_limit {
+            if !cpu.is_finite() || !(0.5..=16.0).contains(&cpu) {
+                return Err(DomainError::ValidationError(
+                    "le plafond processeur doit etre compris entre 0.5 et 16 coeurs".into(),
+                ));
+            }
+        }
+
+        self.server_repo
+            .update_resources(id, memory_mb, cpu_limit)
+            .await?;
+
+        // Docker fige memoire et processeur a la creation du conteneur : sans
+        // ce marquage, le nouveau plafond ne serait jamais applique et l'ecran
+        // afficherait une valeur que le serveur ignore.
+        if server.container_id.is_some() {
+            self.server_repo.set_config_dirty(id, true).await?;
+        }
+
+        self.audit(
+            &server.guild_id,
+            Some(id),
+            Some(actor_user_id),
+            GameAuditAction::ConfigUpdate,
+            serde_json::json!({ "memory_mb": memory_mb, "cpu_limit": cpu_limit }),
+        )
+        .await;
+        info!(server_id = %id, memory_mb, ?cpu_limit, "ressources du serveur ajustees");
+        Ok(())
+    }
+
     async fn update_config(
         &self,
         id: Uuid,

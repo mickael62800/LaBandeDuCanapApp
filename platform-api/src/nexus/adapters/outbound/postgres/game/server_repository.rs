@@ -530,6 +530,24 @@ impl GameServerRepository for PgGameServerRepository {
         Ok(())
     }
 
+    async fn update_resources(
+        &self,
+        id: Uuid,
+        memory_mb: i32,
+        cpu_limit: Option<f64>,
+    ) -> Result<(), DomainError> {
+        sqlx::query(
+            "UPDATE game_servers SET allocated_memory_mb = $2, cpu_limit = $3, updated_at = NOW()              WHERE id = $1",
+        )
+        .bind(id)
+        .bind(memory_mb)
+        .bind(cpu_limit)
+        .execute(&self.pool)
+        .await
+        .map_err(pg_ctx("update_resources"))?;
+        Ok(())
+    }
+
     async fn record_perf_sample(
         &self,
         id: Uuid,

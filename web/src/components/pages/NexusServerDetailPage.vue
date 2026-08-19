@@ -421,6 +421,53 @@ let statsTimer: ReturnType<typeof setInterval> | null = null;
 const cpuHistory = ref<number[]>([]);
 const ramHistory = ref<number[]>([]);
 
+// ── Ressources allouées ──
+//
+// Docker fige mémoire et processeur à la CRÉATION du conteneur : les changer
+// n'a d'effet qu'à sa reconstruction, exactement comme la configuration. On le
+// dit à l'écran plutôt que de laisser croire à un effet immédiat.
+
+const memoryInput = ref<number>(0);
+const cpuInput = ref<number>(2);
+const savingResources = ref(false);
+
+const resourcesChanged = computed(
+  () =>
+    !!server.value
+    && (memoryInput.value !== server.value.allocated_memory_mb
+      || cpuInput.value !== (server.value.cpu_limit ?? 0)),
+);
+
+function resetResourceInputs() {
+  if (!server.value) return;
+  memoryInput.value = server.value.allocated_memory_mb;
+  cpuInput.value = server.value.cpu_limit ?? 2;
+}
+
+async function saveResources() {
+  if (!selectedGuildId.value || !server.value || savingResources.value) return;
+  savingResources.value = true;
+  try {
+    await nexusGamesService.updateResources(
+      selectedGuildId.value,
+      server.value.id,
+      memoryInput.value,
+      cpuInput.value,
+    );
+    success(
+      isRunning.value
+        ? "Ressources enregistrées. Elles seront appliquées au prochain arrêt puis démarrage."
+        : "Ressources enregistrées. Elles seront appliquées au prochain démarrage.",
+    );
+    await load();
+    resetResourceInputs();
+  } catch (e) {
+    showError(e instanceof Error ? e.message : "Enregistrement impossible");
+  } finally {
+    savingResources.value = false;
+  }
+}
+
 // ── Alertes de supervision ──
 //
 // Elles vivaient dans le navigateur : seuils et webhook en `localStorage`,
@@ -593,7 +640,7 @@ onUnmounted(() => statsTimer && clearInterval(statsTimer));
 watch(
   [selectedGuildId, serverId],
   () => {
-    void load();
+    void load().then(resetResourceInputs);
     // Les seuils vivent cote serveur : on les relit avec la fiche.
     void loadAlertSettings();
   },
@@ -778,6 +825,86 @@ function fmtDuration(secs: number | null): string {
             </dd>
           </div>
         </dl>
+      </section>
+
+      <!-- Ressources allouées -->
+      <section v-if="onglet === 'apercu' && server" class="sd-pane sd-resources">
+        <h3>Ressources allouées</h3>
+        <div class="sd-form">
+          <label class="sd-field">
+            <span>Mémoire (Mo)</span>
+            <span class="sd-slider">
+              <input
+                v-model.number="memoryInput"
+                type="range"
+                class="sd-range"
+                :min="template?.min_memory_mb ?? 512"
+                :max="template?.max_memory_mb ?? 16384"
+                step="512"
+              />
+              <input
+                v-model.number="memoryInput"
+                type="number"
+                class="sd-slider-value"
+                :min="template?.min_memory_mb ?? 512"
+                :max="template?.max_memory_mb ?? 16384"
+                step="512"
+              />
+            </span>
+            <small v-if="template" class="sd-note">
+              Entre {{ template.min_memory_mb }} et {{ template.max_memory_mb }} Mo pour ce jeu.
+            </small>
+          </label>
+
+          <label class="sd-field">
+            <span>Cœurs processeur</span>
+            <span class="sd-slider">
+              <input
+                v-model.number="cpuInput"
+                type="range"
+                class="sd-range"
+                min="0.5"
+                max="16"
+                step="0.5"
+              />
+              <input
+                v-model.number="cpuInput"
+                type="number"
+                class="sd-slider-value"
+                min="0.5"
+                max="16"
+                step="0.5"
+              />
+            </span>
+            <small class="sd-note">
+              Plafond, pas une réservation : le serveur n'utilise que ce dont il a besoin.
+            </small>
+          </label>
+        </div>
+
+        <p class="sd-hint">
+          Docker fige ces limites à la création du conteneur : le changement s'applique au
+          prochain démarrage, qui le reconstruit. Le monde et les sauvegardes sont conservés.
+        </p>
+
+        <div class="sd-thresholds-row">
+          <AppButton
+            variant="secondary"
+            size="sm"
+            :disabled="!resourcesChanged || savingResources"
+            @click="saveResources"
+          >
+            {{ savingResources ? "Enregistrement…" : "Enregistrer les ressources" }}
+          </AppButton>
+          <AppButton
+            v-if="resourcesChanged"
+            variant="secondary"
+            size="xs"
+            @click="resetResourceInputs"
+          >
+            Annuler
+          </AppButton>
+        </div>
       </section>
 
       <!-- Configuration -->

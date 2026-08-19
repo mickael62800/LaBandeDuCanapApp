@@ -454,3 +454,37 @@
   height: 60vh;
   max-height: 800px;
 }
+
+/* Curseur + valeur chiffree, comme les reglages du jeu : la plage autorisee se
+   lit d'un coup d'oeil, la saisie exacte reste possible. */
+.sd-slider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.sd-range {
+  flex: 1;
+  accent-color: var(--accent);
+  cursor: pointer;
+  padding: 0;
+  border: none;
+  background: none;
+}
+
+.sd-slider-value {
+  width: 6.5rem;
+  flex-shrink: 0;
+}
+
+.sd-resources h3 {
+  font-size: 0.98rem;
+  margin: 0 0 var(--space-sm);
+}
+
+.sd-thresholds-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}

@@ -102,6 +102,22 @@ pub trait ManageGameServersUseCase: Send + Sync {
         actor_user_id: &str,
     ) -> Result<(), DomainError>;
 
+    /// Ajuste la memoire et les coeurs alloues a un serveur.
+    ///
+    /// Les valeurs sont validees contre les bornes du modele de jeu : une
+    /// memoire sous le minimum donne un serveur qui plante au demarrage, et
+    /// c'est le genre de reglage qu'on rate en se trompant d'unite.
+    ///
+    /// L'effet est differe a la prochaine reconstruction du conteneur : Docker
+    /// fige ces limites a la creation.
+    async fn update_resources(
+        &self,
+        id: Uuid,
+        memory_mb: i32,
+        cpu_limit: Option<f64>,
+        actor_user_id: &str,
+    ) -> Result<(), DomainError>;
+
     // ── Console RCON ──────────────────────────────────────────────────
     /// Execute une commande RCON (Owner uniquement). Retourne la reponse brute.
     async fn execute_rcon(

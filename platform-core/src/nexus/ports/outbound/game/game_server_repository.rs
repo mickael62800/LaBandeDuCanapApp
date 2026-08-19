@@ -59,6 +59,18 @@ pub trait GameServerRepository: Send + Sync {
 
     async fn update_player_activity(&self, id: Uuid, player_count: i32) -> Result<(), DomainError>;
 
+    /// Change les ressources allouees a un serveur.
+    ///
+    /// Docker fige memoire et processeur a la CREATION du conteneur : ces
+    /// valeurs ne prendront effet qu'a sa reconstruction, comme la
+    /// configuration (cf. `config_dirty`).
+    async fn update_resources(
+        &self,
+        id: Uuid,
+        memory_mb: i32,
+        cpu_limit: Option<f64>,
+    ) -> Result<(), DomainError>;
+
     /// Enregistre une tentative de redemarrage auto : incremente
     /// `restart_attempts` et pose `last_restart_at = NOW()`. Sert au backoff.
     async fn record_restart_attempt(&self, id: Uuid) -> Result<(), DomainError>;

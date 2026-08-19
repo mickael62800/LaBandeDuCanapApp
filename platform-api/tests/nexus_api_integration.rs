@@ -366,6 +366,15 @@ impl ManageGameServersUseCase for DummyManageGameServers {
     ) -> Result<(), DomainError> {
         Ok(())
     }
+    async fn update_resources(
+        &self,
+        _: Uuid,
+        _: i32,
+        _: Option<f64>,
+        _: &str,
+    ) -> Result<(), DomainError> {
+        Ok(())
+    }
     async fn execute_rcon(&self, _: Uuid, _: &str, _: &str) -> Result<String, DomainError> {
         Ok("OK".into())
     }
@@ -491,6 +500,9 @@ impl GameServerRepository for DummyGameServerRepo {
         Ok(vec![])
     }
     async fn mark_daily_ping(&self, _: Uuid) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn update_resources(&self, _: Uuid, _: i32, _: Option<f64>) -> Result<(), DomainError> {
         Ok(())
     }
     async fn record_perf_sample(

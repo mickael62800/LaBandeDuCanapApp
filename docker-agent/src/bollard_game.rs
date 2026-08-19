@@ -76,7 +76,23 @@ const CONTAINER_PIDS_LIMIT: i64 = 512;
 const CONTAINER_NOFILE_LIMIT: i64 = 4096;
 const MIN_MEMORY_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_MEMORY_BYTES: u64 = 24 * 1024 * 1024 * 1024;
-const MAX_CPU_LIMIT: f64 = 6.0;
+/// Plafond de coeurs allouables a UN serveur, surchargeable par
+/// `DOCKER_AGENT_MAX_CPU_LIMIT`.
+///
+/// Six etait fige, et trop bas des que la machine a plus de coeurs : sur un
+/// hote a 16 processeurs logiques, un serveur de jeu bride a 6 refusait
+/// simplement d'etre recree, avec un « limite CPU hors bornes agent » que rien
+/// ne laissait prevoir a la saisie.
+///
+/// Le plafond reste une protection de l'hote : il borne ce qu'UN serveur peut
+/// reclamer, et l'agent le fait respecter quoi que demande l'API.
+fn max_cpu_limit() -> f64 {
+    std::env::var("DOCKER_AGENT_MAX_CPU_LIMIT")
+        .ok()
+        .and_then(|v| v.trim().parse::<f64>().ok())
+        .filter(|v| v.is_finite() && *v >= 0.5 && *v <= 64.0)
+        .unwrap_or(16.0)
+}
 const MAX_PORT_MAPPINGS: usize = 4;
 const MAX_ENV_VARS: usize = 128;
 const MAX_ENV_VALUE_BYTES: usize = 8 * 1024;
@@ -146,7 +162,7 @@ impl GameRuntimePolicy {
         }
         if spec
             .cpu_limit
-            .is_some_and(|cpu| !cpu.is_finite() || !(0.5..=MAX_CPU_LIMIT).contains(&cpu))
+            .is_some_and(|cpu| !cpu.is_finite() || !(0.5..=max_cpu_limit()).contains(&cpu))
         {
             return validation("limite CPU hors bornes agent");
         }
@@ -967,6 +983,26 @@ impl GameContainerRuntime for DockerContainerRuntime {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn le_plafond_cpu_a_un_defaut_utilisable_et_bornes_sures() {
+        // Le defaut fige a 6 refusait une allocation de 10 coeurs sur une
+        // machine qui en a 16, sans que rien ne le laisse prevoir a la saisie.
+        std::env::remove_var("DOCKER_AGENT_MAX_CPU_LIMIT");
+        assert_eq!(super::max_cpu_limit(), 16.0);
+
+        // Une valeur d'exploitation est respectee.
+        std::env::set_var("DOCKER_AGENT_MAX_CPU_LIMIT", "8");
+        assert_eq!(super::max_cpu_limit(), 8.0);
+
+        // SECURITE : une valeur absurde ou hors bornes retombe sur le defaut
+        // plutot que de laisser un serveur reclamer la machine entiere.
+        for absurde in ["0", "-4", "abc", "1000", ""] {
+            std::env::set_var("DOCKER_AGENT_MAX_CPU_LIMIT", absurde);
+            assert_eq!(super::max_cpu_limit(), 16.0, "valeur refusee : {absurde}");
+        }
+        std::env::remove_var("DOCKER_AGENT_MAX_CPU_LIMIT");
+    }
+
     use super::*;
     use platform_core::ops::domain::entities::game_runtime::{PortMapping, VolumeMount};
 

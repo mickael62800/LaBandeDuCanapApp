@@ -548,3 +548,37 @@ mod commande_rcon {
         assert!(valider_commande_rcon(&"a".repeat(2_001)).is_err());
     }
 }
+
+// ── Reconnaissance des erreurs Docker qui justifient une recreation ──
+
+#[test]
+fn un_conteneur_absent_est_reconnu_comme_tel() {
+    // Message reel remonte par docker-agent : la ligne garde un container_id
+    // supprime en dehors de l'application (`docker rm`, `prune`, recreation
+    // interrompue). Sans cette reconnaissance, le serveur restait bloque en
+    // erreur alors qu'il suffisait de rebatir le conteneur.
+    let erreur = DomainError::Internal(
+        "docker-agent 502 Bad Gateway: {\"error\":\"Erreur interne : inspect container \
+         ownership: Docker responded with status code 404: No such container: cdb8f005\"}"
+            .into(),
+    );
+    assert!(super::is_missing_container_error(&erreur));
+    assert!(!super::is_missing_network_error(&erreur));
+}
+
+#[test]
+fn un_reseau_disparu_reste_distingue_du_conteneur_absent() {
+    let erreur = DomainError::Internal("network abc123 not found".into());
+    assert!(super::is_missing_network_error(&erreur));
+    assert!(!super::is_missing_container_error(&erreur));
+}
+
+#[test]
+fn une_erreur_ordinaire_ne_declenche_aucune_recreation() {
+    // Rebatir un conteneur sur n'importe quelle erreur masquerait la cause
+    // reelle — un port pris, une image absente — et la ferait revenir en
+    // boucle.
+    let erreur = DomainError::Internal("port 25565 already allocated".into());
+    assert!(!super::is_missing_container_error(&erreur));
+    assert!(!super::is_missing_network_error(&erreur));
+}

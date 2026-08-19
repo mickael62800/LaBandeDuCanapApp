@@ -64,6 +64,21 @@ fn is_missing_network_error(e: &DomainError) -> bool {
     msg.contains("network") && msg.contains("not found")
 }
 
+/// Le conteneur reference n'existe plus cote Docker.
+///
+/// Arrive des qu'il a ete supprime en dehors de l'application : `docker rm`
+/// a la main, un `prune`, ou une recreation interrompue. La ligne garde alors
+/// un `container_id` qui ne designe plus rien, et tout demarrage echoue en
+/// « No such container » — un message qui n'aide personne, sur un serveur que
+/// l'on peut parfaitement reconstruire.
+///
+/// Detection par motif : l'erreur traverse docker-agent puis le transport HTTP
+/// sous forme de texte, il n'y a pas de type a inspecter.
+fn is_missing_container_error(e: &DomainError) -> bool {
+    let msg = e.to_string().to_ascii_lowercase();
+    msg.contains("no such container") || (msg.contains("container") && msg.contains("404"))
+}
+
 #[async_trait]
 impl ManageGameServersUseCase for ManageGameServersService {
     async fn create(&self, cmd: CreateGameServerCommand) -> Result<GameServer, DomainError> {
@@ -771,11 +786,15 @@ impl ManageGameServersUseCase for ManageGameServersService {
             self.upload_init_files(id, &cid, &template).await?;
             match self.container_runtime.start_container(&cid).await {
                 Ok(()) => break,
-                Err(e) if !freshly_created && !recreated && is_missing_network_error(&e) => {
+                Err(e)
+                    if !freshly_created
+                        && !recreated
+                        && (is_missing_network_error(&e) || is_missing_container_error(&e)) =>
+                {
                     warn!(
                         error = %e,
                         server_id = %id,
-                        "start: conteneur lie a un reseau disparu -> recreation du conteneur"
+                        "start: conteneur inutilisable (reseau disparu ou conteneur absent) -> recreation"
                     );
                     cid = match self.recreate_container(id, &server, &template, &cfg).await {
                         Ok(new_cid) => new_cid,

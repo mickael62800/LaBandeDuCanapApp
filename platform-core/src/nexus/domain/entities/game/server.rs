@@ -140,6 +140,17 @@ pub struct GameServer {
     /// creation : redemarrer ne les relit pas. Ce drapeau force la RECREATION
     /// du conteneur au prochain demarrage — le volume, donc le monde, reste.
     pub config_dirty: bool,
+    /// Temps de reponse du jeu a la derniere commande de controle.
+    ///
+    /// CPU et RAM disent ce que le conteneur CONSOMME ; celui-ci dit ce que le
+    /// serveur MET A REPONDRE. Un serveur peut ramer a 30 % de processeur.
+    pub rcon_latency_ms: Option<i32>,
+    /// Compteurs reseau du conteneur au dernier echantillon, et sa date.
+    /// Docker ne donne que des totaux cumules : le debit se calcule par
+    /// difference, ce qui demande de garder la mesure precedente.
+    pub net_rx_bytes: Option<i64>,
+    pub net_tx_bytes: Option<i64>,
+    pub net_sampled_at: Option<DateTime<Utc>>,
 }
 
 /// Nombre maximal PAR DEFAUT de redemarrages auto consecutifs avant abandon
@@ -561,5 +572,89 @@ mod tests {
     #[test]
     fn une_valeur_extreme_ne_deborde_pas() {
         assert!(container_memory_mb(i32::MAX) >= i32::MAX - 1);
+    }
+}
+
+/// Debit reseau instantane d'un serveur, en octets par seconde.
+///
+/// Docker ne donne que des compteurs CUMULES depuis le demarrage du conteneur.
+/// Un total ne dit rien d'un lag : c'est la difference entre deux mesures,
+/// ramenee au temps ecoule, qui montre une saturation.
+///
+/// `None` quand on ne peut pas conclure honnetement :
+///   - aucune mesure precedente (premier passage) ;
+///   - compteurs en BAISSE, ce qui signifie que le conteneur a redemarre et
+///     remis ses compteurs a zero — la difference serait alors negative, et la
+///     forcer a zero laisserait croire a un serveur muet ;
+///   - deux mesures trop rapprochees, ou la moindre imprecision devient un pic.
+pub fn debit_reseau(
+    precedent_rx: Option<i64>,
+    precedent_tx: Option<i64>,
+    precedent_at: Option<DateTime<Utc>>,
+    actuel_rx: i64,
+    actuel_tx: i64,
+    maintenant: DateTime<Utc>,
+) -> Option<(u64, u64)> {
+    let (rx0, tx0, t0) = (precedent_rx?, precedent_tx?, precedent_at?);
+    let secondes = (maintenant - t0).num_seconds();
+    if secondes < 1 {
+        return None;
+    }
+    if actuel_rx < rx0 || actuel_tx < tx0 {
+        return None;
+    }
+    Some((
+        ((actuel_rx - rx0) / secondes) as u64,
+        ((actuel_tx - tx0) / secondes) as u64,
+    ))
+}
+
+#[cfg(test)]
+mod tests_debit {
+    use super::*;
+    use chrono::TimeZone;
+
+    fn t(h: u32) -> DateTime<Utc> {
+        Utc.with_ymd_and_hms(2026, 8, 18, h, 0, 0).unwrap()
+    }
+
+    #[test]
+    fn le_debit_est_la_difference_ramenee_a_la_seconde() {
+        // 3600 octets de plus en une heure : 1 octet par seconde.
+        let debit = debit_reseau(Some(1000), Some(500), Some(t(10)), 4600, 4100, t(11));
+        assert_eq!(debit, Some((1, 1)));
+    }
+
+    #[test]
+    fn sans_mesure_precedente_on_ne_conclut_pas() {
+        // Premier passage : un total brut n'est pas un debit.
+        assert_eq!(debit_reseau(None, None, None, 5000, 5000, t(11)), None);
+    }
+
+    #[test]
+    fn des_compteurs_en_baisse_signalent_un_redemarrage() {
+        // Le conteneur a redemarre et remis ses compteurs a zero. Forcer zero
+        // laisserait croire a un serveur devenu muet.
+        assert_eq!(
+            debit_reseau(Some(9000), Some(9000), Some(t(10)), 100, 100, t(11)),
+            None
+        );
+    }
+
+    #[test]
+    fn deux_mesures_trop_rapprochees_ne_disent_rien() {
+        // Sous la seconde, la moindre imprecision devient un pic.
+        let meme_instant = t(10);
+        assert_eq!(
+            debit_reseau(
+                Some(0),
+                Some(0),
+                Some(meme_instant),
+                10_000,
+                10_000,
+                meme_instant
+            ),
+            None
+        );
     }
 }

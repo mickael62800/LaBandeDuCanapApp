@@ -65,6 +65,10 @@ pub struct HostMetricsDto {
     pub net_tx_bytes_per_sec: u64,
     /// Joignabilite des services dont la plateforme depend (Discord d'abord).
     pub internet: Vec<InternetProbe>,
+    /// Charge moyenne (1 et 5 min), a comparer au nombre de coeurs : une
+    /// charge superieure aux coeurs signifie que des taches attendent.
+    pub load_1m: f32,
+    pub load_5m: f32,
 }
 
 #[derive(Debug, Serialize)]
@@ -229,6 +233,8 @@ pub async fn get_system_info(
         workers,
         host: HostMetricsDto {
             internet: host_metrics.internet.clone(),
+            load_1m: host_metrics.load_1m,
+            load_5m: host_metrics.load_5m,
             net_rx_bytes_per_sec: host_metrics.net_rx_bytes_per_sec,
             net_tx_bytes_per_sec: host_metrics.net_tx_bytes_per_sec,
             cpu_percent: host_metrics.cpu_percent,

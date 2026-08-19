@@ -56,6 +56,18 @@ Tout le reste de l'administration d'un serveur Palworld ne passe pas par RCON :
 - **le cycle de vie** (démarrer, arrêter, redémarrer, supprimer) vit sur la fiche du serveur ;
 - **la liste de bannis communautaire** se règle par `BAN_LIST_URL` dans la configuration.
 
+## Diagnostiquer un lag
+
+CPU et RAM disent ce que le conteneur **consomme**, pas ce que les joueurs **ressentent** : un serveur peut ramer à 30 % de processeur. Trois mesures répondent à trois questions différentes.
+
+**Le temps de réponse du jeu** (onglet Surveillance) est le signal le plus direct, et le seul qui vienne du jeu lui-même : c'est le délai mis à répondre à une commande de contrôle. Au-delà de 500 ms, il s'affiche en rouge. La mesure est gratuite — le contrôle de santé fait déjà cette requête toutes les 30 secondes.
+
+**Le débit réseau** du serveur, dérivé de deux relevés successifs. Docker ne donne que des totaux cumulés depuis le démarrage ; un total ne montre aucune saturation. Le débit reste vide tant qu'aucune comparaison honnête n'est possible : premier passage, conteneur redémarré (ses compteurs repartent de zéro, la différence serait négative), ou deux relevés trop rapprochés.
+
+**La charge système de l'hôte** (écran Exploitation), à comparer au nombre de cœurs. Le pourcentage CPU dit ce qui s'exécute maintenant ; la charge dit combien de tâches **attendent leur tour**. Une machine à 60 % avec une charge de 12 sur 4 cœurs est saturée — et un serveur de jeu qui attend son tour ne consomme rien, donc n'apparaît nulle part ailleurs. Au-delà du nombre de cœurs, la valeur passe en rouge.
+
+Lu ensemble : un temps de réponse élevé **avec** une charge hôte supérieure aux cœurs désigne la machine, pas le jeu. Un temps de réponse élevé sur un hôte tranquille désigne le serveur lui-même — trop de joueurs, trop de constructions, ou un réglage trop généreux.
+
 ## Les conditions
 
 - **Infrastructure :** nécessite que le service `docker-agent` soit fonctionnel sur la machine hébergeant les jeux, et qu'il puisse communiquer avec `platform-api`.

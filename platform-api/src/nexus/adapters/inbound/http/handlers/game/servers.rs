@@ -485,7 +485,28 @@ pub async fn get_stats(
     Path(server_id): Path<Uuid>,
 ) -> Result<Json<GameServerStatsDto>, ApiError> {
     let stats = state.game_servers_uc.get_stats(server_id).await?;
-    Ok(Json(stats.into()))
+    let mut dto: GameServerStatsDto = stats.into();
+
+    // Le debit et la latence viennent du dernier passage du controle de sante :
+    // les statistiques Docker de l'instant ne donnent que des totaux cumules,
+    // dont on ne peut rien tirer sans point de comparaison.
+    if let Ok(detail) = state.game_servers_uc.get(server_id).await {
+        let serveur = detail.server;
+        dto.rcon_latency_ms = serveur.rcon_latency_ms;
+        if let Some((rx, tx)) = platform_core::nexus::domain::entities::game::server::debit_reseau(
+            serveur.net_rx_bytes,
+            serveur.net_tx_bytes,
+            serveur.net_sampled_at,
+            dto.network_rx_bytes as i64,
+            dto.network_tx_bytes as i64,
+            chrono::Utc::now(),
+        ) {
+            dto.network_rx_bytes_per_sec = Some(rx);
+            dto.network_tx_bytes_per_sec = Some(tx);
+        }
+    }
+
+    Ok(Json(dto))
 }
 
 /// PUT /api/games/servers/{server_id}/config

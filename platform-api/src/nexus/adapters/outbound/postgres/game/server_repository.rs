@@ -52,6 +52,10 @@ struct ServerRow {
     ip_reveal_at: Option<DateTime<Utc>>,
     closes_at: Option<DateTime<Utc>>,
     config_dirty: bool,
+    rcon_latency_ms: Option<i32>,
+    net_rx_bytes: Option<i64>,
+    net_tx_bytes: Option<i64>,
+    net_sampled_at: Option<DateTime<Utc>>,
     ip_revealed: bool,
 }
 
@@ -92,6 +96,10 @@ impl TryFrom<ServerRow> for GameServer {
             ip_reveal_at: r.ip_reveal_at,
             closes_at: r.closes_at,
             config_dirty: r.config_dirty,
+            rcon_latency_ms: r.rcon_latency_ms,
+            net_rx_bytes: r.net_rx_bytes,
+            net_tx_bytes: r.net_tx_bytes,
+            net_sampled_at: r.net_sampled_at,
             ip_revealed: r.ip_revealed,
         })
     }
@@ -102,7 +110,7 @@ const SELECT_COLS: &str = "id, guild_id, template_id, name, status, container_id
      owner_user_id, idle_shutdown_days, last_active_at, last_player_count, \
      last_error, created_at, updated_at, started_at, stopped_at, \
      restart_attempts, last_restart_at, \
-     text_channel_id, voice_channel_id, ip_reveal_at, ip_revealed, closes_at, config_dirty";
+     text_channel_id, voice_channel_id, ip_reveal_at, ip_revealed, closes_at, config_dirty,      rcon_latency_ms, net_rx_bytes, net_tx_bytes, net_sampled_at";
 
 #[async_trait]
 impl GameServerRepository for PgGameServerRepository {
@@ -519,6 +527,29 @@ impl GameServerRepository for PgGameServerRepository {
             .execute(&self.pool)
             .await
             .map_err(pg_ctx("mark_daily_ping"))?;
+        Ok(())
+    }
+
+    async fn record_perf_sample(
+        &self,
+        id: Uuid,
+        rcon_latency_ms: Option<i32>,
+        net_rx_bytes: Option<i64>,
+        net_tx_bytes: Option<i64>,
+    ) -> Result<(), DomainError> {
+        // `COALESCE` sur les compteurs : un echantillon reseau manquant (stats
+        // Docker indisponibles) ne doit pas effacer le precedent, sinon le
+        // debit repartirait de zero au coup d'apres.
+        sqlx::query(
+            "UPDATE game_servers SET                  rcon_latency_ms = $2,                  net_rx_bytes = COALESCE($3, net_rx_bytes),                  net_tx_bytes = COALESCE($4, net_tx_bytes),                  net_sampled_at = CASE WHEN $3 IS NULL THEN net_sampled_at ELSE NOW() END              WHERE id = $1",
+        )
+        .bind(id)
+        .bind(rcon_latency_ms)
+        .bind(net_rx_bytes)
+        .bind(net_tx_bytes)
+        .execute(&self.pool)
+        .await
+        .map_err(pg_ctx("record_perf_sample"))?;
         Ok(())
     }
 

@@ -109,6 +109,18 @@ pub trait GameServerRepository: Send + Sync {
     async fn mark_daily_ping(&self, id: Uuid) -> Result<(), DomainError>;
 
     /// Definit la date de revelation de l'IP (None pour desactiver).
+    /// Enregistre les mesures de reactivite relevees par le controle de sante.
+    ///
+    /// Les compteurs reseau sont ceux de MAINTENANT : c'est l'appel suivant
+    /// qui en tirera un debit, par difference.
+    async fn record_perf_sample(
+        &self,
+        id: uuid::Uuid,
+        rcon_latency_ms: Option<i32>,
+        net_rx_bytes: Option<i64>,
+        net_tx_bytes: Option<i64>,
+    ) -> Result<(), DomainError>;
+
     /// Marque (ou lave) l'ecart entre la configuration et le conteneur.
     async fn set_config_dirty(&self, id: uuid::Uuid, dirty: bool) -> Result<(), DomainError>;
 

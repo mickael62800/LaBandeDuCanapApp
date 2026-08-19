@@ -108,6 +108,10 @@ fn sample_server(host_port: Option<u16>) -> GameServer {
         ip_revealed: false,
         closes_at: None,
         config_dirty: false,
+        rcon_latency_ms: None,
+        net_rx_bytes: None,
+        net_tx_bytes: None,
+        net_sampled_at: None,
     }
 }
 
@@ -314,6 +318,15 @@ impl GameServerRepository for DummyServerRepo {
         Ok(vec![])
     }
     async fn mark_daily_ping(&self, _: Uuid) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn record_perf_sample(
+        &self,
+        _: uuid::Uuid,
+        _: Option<i32>,
+        _: Option<i64>,
+        _: Option<i64>,
+    ) -> Result<(), DomainError> {
         Ok(())
     }
     async fn set_config_dirty(&self, _: uuid::Uuid, _: bool) -> Result<(), DomainError> {

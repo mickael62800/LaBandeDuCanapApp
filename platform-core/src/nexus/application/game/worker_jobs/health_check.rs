@@ -48,6 +48,10 @@ pub async fn run_health_check(ctx: &JobContext) -> Result<JobReport, DomainError
             .unwrap_or_default();
         let commande = presence::players_command(&slug);
 
+        // Le temps de reponse est mesure ici parce que la requete a lieu de
+        // toute facon : c'est le signal de lag le moins cher a obtenir, et le
+        // seul qui vienne du jeu lui-meme.
+        let debut = std::time::Instant::now();
         let resp = match ctx.rcon_client.execute(&params, commande).await {
             Ok(r) => r,
             Err(e) => {
@@ -56,6 +60,32 @@ pub async fn run_health_check(ctx: &JobContext) -> Result<JobReport, DomainError
                 continue;
             }
         };
+        let latence_ms = debut.elapsed().as_millis().min(i32::MAX as u128) as i32;
+
+        // Compteurs reseau du conteneur, gardes pour que le passage suivant
+        // puisse en tirer un debit. Best-effort : sans statistiques Docker, on
+        // conserve la latence, qui est deja la mesure la plus parlante.
+        let (net_rx, net_tx) = match server.container_id.as_deref() {
+            Some(cid) => match ctx.container_runtime.stats(cid).await {
+                Ok(stats) => (
+                    Some(stats.network_rx_bytes as i64),
+                    Some(stats.network_tx_bytes as i64),
+                ),
+                Err(error) => {
+                    warn!(%error, server_id = %server.id, "statistiques conteneur indisponibles");
+                    (None, None)
+                }
+            },
+            None => (None, None),
+        };
+
+        if let Err(error) = ctx
+            .server_repo
+            .record_perf_sample(server.id, Some(latence_ms), net_rx, net_tx)
+            .await
+        {
+            warn!(%error, server_id = %server.id, "mesures de reactivite non enregistrees");
+        }
         let presents = presence::parse_players(&slug, &resp.raw);
         let count = presents.len() as i32;
         let players: Vec<String> = presents.into_iter().map(|p| p.name).collect();

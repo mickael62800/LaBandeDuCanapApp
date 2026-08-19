@@ -493,6 +493,15 @@ impl GameServerRepository for DummyGameServerRepo {
     async fn mark_daily_ping(&self, _: Uuid) -> Result<(), DomainError> {
         Ok(())
     }
+    async fn record_perf_sample(
+        &self,
+        _: uuid::Uuid,
+        _: Option<i32>,
+        _: Option<i64>,
+        _: Option<i64>,
+    ) -> Result<(), DomainError> {
+        Ok(())
+    }
     async fn set_config_dirty(&self, _: uuid::Uuid, _: bool) -> Result<(), DomainError> {
         Ok(())
     }

@@ -143,6 +143,16 @@ export interface GameServerStats {
   memory_limit_mb: number;
   network_rx_bytes: number;
   network_tx_bytes: number;
+  /** Débit dérivé du contrôle de santé précédent ; `null` si pas comparable. */
+  network_rx_bytes_per_sec: number | null;
+  network_tx_bytes_per_sec: number | null;
+  /**
+   * Temps de réponse du jeu à la dernière commande de contrôle.
+   *
+   * Le signal de lag le plus direct : CPU et RAM disent ce que le conteneur
+   * consomme, celui-ci dit ce que le serveur met à répondre.
+   */
+  rcon_latency_ms: number | null;
 }
 
 export interface CreateServerPayload {

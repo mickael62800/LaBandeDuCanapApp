@@ -21,6 +21,15 @@ export interface HostMetrics {
   net_tx_bytes_per_sec: number;
   /** Joignabilité des services dont la plateforme dépend. */
   internet: InternetProbe[];
+  /**
+   * Charge moyenne sur 1 et 5 minutes, à comparer au nombre de cœurs.
+   *
+   * Le pourcentage CPU dit ce qui s'exécute maintenant ; la charge dit combien
+   * de tâches attendent leur tour. Une machine à 60 % avec une charge de 12 sur
+   * 4 cœurs est saturée — et c'est là que naissent les lags.
+   */
+  load_1m: number;
+  load_5m: number;
 }
 
 /**

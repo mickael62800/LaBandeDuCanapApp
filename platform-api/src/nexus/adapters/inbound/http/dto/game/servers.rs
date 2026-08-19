@@ -221,6 +221,13 @@ pub struct GameServerStatsDto {
     pub memory_limit_mb: u64,
     pub network_rx_bytes: u64,
     pub network_tx_bytes: u64,
+    /// Débit réseau, dérivé de l'échantillon précédent du contrôle de santé.
+    /// `null` tant qu'aucune comparaison honnête n'est possible.
+    pub network_rx_bytes_per_sec: Option<u64>,
+    pub network_tx_bytes_per_sec: Option<u64>,
+    /// Temps de réponse du jeu à la dernière commande de contrôle. C'est le
+    /// signal de lag le plus direct : un serveur peut ramer à 30 % de CPU.
+    pub rcon_latency_ms: Option<i32>,
 }
 
 impl From<ContainerStats> for GameServerStatsDto {
@@ -231,6 +238,11 @@ impl From<ContainerStats> for GameServerStatsDto {
             memory_limit_mb: s.memory_limit_bytes / (1024 * 1024),
             network_rx_bytes: s.network_rx_bytes,
             network_tx_bytes: s.network_tx_bytes,
+            // Renseignes par le handler : le debit et la latence viennent de
+            // la ligne serveur, pas des statistiques Docker de l'instant.
+            network_rx_bytes_per_sec: None,
+            network_tx_bytes_per_sec: None,
+            rcon_latency_ms: None,
         }
     }
 }

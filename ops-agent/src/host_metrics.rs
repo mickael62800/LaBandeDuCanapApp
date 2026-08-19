@@ -28,6 +28,14 @@ struct HostMetricsSnapshot {
     net_tx_bytes_per_sec: u64,
     /// Joignabilite des services dont la plateforme depend.
     internet: Vec<InternetProbe>,
+    /// Charge moyenne sur 1 et 5 minutes.
+    ///
+    /// Le pourcentage processeur dit ce qui s'execute MAINTENANT ; la charge
+    /// dit combien de taches ATTENDENT leur tour. Une machine a 60 % de CPU
+    /// avec une charge de 12 sur 4 coeurs est saturee, et c'est la que naissent
+    /// les lags — un serveur de jeu qui attend son tour ne consomme rien.
+    load_1m: f32,
+    load_5m: f32,
 }
 
 /// Resultat d'une sonde vers l'exterieur.
@@ -129,6 +137,7 @@ fn collect() -> Result<HostMetricsSnapshot, String> {
         100.0 * total_delta.saturating_sub(idle_delta) as f32 / total_delta as f32
     };
     let (mem_used_mb, mem_total_mb) = read_memory("/host/proc/meminfo")?;
+    let (load_1m, load_5m) = read_load("/host/proc/loadavg");
 
     // 200 ms d'ecart : on ramene a la seconde pour que le chiffre soit lisible.
     let net_rx_bytes_per_sec = net_second.rx.saturating_sub(net_first.rx) * 5;
@@ -143,7 +152,28 @@ fn collect() -> Result<HostMetricsSnapshot, String> {
         net_rx_bytes_per_sec,
         net_tx_bytes_per_sec,
         internet: probe_internet(),
+        load_1m,
+        load_5m,
     })
+}
+
+/// Lit `/proc/loadavg` : « 0.52 0.31 0.24 1/430 12345 ».
+///
+/// Les deux premiers champs sont les moyennes sur 1 et 5 minutes. Un fichier
+/// illisible rend 0 plutot que d'echouer : la charge est un complement, elle ne
+/// doit pas emporter tout l'instantane.
+fn read_load(path: &str) -> (f32, f32) {
+    let Ok(raw) = std::fs::read_to_string(path) else {
+        return (0.0, 0.0);
+    };
+    parse_load(&raw)
+}
+
+fn parse_load(raw: &str) -> (f32, f32) {
+    let mut champs = raw.split_whitespace();
+    let un = champs.next().and_then(|v| v.parse().ok()).unwrap_or(0.0);
+    let cinq = champs.next().and_then(|v| v.parse().ok()).unwrap_or(0.0);
+    (un, cinq)
 }
 
 /// Cibles sondees, surchargeables par `OPS_INTERNET_PROBES`
@@ -338,6 +368,22 @@ fn read_disks(path: &str) -> Vec<HostDisk> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn la_charge_se_lit_sur_une_et_cinq_minutes() {
+        let (un, cinq) = super::parse_load(
+            "0.52 0.31 0.24 1/430 12345
+",
+        );
+        assert!((un - 0.52).abs() < f32::EPSILON);
+        assert!((cinq - 0.31).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn un_fichier_illisible_ne_fait_pas_tomber_l_instantane() {
+        // La charge est un complement : mieux vaut 0 qu'une collecte perdue.
+        assert_eq!(super::parse_load(""), (0.0, 0.0));
+    }
+
     #[test]
     fn le_reseau_ignore_la_boucle_locale_et_les_ponts_docker() {
         // `lo` mesurerait la machine se parlant a elle-meme ; `docker0` et

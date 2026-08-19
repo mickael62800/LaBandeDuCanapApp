@@ -616,6 +616,14 @@ function volume(octets: number | null | undefined): string {
   return `${(v / (1024 * 1024 * 1024)).toFixed(2)} Go`;
 }
 
+/** Rend un débit lisible : 2 300 000 o/s ne se lit pas, « 2,19 Mo/s » oui. */
+function debit(octetsParSeconde: number): string {
+  const v = Number(octetsParSeconde) || 0;
+  if (v < 1024) return `${v} o/s`;
+  if (v < 1024 * 1024) return `${(v / 1024).toFixed(1)} Ko/s`;
+  return `${(v / (1024 * 1024)).toFixed(2)} Mo/s`;
+}
+
 function fmtDate(iso: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso);
@@ -843,6 +851,30 @@ function fmtDuration(secs: number | null): string {
                quel plutôt que d'inventer une vitesse à partir d'une seule
                mesure — c'est la quantité échangée qui a du sens ici (un serveur
                qui n'échange rien n'a personne dessus). -->
+          <!-- Le temps de réponse du jeu : c'est lui qui dit un lag. CPU et
+               RAM disent ce que le conteneur consomme, pas ce que les joueurs
+               ressentent — un serveur peut ramer à 30 % de processeur. -->
+          <div class="sd-surv-card">
+            <div class="sd-surv-label">Temps de réponse du jeu</div>
+            <div
+              class="sd-surv-val"
+              :style="{ color: (stats.rcon_latency_ms ?? 0) > 500 ? 'var(--danger)' : undefined }"
+            >
+              {{ stats.rcon_latency_ms === null ? "—" : `${stats.rcon_latency_ms} ms` }}
+            </div>
+          </div>
+
+          <div class="sd-surv-card">
+            <div class="sd-surv-label">Débit réseau</div>
+            <div class="sd-surv-val">
+              <template v-if="stats.network_rx_bytes_per_sec !== null">
+                ↓ {{ debit(stats.network_rx_bytes_per_sec) }} · ↑
+                {{ debit(stats.network_tx_bytes_per_sec ?? 0) }}
+              </template>
+              <template v-else>—</template>
+            </div>
+          </div>
+
           <div class="sd-surv-card">
             <div class="sd-surv-label">Réseau reçu</div>
             <div class="sd-surv-val">{{ volume(stats.network_rx_bytes) }}</div>

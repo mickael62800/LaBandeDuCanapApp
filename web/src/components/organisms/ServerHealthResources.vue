@@ -75,6 +75,25 @@ function debit(octetsParSeconde: number): string {
           ↑ {{ debit(info.host.net_tx_bytes_per_sec) }}
         </div>
       </div>
+      <div class="metric-card">
+        <div class="metric-header">
+          <span class="metric-label">Charge système</span>
+          <span
+            class="metric-value"
+            :style="{ color: info.host.load_1m > info.host.cpu_cores ? 'var(--danger)' : undefined }"
+          >
+            {{ info.host.load_1m.toFixed(2) }}
+          </span>
+        </div>
+        <!-- Comparée aux cœurs : au-delà, des tâches attendent leur tour, et
+             c'est là que naissent les lags — un processus qui attend ne
+             consomme pas de CPU, donc le pourcentage ne le montre pas. -->
+        <div class="metric-sub">
+          5 min : {{ info.host.load_5m.toFixed(2) }} · {{ info.host.cpu_cores }} cœurs
+          <template v-if="info.host.load_1m > info.host.cpu_cores"> — saturée</template>
+        </div>
+      </div>
+
       <!-- Connectivité vers l'extérieur. Le témoin (DNS public) sert à situer
            la panne : Discord injoignable alors que le témoin répond désigne
            Discord, pas la machine. -->

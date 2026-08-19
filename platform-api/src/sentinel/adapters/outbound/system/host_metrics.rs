@@ -84,6 +84,12 @@ pub struct HostMetrics {
     /// instantane d'avant cette sonde.
     #[serde(default)]
     pub internet: Vec<InternetProbe>,
+    /// Charge moyenne : combien de taches ATTENDENT leur tour, la ou le
+    /// pourcentage CPU ne dit que ce qui s'execute.
+    #[serde(default)]
+    pub load_1m: f32,
+    #[serde(default)]
+    pub load_5m: f32,
 }
 
 /// Resultat d'une sonde vers l'exterieur, tel que l'agent le publie.

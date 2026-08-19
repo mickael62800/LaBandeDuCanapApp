@@ -79,6 +79,13 @@ struct NetSample {
 struct CpuSample {
     idle: u64,
     total: u64,
+    /// Nombre de PROCESSEURS LOGIQUES, pas de coeurs physiques.
+    ///
+    /// `/proc/stat` liste une ligne `cpuN` par unite d'execution vue par le
+    /// noyau : un Ryzen 7 5700X (8 coeurs, 2 threads chacun) en expose donc
+    /// 16. C'est bien cette valeur qu'il faut pour la charge — `loadavg` se
+    /// compare au nombre de files d'execution, pas au silicium — mais l'appeler
+    /// « coeurs » a l'ecran fait douter de la mesure.
     cores: usize,
 }
 

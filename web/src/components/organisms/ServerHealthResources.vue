@@ -49,7 +49,10 @@ function debit(octetsParSeconde: number): string {
         <div class="bar">
           <div class="bar-fill" :style="{ width: `${Math.min(cpuPct, 100)}%`, background: diskBarColor(cpuPct) }"></div>
         </div>
-        <div class="metric-sub">{{ info.host.cpu_cores }} cœurs disponibles</div>
+        <!-- « Processeurs logiques » et non « cœurs » : le noyau compte les
+             threads. Un 8 cœurs / 16 threads affiche 16, et le mot « cœurs »
+             ferait douter d'une mesure pourtant juste. -->
+        <div class="metric-sub">{{ info.host.cpu_cores }} processeurs logiques</div>
       </div>
       <div class="metric-card">
         <div class="metric-header">
@@ -89,7 +92,8 @@ function debit(octetsParSeconde: number): string {
              c'est là que naissent les lags — un processus qui attend ne
              consomme pas de CPU, donc le pourcentage ne le montre pas. -->
         <div class="metric-sub">
-          5 min : {{ info.host.load_5m.toFixed(2) }} · {{ info.host.cpu_cores }} cœurs
+          5 min : {{ info.host.load_5m.toFixed(2) }} · {{ info.host.cpu_cores }} processeurs
+          logiques
           <template v-if="info.host.load_1m > info.host.cpu_cores"> — saturée</template>
         </div>
       </div>

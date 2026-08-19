@@ -55,6 +55,8 @@ pub struct ServiceStatusDto {
 #[derive(Debug, Serialize)]
 pub struct HostMetricsDto {
     pub cpu_percent: f32,
+    /// Processeurs LOGIQUES (threads), pas coeurs physiques : c'est ce que le
+    /// noyau expose, et la bonne reference pour comparer la charge.
     pub cpu_cores: usize,
     pub mem_used_mb: u64,
     pub mem_total_mb: u64,

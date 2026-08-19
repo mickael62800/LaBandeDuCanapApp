@@ -1104,6 +1104,7 @@ function fmtDuration(secs: number | null): string {
             </span>
             <small class="sd-note">
               Plafond, pas une réservation : le serveur n'utilise que ce dont il a besoin.
+              L'unité est le processeur logique (thread), comme pour Docker.
             </small>
           </label>
         </div>

@@ -420,6 +420,15 @@ async function sendRcon() {
 let statsTimer: ReturnType<typeof setInterval> | null = null;
 const cpuHistory = ref<number[]>([]);
 const ramHistory = ref<number[]>([]);
+/// Débits réseau relevés, en Ko/s. Le débit, pas le compteur cumulé : une
+/// courbe de total ne fait que monter et ne montre aucune saturation.
+const netRxHistory = ref<number[]>([]);
+const netTxHistory = ref<number[]>([]);
+/// Temps de réponse du jeu, en ms — la mesure qui suit le lag ressenti.
+const latencyHistory = ref<number[]>([]);
+/// Heure de chaque relevé, partagée par tous les graphiques : sans axe des
+/// temps, on ne sait pas si un pic date de dix secondes ou de deux minutes.
+const timeLabels = ref<string[]>([]);
 
 // ── Ressources allouées ──
 //
@@ -545,6 +554,10 @@ async function refreshStats() {
     stats.value = null;
     cpuHistory.value = [];
     ramHistory.value = [];
+    netRxHistory.value = [];
+    netTxHistory.value = [];
+    latencyHistory.value = [];
+    timeLabels.value = [];
     return;
   }
   const newStats = await nexusGamesService
@@ -554,40 +567,106 @@ async function refreshStats() {
   stats.value = newStats;
 
   if (newStats) {
-    cpuHistory.value.push(newStats.cpu_percent);
-    if (cpuHistory.value.length > 20) cpuHistory.value.shift();
-
     const ramPct = (newStats.memory_used_mb / Math.max(newStats.memory_limit_mb, 1)) * 100;
-    ramHistory.value.push(ramPct);
-    if (ramHistory.value.length > 20) ramHistory.value.shift();
+
+    // Une seule fonction pour toutes les séries : elles doivent avancer
+    // ensemble, sinon un point de CPU se retrouverait aligné sur l'heure d'un
+    // relevé réseau, et le graphe mentirait sans qu'on le voie.
+    const pousser = (serie: typeof cpuHistory, valeur: number) => {
+      serie.value.push(valeur);
+      if (serie.value.length > MAX_POINTS) serie.value.shift();
+    };
+
+    pousser(cpuHistory, newStats.cpu_percent);
+    pousser(ramHistory, ramPct);
+    // Le débit reste vide tant qu'il n'est pas comparable : on trace alors 0
+    // plutôt que de sauter un point, ce qui décalerait l'axe des temps.
+    pousser(netRxHistory, (newStats.network_rx_bytes_per_sec ?? 0) / 1024);
+    pousser(netTxHistory, (newStats.network_tx_bytes_per_sec ?? 0) / 1024);
+    pousser(latencyHistory, newStats.rcon_latency_ms ?? 0);
+
+    timeLabels.value.push(
+      new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+    );
+    if (timeLabels.value.length > MAX_POINTS) timeLabels.value.shift();
 
     // Les seuils ne sont plus verifies ici : la surveillance tourne cote
     // serveur, page fermee comprise.
   }
 }
 
+/// Nombre de points conservés. À 5 s par relevé, cela couvre un peu plus de
+/// deux minutes : assez pour voir un pic, assez court pour rester lisible.
+const MAX_POINTS = 24;
+
+/// Axe des temps commun. Les étiquettes sont espacées automatiquement par
+/// Chart.js (`autoSkip`) : les afficher toutes rendrait l'axe illisible sur
+/// une carte étroite.
+const axeTemps = {
+  display: true,
+  grid: { display: false },
+  ticks: {
+    color: "rgba(255, 255, 255, 0.45)",
+    maxRotation: 0,
+    autoSkip: true,
+    maxTicksLimit: 4,
+    font: { size: 9 },
+  },
+};
+
+/// Options des graphes en POURCENTAGE : l'échelle 0-100 est fixe, sinon une
+/// variation de 2 % remplirait la carte et ferait croire à une saturation.
 const chartOptions = {
   responsive: true,
   maintainAspectRatio: false,
   animation: { duration: 0 },
   scales: {
-    y: { 
-      min: 0, 
-      max: 100, 
-      grid: { color: 'rgba(255, 255, 255, 0.1)' },
-      ticks: { color: 'rgba(255, 255, 255, 0.5)' }
+    y: {
+      min: 0,
+      max: 100,
+      grid: { color: "rgba(255, 255, 255, 0.1)" },
+      ticks: { color: "rgba(255, 255, 255, 0.5)" },
     },
-    x: { display: false }
+    x: axeTemps,
   },
   plugins: { legend: { display: false } },
-  elements: {
-    point: { radius: 0 }
-  }
+  elements: { point: { radius: 0 } },
+};
+
+/// Options des graphes SANS plafond connu — débit, temps de réponse. L'échelle
+/// s'adapte aux valeurs : imposer un maximum arbitraire écraserait la courbe
+/// ou masquerait un pic.
+const chartOptionsAuto = {
+  responsive: true,
+  maintainAspectRatio: false,
+  animation: { duration: 0 },
+  scales: {
+    y: {
+      min: 0,
+      grid: { color: "rgba(255, 255, 255, 0.1)" },
+      ticks: { color: "rgba(255, 255, 255, 0.5)", maxTicksLimit: 5 },
+    },
+    x: axeTemps,
+  },
+  plugins: { legend: { display: false } },
+  elements: { point: { radius: 0 } },
+};
+
+/// Mêmes options, mais avec la légende : le graphe réseau porte deux courbes,
+/// et sans légende on ne sait pas laquelle est le trafic reçu.
+const chartOptionsReseau = {
+  ...chartOptionsAuto,
+  plugins: {
+    legend: {
+      display: true,
+      labels: { color: "rgba(255, 255, 255, 0.6)", boxWidth: 10, font: { size: 10 } },
+    },
+  },
 };
 
 const cpuChartData = computed(() => {
   return {
-    labels: cpuHistory.value.map((_, i) => i.toString()),
+    labels: [...timeLabels.value],
     datasets: [
       {
         label: 'CPU (%)',
@@ -604,7 +683,7 @@ const cpuChartData = computed(() => {
 
 const ramChartData = computed(() => {
   return {
-    labels: ramHistory.value.map((_, i) => i.toString()),
+    labels: [...timeLabels.value],
     datasets: [
       {
         label: 'RAM (%)',
@@ -618,6 +697,48 @@ const ramChartData = computed(() => {
     ]
   };
 });
+
+/// Deux courbes sur le même graphe : reçu et envoyé se lisent l'un par rapport
+/// à l'autre. Un serveur de jeu émet bien plus qu'il ne reçoit — c'est l'écart
+/// entre les deux qui signale une saturation en émission.
+const netChartData = computed(() => ({
+  labels: [...timeLabels.value],
+  datasets: [
+    {
+      label: "Reçu (Ko/s)",
+      backgroundColor: "rgba(46, 204, 113, 0.15)",
+      borderColor: "#2ecc71",
+      data: [...netRxHistory.value],
+      fill: true,
+      tension: 0.4,
+      borderWidth: 2,
+    },
+    {
+      label: "Envoyé (Ko/s)",
+      backgroundColor: "rgba(155, 89, 182, 0.15)",
+      borderColor: "#9b59b6",
+      data: [...netTxHistory.value],
+      fill: true,
+      tension: 0.4,
+      borderWidth: 2,
+    },
+  ],
+}));
+
+const latencyChartData = computed(() => ({
+  labels: [...timeLabels.value],
+  datasets: [
+    {
+      label: "Temps de réponse (ms)",
+      backgroundColor: "rgba(241, 196, 15, 0.15)",
+      borderColor: "#f1c40f",
+      data: [...latencyHistory.value],
+      fill: true,
+      tension: 0.4,
+      borderWidth: 2,
+    },
+  ],
+}));
 
 function syncStatsTimer() {
   if (statsTimer) {
@@ -984,34 +1105,52 @@ function fmtDuration(secs: number | null): string {
           <!-- Le temps de réponse du jeu : c'est lui qui dit un lag. CPU et
                RAM disent ce que le conteneur consomme, pas ce que les joueurs
                ressentent — un serveur peut ramer à 30 % de processeur. -->
-          <div class="sd-surv-card">
-            <div class="sd-surv-label">Temps de réponse du jeu</div>
-            <div
-              class="sd-surv-val"
-              :style="{ color: (stats.rcon_latency_ms ?? 0) > 500 ? 'var(--danger)' : undefined }"
-            >
-              {{ stats.rcon_latency_ms === null ? "—" : `${stats.rcon_latency_ms} ms` }}
+          <div class="sd-surv-card sd-surv-large">
+            <div class="sd-surv-header">
+              <span class="sd-surv-label">Temps de réponse du jeu</span>
+              <span
+                class="sd-surv-val"
+                :style="{ color: (stats.rcon_latency_ms ?? 0) > 500 ? 'var(--danger)' : undefined }"
+              >
+                {{ stats.rcon_latency_ms === null ? "—" : `${stats.rcon_latency_ms} ms` }}
+              </span>
+            </div>
+            <!-- Échelle libre : un temps de réponse n'a pas de plafond connu,
+                 en imposer un écraserait la courbe ou masquerait un pic. -->
+            <div class="sd-chart-large-box">
+              <Line :data="latencyChartData" :options="chartOptionsAuto" />
             </div>
           </div>
 
-          <div class="sd-surv-card">
-            <div class="sd-surv-label">Débit réseau</div>
-            <div class="sd-surv-val">
-              <template v-if="stats.network_rx_bytes_per_sec !== null">
-                ↓ {{ debit(stats.network_rx_bytes_per_sec) }} · ↑
-                {{ debit(stats.network_tx_bytes_per_sec ?? 0) }}
-              </template>
-              <template v-else>—</template>
+          <div class="sd-surv-card sd-surv-large">
+            <div class="sd-surv-header">
+              <span class="sd-surv-label">Débit réseau</span>
+              <span class="sd-surv-val">
+                <template v-if="stats.network_rx_bytes_per_sec !== null">
+                  ↓ {{ debit(stats.network_rx_bytes_per_sec) }} · ↑
+                  {{ debit(stats.network_tx_bytes_per_sec ?? 0) }}
+                </template>
+                <template v-else>—</template>
+              </span>
+            </div>
+            <!-- Reçu et envoyé sur le MÊME graphe : c'est l'écart entre les
+                 deux qui parle. Un serveur de jeu émet bien plus qu'il ne
+                 reçoit, et une émission qui plafonne fait laguer tout le monde. -->
+            <div class="sd-chart-large-box">
+              <Line :data="netChartData" :options="chartOptionsReseau" />
             </div>
           </div>
 
+          <!-- Totaux depuis le démarrage du conteneur : pas de courbe, elle ne
+               ferait que monter. C'est le débit ci-dessus qui montre une
+               saturation ; ces chiffres disent la quantité échangée. -->
           <div class="sd-surv-card">
-            <div class="sd-surv-label">Réseau reçu</div>
+            <div class="sd-surv-label">Réseau reçu (total)</div>
             <div class="sd-surv-val">{{ volume(stats.network_rx_bytes) }}</div>
           </div>
 
           <div class="sd-surv-card">
-            <div class="sd-surv-label">Réseau envoyé</div>
+            <div class="sd-surv-label">Réseau envoyé (total)</div>
             <div class="sd-surv-val">{{ volume(stats.network_tx_bytes) }}</div>
           </div>
 

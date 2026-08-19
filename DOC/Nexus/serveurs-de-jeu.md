@@ -78,6 +78,26 @@ Les courbes de totaux ne font que monter, par construction : c'est leur **pente*
 
 L'historique n'est pas conservé : il se remplit à partir de l'ouverture de l'onglet, avec un premier point immédiat pour ne pas laisser les graphes vides une minute entière.
 
+## Ouverture et fermeture automatiques
+
+Un serveur de soirée n'a pas besoin de tourner la journée : il consomme mémoire et processeur pour personne, et sur une machine qui héberge plusieurs jeux, c'est autant de pris aux autres.
+
+L'option se règle depuis l'aperçu du serveur : une ou plusieurs **plages quotidiennes** (« 12h-14h » et « 19h-minuit »), un fuseau horaire, et un préavis. Le serveur s'allume au début de chaque plage, prévient les joueurs *dans le jeu* quelques minutes avant la fin, puis s'arrête. Sans plage active, rien ne change — c'est l'administrateur qui pilote.
+
+Passé la **date de fin de session**, tout s'arrête et plus rien ne redémarre : sans cette porte, un serveur ressusciterait chaque soir à 19h indéfiniment.
+
+### Ce que les horaires excluent
+
+Activer les plages **désactive le redémarrage automatique du jeu** (`AUTO_REBOOT_ENABLED`, `RESTART_CRON`). Les deux feraient double emploi : un serveur qui ferme et rouvre chaque jour redémarre déjà. Pire, le cron pourrait rallumer un conteneur qu'on vient d'éteindre, ou tomber en pleine plage fermée. Le redémarrage programmé garde tout son sens sur un serveur qui tourne 24h/24 — pas ici.
+
+### Les pièges traités
+
+- **L'heure d'été.** Les heures sont locales, avec leur fuseau nommé. Un décalage figé ferait ouvrir le serveur à 18h ou 20h la moitié de l'année.
+- **Les plages qui passent minuit.** « 22h-02h » est traitée comme telle ; sans quoi elle ne serait jamais active.
+- **Deux plages qui se touchent.** La fin est exclue : à 14h00 pile, « 12h-14h » est finie et « 14h-16h » commence.
+- **Le préavis ne part qu'une fois** par plage, et se réarme à l'ouverture suivante.
+- **Un fuseau inconnu ne déclenche rien** plutôt que de retomber sur UTC en silence, ce qui ferait tourner le serveur à contretemps.
+
 ## Ajuster mémoire et processeur
 
 La mémoire et le plafond de cœurs se règlent après coup, depuis l'aperçu du serveur : deux curseurs bornés par ce que le jeu accepte. Un serveur qui rame peut recevoir un cœur de plus, un serveur surdimensionné rendre de la mémoire aux autres.

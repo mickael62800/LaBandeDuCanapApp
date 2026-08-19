@@ -145,6 +145,29 @@ export interface AlertSettings {
   latency_threshold_ms: number;
 }
 
+/** Une plage d'ouverture quotidienne, en minutes depuis minuit. */
+export interface TimeRange {
+  start_minute: number;
+  end_minute: number;
+}
+
+/**
+ * Plages d'ouverture d'un serveur.
+ *
+ * Les heures sont LOCALES, exprimées dans `timezone` : un décalage figé
+ * ouvrirait le serveur avec une heure d'écart la moitié de l'année.
+ */
+export interface ServerSchedule {
+  enabled: boolean;
+  timezone: string;
+  ranges: TimeRange[];
+  warn_minutes: number;
+  /** Prochaine ouverture calculée par le serveur. */
+  next_opening: string | null;
+  /** Réglages de redémarrage automatique du jeu neutralisés par les plages. */
+  disabled_restart_keys: string[];
+}
+
 export interface GameServerDetail {
   server: GameServer;
   config: Record<string, string>;
@@ -350,6 +373,32 @@ export const nexusGamesService = {
       `/api/games/servers/${encodeURIComponent(serverId)}/resources`,
       guildId,
       { memory_mb: memoryMb, cpu_limit: cpuLimit },
+    );
+  },
+
+  /** GET /api/games/servers/{id}/schedule-ranges — plages d'ouverture. */
+  getScheduleRanges(guildId: string, serverId: string): Promise<ServerSchedule> {
+    return nexusGet<ServerSchedule>(
+      `/api/games/servers/${encodeURIComponent(serverId)}/schedule-ranges`,
+      guildId,
+    );
+  },
+
+  /** PUT /api/games/servers/{id}/schedule-ranges */
+  saveScheduleRanges(
+    guildId: string,
+    serverId: string,
+    schedule: {
+      enabled: boolean;
+      timezone: string;
+      ranges: TimeRange[];
+      warn_minutes: number;
+    },
+  ): Promise<ServerSchedule> {
+    return nexusPut<ServerSchedule>(
+      `/api/games/servers/${encodeURIComponent(serverId)}/schedule-ranges`,
+      guildId,
+      schedule,
     );
   },
 

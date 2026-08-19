@@ -247,3 +247,26 @@ pub async fn job_game_alerts(State(state): State<AppState>) -> Result<Json<JobRe
     })
     .await
 }
+
+/// Ouverture et fermeture automatiques selon les plages horaires.
+///
+/// Passage court : une plage se termine a la minute pres, et un preavis de dix
+/// minutes annonce a la neuvieme n'a plus grand interet.
+pub async fn job_game_schedules(
+    State(state): State<AppState>,
+) -> Result<Json<JobReport>, ApiError> {
+    locked(&state, "game-schedules", || async {
+        let rapport = crate::nexus::jobs::game_schedules::run(&state).await?;
+        Ok(JobReport {
+            job: "game_schedules",
+            processed: rapport.started + rapport.stopped + rapport.warned,
+            errors: rapport.errors,
+            details: serde_json::json!({
+                "ouverts": rapport.started,
+                "fermes": rapport.stopped,
+                "preavis": rapport.warned,
+            }),
+        })
+    })
+    .await
+}

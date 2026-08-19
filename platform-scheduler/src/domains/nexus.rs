@@ -53,6 +53,10 @@ pub fn start(config: DomainConfig) {
         // sante : c'est lui qui produit les mesures, alerter plus souvent
         // relirait les memes chiffres.
         ("game-alerts", env("GAME_ALERTS_INTERVAL_SECS", 60)),
+        // Plages d'ouverture. Passage a la minute : une plage se termine a la
+        // minute pres, et un preavis de dix minutes annonce a la neuvieme n'a
+        // plus grand interet.
+        ("game-schedules", env("GAME_SCHEDULES_INTERVAL_SECS", 60)),
     ] {
         let client = config.client.clone();
         crate::schedule::spawn_interval(job_name(job), interval, move || {
@@ -101,6 +105,7 @@ fn job_name(job: &str) -> &'static str {
         "coussin-expire-combats" => "nexus.coussin-expire-combats",
         "coussin-expire-steals" => "nexus.coussin-expire-steals",
         "game-alerts" => "nexus.game-alerts",
+        "game-schedules" => "nexus.game-schedules",
         _ => "nexus.unknown",
     }
 }

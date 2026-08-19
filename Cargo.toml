@@ -55,6 +55,10 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
 # Utils communs
 chrono = { version = "0.4", features = ["serde"] }
+# Fuseaux horaires nommes (Europe/Paris). Indispensable des qu'un horaire est
+# saisi en heure locale : un decalage fixe se decalerait d'une heure a chaque
+# passage a l'heure d'ete, deux fois par an, sur tous les serveurs a la fois.
+chrono-tz = "0.10"
 uuid = { version = "1", features = ["v4", "serde"] }
 thiserror = "2"
 dashmap = "6"

@@ -95,6 +95,10 @@ pub struct AppState {
     pub game_alert_repo: Arc<
         dyn platform_core::nexus::ports::outbound::game::alert_repository::GameAlertRepository,
     >,
+    /// Plages d'ouverture recurrentes des serveurs de jeu.
+    pub game_schedule_repo: Arc<
+        dyn platform_core::nexus::ports::outbound::game::schedule_repository::GameScheduleRepository,
+    >,
     pub coussin_combat: Arc<dyn CoussinCombatUseCase>,
     pub coussin_inventory: Arc<dyn CoussinInventoryUseCase>,
     pub coussin_insurance: Arc<dyn CoussinInsuranceUseCase>,
@@ -205,6 +209,13 @@ pub async fn build_state() -> Result<AppState, Box<dyn std::error::Error>> {
     let coussin_cooldowns: Arc<dyn platform_core::nexus::ports::outbound::coussin_cooldown_repository::CoussinCooldownRepository> =
         Arc::new(crate::nexus::adapters::outbound::postgres::coussin_cooldown_repository::PgCoussinCooldownRepository::new(pool.clone()));
     let coussin_repo: Arc<dyn CoussinRepository> = Arc::new(PgCoussinRepository::new(pool.clone()));
+    let game_schedule_repo: Arc<
+        dyn platform_core::nexus::ports::outbound::game::schedule_repository::GameScheduleRepository,
+    > = Arc::new(
+        crate::nexus::adapters::outbound::postgres::game::schedule_repository::PgGameScheduleRepository::new(
+            pool.clone(),
+        ),
+    );
     let game_alert_repo: Arc<
         dyn platform_core::nexus::ports::outbound::game::alert_repository::GameAlertRepository,
     > = Arc::new(
@@ -418,6 +429,7 @@ pub async fn build_state() -> Result<AppState, Box<dyn std::error::Error>> {
         coussin_profile,
         coussin_repo,
         game_alert_repo,
+        game_schedule_repo,
         coussin_combat,
         coussin_inventory,
         coussin_insurance,

@@ -488,3 +488,34 @@
   gap: var(--space-sm);
   flex-wrap: wrap;
 }
+
+/* Plages horaires : une ligne par creneau, pour qu'on lise « 19h -> 23h »
+   d'un coup d'oeil plutot que deux champs sans rapport visible. */
+.sd-ranges {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  margin: var(--space-sm) 0;
+  align-items: flex-start;
+}
+
+.sd-range-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.sd-range-row input {
+  background: var(--bg-card);
+  border: 1px solid var(--bg-hover);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  padding: 6px 10px;
+}
+
+.sd-field-inline {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+}

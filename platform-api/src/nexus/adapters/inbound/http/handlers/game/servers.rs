@@ -778,3 +778,176 @@ pub async fn delete_alert_settings(
     state.game_alert_repo.delete(server_id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
+
+// ── Plages d'ouverture recurrentes ──
+
+/// Cles de redemarrage automatique connues des images de jeu.
+///
+/// Un redemarrage programme n'a de sens que sur un serveur qui tourne en
+/// continu. Des qu'il ouvre et ferme chaque jour, il redemarre deja — et le
+/// cron risque de tomber hors plage, sur un conteneur eteint, ou pire de le
+/// relancer juste apres une fermeture.
+const CLES_REDEMARRAGE_AUTO: &[&str] = &[
+    "AUTO_REBOOT_ENABLED",
+    "RESTART_CRON",
+    "RESTART_CRON_EXPRESSION",
+];
+
+#[derive(Debug, serde::Serialize)]
+pub struct ScheduleRangesDto {
+    pub enabled: bool,
+    pub timezone: String,
+    pub ranges: Vec<platform_core::nexus::domain::entities::game::schedule::TimeRange>,
+    pub warn_minutes: u16,
+    /// Prochaine ouverture calculee, pour l'annoncer a l'ecran.
+    pub next_opening: Option<String>,
+    /// Reglages de redemarrage automatique neutralises par les plages.
+    pub disabled_restart_keys: Vec<String>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct SaveScheduleRangesDto {
+    pub enabled: bool,
+    pub timezone: String,
+    pub ranges: Vec<platform_core::nexus::domain::entities::game::schedule::TimeRange>,
+    pub warn_minutes: u16,
+}
+
+/// GET /api/games/servers/{server_id}/schedule-ranges
+pub async fn get_schedule_ranges(
+    State(state): State<AppState>,
+    Path(server_id): Path<Uuid>,
+) -> Result<Json<ScheduleRangesDto>, ApiError> {
+    use platform_core::nexus::domain::entities::game::schedule::{next_opening, AutoSchedule};
+
+    let stored = state.game_schedule_repo.find(server_id).await?;
+    let closes_at = state
+        .game_servers_uc
+        .get(server_id)
+        .await
+        .ok()
+        .and_then(|d| d.server.closes_at);
+
+    let dto = match stored {
+        Some(s) => {
+            let schedule = AutoSchedule {
+                enabled: s.enabled,
+                timezone: s.timezone.clone(),
+                ranges: s.ranges.clone(),
+                warn_minutes: s.warn_minutes,
+                closes_at,
+            };
+            ScheduleRangesDto {
+                next_opening: next_opening(&schedule, chrono::Utc::now()).map(|d| d.to_rfc3339()),
+                enabled: s.enabled,
+                timezone: s.timezone,
+                ranges: s.ranges,
+                warn_minutes: s.warn_minutes,
+                disabled_restart_keys: Vec::new(),
+            }
+        }
+        None => ScheduleRangesDto {
+            enabled: false,
+            timezone: "Europe/Paris".into(),
+            ranges: Vec::new(),
+            warn_minutes: 10,
+            next_opening: None,
+            disabled_restart_keys: Vec::new(),
+        },
+    };
+    Ok(Json(dto))
+}
+
+/// PUT /api/games/servers/{server_id}/schedule-ranges
+pub async fn save_schedule_ranges(
+    State(state): State<AppState>,
+    Path(server_id): Path<Uuid>,
+    headers: HeaderMap,
+    Query(q): Query<ActorQuery>,
+    Json(dto): Json<SaveScheduleRangesDto>,
+) -> Result<Json<ScheduleRangesDto>, ApiError> {
+    use platform_core::nexus::domain::errors::DomainError;
+
+    let actor = acteur(&state, &headers, server_id, q.actor_id.as_deref()).await?;
+
+    // Un fuseau inconnu ferait tourner le serveur a contretemps sans que
+    // personne ne comprenne : on refuse a la saisie plutot que de s'en
+    // apercevoir un soir d'ouverture.
+    if dto.timezone.parse::<chrono_tz::Tz>().is_err() {
+        return Err(DomainError::ValidationError(format!(
+            "fuseau horaire inconnu : {}",
+            dto.timezone
+        ))
+        .into());
+    }
+
+    for plage in &dto.ranges {
+        if plage.start_minute >= 1440 || plage.end_minute >= 1440 {
+            return Err(DomainError::ValidationError(
+                "une heure doit tenir dans la journee".into(),
+            )
+            .into());
+        }
+        // Debut egal a la fin : la plage dure zero minute, ou vingt-quatre
+        // heures selon la lecture. Trop ambigu pour etre accepte.
+        if plage.start_minute == plage.end_minute {
+            return Err(DomainError::ValidationError(
+                "une plage doit avoir une duree : ajuste l'heure de fin".into(),
+            )
+            .into());
+        }
+    }
+
+    if dto.enabled && dto.ranges.is_empty() {
+        return Err(DomainError::ValidationError(
+            "ajoute au moins une plage avant d'activer les horaires".into(),
+        )
+        .into());
+    }
+
+    state
+        .game_schedule_repo
+        .upsert(
+            server_id,
+            dto.enabled,
+            &dto.timezone,
+            &dto.ranges,
+            dto.warn_minutes.min(120),
+            Some(&actor),
+        )
+        .await?;
+
+    // Les horaires prennent la main sur le redemarrage programme du jeu : un
+    // serveur qui ferme et rouvre chaque jour redemarre deja, et le cron
+    // risquerait de rallumer un conteneur qu'on vient d'eteindre.
+    let mut neutralisees = Vec::new();
+    if dto.enabled {
+        if let Ok(detail) = state.game_servers_uc.get(server_id).await {
+            let mut config = detail.config.clone();
+            for cle in CLES_REDEMARRAGE_AUTO {
+                if let Some(valeur) = config.get_mut(*cle) {
+                    let actif =
+                        !matches!(valeur.trim().to_ascii_lowercase().as_str(), "" | "false");
+                    if actif {
+                        *valeur = if cle.contains("CRON") {
+                            String::new()
+                        } else {
+                            "false".to_string()
+                        };
+                        neutralisees.push((*cle).to_string());
+                    }
+                }
+            }
+            if !neutralisees.is_empty() {
+                state
+                    .game_servers_uc
+                    .update_config(server_id, config, &actor)
+                    .await?;
+            }
+        }
+    }
+
+    let mut resultat = get_schedule_ranges(State(state), Path(server_id)).await?;
+    resultat.0.disabled_restart_keys = neutralisees;
+    Ok(resultat)
+}

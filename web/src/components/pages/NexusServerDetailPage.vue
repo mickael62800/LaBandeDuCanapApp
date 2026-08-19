@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import AppButton from "../atoms/AppButton.vue";
+import AppToggle from "../atoms/AppToggle.vue";
 // Détail d'un serveur de jeu : pilotage, ressources, configuration, logs,
 // console RCON et historique des joueurs.
 //
@@ -475,6 +476,101 @@ function viderTampon() {
 const moyenne = (valeurs: number[]) =>
   valeurs.length === 0 ? 0 : valeurs.reduce((a, b) => a + b, 0) / valeurs.length;
 
+// ── Plages d'ouverture automatiques ──
+//
+// Un serveur de soirée n'a pas à tourner la journée. Les heures sont saisies
+// en heure locale : c'est ce que lit un administrateur, et le fuseau enregistré
+// avec évite le décalage d'une heure aux changements de saison.
+
+const scheduleEnabled = ref(false);
+const scheduleTimezone = ref("Europe/Paris");
+const scheduleWarn = ref(10);
+/// Plages en « HH:MM », plus lisibles à l'écran que des minutes depuis minuit.
+const scheduleRanges = ref<{ start: string; end: string }[]>([]);
+const scheduleNextOpening = ref<string | null>(null);
+const scheduleDisabledKeys = ref<string[]>([]);
+const savingSchedule = ref(false);
+
+function minutesVersHeure(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+function heureVersMinutes(valeur: string): number {
+  const [h, m] = valeur.split(":").map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
+async function loadSchedule() {
+  if (!selectedGuildId.value || !serverId.value) return;
+  try {
+    const s = await nexusGamesService.getScheduleRanges(selectedGuildId.value, serverId.value);
+    scheduleEnabled.value = s.enabled;
+    scheduleTimezone.value = s.timezone;
+    scheduleWarn.value = s.warn_minutes;
+    scheduleRanges.value = s.ranges.map((r) => ({
+      start: minutesVersHeure(r.start_minute),
+      end: minutesVersHeure(r.end_minute),
+    }));
+    scheduleNextOpening.value = s.next_opening;
+  } catch {
+    // Horaires indisponibles : on garde le formulaire tel quel plutôt que de
+    // le vider sous les yeux de l'administrateur.
+  }
+}
+
+function ajouterPlage() {
+  scheduleRanges.value.push({ start: "19:00", end: "23:00" });
+}
+
+function retirerPlage(index: number) {
+  scheduleRanges.value.splice(index, 1);
+}
+
+async function saveSchedule() {
+  if (!selectedGuildId.value || !serverId.value || savingSchedule.value) return;
+  savingSchedule.value = true;
+  try {
+    const resultat = await nexusGamesService.saveScheduleRanges(
+      selectedGuildId.value,
+      serverId.value,
+      {
+        enabled: scheduleEnabled.value,
+        timezone: scheduleTimezone.value,
+        ranges: scheduleRanges.value.map((r) => ({
+          start_minute: heureVersMinutes(r.start),
+          end_minute: heureVersMinutes(r.end),
+        })),
+        warn_minutes: scheduleWarn.value,
+      },
+    );
+    scheduleNextOpening.value = resultat.next_opening;
+    scheduleDisabledKeys.value = resultat.disabled_restart_keys;
+
+    if (resultat.disabled_restart_keys.length > 0) {
+      // Le redémarrage programmé du jeu n'a de sens que sur un serveur qui
+      // tourne en continu : il rallumerait un conteneur qu'on vient d'éteindre.
+      success(
+        `Horaires enregistrés. Redémarrage automatique du jeu désactivé (${resultat.disabled_restart_keys.join(", ")}) : il ferait double emploi avec les plages.`,
+      );
+    } else {
+      success("Horaires enregistrés.");
+    }
+    await load();
+  } catch (e) {
+    showError(e instanceof Error ? e.message : "Enregistrement impossible");
+  } finally {
+    savingSchedule.value = false;
+  }
+}
+
+const prochaineOuverture = computed(() =>
+  scheduleNextOpening.value
+    ? new Date(scheduleNextOpening.value).toLocaleString("fr-FR")
+    : null,
+);
+
 // ── Ressources allouées ──
 //
 // Docker fige mémoire et processeur à la CRÉATION du conteneur : les changer
@@ -869,6 +965,7 @@ watch(
     void load().then(resetResourceInputs);
     // Les seuils vivent cote serveur : on les relit avec la fiche.
     void loadAlertSettings();
+    void loadSchedule();
   },
   { immediate: true },
 );
@@ -1051,6 +1148,77 @@ function fmtDuration(secs: number | null): string {
             </dd>
           </div>
         </dl>
+      </section>
+
+      <!-- Ouverture automatique -->
+      <section v-if="onglet === 'apercu' && server" class="sd-pane sd-resources">
+        <h3>Ouverture automatique</h3>
+        <p class="sd-note">
+          Le serveur s'allume et s'éteint tout seul aux heures indiquées. Sans plage active,
+          rien ne change : c'est toi qui pilotes.
+        </p>
+
+        <label class="sd-field sd-field-inline">
+          <AppToggle v-model="scheduleEnabled" />
+          <span>Activer les plages horaires</span>
+        </label>
+
+        <template v-if="scheduleEnabled">
+          <div class="sd-form">
+            <label class="sd-field">
+              <span>Fuseau horaire</span>
+              <input v-model="scheduleTimezone" type="text" placeholder="Europe/Paris" />
+              <small class="sd-note">
+                Les heures ci-dessous sont locales à ce fuseau. Le changement d'heure est
+                suivi automatiquement.
+              </small>
+            </label>
+
+            <label class="sd-field">
+              <span>Préavis avant fermeture (minutes)</span>
+              <input v-model.number="scheduleWarn" type="number" min="0" max="120" />
+              <small class="sd-note">
+                Un message est envoyé dans le jeu. 0 = pas d'annonce.
+              </small>
+            </label>
+          </div>
+
+          <div class="sd-ranges">
+            <div v-for="(plage, index) in scheduleRanges" :key="index" class="sd-range-row">
+              <input v-model="plage.start" type="time" />
+              <span>→</span>
+              <input v-model="plage.end" type="time" />
+              <AppButton variant="secondary" size="xs" @click="retirerPlage(index)">
+                Retirer
+              </AppButton>
+            </div>
+            <p v-if="scheduleRanges.length === 0" class="sd-note">
+              Aucune plage : ajoute-en une avant d'activer.
+            </p>
+            <AppButton variant="secondary" size="xs" @click="ajouterPlage">
+              Ajouter une plage
+            </AppButton>
+          </div>
+
+          <p v-if="prochaineOuverture" class="sd-hint">
+            Prochaine ouverture : {{ prochaineOuverture }}.
+          </p>
+          <p v-if="plannedStopAt" class="sd-hint">
+            Après la date de fin de session, le serveur s'arrête et ne rouvre plus.
+          </p>
+        </template>
+
+        <div class="sd-thresholds-row">
+          <AppButton variant="secondary" size="sm" :disabled="savingSchedule" @click="saveSchedule">
+            {{ savingSchedule ? "Enregistrement…" : "Enregistrer les horaires" }}
+          </AppButton>
+        </div>
+
+        <p v-if="scheduleDisabledKeys.length" class="sd-hint">
+          Redémarrage automatique du jeu désactivé ({{ scheduleDisabledKeys.join(", ") }}) : sur un
+          serveur qui ferme et rouvre chaque jour, il ferait double emploi — et pourrait rallumer
+          un conteneur qu'on vient d'éteindre.
+        </p>
       </section>
 
       <!-- Ressources allouées -->

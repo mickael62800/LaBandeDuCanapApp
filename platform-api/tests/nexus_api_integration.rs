@@ -1063,6 +1063,13 @@ fn create_test_app_state(api_key: impl Into<String>) -> AppState {
         // Depot reel branche sur un pool paresseux : aucune connexion n'est
         // ouverte tant qu'aucun job ne l'interroge, et ces tests n'exercent que
         // la couche HTTP. Un faux depot demanderait quatorze methodes vides.
+        game_schedule_repo: Arc::new(
+            platform_api::nexus::adapters::outbound::postgres::game::schedule_repository::PgGameScheduleRepository::new(
+                sqlx::postgres::PgPoolOptions::new()
+                    .connect_lazy("postgres://localhost/nexus_test")
+                    .unwrap(),
+            ),
+        ),
         game_alert_repo: Arc::new(
             platform_api::nexus::adapters::outbound::postgres::game::alert_repository::PgGameAlertRepository::new(
                 sqlx::postgres::PgPoolOptions::new()

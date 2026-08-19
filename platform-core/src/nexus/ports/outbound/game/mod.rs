@@ -14,3 +14,4 @@ pub mod game_template_repository;
 pub mod player_session_repository;
 pub mod port_allocator;
 pub mod rcon_client;
+pub mod schedule_repository;

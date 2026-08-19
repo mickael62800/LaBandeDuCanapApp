@@ -75,6 +75,20 @@ pub async fn on_ready(ctx: &Context, ready: &serenity::model::gateway::Ready) {
             Some(g) => g
                 .voice_states
                 .iter()
+                .filter(|(uid, st)| {
+                    // Les bots ne gagnent pas de temps vocal. Sans ce filtre,
+                    // un lecteur de musique connecte au demarrage ouvrait une
+                    // session et accumulait des heures : les compteurs vocaux
+                    // gonflaient a chaque redemarrage du bot.
+                    let est_bot = st
+                        .member
+                        .as_ref()
+                        .map(|m| m.user.bot)
+                        .or_else(|| g.members.get(uid).map(|m| m.user.bot))
+                        .or_else(|| ctx.cache.user(**uid).map(|u| u.bot))
+                        .unwrap_or(false);
+                    !est_bot
+                })
                 .filter_map(|(uid, st)| {
                     st.channel_id
                         .map(|ch| (uid.get(), ch.get(), st.self_mute && st.self_deaf))

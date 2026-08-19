@@ -82,7 +82,15 @@ fn instantane(guild: &serenity::model::guild::Guild) -> Vec<VoiceChannelDto> {
         // aboutir a une liste fausse — mieux vaut un nom generique qu'un
         // absent.
         let membre = guild.members.get(&etat.user_id);
-        if membre.is_some_and(|m| m.user.bot) {
+        // L'etat vocal porte souvent le membre : le consulter d'abord ecarte
+        // les bots que le cache des membres ne connait pas encore.
+        let est_bot = etat
+            .member
+            .as_ref()
+            .map(|m| m.user.bot)
+            .or_else(|| membre.map(|m| m.user.bot))
+            .unwrap_or(false);
+        if est_bot {
             continue;
         }
 

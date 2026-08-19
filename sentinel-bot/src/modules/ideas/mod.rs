@@ -44,23 +44,6 @@ pub fn register_commands() -> Vec<CreateCommand> {
         ))]
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn commande_idee_est_reservee_aux_gestionnaires_du_serveur() {
-        let commands = register_commands();
-        let json = serde_json::to_value(&commands[0]).expect("commande serialisable");
-
-        assert_eq!(
-            json.get("default_member_permissions")
-                .and_then(|v| v.as_str()),
-            Some("32")
-        );
-    }
-}
-
 pub async fn handle_command(ctx: &Context, command: &CommandInteraction) {
     if command.data.name != "idee" {
         return;
@@ -214,4 +197,21 @@ pub async fn on_message(ctx: &Context, msg: &Message) {
     };
     api.add_message(&idea.id, &msg.author.name, role, &msg.content)
         .await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn commande_idee_est_reservee_aux_gestionnaires_du_serveur() {
+        let commands = register_commands();
+        let json = serde_json::to_value(&commands[0]).expect("commande serialisable");
+
+        assert_eq!(
+            json.get("default_member_permissions")
+                .and_then(|v| v.as_str()),
+            Some("32")
+        );
+    }
 }

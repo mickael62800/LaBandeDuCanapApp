@@ -443,7 +443,7 @@ pub async fn handle(ctx: &Context, command: &CommandInteraction) {
 
             messages
                 .into_iter()
-                .filter(|m| m.author.bot && specific_bot.map_or(true, |uid| m.author.id == uid))
+                .filter(|m| m.author.bot && specific_bot.is_none_or(|uid| m.author.id == uid))
                 .collect()
         }
         "links" => messages

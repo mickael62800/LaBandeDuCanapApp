@@ -98,8 +98,10 @@ async fn human_member_count(ctx: &Context, guild_id: GuildId) -> u64 {
             Ok(_) => break,
             Err(e) => {
                 warn!(error = %e, "Compteur : echec fetch membres HTTP, repli cache");
-                // Repli sur le cache (total - bots vus). Peut inclure des bots
-                // si le cache est vide, mais mieux que 0.
+                // Repli sur le cache (total - bots vus). Le cache peut ne pas
+                // connaitre tous les bots : le compte sera alors legerement
+                // trop haut, mais c'est preferable a zero — et l'appel HTTP
+                // reprendra la main au prochain passage.
                 if let Some(g) = ctx.cache.guild(guild_id) {
                     let total = g.member_count;
                     let bots = g.members.values().filter(|m| m.user.bot).count() as u64;
@@ -161,15 +163,30 @@ fn voice_member_count(ctx: &Context, guild_id: GuildId) -> u64 {
     g.voice_states
         .values()
         .filter(|vs| vs.channel_id.is_some())
-        .filter(|vs| {
-            // Exclut les bots : si le membre est en cache et marque bot, on
-            // l'ignore ; sinon on le compte (humain par defaut).
-            !g.members
-                .get(&vs.user_id)
-                .map(|m| m.user.bot)
-                .unwrap_or(false)
-        })
+        .filter(|vs| !est_bot_en_vocal(ctx, &g, vs))
         .count() as u64
+}
+
+/// La personne connectee en vocal est-elle un bot ?
+///
+/// Trois sources, de la plus sure a la moins : l'etat vocal lui-meme porte
+/// souvent le membre, puis le cache des membres, puis le cache des
+/// utilisateurs. Auparavant seule la deuxieme etait consultee, et un bot
+/// absent du cache etait compte comme humain — c'est precisement ce qui faisait
+/// afficher un connecte de trop des qu'un bot musique rejoignait un salon.
+fn est_bot_en_vocal(
+    ctx: &Context,
+    guild: &serenity::model::guild::Guild,
+    etat: &serenity::model::voice::VoiceState,
+) -> bool {
+    etat.member
+        .as_ref()
+        .map(|m| m.user.bot)
+        .or_else(|| guild.members.get(&etat.user_id).map(|m| m.user.bot))
+        .or_else(|| ctx.cache.user(etat.user_id).map(|u| u.bot))
+        // Inconnu des trois : on le compte comme humain. Le contraire ferait
+        // disparaitre un joueur du compteur, ce qui se remarque davantage.
+        .unwrap_or(false)
 }
 
 /// Renomme le salon compteur vocal avec le nombre de connectes en vocal.

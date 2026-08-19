@@ -424,10 +424,20 @@ const ramHistory = ref<number[]>([]);
 // ── Alertes Webhook Discord ──
 const cpuThreshold = ref<number>(85);
 const ramThreshold = ref<number>(90);
+/// Seuil de temps de réponse du jeu, en millisecondes.
+///
+/// C'est l'alerte qui correspond vraiment à un lag ressenti : CPU et RAM
+/// disent ce que le conteneur consomme, la latence dit ce que les joueurs
+/// subissent. Un serveur peut ramer à 30 % de processeur.
+///
+/// Pas de seuil sur le débit : il dépend entièrement de la ligne, et une
+/// valeur par défaut y serait arbitraire — donc soit muette, soit criarde.
+const latencyThreshold = ref<number>(500);
 const webhookUrl = ref<string>("");
 const webhookCooldownMs = 5 * 60 * 1000; // 5 min de cooldown anti-spam par métrique
 let lastCpuAlertTime = 0;
 let lastRamAlertTime = 0;
+let lastLatencyAlertTime = 0;
 
 // Charger les paramètres Webhook depuis le localStorage
 onMounted(() => {
@@ -437,12 +447,15 @@ onMounted(() => {
   if (savedCpu) cpuThreshold.value = Number(savedCpu) || 85;
   const savedRam = localStorage.getItem("nexus_ram_threshold");
   if (savedRam) ramThreshold.value = Number(savedRam) || 90;
+  const savedLatency = localStorage.getItem("nexus_latency_threshold");
+  if (savedLatency) latencyThreshold.value = Number(savedLatency) || 500;
 });
 
 function saveAlertSettings() {
   localStorage.setItem("nexus_webhook_url", webhookUrl.value.trim());
   localStorage.setItem("nexus_cpu_threshold", cpuThreshold.value.toString());
   localStorage.setItem("nexus_ram_threshold", ramThreshold.value.toString());
+  localStorage.setItem("nexus_latency_threshold", latencyThreshold.value.toString());
   success("Paramètres d'alerte Webhook enregistrés.");
 }
 
@@ -484,6 +497,23 @@ async function checkAlertThresholds(newStats: GameServerStats) {
       "Dépassement de Seuil CPU",
       `Le serveur **${server.value?.name}** consomme **${newStats.cpu_percent.toFixed(1)}%** de CPU (seuil configuré: ${cpuThreshold.value}%).`,
       0xe74c3c,
+    );
+  }
+
+  // Alerte temps de réponse — celle qui correspond au lag ressenti.
+  const latence = newStats.rcon_latency_ms;
+  if (
+    latence !== null
+    && latence >= latencyThreshold.value
+    && now - lastLatencyAlertTime > webhookCooldownMs
+  ) {
+    lastLatencyAlertTime = now;
+    void triggerDiscordWebhook(
+      "Serveur lent à répondre",
+      `Le serveur **${server.value?.name}** met **${latence} ms** à répondre (seuil configuré : ${latencyThreshold.value} ms). `
+        + "Les joueurs ressentent probablement du lag. Vérifie la charge système de l'hôte : "
+        + "au-dessus du nombre de cœurs, la machine est en cause plutôt que le jeu.",
+      0xf1c40f,
     );
   }
 
@@ -908,7 +938,7 @@ function fmtDuration(secs: number | null): string {
         <!-- Configuration des Alertes Webhook Discord -->
         <div class="sd-webhook-card sd-surv-card" style="margin-top: 2rem;">
           <h4>🔔 Alertes Webhook Discord</h4>
-          <p class="sd-note">Recevez une notification automatique sur Discord lorsque le CPU ou la RAM dépasse les seuils.</p>
+          <p class="sd-note">Recevez une notification automatique sur Discord lorsque le CPU, la RAM ou le temps de réponse dépasse les seuils.</p>
           <div class="sd-webhook-form">
             <label class="sd-field">
               <span>URL du Webhook Discord</span>
@@ -923,7 +953,16 @@ function fmtDuration(secs: number | null): string {
                 <span>Seuil RAM (%)</span>
                 <input v-model.number="ramThreshold" type="number" min="1" max="100" />
               </label>
+              <label class="sd-field">
+                <span>Seuil temps de réponse (ms)</span>
+                <input v-model.number="latencyThreshold" type="number" min="50" max="10000" step="50" />
+              </label>
             </div>
+            <p class="sd-hint">
+              Le temps de réponse est la mesure qui correspond au lag ressenti : un serveur
+              peut ramer à 30 % de processeur. Les alertes ne partent que lorsque cette page
+              est ouverte — ferme l'onglet et rien ne sera envoyé.
+            </p>
             <AppButton variant="secondary" size="sm" @click="saveAlertSettings">
               Enregistrer l'alerte
             </AppButton>

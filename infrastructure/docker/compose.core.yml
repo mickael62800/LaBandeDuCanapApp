@@ -720,8 +720,17 @@ services:
         condition: service_started
       api:
         condition: service_healthy
+    # SECURITE — `internal` est un reseau SANS routage vers l'exterieur
+    # (`internal: true`). L'agent y suffisait tant qu'il ne faisait que lire
+    # /host/proc et publier dans Redis. Mais ses sondes de connectivite doivent,
+    # par definition, sortir : depuis `internal` seul, elles rapportaient
+    # « injoignable » sur une machine parfaitement connectee.
+    #
+    # `default` lui donne cette sortie. L'agent n'expose aucun port et n'accepte
+    # rien de l'exterieur : il ouvre deux connexions sortantes toutes les 30 s.
     networks:
       - internal
+      - default
 
   # Gateway WebSocket transverse. Le nom de service `gateway` reste stable
   # pour nginx ; seul le binaire a ete consolide dans `platform-gateway`.

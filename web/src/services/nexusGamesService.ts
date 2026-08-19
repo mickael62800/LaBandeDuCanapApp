@@ -132,6 +132,19 @@ export interface OnlinePlayer {
   game_player_id: string | null;
 }
 
+/**
+ * Seuils de supervision d'un serveur.
+ *
+ * L'URL du webhook n'y figure pas : c'est un secret côté serveur. L'écran sait
+ * seulement qu'un webhook est configuré.
+ */
+export interface AlertSettings {
+  configured: boolean;
+  cpu_threshold: number;
+  ram_threshold: number;
+  latency_threshold_ms: number;
+}
+
 export interface GameServerDetail {
   server: GameServer;
   config: Record<string, string>;
@@ -318,6 +331,46 @@ export const nexusGamesService = {
       `/api/games/servers/${encodeURIComponent(serverId)}/command`,
       guildId,
       { command },
+    );
+  },
+
+  /** GET /api/games/servers/{id}/alerts — seuils de supervision. */
+  getAlertSettings(guildId: string, serverId: string): Promise<AlertSettings> {
+    return nexusGet<AlertSettings>(
+      `/api/games/servers/${encodeURIComponent(serverId)}/alerts`,
+      guildId,
+    );
+  },
+
+  /**
+   * PUT /api/games/servers/{id}/alerts — enregistre les seuils.
+   *
+   * `webhookUrl` vide conserve celui déjà enregistré : l'écran ne le connaît
+   * pas — c'est un secret, il ne repart jamais du serveur — donc il ne peut
+   * pas le renvoyer à chaque modification de seuil.
+   */
+  saveAlertSettings(
+    guildId: string,
+    serverId: string,
+    settings: {
+      webhook_url?: string;
+      cpu_threshold: number;
+      ram_threshold: number;
+      latency_threshold_ms: number;
+    },
+  ): Promise<void> {
+    return nexusPut<void>(
+      `/api/games/servers/${encodeURIComponent(serverId)}/alerts`,
+      guildId,
+      settings,
+    );
+  },
+
+  /** DELETE /api/games/servers/{id}/alerts — arrête la surveillance. */
+  deleteAlertSettings(guildId: string, serverId: string): Promise<void> {
+    return nexusDelete<void>(
+      `/api/games/servers/${encodeURIComponent(serverId)}/alerts`,
+      guildId,
     );
   },
 

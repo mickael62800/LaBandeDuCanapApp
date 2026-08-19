@@ -90,6 +90,11 @@ pub struct AppState {
     /// Acces direct au depot des bagarres, pour le job qui ferme les defis
     /// restes sans reponse. Les cas d'usage joueur passent par les services.
     pub coussin_repo: Arc<dyn CoussinRepository>,
+    /// Reglages d'alerte des serveurs de jeu. L'URL de webhook qu'ils portent
+    /// est un secret : elle ne quitte jamais cette couche vers le navigateur.
+    pub game_alert_repo: Arc<
+        dyn platform_core::nexus::ports::outbound::game::alert_repository::GameAlertRepository,
+    >,
     pub coussin_combat: Arc<dyn CoussinCombatUseCase>,
     pub coussin_inventory: Arc<dyn CoussinInventoryUseCase>,
     pub coussin_insurance: Arc<dyn CoussinInsuranceUseCase>,
@@ -200,6 +205,13 @@ pub async fn build_state() -> Result<AppState, Box<dyn std::error::Error>> {
     let coussin_cooldowns: Arc<dyn platform_core::nexus::ports::outbound::coussin_cooldown_repository::CoussinCooldownRepository> =
         Arc::new(crate::nexus::adapters::outbound::postgres::coussin_cooldown_repository::PgCoussinCooldownRepository::new(pool.clone()));
     let coussin_repo: Arc<dyn CoussinRepository> = Arc::new(PgCoussinRepository::new(pool.clone()));
+    let game_alert_repo: Arc<
+        dyn platform_core::nexus::ports::outbound::game::alert_repository::GameAlertRepository,
+    > = Arc::new(
+        crate::nexus::adapters::outbound::postgres::game::alert_repository::PgGameAlertRepository::new(
+            pool.clone(),
+        ),
+    );
     let coussin_profile: Arc<dyn CoussinProfileUseCase> = Arc::new(CoussinService::new(
         coussin_repo.clone(),
         bot_config_repo.clone(),
@@ -405,6 +417,7 @@ pub async fn build_state() -> Result<AppState, Box<dyn std::error::Error>> {
         wallet_leaderboard: wallet_service,
         coussin_profile,
         coussin_repo,
+        game_alert_repo,
         coussin_combat,
         coussin_inventory,
         coussin_insurance,

@@ -226,3 +226,24 @@ pub async fn job_coussin_expire_steals(
     })
     .await
 }
+
+/// Surveillance des serveurs de jeu : seuils depasses -> webhook Discord.
+///
+/// Cote serveur, et non plus dans le navigateur : une alerte qui ne veille que
+/// lorsqu'on regarde la page ne sert a rien, c'est la nuit qu'un serveur
+/// sature.
+pub async fn job_game_alerts(State(state): State<AppState>) -> Result<Json<JobReport>, ApiError> {
+    locked(&state, "game-alerts", || async {
+        let rapport = crate::nexus::jobs::game_alerts::run(&state).await?;
+        Ok(JobReport {
+            job: "game_alerts",
+            processed: rapport.sent,
+            errors: rapport.errors,
+            details: serde_json::json!({
+                "surveilles": rapport.checked,
+                "envoyees": rapport.sent,
+            }),
+        })
+    })
+    .await
+}

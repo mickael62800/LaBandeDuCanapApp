@@ -1,3 +1,4 @@
+pub mod alert_repository;
 pub mod audit_repository;
 pub mod config_repository;
 pub mod player_session_repository;

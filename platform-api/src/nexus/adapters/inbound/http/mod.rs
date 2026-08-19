@@ -429,6 +429,12 @@ pub fn build_router_with(state: AppState, config: HttpConfig) -> Router {
             get(handlers::game::servers::list_commands),
         )
         .route(
+            "/api/games/servers/{server_id}/alerts",
+            get(handlers::game::servers::get_alert_settings)
+                .put(handlers::game::servers::save_alert_settings)
+                .delete(handlers::game::servers::delete_alert_settings),
+        )
+        .route(
             "/api/games/{guild_id}/templates",
             get(handlers::game::templates::list_templates_for_guild),
         )
@@ -519,6 +525,10 @@ pub fn build_router_with(state: AppState, config: HttpConfig) -> Router {
         .route(
             "/api/games/internal/jobs/coussin-expire-steals",
             post(handlers::game::jobs::job_coussin_expire_steals),
+        )
+        .route(
+            "/api/games/internal/jobs/game-alerts",
+            post(handlers::game::jobs::job_game_alerts),
         )
         // Les routes de cycle de vie des conteneurs rejoignent le groupe
         // protege : elles heritent du Bearer et du verrou mono-serveur, et

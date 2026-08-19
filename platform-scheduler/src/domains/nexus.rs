@@ -49,6 +49,10 @@ pub fn start(config: DomainConfig) {
             "coussin-expire-steals",
             env("COUSSIN_EXPIRE_STEALS_INTERVAL_SECS", 20),
         ),
+        // Surveillance des serveurs de jeu. Cadence alignee sur le controle de
+        // sante : c'est lui qui produit les mesures, alerter plus souvent
+        // relirait les memes chiffres.
+        ("game-alerts", env("GAME_ALERTS_INTERVAL_SECS", 60)),
     ] {
         let client = config.client.clone();
         crate::schedule::spawn_interval(job_name(job), interval, move || {
@@ -96,6 +100,7 @@ fn job_name(job: &str) -> &'static str {
         "mention-sync" => "nexus.mention-sync",
         "coussin-expire-combats" => "nexus.coussin-expire-combats",
         "coussin-expire-steals" => "nexus.coussin-expire-steals",
+        "game-alerts" => "nexus.game-alerts",
         _ => "nexus.unknown",
     }
 }

@@ -637,3 +637,116 @@ pub async fn stream_stats_sse(
 }
 // Handlers HTTP du cycle de vie des serveurs de jeu. Un handler convertit la
 // requête en commande et délègue la validité métier à platform_core::nexus.
+
+// ── Alertes de supervision ──
+
+/// Reglages d'alerte tels que l'ecran les voit.
+///
+/// L'URL du webhook n'y figure PAS : c'est un secret — qui l'a peut ecrire
+/// dans le salon. L'ecran apprend seulement qu'un webhook est configure.
+#[derive(Debug, serde::Serialize)]
+pub struct AlertSettingsDto {
+    pub configured: bool,
+    pub cpu_threshold: i32,
+    pub ram_threshold: i32,
+    pub latency_threshold_ms: i32,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct SaveAlertSettingsDto {
+    /// Absent ou vide = on garde le webhook deja enregistre. Sans cela,
+    /// l'ecran devrait le redemander a chaque modification de seuil, donc le
+    /// connaitre — ce qui reviendrait a le lui renvoyer.
+    #[serde(default)]
+    pub webhook_url: Option<String>,
+    pub cpu_threshold: i32,
+    pub ram_threshold: i32,
+    pub latency_threshold_ms: i32,
+}
+
+/// GET /api/games/servers/{server_id}/alerts
+pub async fn get_alert_settings(
+    State(state): State<AppState>,
+    Path(server_id): Path<Uuid>,
+) -> Result<Json<AlertSettingsDto>, ApiError> {
+    let config = state.game_alert_repo.find(server_id).await?;
+    Ok(Json(match config {
+        Some(c) => AlertSettingsDto {
+            configured: true,
+            cpu_threshold: c.settings.cpu_threshold,
+            ram_threshold: c.settings.ram_threshold,
+            latency_threshold_ms: c.settings.latency_threshold_ms,
+        },
+        None => AlertSettingsDto {
+            configured: false,
+            cpu_threshold: 85,
+            ram_threshold: 90,
+            latency_threshold_ms: 500,
+        },
+    }))
+}
+
+/// PUT /api/games/servers/{server_id}/alerts
+pub async fn save_alert_settings(
+    State(state): State<AppState>,
+    Path(server_id): Path<Uuid>,
+    headers: HeaderMap,
+    Query(q): Query<ActorQuery>,
+    Json(dto): Json<SaveAlertSettingsDto>,
+) -> Result<StatusCode, ApiError> {
+    let actor = acteur(&state, &headers, server_id, q.actor_id.as_deref()).await?;
+
+    let webhook = match dto.webhook_url.as_deref().map(str::trim) {
+        Some(url) if !url.is_empty() => {
+            // Un webhook Discord et rien d'autre : cette URL est appelee par le
+            // serveur, une adresse arbitraire en ferait un relais de requetes
+            // sortantes choisi par le navigateur.
+            if !url.starts_with("https://discord.com/api/webhooks/")
+                && !url.starts_with("https://discordapp.com/api/webhooks/")
+            {
+                return Err(
+                    platform_core::nexus::domain::errors::DomainError::ValidationError(
+                        "l'URL doit etre un webhook Discord".into(),
+                    )
+                    .into(),
+                );
+            }
+            url.to_string()
+        }
+        // Conserve l'URL existante : l'ecran ne la connait pas, il ne peut donc
+        // pas la renvoyer a chaque modification de seuil.
+        _ => match state.game_alert_repo.find(server_id).await? {
+            Some(existant) => existant.webhook_url,
+            None => {
+                return Err(
+                    platform_core::nexus::domain::errors::DomainError::ValidationError(
+                        "aucun webhook enregistre : fournis-en un".into(),
+                    )
+                    .into(),
+                )
+            }
+        },
+    };
+
+    state
+        .game_alert_repo
+        .upsert(
+            server_id,
+            &webhook,
+            dto.cpu_threshold.clamp(1, 100),
+            dto.ram_threshold.clamp(1, 100),
+            dto.latency_threshold_ms.clamp(50, 60_000),
+            Some(&actor),
+        )
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// DELETE /api/games/servers/{server_id}/alerts
+pub async fn delete_alert_settings(
+    State(state): State<AppState>,
+    Path(server_id): Path<Uuid>,
+) -> Result<StatusCode, ApiError> {
+    state.game_alert_repo.delete(server_id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}

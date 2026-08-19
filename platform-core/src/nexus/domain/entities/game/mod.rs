@@ -3,6 +3,7 @@
 //! Aucune dependance infrastructure ici (pas de sqlx, pas de bollard,
 //! pas de reqwest). Logique metier + types.
 
+pub mod alert;
 pub mod audit;
 pub mod command;
 pub mod config;

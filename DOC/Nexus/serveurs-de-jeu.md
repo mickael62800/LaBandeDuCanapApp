@@ -68,6 +68,17 @@ CPU et RAM disent ce que le conteneur **consomme**, pas ce que les joueurs **res
 
 Lu ensemble : un temps de réponse élevé **avec** une charge hôte supérieure aux cœurs désigne la machine, pas le jeu. Un temps de réponse élevé sur un hôte tranquille désigne le serveur lui-même — trop de joueurs, trop de constructions, ou un réglage trop généreux.
 
+## Les alertes de supervision
+
+Chaque serveur peut prévenir sur Discord quand il dépasse un seuil : processeur, mémoire, ou **temps de réponse** — ce dernier étant celui qui correspond au lag ressenti.
+
+La surveillance tourne **côté serveur**, toutes les minutes. Elle veille donc la nuit, page fermée — ce qui est précisément le moment où un serveur sature. Elle vivait auparavant dans le navigateur : fermer l'onglet arrêtait tout, sans que rien ne le dise.
+
+Deux garde-fous :
+
+- **Le webhook est un secret.** Il est enregistré côté serveur et ne revient jamais à l'écran : celui-ci sait seulement qu'un webhook est configuré. Laisser le champ vide conserve celui déjà en place, ce qui permet d'ajuster un seuil sans avoir à le connaître. Seule une URL de webhook Discord est acceptée — une adresse quelconque ferait du serveur un relais de requêtes choisi depuis le navigateur.
+- **Pas deux fois la même alerte à moins de cinq minutes.** Sans ce délai, un serveur durablement chargé écrirait à chaque passage : le salon devient illisible, l'alerte cesse d'être lue, et cela revient à ne pas alerter. Le délai est persisté en base — un redémarrage de l'API relancerait sinon toutes les alertes d'un coup.
+
 ## Les conditions
 
 - **Infrastructure :** nécessite que le service `docker-agent` soit fonctionnel sur la machine hébergeant les jeux, et qu'il puisse communiquer avec `platform-api`.

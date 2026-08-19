@@ -13,7 +13,7 @@ import AppButton from "../atoms/AppButton.vue";
 //   - la console RCON n'apparaît que si le jeu la supporte ET que le serveur
 //     tourne : afficher un champ qui échouera à coup sûr n'aide personne.
 
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useGuildSelector } from "../../composables/useGuildSelector";
 import { useToast } from "../../composables/useToast";
@@ -421,112 +421,77 @@ let statsTimer: ReturnType<typeof setInterval> | null = null;
 const cpuHistory = ref<number[]>([]);
 const ramHistory = ref<number[]>([]);
 
-// ── Alertes Webhook Discord ──
+// ── Alertes de supervision ──
+//
+// Elles vivaient dans le navigateur : seuils et webhook en `localStorage`,
+// vérification à chaque rafraîchissement de la page. Fermer l'onglet arrêtait
+// donc la surveillance — or c'est la nuit, page fermée, qu'un serveur sature.
+//
+// Tout est passé côté serveur. L'URL du webhook est un secret : elle ne
+// revient jamais ici, l'écran sait seulement qu'un webhook est enregistré.
+
 const cpuThreshold = ref<number>(85);
 const ramThreshold = ref<number>(90);
-/// Seuil de temps de réponse du jeu, en millisecondes.
-///
-/// C'est l'alerte qui correspond vraiment à un lag ressenti : CPU et RAM
-/// disent ce que le conteneur consomme, la latence dit ce que les joueurs
-/// subissent. Un serveur peut ramer à 30 % de processeur.
-///
-/// Pas de seuil sur le débit : il dépend entièrement de la ligne, et une
-/// valeur par défaut y serait arbitraire — donc soit muette, soit criarde.
+/// Seuil de temps de réponse : la mesure qui correspond au lag ressenti.
+/// CPU et RAM disent ce que le conteneur consomme, celle-ci ce que les joueurs
+/// subissent — un serveur peut ramer à 30 % de processeur.
 const latencyThreshold = ref<number>(500);
 const webhookUrl = ref<string>("");
-const webhookCooldownMs = 5 * 60 * 1000; // 5 min de cooldown anti-spam par métrique
-let lastCpuAlertTime = 0;
-let lastRamAlertTime = 0;
-let lastLatencyAlertTime = 0;
+const alertsConfigured = ref(false);
+const savingAlerts = ref(false);
 
-// Charger les paramètres Webhook depuis le localStorage
-onMounted(() => {
-  const savedUrl = localStorage.getItem("nexus_webhook_url");
-  if (savedUrl) webhookUrl.value = savedUrl;
-  const savedCpu = localStorage.getItem("nexus_cpu_threshold");
-  if (savedCpu) cpuThreshold.value = Number(savedCpu) || 85;
-  const savedRam = localStorage.getItem("nexus_ram_threshold");
-  if (savedRam) ramThreshold.value = Number(savedRam) || 90;
-  const savedLatency = localStorage.getItem("nexus_latency_threshold");
-  if (savedLatency) latencyThreshold.value = Number(savedLatency) || 500;
-});
-
-function saveAlertSettings() {
-  localStorage.setItem("nexus_webhook_url", webhookUrl.value.trim());
-  localStorage.setItem("nexus_cpu_threshold", cpuThreshold.value.toString());
-  localStorage.setItem("nexus_ram_threshold", ramThreshold.value.toString());
-  localStorage.setItem("nexus_latency_threshold", latencyThreshold.value.toString());
-  success("Paramètres d'alerte Webhook enregistrés.");
-}
-
-async function triggerDiscordWebhook(title: string, message: string, color: number) {
-  if (!webhookUrl.value.trim()) return;
+async function loadAlertSettings() {
+  if (!selectedGuildId.value || !serverId.value) return;
   try {
-    await fetch(webhookUrl.value.trim(), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        username: "Nexus Games · Alerte Serveur",
-        embeds: [
-          {
-            title: `⚠️ ${title}`,
-            description: message,
-            color,
-            fields: [
-              { name: "Serveur", value: server.value?.name ?? "Serveur de jeu", inline: true },
-              { name: "Statut", value: server.value?.status ?? "Inconnu", inline: true },
-            ],
-            timestamp: new Date().toISOString(),
-          },
-        ],
-      }),
+    const settings = await nexusGamesService.getAlertSettings(
+      selectedGuildId.value,
+      serverId.value,
+    );
+    alertsConfigured.value = settings.configured;
+    cpuThreshold.value = settings.cpu_threshold;
+    ramThreshold.value = settings.ram_threshold;
+    latencyThreshold.value = settings.latency_threshold_ms;
+  } catch {
+    // Réglages indisponibles : on garde les valeurs par défaut affichées
+    // plutôt que de vider le formulaire sous les yeux de l'administrateur.
+  }
+}
+
+async function saveAlertSettings() {
+  if (!selectedGuildId.value || !serverId.value || savingAlerts.value) return;
+  savingAlerts.value = true;
+  try {
+    await nexusGamesService.saveAlertSettings(selectedGuildId.value, serverId.value, {
+      // Champ laissé vide = on garde le webhook déjà enregistré.
+      webhook_url: webhookUrl.value.trim() || undefined,
+      cpu_threshold: cpuThreshold.value,
+      ram_threshold: ramThreshold.value,
+      latency_threshold_ms: latencyThreshold.value,
     });
+    webhookUrl.value = "";
+    success("Alertes enregistrées. La surveillance tourne côté serveur, page fermée comprise.");
+    await loadAlertSettings();
   } catch (e) {
-    console.warn("Échec envoi webhook alerte:", e);
+    showError(e instanceof Error ? e.message : "Enregistrement impossible");
+  } finally {
+    savingAlerts.value = false;
   }
 }
 
-async function checkAlertThresholds(newStats: GameServerStats) {
-  const now = Date.now();
-  const ramPct = (newStats.memory_used_mb / Math.max(newStats.memory_limit_mb, 1)) * 100;
-
-  // Alerte CPU
-  if (newStats.cpu_percent >= cpuThreshold.value && now - lastCpuAlertTime > webhookCooldownMs) {
-    lastCpuAlertTime = now;
-    void triggerDiscordWebhook(
-      "Dépassement de Seuil CPU",
-      `Le serveur **${server.value?.name}** consomme **${newStats.cpu_percent.toFixed(1)}%** de CPU (seuil configuré: ${cpuThreshold.value}%).`,
-      0xe74c3c,
-    );
+async function disableAlerts() {
+  if (!selectedGuildId.value || !serverId.value) return;
+  if (!confirm("Arrêter la surveillance de ce serveur ? Le webhook enregistré sera supprimé.")) {
+    return;
   }
-
-  // Alerte temps de réponse — celle qui correspond au lag ressenti.
-  const latence = newStats.rcon_latency_ms;
-  if (
-    latence !== null
-    && latence >= latencyThreshold.value
-    && now - lastLatencyAlertTime > webhookCooldownMs
-  ) {
-    lastLatencyAlertTime = now;
-    void triggerDiscordWebhook(
-      "Serveur lent à répondre",
-      `Le serveur **${server.value?.name}** met **${latence} ms** à répondre (seuil configuré : ${latencyThreshold.value} ms). `
-        + "Les joueurs ressentent probablement du lag. Vérifie la charge système de l'hôte : "
-        + "au-dessus du nombre de cœurs, la machine est en cause plutôt que le jeu.",
-      0xf1c40f,
-    );
-  }
-
-  // Alerte RAM
-  if (ramPct >= ramThreshold.value && now - lastRamAlertTime > webhookCooldownMs) {
-    lastRamAlertTime = now;
-    void triggerDiscordWebhook(
-      "Dépassement de Seuil RAM",
-      `Le serveur **${server.value?.name}** consomme **${ramPct.toFixed(1)}%** de sa mémoire RAM (**${newStats.memory_used_mb} Mo** / ${newStats.memory_limit_mb} Mo) (seuil configuré: ${ramThreshold.value}%).`,
-      0xe67e22,
-    );
+  try {
+    await nexusGamesService.deleteAlertSettings(selectedGuildId.value, serverId.value);
+    success("Surveillance arrêtée.");
+    await loadAlertSettings();
+  } catch (e) {
+    showError(e instanceof Error ? e.message : "Arrêt impossible");
   }
 }
+
 
 async function refreshStats() {
   if (!selectedGuildId.value || !server.value || !isRunning.value) {
@@ -549,8 +514,8 @@ async function refreshStats() {
     ramHistory.value.push(ramPct);
     if (ramHistory.value.length > 20) ramHistory.value.shift();
 
-    // Vérification des seuils
-    void checkAlertThresholds(newStats);
+    // Les seuils ne sont plus verifies ici : la surveillance tourne cote
+    // serveur, page fermee comprise.
   }
 }
 
@@ -625,7 +590,15 @@ function syncStatsTimer() {
 watch(isRunning, syncStatsTimer, { immediate: true });
 onUnmounted(() => statsTimer && clearInterval(statsTimer));
 
-watch([selectedGuildId, serverId], load, { immediate: true });
+watch(
+  [selectedGuildId, serverId],
+  () => {
+    void load();
+    // Les seuils vivent cote serveur : on les relit avec la fiche.
+    void loadAlertSettings();
+  },
+  { immediate: true },
+);
 watch(onglet, (o) => {
   if (o === "logs") void loadLogs();
   if (o === "joueurs") void loadSessions();
@@ -941,8 +914,19 @@ function fmtDuration(secs: number | null): string {
           <p class="sd-note">Recevez une notification automatique sur Discord lorsque le CPU, la RAM ou le temps de réponse dépasse les seuils.</p>
           <div class="sd-webhook-form">
             <label class="sd-field">
-              <span>URL du Webhook Discord</span>
-              <input v-model="webhookUrl" type="url" placeholder="https://discord.com/api/webhooks/..." />
+              <span>
+                URL du Webhook Discord
+                <template v-if="alertsConfigured"> — déjà enregistré</template>
+              </span>
+              <!-- Jamais pré-rempli : l'URL est un secret, elle ne revient pas
+                   du serveur. Laisser vide conserve celle enregistrée. -->
+              <input
+                v-model="webhookUrl"
+                type="url"
+                :placeholder="alertsConfigured
+                  ? 'Laisser vide pour conserver le webhook enregistré'
+                  : 'https://discord.com/api/webhooks/...'"
+              />
             </label>
             <div class="sd-thresholds-row">
               <label class="sd-field">
@@ -960,12 +944,28 @@ function fmtDuration(secs: number | null): string {
             </div>
             <p class="sd-hint">
               Le temps de réponse est la mesure qui correspond au lag ressenti : un serveur
-              peut ramer à 30 % de processeur. Les alertes ne partent que lorsque cette page
-              est ouverte — ferme l'onglet et rien ne sera envoyé.
+              peut ramer à 30 % de processeur. La surveillance tourne côté serveur, toutes
+              les minutes — page fermée comprise — et n'envoie pas deux fois la même alerte
+              à moins de cinq minutes d'intervalle.
             </p>
-            <AppButton variant="secondary" size="sm" @click="saveAlertSettings">
-              Enregistrer l'alerte
-            </AppButton>
+            <div class="sd-thresholds-row">
+              <AppButton
+                variant="secondary"
+                size="sm"
+                :disabled="savingAlerts"
+                @click="saveAlertSettings"
+              >
+                {{ savingAlerts ? "Enregistrement…" : "Enregistrer l'alerte" }}
+              </AppButton>
+              <AppButton
+                v-if="alertsConfigured"
+                variant="warning"
+                size="sm"
+                @click="disableAlerts"
+              >
+                Arrêter la surveillance
+              </AppButton>
+            </div>
           </div>
         </div>
       </section>

@@ -68,6 +68,16 @@ CPU et RAM disent ce que le conteneur **consomme**, pas ce que les joueurs **res
 
 Lu ensemble : un temps de réponse élevé **avec** une charge hôte supérieure aux cœurs désigne la machine, pas le jeu. Un temps de réponse élevé sur un hôte tranquille désigne le serveur lui-même — trop de joueurs, trop de constructions, ou un réglage trop généreux.
 
+### Les courbes de l'onglet Surveillance
+
+Six courbes, **un point par minute**, sur une demi-heure glissante — processeur, mémoire, temps de réponse, débit réseau (reçu et envoyé sur le même graphe), et les deux totaux échangés.
+
+Les chiffres, eux, continuent de se rafraîchir toutes les cinq secondes : une valeur instantanée doit rester vive, une courbe doit couvrir assez de temps pour montrer une dérive. Chaque point résume donc la minute écoulée — **en moyenne**, sauf le temps de réponse qui retient le **pire moment** : c'est le pic qui fait laguer les joueurs, une moyenne le noierait dans le calme ambiant.
+
+Les courbes de totaux ne font que monter, par construction : c'est leur **pente** qui parle. Un palier signale un serveur qui n'échange plus rien — personne dessus, ou personne qui arrive à s'y connecter.
+
+L'historique n'est pas conservé : il se remplit à partir de l'ouverture de l'onglet, avec un premier point immédiat pour ne pas laisser les graphes vides une minute entière.
+
 ## Ajuster mémoire et processeur
 
 La mémoire et le plafond de cœurs se règlent après coup, depuis l'aperçu du serveur : deux curseurs bornés par ce que le jeu accepte. Un serveur qui rame peut recevoir un cœur de plus, un serveur surdimensionné rendre de la mémoire aux autres.

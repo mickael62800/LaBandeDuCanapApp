@@ -426,9 +426,54 @@ const netRxHistory = ref<number[]>([]);
 const netTxHistory = ref<number[]>([]);
 /// Temps de réponse du jeu, en ms — la mesure qui suit le lag ressenti.
 const latencyHistory = ref<number[]>([]);
-/// Heure de chaque relevé, partagée par tous les graphiques : sans axe des
-/// temps, on ne sait pas si un pic date de dix secondes ou de deux minutes.
+/// Totaux échangés depuis le démarrage du conteneur, en Mo.
+const netRxTotalHistory = ref<number[]>([]);
+const netTxTotalHistory = ref<number[]>([]);
+/// Heure de chaque point, partagée par tous les graphiques : sans axe des
+/// temps, on ne sait pas si un pic date d'une minute ou d'une demi-heure.
 const timeLabels = ref<string[]>([]);
+
+/// Relevés de la minute en cours, en attente d'être résumés en un point.
+///
+/// Les chiffres affichés se rafraîchissent toutes les 5 s — c'est ce qu'on
+/// veut pour une valeur instantanée. Les courbes, elles, avancent d'un point
+/// par minute : sur douze points, cinq secondes d'écart ne montrent qu'une
+/// minute d'histoire, ce qui ne permet de voir venir aucune dérive.
+let tamponMinute: {
+  cpu: number[];
+  ram: number[];
+  netRx: number[];
+  netTx: number[];
+  latence: number[];
+  netRxTotal: number;
+  netTxTotal: number;
+  debut: number;
+} = {
+  cpu: [],
+  ram: [],
+  netRx: [],
+  netTx: [],
+  latence: [],
+  netRxTotal: 0,
+  netTxTotal: 0,
+  debut: Date.now(),
+};
+
+function viderTampon() {
+  tamponMinute = {
+    cpu: [],
+    ram: [],
+    netRx: [],
+    netTx: [],
+    latence: [],
+    netRxTotal: 0,
+    netTxTotal: 0,
+    debut: Date.now(),
+  };
+}
+
+const moyenne = (valeurs: number[]) =>
+  valeurs.length === 0 ? 0 : valeurs.reduce((a, b) => a + b, 0) / valeurs.length;
 
 // ── Ressources allouées ──
 //
@@ -557,7 +602,10 @@ async function refreshStats() {
     netRxHistory.value = [];
     netTxHistory.value = [];
     latencyHistory.value = [];
+    netRxTotalHistory.value = [];
+    netTxTotalHistory.value = [];
     timeLabels.value = [];
+    viderTampon();
     return;
   }
   const newStats = await nexusGamesService
@@ -569,35 +617,57 @@ async function refreshStats() {
   if (newStats) {
     const ramPct = (newStats.memory_used_mb / Math.max(newStats.memory_limit_mb, 1)) * 100;
 
-    // Une seule fonction pour toutes les séries : elles doivent avancer
-    // ensemble, sinon un point de CPU se retrouverait aligné sur l'heure d'un
-    // relevé réseau, et le graphe mentirait sans qu'on le voie.
-    const pousser = (serie: typeof cpuHistory, valeur: number) => {
-      serie.value.push(valeur);
-      if (serie.value.length > MAX_POINTS) serie.value.shift();
-    };
+    // On accumule chaque relevé, et on n'ajoute un point qu'à la minute :
+    // la courbe couvre alors une demi-heure au lieu de deux minutes.
+    tamponMinute.cpu.push(newStats.cpu_percent);
+    tamponMinute.ram.push(ramPct);
+    tamponMinute.netRx.push((newStats.network_rx_bytes_per_sec ?? 0) / 1024);
+    tamponMinute.netTx.push((newStats.network_tx_bytes_per_sec ?? 0) / 1024);
+    tamponMinute.latence.push(newStats.rcon_latency_ms ?? 0);
+    tamponMinute.netRxTotal = newStats.network_rx_bytes / (1024 * 1024);
+    tamponMinute.netTxTotal = newStats.network_tx_bytes / (1024 * 1024);
 
-    pousser(cpuHistory, newStats.cpu_percent);
-    pousser(ramHistory, ramPct);
-    // Le débit reste vide tant qu'il n'est pas comparable : on trace alors 0
-    // plutôt que de sauter un point, ce qui décalerait l'axe des temps.
-    pousser(netRxHistory, (newStats.network_rx_bytes_per_sec ?? 0) / 1024);
-    pousser(netTxHistory, (newStats.network_tx_bytes_per_sec ?? 0) / 1024);
-    pousser(latencyHistory, newStats.rcon_latency_ms ?? 0);
+    // Le tout premier relevé donne son point immédiatement : sinon la page
+    // s'ouvre sur des graphes vides pendant une minute entière, et on croit
+    // qu'ils ne marchent pas.
+    const premierPoint = timeLabels.value.length === 0;
+    if (premierPoint || Date.now() - tamponMinute.debut >= INTERVALLE_POINT_MS) {
+      const pousser = (serie: typeof cpuHistory, valeur: number) => {
+        serie.value.push(Math.round(valeur * 10) / 10);
+        if (serie.value.length > MAX_POINTS) serie.value.shift();
+      };
 
-    timeLabels.value.push(
-      new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
-    );
-    if (timeLabels.value.length > MAX_POINTS) timeLabels.value.shift();
+      pousser(cpuHistory, moyenne(tamponMinute.cpu));
+      pousser(ramHistory, moyenne(tamponMinute.ram));
+      pousser(netRxHistory, moyenne(tamponMinute.netRx));
+      pousser(netTxHistory, moyenne(tamponMinute.netTx));
+      // Le PIRE moment de la minute, pas la moyenne : c'est le pic qui fait
+      // laguer les joueurs, et une moyenne le noierait dans le calme ambiant.
+      pousser(latencyHistory, Math.max(...tamponMinute.latence, 0));
+      // Compteurs cumulés : la dernière valeur lue, pas une moyenne.
+      pousser(netRxTotalHistory, tamponMinute.netRxTotal);
+      pousser(netTxTotalHistory, tamponMinute.netTxTotal);
+
+      timeLabels.value.push(
+        new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
+      );
+      if (timeLabels.value.length > MAX_POINTS) timeLabels.value.shift();
+
+      viderTampon();
+    }
 
     // Les seuils ne sont plus verifies ici : la surveillance tourne cote
     // serveur, page fermee comprise.
   }
 }
 
-/// Nombre de points conservés. À 5 s par relevé, cela couvre un peu plus de
-/// deux minutes : assez pour voir un pic, assez court pour rester lisible.
-const MAX_POINTS = 24;
+/// Un point par minute. Les chiffres, eux, continuent de se rafraîchir toutes
+/// les 5 s : une valeur instantanée doit rester vive, une courbe doit couvrir
+/// assez de temps pour montrer une dérive.
+const INTERVALLE_POINT_MS = 60_000;
+
+/// Nombre de points conservés : trente minutes d'histoire.
+const MAX_POINTS = 30;
 
 /// Axe des temps commun. Les étiquettes sont espacées automatiquement par
 /// Chart.js (`autoSkip`) : les afficher toutes rendrait l'axe illisible sur
@@ -733,6 +803,41 @@ const latencyChartData = computed(() => ({
       backgroundColor: "rgba(241, 196, 15, 0.15)",
       borderColor: "#f1c40f",
       data: [...latencyHistory.value],
+      fill: true,
+      tension: 0.4,
+      borderWidth: 2,
+    },
+  ],
+}));
+
+/// Totaux échangés depuis le démarrage du conteneur.
+///
+/// Une courbe qui ne fait que monter : sa PENTE est ce qui parle. Un palier
+/// signale un serveur qui n'échange plus rien — personne dessus, ou personne
+/// qui arrive à s'y connecter.
+const netRxTotalChartData = computed(() => ({
+  labels: [...timeLabels.value],
+  datasets: [
+    {
+      label: "Reçu (Mo)",
+      backgroundColor: "rgba(46, 204, 113, 0.15)",
+      borderColor: "#2ecc71",
+      data: [...netRxTotalHistory.value],
+      fill: true,
+      tension: 0.4,
+      borderWidth: 2,
+    },
+  ],
+}));
+
+const netTxTotalChartData = computed(() => ({
+  labels: [...timeLabels.value],
+  datasets: [
+    {
+      label: "Envoyé (Mo)",
+      backgroundColor: "rgba(155, 89, 182, 0.15)",
+      borderColor: "#9b59b6",
+      data: [...netTxTotalHistory.value],
       fill: true,
       tension: 0.4,
       borderWidth: 2,
@@ -1141,17 +1246,28 @@ function fmtDuration(secs: number | null): string {
             </div>
           </div>
 
-          <!-- Totaux depuis le démarrage du conteneur : pas de courbe, elle ne
-               ferait que monter. C'est le débit ci-dessus qui montre une
-               saturation ; ces chiffres disent la quantité échangée. -->
-          <div class="sd-surv-card">
-            <div class="sd-surv-label">Réseau reçu (total)</div>
-            <div class="sd-surv-val">{{ volume(stats.network_rx_bytes) }}</div>
+          <!-- Totaux depuis le démarrage du conteneur. La courbe ne fait que
+               monter : c'est sa PENTE qui parle. Un palier signale un serveur
+               qui n'échange plus rien — personne dessus, ou personne qui
+               arrive à s'y connecter. -->
+          <div class="sd-surv-card sd-surv-large">
+            <div class="sd-surv-header">
+              <span class="sd-surv-label">Réseau reçu (total)</span>
+              <span class="sd-surv-val">{{ volume(stats.network_rx_bytes) }}</span>
+            </div>
+            <div class="sd-chart-large-box">
+              <Line :data="netRxTotalChartData" :options="chartOptionsAuto" />
+            </div>
           </div>
 
-          <div class="sd-surv-card">
-            <div class="sd-surv-label">Réseau envoyé (total)</div>
-            <div class="sd-surv-val">{{ volume(stats.network_tx_bytes) }}</div>
+          <div class="sd-surv-card sd-surv-large">
+            <div class="sd-surv-header">
+              <span class="sd-surv-label">Réseau envoyé (total)</span>
+              <span class="sd-surv-val">{{ volume(stats.network_tx_bytes) }}</span>
+            </div>
+            <div class="sd-chart-large-box">
+              <Line :data="netTxTotalChartData" :options="chartOptionsAuto" />
+            </div>
           </div>
 
           <div class="sd-surv-card">

@@ -146,6 +146,44 @@ impl PortAllocator for RedisPortAllocator {
         ))
     }
 
+    async fn reserve_block_at(
+        &self,
+        kind: PortKind,
+        start: u16,
+        width: u16,
+        owner_key: &str,
+    ) -> Result<bool, DomainError> {
+        if width == 0 {
+            return Ok(true);
+        }
+        let Some(last) = start.checked_add(width - 1) else {
+            return Ok(false);
+        };
+        let mut conn = self
+            .client
+            .get_multiplexed_async_connection()
+            .await
+            .map_err(|e| DomainError::Internal(format!("redis conn: {e}")))?;
+        // Meme script pour le test et la pose : aucun autre create ne peut
+        // s'intercaler entre les deux. La difference avec `allocate_block` est
+        // qu'un port DEJA detenu par ce serveur ne fait pas echouer le bloc —
+        // sinon un simple redemarrage suffirait a le declarer perdu.
+        let script = redis::Script::new(
+            "for i=1,#KEYS do local v = redis.call('GET', KEYS[i])              if v and v ~= ARGV[1] then return 0 end end              for i=1,#KEYS do redis.call('SET', KEYS[i], ARGV[1], 'EX', ARGV[2]) end return 1",
+        );
+        let mut invocation = script.prepare_invoke();
+        for port in start..=last {
+            invocation.key(Self::key(kind, port));
+        }
+        let won: i32 = invocation
+            .arg(owner_key)
+            .arg(self.ttl_secs)
+            .invoke_async(&mut conn)
+            .await
+            .map_err(|e| DomainError::Internal(format!("redis reserve block at: {e}")))?;
+        Ok(won == 1)
+    }
+
     async fn release(&self, kind: PortKind, port: u16) -> Result<(), DomainError> {
         let mut conn = self
             .client

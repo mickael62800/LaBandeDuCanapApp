@@ -5,7 +5,7 @@ use sqlx::{FromRow, PgPool};
 use uuid::Uuid;
 
 use platform_core::nexus::domain::entities::game::template::{
-    ConfigField, GameTemplate, InitFile, PortProtocol,
+    ConfigField, ExtraPort, GameTemplate, InitFile, PortProtocol,
 };
 use platform_core::nexus::domain::errors::DomainError;
 use platform_core::nexus::ports::outbound::game::game_template_repository::GameTemplateRepository;
@@ -33,6 +33,7 @@ struct TemplateRow {
     cover_image_url: Option<String>,
     container_port: i32,
     port_protocol: String,
+    extra_ports: serde_json::Value,
     volume_path: String,
     run_as_root: bool,
     default_memory_mb: i32,
@@ -70,6 +71,11 @@ impl TryFrom<TemplateRow> for GameTemplate {
                     .map_err(|e| DomainError::Internal(format!("command_template parse: {e}")))?,
             ),
         };
+        // Un catalogue de ports illisible ferait tourner le jeu avec une
+        // seule ouverture, donc injoignable sans que rien ne le signale : on
+        // refuse le modele plutot que de le servir amoindri.
+        let extra_ports: Vec<ExtraPort> = serde_json::from_value(r.extra_ports)
+            .map_err(|e| DomainError::Internal(format!("extra_ports parse: {e}")))?;
         let port = u16::try_from(r.container_port)
             .map_err(|_| DomainError::Internal("container_port hors range u16".into()))?;
         Ok(GameTemplate {
@@ -84,6 +90,7 @@ impl TryFrom<TemplateRow> for GameTemplate {
             cover_image_url: r.cover_image_url,
             container_port: port,
             port_protocol: PortProtocol::from_str(&r.port_protocol),
+            extra_ports,
             volume_path: r.volume_path,
             run_as_root: r.run_as_root,
             default_memory_mb: r.default_memory_mb,
@@ -105,7 +112,7 @@ impl TryFrom<TemplateRow> for GameTemplate {
 
 const SELECT_COLS: &str =
     "id, slug, name, description, image, category, icon, accent_color, cover_image_url, \
-     container_port, port_protocol, volume_path, run_as_root, \
+     container_port, port_protocol, extra_ports, volume_path, run_as_root, \
      default_memory_mb, min_memory_mb, max_memory_mb, \
      default_env, config_schema, command_schema, supports_rcon, supports_mods, idle_shutdown_days, \
      init_files, command_template, created_at, updated_at";

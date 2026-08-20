@@ -18,6 +18,38 @@ Ce module agit comme un panneau de contrôle pour orchestrer des serveurs de jeu
 - **Monitoring :** accès aux journaux d'activité (logs standards et d'erreurs) et aux graphiques de performance.
 - **RCON / Commandes :** champ pour injecter des commandes serveur directement (ex: `/broadcast`, `/save`).
 
+## Le catalogue de jeux
+
+Quatorze jeux sont proposés : Minecraft Java, Valheim, Factorio, Palworld, ARK, 7 Days to Die, Terraria, puis **Core Keeper, Enshrouded, V Rising, Project Zomboid, Necesse, Vintage Story et Satisfactory**.
+
+Chaque fiche vit en base (`game_templates`) : image Docker, port, mémoire, réglages exposés à l'écran. Ajouter un jeu est une migration, jamais une modification du front.
+
+Deux points comptent au moment d'en ajouter un.
+
+**Les réglages sont ceux de l'image, pas des noms plausibles.** Une variable inventée est acceptée par le conteneur, qui l'ignore : le réglage s'affiche à l'écran, se modifie, et ne commande rien. Un réglage dont le nom n'a pas pu être vérifié dans la documentation de l'image n'est donc pas écrit — le jeu reste sur ses valeurs par défaut, ce qui se voit, plutôt que d'offrir un bouton mort, qui ne se voit pas.
+
+**Les ports additionnels appartiennent à la fiche.** Beaucoup de jeux ont besoin de plus d'une ouverture : Valheim écoute sur 2456, 2457 et 2458 ; V Rising et Project Zomboid demandent un second port collé au premier ; Vintage Story veut le même port en TCP **et** en UDP. La colonne `extra_ports` les décrit en décalage du port principal (`[{"offset": 1, "protocol": "udp"}]`), et la plateforme réserve un bloc de ports hôte de la largeur nécessaire. Un décalage nul désigne le même port dans l'autre protocole et n'élargit pas le bloc.
+
+La vérification des sept jeux d'origine a montré que **ARK** (port +1, le trafic de jeu) et **7 Days to Die** (26900 en UDP, plus 26901 et 26902) n'avaient jamais publié qu'une partie de leurs ouvertures. C'est corrigé. Les ports de requête Steam (27015) restent volontairement fermés : ils ne servent qu'à figurer dans le navigateur de serveurs public, alors que la plateforme communique une adresse directe.
+
+Un serveur déjà créé **ne change pas d'adresse** quand la fiche de son jeu s'élargit : à la recréation de son conteneur, la plateforme réserve les ports voisins autour de celui qu'il détient déjà. Ce n'est que si un voisin appartient à un autre serveur qu'il est déplacé sur un bloc entier — son port change alors, et il faut le recommuniquer aux joueurs. Sans cela, le serveur ne démarrerait tout simplement plus, Docker refusant de publier un port déjà pris.
+
+Satisfactory illustre la limite de ce modèle : son port de messagerie vaut 8888 par défaut, à plus de mille ports du port de jeu, ce qu'aucune plage raisonnable ne peut couvrir. Il est ramené à 7778 par `SERVERMESSAGINGPORT`. Un jeu dont les ports ne peuvent pas être rapprochés ne rentre pas dans le catalogue tel quel.
+
+La console RCON n'est activée que sur les jeux dont la plateforme sait lire la réponse (Minecraft, Palworld). Ailleurs elle reste fermée, et c'est délibéré : une console qui répond « aucun joueur » sur un serveur peuplé ferait éteindre ce serveur par l'extinction automatique.
+
+### Quand la version du serveur décroche du client
+
+Les images sont épinglées au digest : le registre ne peut pas remplacer leur contenu sous nos pieds. Le revers est qu'un jeu dont le client se met à jour tout seul par Steam finit par ne plus reconnaître son serveur — le joueur reçoit une erreur de version à la connexion.
+
+C'est arrivé à **Terraria** en août 2026 : le jeu est passé en 1.4.5.7 alors que le dernier serveur TShock publié restait en 1.4.5.6. Aucun tag TShock ne permettait de rattraper le client. La fiche est donc passée à l'image **vanilla**, qui suit les versions du jeu.
+
+Toutes les fiches sont épinglées au digest, y compris les jeux récents. Ce n'est pas ce qui provoque le décrochage : `pull_image_if_missing` ne retélécharge jamais une image déjà présente sur l'hôte, si bien qu'un tag `latest` se fige tout seul — mais sur un contenu que personne ne sait nommer. Le digest ne fige pas davantage, il fige lisiblement.
+
+La distinction qui compte est ailleurs : la plupart de ces images **installent le serveur au démarrage** (steamcmd ou équivalent), donc le digest fige le harnais et le jeu suit son canal habituel. Seules les images qui **embarquent le binaire du serveur** peuvent décrocher du client — c'était le cas de Terraria. Ce sont celles-là qu'il faut surveiller lors d'une mise à jour du jeu.
+
+Deux réflexes dans ce cas. D'abord, le monde ne risque rien : il vit sur le volume, au format standard du jeu, et se recharge quel que soit le serveur. Ensuite, changer l'image de la fiche ne suffit pas — Docker fige l'image à la création du conteneur. Il faut marquer les serveurs concernés `config_dirty`, ce qui déclenche la recréation du conteneur **au prochain démarrage**, en conservant volume, port et adresse.
+
 ## L'onglet Commandes
 
 La console libre suppose de connaître par cœur la syntaxe de chaque jeu : Palworld bannit avec `BanPlayer`, Minecraft avec `ban`, 7 Days to Die avec `ban add`. Retenir trois syntaxes, c'est se tromper au moment où l'on est pressé.

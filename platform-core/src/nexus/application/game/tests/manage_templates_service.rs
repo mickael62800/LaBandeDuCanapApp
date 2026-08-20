@@ -43,6 +43,7 @@ fn sample_template(slug: &str, name: &str) -> GameTemplate {
         cover_image_url: None,
         container_port: 25565,
         port_protocol: PortProtocol::Tcp,
+        extra_ports: vec![],
         volume_path: "/data".into(),
         run_as_root: false,
         default_memory_mb: 2048,

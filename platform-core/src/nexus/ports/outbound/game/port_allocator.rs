@@ -68,6 +68,63 @@ pub trait PortAllocator: Send + Sync {
         ))
     }
 
+    /// Reserve un bloc consecutif ANCRE sur `start`, en tolerant les ports que
+    /// `owner_key` detient DEJA.
+    ///
+    /// Sert au cas ou la fiche d'un jeu se met a exiger plus de ports qu'a la
+    /// creation du serveur (ARK, 7 Days to Die : leurs ports voisins etaient
+    /// absents du catalogue). Le serveur garde alors son port — donc son
+    /// adresse, deja communiquee aux joueurs — des lors que les voisins sont
+    /// libres.
+    ///
+    /// La tolerance envers soi-meme est ce qui rend l'operation repetable : un
+    /// serveur qui redemarre detient deja ses propres ports, et un simple test
+    /// de disponibilite le ferait deplacer a chaque demarrage.
+    ///
+    /// Retourne `false` si un port du bloc appartient a QUELQU'UN D'AUTRE :
+    /// l'appelant doit alors allouer un bloc ailleurs.
+    ///
+    /// Le defaut ci-dessous ne sait pas lire le proprietaire d'un port et
+    /// traite donc tout port occupe comme perdu. Il convient aux adaptateurs de
+    /// test ; l'implementation Redis, elle, compare l'owner.
+    async fn reserve_block_at(
+        &self,
+        kind: PortKind,
+        start: u16,
+        width: u16,
+        owner_key: &str,
+    ) -> Result<bool, DomainError> {
+        let mut reserved = Vec::new();
+        let mut acquis = 0u16;
+        for offset in 0..width {
+            let Some(port) = start.checked_add(offset) else {
+                break;
+            };
+            if self.is_available(kind, port).await? {
+                match self.allocate(kind, port, port, owner_key).await {
+                    Ok(_) => {
+                        reserved.push(port);
+                        acquis += 1;
+                    }
+                    Err(_) => break,
+                }
+            } else if offset == 0 {
+                // Le port d'ancrage est celui du serveur lui-meme : l'y
+                // trouver occupe est la situation NORMALE d'un redemarrage.
+                acquis += 1;
+            } else {
+                break;
+            }
+        }
+        if acquis < width {
+            for port in reserved {
+                let _ = self.release(kind, port).await;
+            }
+            return Ok(false);
+        }
+        Ok(true)
+    }
+
     /// Libere un port (a appeler au stop / delete).
     async fn release(&self, kind: PortKind, port: u16) -> Result<(), DomainError>;
 
@@ -126,6 +183,35 @@ mod tests {
         assert!(ports.contains(&25502));
         assert!(ports.contains(&25503));
         assert!(ports.contains(&25504));
+    }
+
+    #[tokio::test]
+    async fn an_existing_server_keeps_its_port_when_the_neighbours_are_free() {
+        // ARK cree quand la fiche ne declarait qu'un port : 25500 est deja a
+        // lui. La fiche exige maintenant 25500 et 25501 — il garde son
+        // adresse, et le voisin est reserve pour que personne ne la lui
+        // prenne. Le port d'ancrage occupe ne doit PAS faire echouer
+        // l'operation, sinon un simple redemarrage deplacerait le serveur.
+        let allocator = MemoryAllocator(Mutex::new(BTreeSet::from([25500])));
+        assert!(allocator
+            .reserve_block_at(PortKind::Game, 25500, 2, "ark-a")
+            .await
+            .unwrap());
+        assert!(allocator.0.lock().unwrap().contains(&25501));
+    }
+
+    #[tokio::test]
+    async fn a_taken_neighbour_refuses_the_anchored_block_without_keeping_anything() {
+        // 25502 appartient au voisin : le bloc 25501-25503 est refuse, et le
+        // 25503 pris au passage est rendu. Sans cette restitution, chaque
+        // tentative echouee grignoterait la plage.
+        let allocator = MemoryAllocator(Mutex::new(BTreeSet::from([25502])));
+        assert!(!allocator
+            .reserve_block_at(PortKind::Game, 25501, 3, "7dtd-a")
+            .await
+            .unwrap());
+        let ports = allocator.0.lock().unwrap();
+        assert_eq!(*ports, BTreeSet::from([25502]));
     }
 
     #[tokio::test]

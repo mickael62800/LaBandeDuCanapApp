@@ -1,7 +1,9 @@
 use super::provisioning::render_template;
 use super::*;
 use crate::nexus::domain::entities::game::audit::{GameAuditAction, GameAuditEntry};
-use crate::nexus::domain::entities::game::template::PortProtocol as TemplatePortProtocol;
+use crate::nexus::domain::entities::game::template::{
+    ExtraPort, PortProtocol as TemplatePortProtocol,
+};
 use crate::nexus::domain::entities::system::bot_config::{BotDefinition, BotGuildConfig};
 use crate::nexus::ports::outbound::game::container_runtime::{
     ContainerRuntime, ContainerSpec, ContainerStats, ContainerStatus, ManagedContainer,
@@ -54,6 +56,7 @@ fn sample_template(slug: &str, protocol: TemplatePortProtocol, run_as_root: bool
         cover_image_url: None,
         container_port: 2456,
         port_protocol: protocol,
+        extra_ports: vec![],
         volume_path: "/data".to_string(),
         run_as_root,
         default_memory_mb: 2048,
@@ -162,7 +165,19 @@ fn test_valheim_multi_port_mapping() {
         bot_config: Arc::new(DummyBotConfig),
     };
 
-    let tmpl = sample_template("valheim", TemplatePortProtocol::Udp, true);
+    // Les ports additionnels viennent du CATALOGUE, plus du slug : c'est la
+    // fiche du jeu qui declare +1 et +2 en UDP (migration 053).
+    let mut tmpl = sample_template("valheim", TemplatePortProtocol::Udp, true);
+    tmpl.extra_ports = vec![
+        ExtraPort {
+            offset: 1,
+            protocol: TemplatePortProtocol::Udp,
+        },
+        ExtraPort {
+            offset: 2,
+            protocol: TemplatePortProtocol::Udp,
+        },
+    ];
     let server = sample_server(Some(25500));
     let overrides = HashMap::new();
     let cfg = sample_config();
@@ -181,6 +196,42 @@ fn test_valheim_multi_port_mapping() {
     assert_eq!(spec.port_mappings[2].host_port, 25502);
     assert_eq!(spec.port_mappings[2].container_port, 2458);
     assert_eq!(spec.port_mappings[2].protocol, PortProtocol::Udp);
+}
+
+#[test]
+fn un_decalage_nul_publie_le_meme_port_dans_l_autre_protocole() {
+    // Vintage Story ecoute sur 42420 en TCP ET en UDP. Sans ce cas, le jeu
+    // demarrait avec une seule des deux ouvertures : les clients se
+    // connectaient, puis perdaient le serveur.
+    let dummy_service = ManageGameServersService {
+        server_repo: Arc::new(DummyServerRepo),
+        template_repo: Arc::new(DummyTemplateRepo),
+        config_repo: Arc::new(DummyConfigRepo),
+        audit_repo: Arc::new(DummyAuditRepo),
+        port_allocator: Arc::new(DummyPortAllocator),
+        container_runtime: Arc::new(DummyContainerRuntime),
+        rcon_client: Arc::new(DummyRconClient),
+        bot_config: Arc::new(DummyBotConfig),
+    };
+
+    let mut tmpl = sample_template("vintage-story", TemplatePortProtocol::Tcp, false);
+    tmpl.extra_ports = vec![ExtraPort {
+        offset: 0,
+        protocol: TemplatePortProtocol::Udp,
+    }];
+    let spec = dummy_service.build_spec(
+        &sample_server(Some(25510)),
+        &tmpl,
+        &HashMap::new(),
+        &sample_config(),
+    );
+
+    assert_eq!(spec.port_mappings.len(), 2);
+    assert_eq!(spec.port_mappings[0].host_port, 25510);
+    assert_eq!(spec.port_mappings[0].protocol, PortProtocol::Tcp);
+    assert_eq!(spec.port_mappings[1].host_port, 25510);
+    assert_eq!(spec.port_mappings[1].container_port, 2456);
+    assert_eq!(spec.port_mappings[1].protocol, PortProtocol::Udp);
 }
 
 #[test]

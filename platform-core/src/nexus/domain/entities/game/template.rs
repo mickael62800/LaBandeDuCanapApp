@@ -74,6 +74,24 @@ impl PortProtocol {
     }
 }
 
+/// Port supplementaire d'un jeu, exprime en DECALAGE par rapport au port
+/// principal. Valheim ecoute 2456 mais exige aussi 2457 (requete Steam) et
+/// 2458 ; Enshrouded, V Rising, Project Zomboid et Eco ont le meme besoin
+/// d'une seconde ouverture collee a la premiere.
+///
+/// Le decalage vaut aussi bien cote conteneur que cote hote : l'allocateur
+/// reserve un BLOC contigu (cf. `port_span`), donc `host_port + offset` est
+/// libre par construction. Un decalage nul est licite : il sert a doubler le
+/// port principal dans l'autre protocole.
+///
+/// Ces ports vivaient dans le code (`if slug == "valheim"`), ce qui obligeait
+/// a modifier le Rust pour chaque nouveau jeu. Ils appartiennent au catalogue.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct ExtraPort {
+    pub offset: u16,
+    pub protocol: PortProtocol,
+}
+
 /// Template de jeu — entree du catalogue.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GameTemplate {
@@ -88,6 +106,10 @@ pub struct GameTemplate {
     pub cover_image_url: Option<String>,
     pub container_port: u16,
     pub port_protocol: PortProtocol,
+    /// Ports additionnels exiges par le jeu, en decalage du port principal.
+    /// Vide pour la majorite des jeux (un seul port suffit).
+    #[serde(default)]
+    pub extra_ports: Vec<ExtraPort>,
     /// Path interne du container ou le volume nomme est monte. Defaut /data
     /// (Minecraft). Override par jeu (Terraria : /root/.local/share/...).
     pub volume_path: String,
@@ -143,6 +165,21 @@ impl GameTemplate {
             ));
         }
         Ok(())
+    }
+
+    /// Largeur du bloc de ports hote a reserver pour ce jeu.
+    ///
+    /// Un jeu a ports multiples ne peut pas se contenter d'un port libre : il
+    /// lui faut `offset` ports consecutifs libres, sans quoi le second serveur
+    /// cree se verrait attribuer un port deja utilise par le voisin.
+    ///
+    /// Un decalage nul (meme port, autre protocole) n'elargit pas le bloc.
+    pub fn port_span(&self) -> u16 {
+        self.extra_ports
+            .iter()
+            .map(|p| p.offset)
+            .max()
+            .map_or(1, |max| max.saturating_add(1))
     }
 
     /// Cherche la definition d'un champ config par sa key.
@@ -232,6 +269,7 @@ mod tests {
             cover_image_url: None,
             container_port: 25565,
             port_protocol: PortProtocol::Tcp,
+            extra_ports: vec![],
             volume_path: "/data".into(),
             run_as_root: false,
             default_memory_mb: 1024,
@@ -295,6 +333,36 @@ mod tests {
         let renvoye = serde_json::to_value(&champ).expect("schema serialisable");
         assert_eq!(renvoye["group"], "Acces");
         assert_eq!(renvoye["warning"], "Donne le controle TOTAL du serveur.");
+    }
+
+    #[test]
+    fn port_span_covers_the_furthest_extra_port() {
+        let mut t = tmpl(vec![]);
+        // Sans port additionnel, un seul port est reserve : c'est le cas de
+        // la grande majorite des jeux.
+        assert_eq!(t.port_span(), 1);
+
+        // Valheim : 2456 plus les deux suivants.
+        t.extra_ports = vec![
+            ExtraPort {
+                offset: 1,
+                protocol: PortProtocol::Udp,
+            },
+            ExtraPort {
+                offset: 2,
+                protocol: PortProtocol::Udp,
+            },
+        ];
+        assert_eq!(t.port_span(), 3);
+
+        // Vintage Story : meme port dans l'autre protocole. Un decalage nul ne
+        // consomme pas un port de plus — le reserver empecherait un serveur
+        // voisin d'utiliser un port pourtant libre.
+        t.extra_ports = vec![ExtraPort {
+            offset: 0,
+            protocol: PortProtocol::Udp,
+        }];
+        assert_eq!(t.port_span(), 1);
     }
 
     #[test]

@@ -174,7 +174,10 @@ pub async fn load_game_portal_config(
         rcon_port_range_end,
         allowed_templates: parse_csv(
             find(&entries, "allowed_templates"),
-            "minecraft-vanilla,valheim,terraria,factorio,palworld,ark,7dtd",
+            // Defaut applique quand la guilde n'a jamais touche a la
+            // whitelist : le catalogue livre. Un jeu ajoute au catalogue sans
+            // etre ajoute ici resterait invisible pour ces guildes-la.
+            "minecraft-vanilla,valheim,terraria,factorio,palworld,ark,7dtd,             core-keeper,enshrouded,vrising,project-zomboid,necesse,vintage-story,\n             satisfactory",
         ),
         default_idle_shutdown_days: parse_i32(find(&entries, "default_idle_shutdown_days"), 7),
         // Ces deux defauts gardent leur prefixe `sentinel` alors que les jeux

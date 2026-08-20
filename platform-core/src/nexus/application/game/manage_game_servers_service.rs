@@ -572,9 +572,58 @@ impl ManageGameServersUseCase for ManageGameServersService {
             let mut newly_allocated: Vec<(PortKind, u16)> = Vec::new();
 
             let game_port = match server.host_port {
+                // Le serveur a deja un port : on le lui garde, c'est
+                // l'adresse que ses joueurs connaissent. Mais la fiche du jeu
+                // peut s'etre mise a exiger des ports voisins depuis sa
+                // creation (ARK et 7 Days to Die ont recupere les leurs) : il
+                // faut alors s'assurer que ces voisins nous appartiennent,
+                // sinon Docker refusera de publier et le serveur restera en
+                // erreur sans que la cause soit lisible.
+                Some(p) if template.port_span() > 1 => {
+                    let bloc_tenu = self
+                        .port_allocator
+                        .reserve_block_at(
+                            PortKind::Game,
+                            p,
+                            template.port_span(),
+                            &server.id.to_string(),
+                        )
+                        .await?;
+                    if bloc_tenu {
+                        p
+                    } else {
+                        // Un voisin occupe la place. Deplacer le serveur sur un
+                        // bloc entier est desagreable — l'adresse change — mais
+                        // c'est cela ou un serveur qui ne demarre plus.
+                        tracing::warn!(
+                            server_id = %server.id,
+                            ancien_port = p,
+                            "ports voisins indisponibles, reallocation d'un bloc complet"
+                        );
+                        let nouveau = self
+                            .port_allocator
+                            .allocate_block(
+                                PortKind::Game,
+                                cfg.port_range_start,
+                                cfg.port_range_end,
+                                template.port_span(),
+                                &server.id.to_string(),
+                            )
+                            .await?;
+                        for offset in 0..template.port_span() {
+                            newly_allocated.push((PortKind::Game, nouveau + offset));
+                        }
+                        let _ = self.port_allocator.release(PortKind::Game, p).await;
+                        nouveau
+                    }
+                }
                 Some(p) => p,
                 None => {
-                    let width = if template.slug == "valheim" { 3 } else { 1 };
+                    // La largeur du bloc vient du catalogue : un jeu qui
+                    // declare des ports additionnels reserve autant de ports
+                    // consecutifs (cf. `GameTemplate::port_span`). Elle etait
+                    // ecrite ici pour le seul Valheim.
+                    let width = template.port_span();
                     let p = self
                         .port_allocator
                         .allocate_block(

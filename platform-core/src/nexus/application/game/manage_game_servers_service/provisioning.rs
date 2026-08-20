@@ -188,19 +188,26 @@ impl ManageGameServersService {
                 // Port jeu : exposé sur toutes les interfaces.
                 host_ip: "0.0.0.0".to_string(),
             });
-            // Pour Valheim (lloesche/valheim-server), Steam Query Port (container_port + 1) et
-            // communication port (container_port + 2) doivent être exposés en UDP.
-            if template.slug == "valheim" {
+            // Ports additionnels declares par le CATALOGUE (Valheim : requete
+            // Steam +1 et communication +2 ; Enshrouded, V Rising, Project
+            // Zomboid, Eco : +1). Ils vivaient ici sous forme de `if slug ==
+            // "valheim"`, ce qui demandait un deploiement pour chaque jeu
+            // ajoute — alors que c'est une propriete de l'image, donc une
+            // donnee. L'allocateur a reserve `template.port_span()` ports
+            // consecutifs : `host_port + offset` est libre par construction.
+            for extra in &template.extra_ports {
+                let proto = match extra.protocol {
+                    crate::nexus::domain::entities::game::template::PortProtocol::Tcp => {
+                        PortProtocol::Tcp
+                    }
+                    crate::nexus::domain::entities::game::template::PortProtocol::Udp => {
+                        PortProtocol::Udp
+                    }
+                };
                 port_mappings.push(PortMapping {
-                    host_port: host_port + 1,
-                    container_port: template.container_port + 1,
-                    protocol: PortProtocol::Udp,
-                    host_ip: "0.0.0.0".to_string(),
-                });
-                port_mappings.push(PortMapping {
-                    host_port: host_port + 2,
-                    container_port: template.container_port + 2,
-                    protocol: PortProtocol::Udp,
+                    host_port: host_port + extra.offset,
+                    container_port: template.container_port + extra.offset,
+                    protocol: proto,
                     host_ip: "0.0.0.0".to_string(),
                 });
             }

@@ -416,4 +416,98 @@ mod tests {
         std::env::remove_var("WEB_FRONT_URL");
         assert_eq!(image_absolue("/img/test.png"), None);
     }
+
+    #[test]
+    fn test_image_absolue_with_trailing_slash() {
+        std::env::set_var("WEB_FRONT_URL", "https://front.canap.fr/");
+        assert_eq!(
+            image_absolue("img/test.png"),
+            Some("https://front.canap.fr/img/test.png".into())
+        );
+        std::env::remove_var("WEB_FRONT_URL");
+    }
+
+    #[test]
+    fn test_image_absolue_empty_url() {
+        std::env::set_var("WEB_FRONT_URL", "");
+        assert_eq!(image_absolue("/img/test.png"), None);
+        std::env::remove_var("WEB_FRONT_URL");
+    }
+
+    #[test]
+    fn test_image_absolue_whitespace_url() {
+        std::env::set_var("WEB_FRONT_URL", "   ");
+        assert_eq!(image_absolue("/img/test.png"), None);
+        std::env::remove_var("WEB_FRONT_URL");
+    }
+
+    #[test]
+    fn test_image_absolue_relative_paths() {
+        std::env::set_var("WEB_FRONT_URL", "https://cdn.example.com");
+        assert_eq!(
+            image_absolue("achievements/icon.png"),
+            Some("https://cdn.example.com/achievements/icon.png".into())
+        );
+        std::env::remove_var("WEB_FRONT_URL");
+    }
+
+    #[test]
+    fn test_liste_empty() {
+        let items: Vec<&AchievementProgress> = vec![];
+        assert_eq!(liste(&items, "Aucun"), "Aucun");
+    }
+
+    #[test]
+    fn test_liste_single_item() {
+        let item = AchievementProgress {
+            name: "Test".into(),
+            description: "Description".into(),
+            icon_url: None,
+            unlocked_at: Some("2026-01-01T00:00:00Z".into()),
+        };
+        let res = liste(&[&item], "Vide");
+        assert!(res.contains("Test"));
+        assert!(!res.contains("de plus"));
+    }
+
+    #[test]
+    fn test_liste_multiple_items_no_truncation() {
+        let items: Vec<AchievementProgress> = vec![
+            AchievementProgress {
+                name: "A".into(),
+                description: "Desc A".into(),
+                icon_url: None,
+                unlocked_at: Some("2026-01-01T00:00:00Z".into()),
+            },
+            AchievementProgress {
+                name: "B".into(),
+                description: "Desc B".into(),
+                icon_url: None,
+                unlocked_at: Some("2026-01-01T00:00:00Z".into()),
+            },
+        ];
+        let refs: Vec<&AchievementProgress> = items.iter().collect();
+        let res = liste(&refs, "Vide");
+        assert!(res.contains("A"));
+        assert!(res.contains("B"));
+    }
+
+    #[test]
+    fn test_liste_very_long_names() {
+        let long_name = "X".repeat(900);
+        let item = AchievementProgress {
+            name: long_name.clone(),
+            description: "Description".into(),
+            icon_url: None,
+            unlocked_at: Some("2026-01-01T00:00:00Z".into()),
+        };
+        let res = liste(&[&item], "Vide");
+        assert!(!res.is_empty());
+    }
+
+    #[test]
+    fn test_register_command_creation() {
+        let cmd = register();
+        assert_eq!(cmd.0.name, "haut-faits");
+    }
 }

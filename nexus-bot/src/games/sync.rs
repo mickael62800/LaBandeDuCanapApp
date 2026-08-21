@@ -137,7 +137,51 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_message_is_gone() {
+    fn test_message_is_gone_non_http_error() {
         assert!(!message_is_gone(&serenity::Error::Other("something")));
+    }
+
+    #[test]
+    fn test_message_is_gone_with_status_codes() {
+        let not_found = serenity::Error::Http(serenity::http::HttpError::UnsuccessfulRequest(
+            serenity::http::HttpResponse {
+                status_code: serenity::http::StatusCode::NOT_FOUND,
+                text: String::new(),
+            },
+        ));
+        assert!(message_is_gone(&not_found));
+    }
+
+    #[test]
+    fn test_message_is_gone_other_status() {
+        let forbidden = serenity::Error::Http(serenity::http::HttpError::UnsuccessfulRequest(
+            serenity::http::HttpResponse {
+                status_code: serenity::http::StatusCode::FORBIDDEN,
+                text: String::new(),
+            },
+        ));
+        assert!(!message_is_gone(&forbidden));
+    }
+
+    #[test]
+    fn test_message_is_gone_unauthorized() {
+        let unauthorized = serenity::Error::Http(serenity::http::HttpError::UnsuccessfulRequest(
+            serenity::http::HttpResponse {
+                status_code: serenity::http::StatusCode::UNAUTHORIZED,
+                text: String::new(),
+            },
+        ));
+        assert!(!message_is_gone(&unauthorized));
+    }
+
+    #[test]
+    fn test_message_is_gone_internal_error() {
+        let internal = serenity::Error::Http(serenity::http::HttpError::UnsuccessfulRequest(
+            serenity::http::HttpResponse {
+                status_code: serenity::http::StatusCode::INTERNAL_SERVER_ERROR,
+                text: String::new(),
+            },
+        ));
+        assert!(!message_is_gone(&internal));
     }
 }

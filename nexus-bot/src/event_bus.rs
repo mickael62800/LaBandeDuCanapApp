@@ -49,4 +49,36 @@ mod tests {
         let name = default_consumer_name();
         assert!(!name.is_empty());
     }
+
+    #[test]
+    fn stream_key_value() {
+        assert_eq!(STREAM_KEY, "nexus:events");
+        assert!(STREAM_KEY.contains("nexus"));
+        assert!(STREAM_KEY.contains("events"));
+    }
+
+    #[test]
+    fn bus_initialization() {
+        assert_eq!(BUS.stream_key(), "nexus:events");
+    }
+
+    #[test]
+    fn default_consumer_name_not_empty() {
+        let name1 = default_consumer_name();
+        let name2 = default_consumer_name();
+        assert!(!name1.is_empty());
+        assert!(!name2.is_empty());
+    }
+
+    #[test]
+    fn stream_key_is_nexus_not_sentinel() {
+        assert_ne!(STREAM_KEY, "sentinel:events");
+        assert_ne!(STREAM_KEY, "atrium:events");
+        assert_ne!(STREAM_KEY, "ops:events");
+    }
+
+    #[test]
+    fn stream_key_matches_bus_configuration() {
+        assert_eq!(STREAM_KEY, BUS.stream_key());
+    }
 }

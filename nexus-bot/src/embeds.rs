@@ -262,3 +262,203 @@ pub fn build_coussin_inventory_embed(
         .description(body)
         .color(0x5865F2)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_color_for_positive_memorable() {
+        assert_eq!(color_for(100, true), 0xf1c40f); // or
+    }
+
+    #[test]
+    fn test_color_for_negative_memorable() {
+        assert_eq!(color_for(-100, true), 0x8b0000); // rouge sombre
+    }
+
+    #[test]
+    fn test_color_for_positive_normal() {
+        assert_eq!(color_for(50, false), 0x2ecc71); // vert
+    }
+
+    #[test]
+    fn test_color_for_negative_normal() {
+        assert_eq!(color_for(-50, false), 0xe74c3c); // rouge
+    }
+
+    #[test]
+    fn test_color_for_zero() {
+        assert_eq!(color_for(0, false), 0x95a5a6); // gris
+        assert_eq!(color_for(0, true), 0x95a5a6); // gris
+    }
+
+    #[test]
+    fn test_build_spinning_embed() {
+        let embed = build_spinning_embed("Alice");
+        let json = serde_json::to_value(&embed).unwrap();
+        assert!(json["title"].as_str().unwrap().contains("Roue"));
+        assert!(json["description"].as_str().unwrap().contains("Alice"));
+        assert_eq!(json["color"], 0xf1c40f);
+    }
+
+    #[test]
+    fn test_build_result_embed_positive() {
+        let resp = WheelSpinResponse {
+            case_label: "Jackpot".into(),
+            payout: 100,
+            balance_after: 500,
+            is_memorable: false,
+        };
+        let embed = build_result_embed(&resp, "Bob");
+        let json = serde_json::to_value(&embed).unwrap();
+        assert!(json["title"].as_str().unwrap().contains("Bob"));
+        assert!(json["description"].as_str().unwrap().contains("Jackpot"));
+        assert_eq!(json["color"], 0x2ecc71);
+    }
+
+    #[test]
+    fn test_build_result_embed_negative_memorable() {
+        let resp = WheelSpinResponse {
+            case_label: "Perte".into(),
+            payout: -50,
+            balance_after: 100,
+            is_memorable: true,
+        };
+        let embed = build_result_embed(&resp, "Charlie");
+        let json = serde_json::to_value(&embed).unwrap();
+        assert!(json["title"].as_str().unwrap().contains("DESTIN PARLE"));
+        assert_eq!(json["color"], 0x8b0000);
+    }
+
+    #[test]
+    fn test_build_wallet_embed() {
+        let wallet = crate::api_client::WalletResponse {
+            user_id: "u1".into(),
+            coins: 500,
+            total_earned: 1000,
+            total_spent: 500,
+        };
+        let embed = build_wallet_embed(&wallet, "Alice");
+        let json = serde_json::to_value(&embed).unwrap();
+        assert!(json["title"].as_str().unwrap().contains("Alice"));
+        assert_eq!(json["color"], 0xf1c40f);
+    }
+
+    #[test]
+    fn test_build_transfer_embed_with_reason() {
+        let embed = build_transfer_embed(100, 200, 50, 450, Some("Gift"));
+        let json = serde_json::to_value(&embed).unwrap();
+        assert!(json["description"].as_str().unwrap().contains("Gift"));
+        assert_eq!(json["color"], 0x57F287);
+    }
+
+    #[test]
+    fn test_build_transfer_embed_without_reason() {
+        let embed = build_transfer_embed(100, 200, 50, 450, None);
+        let json = serde_json::to_value(&embed).unwrap();
+        let desc = json["description"].as_str().unwrap();
+        assert!(!desc.contains("Raison :"));
+    }
+
+    #[test]
+    fn test_build_leaderboard_embed_empty() {
+        let embed = build_leaderboard_embed(&[]);
+        let json = serde_json::to_value(&embed).unwrap();
+        assert!(json["description"].as_str().unwrap().contains("Aucun joueur"));
+    }
+
+    #[test]
+    fn test_build_leaderboard_embed_with_entries() {
+        let entries = vec![
+            crate::api_client::WalletResponse {
+                user_id: "u1".into(),
+                coins: 1000,
+                total_earned: 2000,
+                total_spent: 1000,
+            }
+        ];
+        let embed = build_leaderboard_embed(&entries);
+        let json = serde_json::to_value(&embed).unwrap();
+        assert_eq!(json["color"], 0xE67E22);
+    }
+
+    #[test]
+    fn test_build_error_embed() {
+        let embed = build_error_embed("API down");
+        let json = serde_json::to_value(&embed).unwrap();
+        assert_eq!(json["description"], "API down");
+        assert_eq!(json["color"], 0xed4245);
+    }
+
+    #[test]
+    fn test_build_coussin_profile_embed() {
+        let profile = crate::api_client::CoussinProfileResponse {
+            username: "Alice".into(),
+            class: "ecraseur".into(),
+            level: 5,
+            xp: 100,
+            atk: 10,
+            def: 8,
+            hp_current: 50,
+            hp_max: 100,
+            coins: 200,
+            stat_points: 2,
+            title: "Squatteur".into(),
+            total_wins: 10,
+            total_losses: 3,
+            total_draws: 1,
+            total_stolen: 50,
+            cowardice_count: 0,
+            chaos_events: 2,
+        };
+        let embed = build_coussin_profile_embed(&profile);
+        let json = serde_json::to_value(&embed).unwrap();
+        assert!(json["title"].as_str().unwrap().contains("Alice"));
+        assert_eq!(json["color"], 0x5865F2);
+    }
+
+    #[test]
+    fn test_build_coussin_purchase_embed() {
+        let embed = build_coussin_purchase_embed("plume", 450);
+        let json = serde_json::to_value(&embed).unwrap();
+        assert!(json["title"].as_str().unwrap().contains("Planque"));
+        assert_eq!(json["color"], 0xF39C12);
+    }
+
+    #[test]
+    fn test_build_coussin_insurance_embed_legitimate() {
+        let embed = build_coussin_insurance_embed(false, "demain");
+        let json = serde_json::to_value(&embed).unwrap();
+        assert!(json["title"].as_str().unwrap().contains("anti-tache"));
+        assert_eq!(json["color"], 0x2ECC71);
+    }
+
+    #[test]
+    fn test_build_coussin_insurance_embed_scam() {
+        let embed = build_coussin_insurance_embed(true, "demain");
+        let json = serde_json::to_value(&embed).unwrap();
+        assert!(json["title"].as_str().unwrap().contains("Garantie signee"));
+        assert_eq!(json["color"], 0xE67E22);
+    }
+
+    #[test]
+    fn test_build_coussin_inventory_embed_empty() {
+        let embed = build_coussin_inventory_embed(&[]);
+        let json = serde_json::to_value(&embed).unwrap();
+        assert!(json["description"].as_str().unwrap().contains("Rien"));
+    }
+
+    #[test]
+    fn test_build_coussin_inventory_embed_with_items() {
+        let items = vec![
+            crate::api_client::CoussinInventoryItem {
+                item_key: "plume".into(),
+                quantity: 2,
+            }
+        ];
+        let embed = build_coussin_inventory_embed(&items);
+        let json = serde_json::to_value(&embed).unwrap();
+        assert!(json["title"].as_str().unwrap().contains("coussin"));
+    }
+}

@@ -519,3 +519,49 @@
   gap: var(--space-sm);
   margin-bottom: var(--space-sm);
 }
+
+/* ── Sélecteur de fenêtre d'observation ──
+   Les courbes viennent de l'historique enregistré côté serveur : ces boutons
+   choisissent la profondeur, de la demi-heure à la semaine. */
+.sd-plages {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.sd-plage-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.7);
+  border-radius: 6px;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.sd-plage-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.sd-plage-btn.active {
+  background: rgba(88, 101, 242, 0.25);
+  border-color: rgba(88, 101, 242, 0.8);
+  color: #fff;
+}
+
+.sd-plage-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Ce que représente un point : sans cette mention, une courbe dégrossie par
+   l'API passerait pour une perte de mesures. */
+.sd-plage-pas {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.45);
+  margin-left: 0.3rem;
+}

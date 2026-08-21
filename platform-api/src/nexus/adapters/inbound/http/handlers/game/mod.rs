@@ -1,4 +1,5 @@
 pub mod jobs;
+pub mod perf_history;
 pub mod public_servers;
 pub mod servers;
 pub mod session_events;

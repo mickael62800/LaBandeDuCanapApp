@@ -209,6 +209,31 @@ export interface PlayerSession {
   duration_seconds: number | null;
 }
 
+/// Un point de surveillance, deja resume par la base.
+///
+/// Chaque mesure reste nullable jusqu'a l'affichage : sur une tranche ou la
+/// console etait muette, la latence n'est pas nulle, elle est inconnue — et une
+/// courbe qui retombe a zero raconte une panne qui n'a pas eu lieu.
+export interface PointDeSurveillance {
+  horodatage: string;
+  cpu_percent: number | null;
+  memory_used_mb: number | null;
+  memory_limit_mb: number | null;
+  rcon_latency_ms: number | null;
+  net_rx_bytes_per_sec: number | null;
+  net_tx_bytes_per_sec: number | null;
+  player_count: number | null;
+}
+
+export interface HistoriqueSurveillance {
+  points: PointDeSurveillance[];
+  /// Plage et pas REELLEMENT appliques : l'API elargit le pas quand la demande
+  /// produirait trop de points. L'ecran les affiche, sans quoi une courbe
+  /// degrossie passerait pour une perte de mesures.
+  range_secs: number;
+  step_secs: number;
+}
+
 /// Une page d'historique, et de quoi savoir ce qu'il y a derriere.
 export interface PageDeSessions {
   items: PlayerSession[];
@@ -499,6 +524,21 @@ export const nexusGamesService = {
     const requete = parametres.toString();
     return nexusGet<PageDeSessions>(
       `/api/games/servers/${encodeURIComponent(serverId)}/sessions${requete ? `?${requete}` : ""}`,
+      guildId,
+    );
+  },
+
+  /** GET /api/games/servers/{id}/perf-history — surveillance sur une plage. */
+  perfHistory(
+    guildId: string,
+    serverId: string,
+    rangeSecs: number,
+    stepSecs?: number,
+  ): Promise<HistoriqueSurveillance> {
+    const parametres = new URLSearchParams({ range_secs: String(rangeSecs) });
+    if (stepSecs !== undefined) parametres.set("step_secs", String(stepSecs));
+    return nexusGet<HistoriqueSurveillance>(
+      `/api/games/servers/${encodeURIComponent(serverId)}/perf-history?${parametres}`,
       guildId,
     );
   },

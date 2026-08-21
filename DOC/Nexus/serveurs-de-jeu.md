@@ -138,6 +138,24 @@ Les quatre compteurs visent un salon **vocal**, et le sélecteur du tableau de b
 
 Seules les activités de type *Playing* comptent : Discord range sous la même étiquette le statut personnalisé, l'écoute Spotify et les flux en direct. Les bots sont exclus — un bot musique « joue » en permanence. Et un membre lancé sur deux jeux ne compte qu'une fois : on compte des personnes, pas des parties.
 
+## L'onglet Surveillance
+
+Les courbes étaient accumulées dans le **navigateur** : un point par minute, trente conservés. La fenêtre ne dépassait donc jamais une demi-heure, elle repartait de zéro à chaque rechargement, et regarder « la journée » aurait supposé de laisser l'onglet ouvert vingt-quatre heures. Sur des serveurs qui redémarrent chaque nuit, c'est justement la journée qui compte.
+
+Les mesures sont désormais **enregistrées** (`game_server_perf_history`) par le contrôle de santé, qui interrogeait déjà Docker et la console du jeu toutes les trente secondes — le processeur et la mémoire étaient simplement jetés. Un sélecteur propose **30 min, 2 h, 6 h, 24 h et 7 jours**, et l'écran indique ce que représente un point : l'API élargit le pas quand la demande produirait trop de points, et une courbe dégrossie sans explication passerait pour une perte de mesures.
+
+Trois principes valent la peine d'être connus.
+
+**Les mesures ne se résument pas toutes de la même façon.** Le processeur et la mémoire par leur moyenne, la latence par son **pic** : c'est le pic qui fait rager les joueurs, et une moyenne le noierait dans le calme ambiant.
+
+**Un trou reste un trou.** Une tranche sans mesure n'est pas tracée à zéro : le vide dit « le serveur était éteint », ce qu'une ligne au sol raconterait de travers.
+
+**Un compteur cumulé n'est pas une courbe.** Les volumes réseau échangés depuis le démarrage ne peuvent que monter, puis retombent à zéro au redémarrage du conteneur. Leurs deux graphiques ont laissé place à une seule ligne de chiffres. Le débit instantané, lui, garde son graphe : c'est là que se voit une saturation.
+
+Enfin, la carte « Joueurs en jeu » n'affichait qu'un chiffre, presque toujours zéro. Elle porte maintenant la courbe de fréquentation — la plus parlante du lot, puisqu'elle dit à quelle heure le serveur sert vraiment.
+
+L'historique est purgé à **sept jours** (`purge-history`, une fois par jour, réglable par `GAME_PERF_HISTORY_RETENTION_DAYS`). Un serveur en ligne y écrit 2 880 lignes par jour.
+
 ## Diagnostiquer un lag
 
 CPU et RAM disent ce que le conteneur **consomme**, pas ce que les joueurs **ressentent** : un serveur peut ramer à 30 % de processeur. Trois mesures répondent à trois questions différentes.

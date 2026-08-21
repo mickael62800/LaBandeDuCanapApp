@@ -484,6 +484,10 @@ pub fn build_router_with(state: AppState, config: HttpConfig) -> Router {
             get(handlers::game::sessions::list_sessions),
         )
         .route(
+            "/api/games/servers/{server_id}/perf-history",
+            get(handlers::game::perf_history::get_perf_history),
+        )
+        .route(
             "/api/games/servers/{server_id}/registrations",
             get(handlers::game::session_events::list_registrations)
                 .post(handlers::game::session_events::register_player),

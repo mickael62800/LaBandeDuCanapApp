@@ -217,4 +217,63 @@ mod tests {
         req.admin_context = "reste tres chaleureux".into();
         assert!(build_prompt(&req).system.contains("reste tres chaleureux"));
     }
+
+    #[test]
+    fn truncate_preserves_short_text() {
+        assert_eq!(truncate("court", 100), "court");
+    }
+
+    #[test]
+    fn truncate_cuts_at_sentence_end() {
+        let text = "Premiere phrase. ".repeat(100);
+        let result = truncate(&text, 100);
+        assert!(result.chars().count() <= 101);
+        assert!(result.ends_with('…'));
+    }
+
+    #[test]
+    fn truncate_falls_back_to_space_when_no_punctuation() {
+        let text = "un mot long ".repeat(100);
+        let result = truncate(&text, 100);
+        assert!(result.len() <= 101);
+        assert!(!result.contains("mot…"));
+    }
+
+    #[test]
+    fn truncate_with_unicode_emoji() {
+        let text = format!("{}text", "🎉".repeat(100));
+        let result = truncate(&text, 50);
+        assert!(result.chars().count() <= 51);
+        assert!(result.ends_with('…'));
+    }
+
+    #[tokio::test]
+    async fn generates_with_all_conflict_kinds() {
+        let service = CalmingService::new(Arc::new(FakeAi(Ok("ok".into()))));
+        for kind in [
+            ConflictKind::Flood,
+            ConflictKind::Toxicity,
+            ConflictKind::Phishing,
+            ConflictKind::Other,
+        ] {
+            let mut req = request();
+            req.kind = kind;
+            let reply = service.reply(req).await.unwrap();
+            assert!(reply.generated_by_ai);
+        }
+    }
+
+    #[tokio::test]
+    async fn fallback_message_varies_by_conflict_kind() {
+        let service = CalmingService::new(Arc::new(FakeAi(Err(AiProviderError))));
+
+        let mut req = request();
+        req.kind = ConflictKind::Flood;
+        let flood_reply = service.reply(req.clone()).await.unwrap();
+
+        req.kind = ConflictKind::Toxicity;
+        let tox_reply = service.reply(req.clone()).await.unwrap();
+
+        assert_ne!(flood_reply.content, tox_reply.content);
+    }
 }

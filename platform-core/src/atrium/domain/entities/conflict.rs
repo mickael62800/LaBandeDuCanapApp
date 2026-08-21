@@ -111,4 +111,17 @@ mod tests {
             assert!(!kind.fallback_message().is_empty());
         }
     }
+
+    #[test]
+    fn all_descriptions_and_fallbacks_are_not_empty() {
+        assert!(!ConflictKind::Flood.describe().is_empty());
+        assert!(!ConflictKind::Toxicity.describe().is_empty());
+        assert!(!ConflictKind::Phishing.describe().is_empty());
+        assert!(!ConflictKind::Other.describe().is_empty());
+
+        assert!(!ConflictKind::Flood.fallback_message().is_empty());
+        assert!(!ConflictKind::Toxicity.fallback_message().is_empty());
+        assert!(!ConflictKind::Phishing.fallback_message().is_empty());
+        assert!(!ConflictKind::Other.fallback_message().is_empty());
+    }
 }

@@ -100,4 +100,57 @@ mod tests {
         assert!(res.generated_by_ai);
         assert_eq!(res.content, "Excellente ambiance !");
     }
+
+    #[tokio::test]
+    async fn rejects_missing_guild_id() {
+        let service = ServerSummaryService::new(Arc::new(FakeAi(Ok("ok".into()))));
+        let res = service
+            .generate_summary(ServerSummaryRequest {
+                guild_id: "   ".into(),
+                sample_activity: "message".into(),
+            })
+            .await;
+        assert!(matches!(res, Err(WelcomeError::Missing("guild_id"))));
+    }
+
+    #[tokio::test]
+    async fn uses_empty_activity_default_when_sample_is_blank() {
+        let service =
+            ServerSummaryService::new(Arc::new(FakeAi(Ok("Bonne journée!".into()))));
+        let res = service
+            .generate_summary(ServerSummaryRequest {
+                guild_id: "123".into(),
+                sample_activity: "   ".into(),
+            })
+            .await
+            .unwrap();
+        assert!(res.generated_by_ai);
+        assert_eq!(res.content, "Bonne journée!");
+    }
+
+    #[tokio::test]
+    async fn fallback_when_ai_returns_blank() {
+        let service = ServerSummaryService::new(Arc::new(FakeAi(Ok("   ".into()))));
+        let res = service
+            .generate_summary(ServerSummaryRequest {
+                guild_id: "123".into(),
+                sample_activity: "message".into(),
+            })
+            .await
+            .unwrap();
+        assert!(!res.generated_by_ai);
+        assert!(res.content.contains("Météo"));
+    }
+
+    #[tokio::test]
+    async fn fallback_when_guild_empty() {
+        let service = ServerSummaryService::new(Arc::new(FakeAi(Ok("text".into()))));
+        let res = service
+            .generate_summary(ServerSummaryRequest {
+                guild_id: "".into(),
+                sample_activity: "message".into(),
+            })
+            .await;
+        assert!(matches!(res, Err(WelcomeError::Missing("guild_id"))));
+    }
 }

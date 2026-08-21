@@ -281,4 +281,153 @@ mod tests {
         assert_eq!(result.chars().count(), 651);
         assert!(result.ends_with('…'));
     }
+
+    #[test]
+    fn truncate_preserves_short_text() {
+        assert_eq!(truncate("short", 100), "short");
+    }
+
+    #[test]
+    fn truncate_cuts_at_period() {
+        let text = "First sentence. ".repeat(100);
+        let result = truncate(&text, 100);
+        assert!(result.ends_with('…'));
+        assert!(result.len() <= 101);
+    }
+
+    #[test]
+    fn truncate_cuts_at_exclamation() {
+        let text = "Wow! ".repeat(100);
+        let result = truncate(&text, 50);
+        assert!(result.ends_with('…'));
+    }
+
+    #[test]
+    fn truncate_cuts_at_question_mark() {
+        let text = "What? ".repeat(100);
+        let result = truncate(&text, 50);
+        assert!(result.ends_with('…'));
+    }
+
+    #[test]
+    fn fallback_message_varies_by_question_flag() {
+        let question_msg = fallback_message("Alice", true);
+        let greeting_msg = fallback_message("Bob", false);
+        assert_ne!(question_msg, greeting_msg);
+        assert!(question_msg.contains("temporairement indisponible"));
+        assert!(greeting_msg.contains("Bienvenue"));
+    }
+
+    #[tokio::test]
+    async fn generates_reply_with_ai() {
+        let service = WelcomeService::new(Arc::new(FakeAi(Ok("Bien sûr!".into()))));
+        let reply = service.reply(request()).await.unwrap();
+        assert!(reply.generated_by_ai);
+        assert_eq!(reply.content, "Bien sûr!");
+    }
+
+    #[tokio::test]
+    async fn includes_admin_context_in_prompt() {
+        let mut req = request();
+        req.admin_context = "sois très sympa".into();
+        let prompt = build_prompt(&req);
+        assert!(prompt.system.contains("sois très sympa"));
+    }
+
+    #[tokio::test]
+    async fn admin_context_not_in_prompt_when_empty() {
+        let mut req = request();
+        req.admin_context = "   ".into();
+        let prompt = build_prompt(&req);
+        assert!(!prompt.system.contains("CONSIGNE DU SERVEUR"));
+    }
+
+    #[test]
+    fn truncate_with_newline() {
+        let text = "Line one\nLine two".repeat(100);
+        let result = truncate(&text, 50);
+        assert!(result.ends_with('…'));
+    }
+
+    #[tokio::test]
+    async fn missing_guild_id_rejected() {
+        let service = WelcomeService::new(Arc::new(FakeAi(Ok("ok".into()))));
+        let mut bad = request();
+        bad.guild_id = "".into();
+        assert!(matches!(
+            service.reply(bad).await,
+            Err(WelcomeError::Missing("guild_id"))
+        ));
+    }
+
+    #[tokio::test]
+    async fn missing_member_id_rejected() {
+        let service = WelcomeService::new(Arc::new(FakeAi(Ok("ok".into()))));
+        let mut bad = request();
+        bad.member_id = "".into();
+        assert!(matches!(
+            service.reply(bad).await,
+            Err(WelcomeError::Missing("member_id"))
+        ));
+    }
+
+    #[tokio::test]
+    async fn member_message_too_long_rejected() {
+        let service = WelcomeService::new(Arc::new(FakeAi(Ok("ok".into()))));
+        let mut bad = request();
+        bad.member_message = "x".repeat(1_501);
+        assert!(matches!(
+            service.reply(bad).await,
+            Err(WelcomeError::TooLong { field: "member_message", .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn server_context_too_long_rejected() {
+        let service = WelcomeService::new(Arc::new(FakeAi(Ok("ok".into()))));
+        let mut bad = request();
+        bad.server_context = "x".repeat(12_001);
+        assert!(matches!(
+            service.reply(bad).await,
+            Err(WelcomeError::TooLong { field: "server_context", .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn conversation_history_too_long_rejected() {
+        let service = WelcomeService::new(Arc::new(FakeAi(Ok("ok".into()))));
+        let mut bad = request();
+        bad.conversation_history = "x".repeat(4_001);
+        assert!(matches!(
+            service.reply(bad).await,
+            Err(WelcomeError::TooLong { field: "conversation_history", .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn admin_context_too_long_rejected() {
+        let service = WelcomeService::new(Arc::new(FakeAi(Ok("ok".into()))));
+        let mut bad = request();
+        bad.admin_context = "x".repeat(2_001);
+        assert!(matches!(
+            service.reply(bad).await,
+            Err(WelcomeError::TooLong { field: "admin_context", .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn ai_reply_trimmed_to_650_chars() {
+        let long_reply = "a".repeat(700);
+        let service = WelcomeService::new(Arc::new(FakeAi(Ok(long_reply))));
+        let reply = service.reply(request()).await.unwrap();
+        assert!(reply.generated_by_ai);
+        assert!(reply.content.chars().count() <= 651);
+    }
+
+    #[test]
+    fn fallback_for_blank_message_is_different_from_question() {
+        let blank = fallback_message("Test", false);
+        let question = fallback_message("Test", true);
+        assert_ne!(blank, question);
+    }
 }

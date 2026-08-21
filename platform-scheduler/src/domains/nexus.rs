@@ -25,6 +25,13 @@ pub fn start(config: DomainConfig) {
             env("GAME_IMAGE_CLEANUP_INTERVAL_SECS", 86_400),
         ),
         ("reveal-ip", env("GAME_REVEAL_IP_INTERVAL_SECS", 300)),
+        // Menage de l'historique de surveillance. Une fois par jour suffit :
+        // la table ne devient encombrante qu'a l'echelle de la semaine, et
+        // balayer plus souvent ferait payer un parcours complet pour rien.
+        (
+            "purge-history",
+            env("GAME_PERF_HISTORY_PURGE_INTERVAL_SECS", 86_400),
+        ),
         ("daily-ping", env("GAME_DAILY_PING_INTERVAL_SECS", 3_600)),
         ("auto-start", env("GAME_AUTO_START_INTERVAL_SECS", 60)),
         // Verification des jeux mentionnables : demande aux guildes leur
@@ -99,6 +106,7 @@ fn job_name(job: &str) -> &'static str {
         "reconcile" => "nexus.reconcile",
         "image-cleanup" => "nexus.image-cleanup",
         "reveal-ip" => "nexus.reveal-ip",
+        "purge-history" => "nexus.purge-history",
         "daily-ping" => "nexus.daily-ping",
         "auto-start" => "nexus.auto-start",
         "mention-sync" => "nexus.mention-sync",

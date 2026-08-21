@@ -133,6 +133,52 @@ pub trait GameServerRepository: Send + Sync {
         net_tx_bytes: Option<i64>,
     ) -> Result<(), DomainError>;
 
+    /// Ajoute un point a l'historique de surveillance.
+    ///
+    /// Distinct de `record_perf_sample`, qui ECRASE le dernier releve sur la
+    /// fiche du serveur : celui-ci conserve. L'un sert a afficher l'instant,
+    /// l'autre a regarder une journee.
+    ///
+    /// Chaque mesure est optionnelle et le reste : une console illisible ne
+    /// vaut pas une latence nulle, ni un serveur vide. Ecrire zero a la place
+    /// dessinerait une courbe qui ment.
+    #[allow(clippy::too_many_arguments)]
+    async fn record_history(
+        &self,
+        id: uuid::Uuid,
+        cpu_percent: Option<f32>,
+        memory_used_mb: Option<i32>,
+        memory_limit_mb: Option<i32>,
+        rcon_latency_ms: Option<i32>,
+        net_rx_bytes_per_sec: Option<i64>,
+        net_tx_bytes_per_sec: Option<i64>,
+        player_count: Option<i32>,
+    ) -> Result<(), DomainError>;
+
+    /// Historique de surveillance, resume en tranches de `pas_secondes`.
+    ///
+    /// L'agregation se fait dans la base, pas dans le navigateur : une journee
+    /// echantillonnee toutes les trente secondes represente 2 880 points, dont
+    /// on ne peut rien lire sur un graphique large de quatre cents pixels.
+    ///
+    /// Les mesures ne se resument pas toutes de la meme facon : le processeur
+    /// et la memoire par leur MOYENNE, la latence par son PIC. C'est le pic qui
+    /// fait rager les joueurs, et une moyenne le noierait dans le calme
+    /// ambiant.
+    async fn history(
+        &self,
+        id: uuid::Uuid,
+        depuis_secondes: i64,
+        pas_secondes: i64,
+    ) -> Result<Vec<crate::nexus::domain::entities::game::server::PointDeSurveillance>, DomainError>;
+
+    /// Supprime les points de surveillance plus vieux que `jours`.
+    ///
+    /// Retourne le nombre de lignes effacees. Sans purge, une table de series
+    /// temporelles grossit indefiniment — 2 880 lignes par jour et par serveur
+    /// en ligne.
+    async fn purge_history(&self, jours: i32) -> Result<u64, DomainError>;
+
     /// Marque (ou lave) l'ecart entre la configuration et le conteneur.
     async fn set_config_dirty(&self, id: uuid::Uuid, dirty: bool) -> Result<(), DomainError>;
 

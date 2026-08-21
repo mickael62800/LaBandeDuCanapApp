@@ -65,18 +65,36 @@ pub async fn run_health_check(ctx: &JobContext) -> Result<JobReport, DomainError
         // Compteurs reseau du conteneur, gardes pour que le passage suivant
         // puisse en tirer un debit. Best-effort : sans statistiques Docker, on
         // conserve la latence, qui est deja la mesure la plus parlante.
-        let (net_rx, net_tx) = match server.container_id.as_deref() {
+        let mesures = match server.container_id.as_deref() {
             Some(cid) => match ctx.container_runtime.stats(cid).await {
-                Ok(stats) => (
-                    Some(stats.network_rx_bytes as i64),
-                    Some(stats.network_tx_bytes as i64),
-                ),
+                Ok(stats) => Some(stats),
                 Err(error) => {
                     warn!(%error, server_id = %server.id, "statistiques conteneur indisponibles");
-                    (None, None)
+                    None
                 }
             },
+            None => None,
+        };
+        let (net_rx, net_tx) = match &mesures {
+            Some(stats) => (
+                Some(stats.network_rx_bytes as i64),
+                Some(stats.network_tx_bytes as i64),
+            ),
             None => (None, None),
+        };
+
+        // Le debit se calcule contre le releve PRECEDENT, encore en base : il
+        // faut donc le faire avant `record_perf_sample`, qui l'ecrase.
+        let debit = match (net_rx, net_tx) {
+            (Some(rx), Some(tx)) => crate::nexus::domain::entities::game::server::debit_reseau(
+                server.net_rx_bytes,
+                server.net_tx_bytes,
+                server.net_sampled_at,
+                rx,
+                tx,
+                chrono::Utc::now(),
+            ),
+            _ => None,
         };
 
         if let Err(error) = ctx
@@ -91,7 +109,39 @@ pub async fn run_health_check(ctx: &JobContext) -> Result<JobReport, DomainError
         // automatique : le serveur ou des gens jouent s'eteindrait, et le
         // journal ne montrerait qu'un comptage ordinaire. On passe au suivant
         // en laissant la derniere mesure connue en place.
-        let presents = match presence::parse_players(&slug, &resp.raw) {
+        //
+        // L'historique de surveillance, lui, est ecrit AVANT ce renoncement :
+        // le processeur et la memoire ont ete mesures, et les perdre ferait un
+        // trou dans les courbes a chaque hoquet de la console.
+        let lecture = presence::parse_players(&slug, &resp.raw);
+        let comptage = match &lecture {
+            presence::LecturePresence::Joueurs(joueurs) => Some(joueurs.len() as i32),
+            presence::LecturePresence::Indeterminee => None,
+        };
+        if let Err(error) = ctx
+            .server_repo
+            .record_history(
+                server.id,
+                mesures.as_ref().map(|s| s.cpu_percent as f32),
+                mesures
+                    .as_ref()
+                    .map(|s| (s.memory_used_bytes / (1024 * 1024)) as i32),
+                mesures
+                    .as_ref()
+                    .map(|s| (s.memory_limit_bytes / (1024 * 1024)) as i32),
+                Some(latence_ms),
+                debit.map(|(rx, _)| rx as i64),
+                debit.map(|(_, tx)| tx as i64),
+                comptage,
+            )
+            .await
+        {
+            // L'historique sert a regarder apres coup : son echec ne doit pas
+            // interrompre la surveillance en cours.
+            warn!(%error, server_id = %server.id, "point de surveillance non enregistre");
+        }
+
+        let presents = match lecture {
             presence::LecturePresence::Joueurs(joueurs) => joueurs,
             presence::LecturePresence::Indeterminee => {
                 warn!(

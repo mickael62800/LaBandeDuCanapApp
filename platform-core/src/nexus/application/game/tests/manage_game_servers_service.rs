@@ -414,6 +414,31 @@ impl GameServerRepository for DummyServerRepo {
     ) -> Result<(), DomainError> {
         Ok(())
     }
+    async fn record_history(
+        &self,
+        _: uuid::Uuid,
+        _: Option<f32>,
+        _: Option<i32>,
+        _: Option<i32>,
+        _: Option<i32>,
+        _: Option<i64>,
+        _: Option<i64>,
+        _: Option<i32>,
+    ) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn history(
+        &self,
+        _: uuid::Uuid,
+        _: i64,
+        _: i64,
+    ) -> Result<Vec<crate::nexus::domain::entities::game::server::PointDeSurveillance>, DomainError>
+    {
+        Ok(vec![])
+    }
+    async fn purge_history(&self, _: i32) -> Result<u64, DomainError> {
+        Ok(0)
+    }
     async fn record_perf_sample(
         &self,
         _: uuid::Uuid,
@@ -667,4 +692,349 @@ fn une_erreur_ordinaire_ne_declenche_aucune_recreation() {
     let erreur = DomainError::Internal("port 25565 already allocated".into());
     assert!(!super::is_missing_container_error(&erreur));
     assert!(!super::is_missing_network_error(&erreur));
+}
+
+// ── Tests de validation et provisioning (validate_create) ─────────────────
+
+struct MockTemplateRepoWithTemplate {
+    template: GameTemplate,
+}
+#[async_trait::async_trait]
+impl GameTemplateRepository for MockTemplateRepoWithTemplate {
+    async fn find_by_id(&self, _: Uuid) -> Result<Option<GameTemplate>, DomainError> {
+        Ok(Some(self.template.clone()))
+    }
+    async fn find_by_slug(&self, _: &str) -> Result<Option<GameTemplate>, DomainError> {
+        Ok(Some(self.template.clone()))
+    }
+    async fn list(&self) -> Result<Vec<GameTemplate>, DomainError> {
+        Ok(vec![self.template.clone()])
+    }
+}
+
+struct NonOperationalRuntime;
+#[async_trait::async_trait]
+impl ContainerRuntime for NonOperationalRuntime {
+    fn is_operational(&self) -> bool {
+        false
+    }
+    async fn pull_image_if_missing(&self, _: &str) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn create_container(&self, _: &ContainerSpec) -> Result<String, DomainError> {
+        Ok("cid".to_string())
+    }
+    async fn start_container(&self, _: &str) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn stop_container(&self, _: &str, _: u32) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn restart_container(&self, _: &str, _: u32) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn remove_container(&self, _: &str) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn ensure_network(&self, _: &str) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn ensure_volume(&self, _: &str) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn remove_volume(&self, _: &str) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn remove_image(&self, _: &str, _: bool) -> Result<bool, DomainError> {
+        Ok(true)
+    }
+    async fn upload_file_to_container(&self, _: &str, _: &str, _: &str) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn inspect(&self, _: &str) -> Result<Option<ContainerStatus>, DomainError> {
+        todo!()
+    }
+    async fn list_managed_containers(&self) -> Result<Vec<ManagedContainer>, DomainError> {
+        todo!()
+    }
+    async fn stats(&self, _: &str) -> Result<ContainerStats, DomainError> {
+        todo!()
+    }
+    async fn logs(&self, _: &str, _: u32) -> Result<Vec<String>, DomainError> {
+        Ok(vec![])
+    }
+}
+
+struct QuotaExceededServerRepo {
+    count: i32,
+    mem: i32,
+}
+#[async_trait::async_trait]
+impl GameServerRepository for QuotaExceededServerRepo {
+    async fn count_active_for_guild(&self, _: &str) -> Result<(i32, i32), DomainError> {
+        Ok((self.count, self.mem))
+    }
+    async fn create(&self, _: NewGameServer) -> Result<GameServer, DomainError> {
+        todo!()
+    }
+    async fn find_by_id(&self, _: Uuid) -> Result<Option<GameServer>, DomainError> {
+        Ok(None)
+    }
+    async fn list_by_guild(&self, _: &str) -> Result<Vec<GameServer>, DomainError> {
+        Ok(vec![])
+    }
+    async fn list_active(&self) -> Result<Vec<GameServer>, DomainError> {
+        Ok(vec![])
+    }
+    async fn list_running(&self) -> Result<Vec<GameServer>, DomainError> {
+        Ok(vec![])
+    }
+    async fn update_runtime(&self, _: Uuid, _: GameServerRuntimeUpdate) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn update_status(
+        &self,
+        _: Uuid,
+        _: GameServerStatus,
+        _: Option<&str>,
+    ) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn try_transition_status(
+        &self,
+        _: Uuid,
+        _: &[GameServerStatus],
+        _: GameServerStatus,
+    ) -> Result<bool, DomainError> {
+        Ok(true)
+    }
+    async fn record_restart_attempt(&self, _: Uuid) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn reset_restart_attempts(&self, _: Uuid) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn mark_ip_revealed(&self, _: Uuid) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn update_player_activity(&self, _: Uuid, _: i32) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn soft_delete(&self, _: Uuid) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn template_usages(
+        &self,
+        _: &[Uuid],
+    ) -> Result<std::collections::HashMap<Uuid, TemplateUsage>, DomainError> {
+        Ok(std::collections::HashMap::new())
+    }
+    async fn set_session_channels(
+        &self,
+        _: Uuid,
+        _: Option<&str>,
+        _: Option<&str>,
+    ) -> Result<bool, DomainError> {
+        Ok(true)
+    }
+    async fn list_ip_reveal_due(&self) -> Result<Vec<GameServer>, DomainError> {
+        Ok(vec![])
+    }
+    async fn list_awaiting_reveal_no_ping_today(&self) -> Result<Vec<GameServer>, DomainError> {
+        Ok(vec![])
+    }
+    async fn mark_daily_ping(&self, _: Uuid) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn update_resources(&self, _: Uuid, _: i32, _: Option<f64>) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn record_history(
+        &self,
+        _: uuid::Uuid,
+        _: Option<f32>,
+        _: Option<i32>,
+        _: Option<i32>,
+        _: Option<i32>,
+        _: Option<i64>,
+        _: Option<i64>,
+        _: Option<i32>,
+    ) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn history(
+        &self,
+        _: uuid::Uuid,
+        _: i64,
+        _: i64,
+    ) -> Result<Vec<crate::nexus::domain::entities::game::server::PointDeSurveillance>, DomainError>
+    {
+        Ok(vec![])
+    }
+    async fn purge_history(&self, _: i32) -> Result<u64, DomainError> {
+        Ok(0)
+    }
+    async fn record_perf_sample(
+        &self,
+        _: Uuid,
+        _: Option<i32>,
+        _: Option<i64>,
+        _: Option<i64>,
+    ) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn set_config_dirty(&self, _: Uuid, _: bool) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn set_closes_at(&self, _: Uuid, _: Option<DateTime<Utc>>) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn set_ip_reveal_at(&self, _: Uuid, _: Option<DateTime<Utc>>) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn list_scheduled_due_to_start(&self) -> Result<Vec<GameServer>, DomainError> {
+        Ok(vec![])
+    }
+}
+
+#[tokio::test]
+async fn test_validate_create_portal_disabled() {
+    let dummy_service = ManageGameServersService {
+        server_repo: Arc::new(DummyServerRepo),
+        template_repo: Arc::new(DummyTemplateRepo),
+        config_repo: Arc::new(DummyConfigRepo),
+        audit_repo: Arc::new(DummyAuditRepo),
+        port_allocator: Arc::new(DummyPortAllocator),
+        container_runtime: Arc::new(DummyContainerRuntime),
+        rcon_client: Arc::new(DummyRconClient),
+        bot_config: Arc::new(DummyBotConfig),
+    };
+    let mut cfg = sample_config();
+    cfg.enabled = false;
+    let cmd = sample_command();
+    let res = dummy_service.validate_create(&cmd, &cfg).await;
+    assert!(matches!(res, Err(DomainError::Forbidden(_))));
+}
+
+#[tokio::test]
+async fn test_validate_create_invalid_name() {
+    let dummy_service = ManageGameServersService {
+        server_repo: Arc::new(DummyServerRepo),
+        template_repo: Arc::new(DummyTemplateRepo),
+        config_repo: Arc::new(DummyConfigRepo),
+        audit_repo: Arc::new(DummyAuditRepo),
+        port_allocator: Arc::new(DummyPortAllocator),
+        container_runtime: Arc::new(DummyContainerRuntime),
+        rcon_client: Arc::new(DummyRconClient),
+        bot_config: Arc::new(DummyBotConfig),
+    };
+    let cfg = sample_config();
+    let mut cmd = sample_command();
+    cmd.name = "".to_string();
+    let res = dummy_service.validate_create(&cmd, &cfg).await;
+    assert!(matches!(res, Err(DomainError::ValidationError(_))));
+}
+
+#[tokio::test]
+async fn test_validate_create_template_not_allowed() {
+    let dummy_service = ManageGameServersService {
+        server_repo: Arc::new(DummyServerRepo),
+        template_repo: Arc::new(DummyTemplateRepo),
+        config_repo: Arc::new(DummyConfigRepo),
+        audit_repo: Arc::new(DummyAuditRepo),
+        port_allocator: Arc::new(DummyPortAllocator),
+        container_runtime: Arc::new(DummyContainerRuntime),
+        rcon_client: Arc::new(DummyRconClient),
+        bot_config: Arc::new(DummyBotConfig),
+    };
+    let cfg = sample_config();
+    let mut cmd = sample_command();
+    cmd.template_slug = "invalid-slug-not-allowed".to_string();
+    let res = dummy_service.validate_create(&cmd, &cfg).await;
+    assert!(matches!(res, Err(DomainError::Forbidden(_))));
+}
+
+#[tokio::test]
+async fn test_validate_create_runtime_not_operational() {
+    let tmpl = sample_template("minecraft-vanilla", TemplatePortProtocol::Tcp, true);
+    let dummy_service = ManageGameServersService {
+        server_repo: Arc::new(DummyServerRepo),
+        template_repo: Arc::new(MockTemplateRepoWithTemplate { template: tmpl }),
+        config_repo: Arc::new(DummyConfigRepo),
+        audit_repo: Arc::new(DummyAuditRepo),
+        port_allocator: Arc::new(DummyPortAllocator),
+        container_runtime: Arc::new(NonOperationalRuntime),
+        rcon_client: Arc::new(DummyRconClient),
+        bot_config: Arc::new(DummyBotConfig),
+    };
+    let cfg = sample_config();
+    let cmd = sample_command();
+    let res = dummy_service.validate_create(&cmd, &cfg).await;
+    assert!(matches!(res, Err(DomainError::NotImplemented(_))));
+}
+
+#[tokio::test]
+async fn test_validate_create_memory_out_of_bounds() {
+    let mut tmpl = sample_template("minecraft-vanilla", TemplatePortProtocol::Tcp, true);
+    tmpl.min_memory_mb = 1024;
+    tmpl.max_memory_mb = 4096;
+    let dummy_service = ManageGameServersService {
+        server_repo: Arc::new(DummyServerRepo),
+        template_repo: Arc::new(MockTemplateRepoWithTemplate { template: tmpl }),
+        config_repo: Arc::new(DummyConfigRepo),
+        audit_repo: Arc::new(DummyAuditRepo),
+        port_allocator: Arc::new(DummyPortAllocator),
+        container_runtime: Arc::new(DummyContainerRuntime),
+        rcon_client: Arc::new(DummyRconClient),
+        bot_config: Arc::new(DummyBotConfig),
+    };
+    let cfg = sample_config();
+    let mut cmd = sample_command();
+    cmd.allocated_memory_mb = Some(8192); // Exceeds max
+    let res = dummy_service.validate_create(&cmd, &cfg).await;
+    assert!(matches!(res, Err(DomainError::ValidationError(_))));
+}
+
+#[tokio::test]
+async fn test_validate_create_quota_server_limit_exceeded() {
+    let tmpl = sample_template("minecraft-vanilla", TemplatePortProtocol::Tcp, true);
+    let dummy_service = ManageGameServersService {
+        server_repo: Arc::new(QuotaExceededServerRepo {
+            count: 5,
+            mem: 2048,
+        }),
+        template_repo: Arc::new(MockTemplateRepoWithTemplate { template: tmpl }),
+        config_repo: Arc::new(DummyConfigRepo),
+        audit_repo: Arc::new(DummyAuditRepo),
+        port_allocator: Arc::new(DummyPortAllocator),
+        container_runtime: Arc::new(DummyContainerRuntime),
+        rcon_client: Arc::new(DummyRconClient),
+        bot_config: Arc::new(DummyBotConfig),
+    };
+    let cfg = sample_config();
+    let cmd = sample_command();
+    let res = dummy_service.validate_create(&cmd, &cfg).await;
+    assert!(matches!(res, Err(DomainError::ValidationError(_))));
+}
+
+#[tokio::test]
+async fn test_validate_create_success() {
+    let tmpl = sample_template("minecraft-vanilla", TemplatePortProtocol::Tcp, true);
+    let dummy_service = ManageGameServersService {
+        server_repo: Arc::new(QuotaExceededServerRepo {
+            count: 1,
+            mem: 2048,
+        }),
+        template_repo: Arc::new(MockTemplateRepoWithTemplate { template: tmpl }),
+        config_repo: Arc::new(DummyConfigRepo),
+        audit_repo: Arc::new(DummyAuditRepo),
+        port_allocator: Arc::new(DummyPortAllocator),
+        container_runtime: Arc::new(DummyContainerRuntime),
+        rcon_client: Arc::new(DummyRconClient),
+        bot_config: Arc::new(DummyBotConfig),
+    };
+    let cfg = sample_config();
+    let cmd = sample_command();
+    let res = dummy_service.validate_create(&cmd, &cfg).await;
+    assert!(res.is_ok());
 }

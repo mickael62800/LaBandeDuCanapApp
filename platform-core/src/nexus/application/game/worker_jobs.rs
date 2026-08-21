@@ -60,6 +60,7 @@ mod daily_ping;
 mod health_check;
 mod idle_shutdown;
 mod image_cleanup;
+mod purge_history;
 mod reconciler;
 mod reveal_ip;
 
@@ -67,6 +68,7 @@ pub use daily_ping::run_daily_ping;
 pub use health_check::run_health_check;
 pub use idle_shutdown::run_idle_shutdown;
 pub use image_cleanup::run_image_cleanup;
+pub use purge_history::{run_purge_history, RETENTION_JOURS_DEFAUT};
 pub use reconciler::run_reconciler;
 pub use reveal_ip::run_reveal_ip;
 
@@ -188,6 +190,33 @@ mod tests {
             _: Option<f64>,
         ) -> Result<(), DomainError> {
             Ok(())
+        }
+        async fn record_history(
+            &self,
+            _: uuid::Uuid,
+            _: Option<f32>,
+            _: Option<i32>,
+            _: Option<i32>,
+            _: Option<i32>,
+            _: Option<i64>,
+            _: Option<i64>,
+            _: Option<i32>,
+        ) -> Result<(), DomainError> {
+            Ok(())
+        }
+        async fn history(
+            &self,
+            _: uuid::Uuid,
+            _: i64,
+            _: i64,
+        ) -> Result<
+            Vec<crate::nexus::domain::entities::game::server::PointDeSurveillance>,
+            DomainError,
+        > {
+            Ok(vec![])
+        }
+        async fn purge_history(&self, _: i32) -> Result<u64, DomainError> {
+            Ok(0)
         }
         async fn record_perf_sample(
             &self,

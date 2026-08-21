@@ -587,6 +587,27 @@ mod tests {
 ///     remis ses compteurs a zero — la difference serait alors negative, et la
 ///     forcer a zero laisserait croire a un serveur muet ;
 ///   - deux mesures trop rapprochees, ou la moindre imprecision devient un pic.
+/// Un point de l'historique de surveillance, deja resume.
+///
+/// Chaque mesure reste optionnelle jusqu'a l'affichage : sur une tranche ou la
+/// console etait muette, la latence n'est pas nulle, elle est inconnue — et
+/// une courbe qui retombe a zero raconte une panne qui n'a pas eu lieu.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PointDeSurveillance {
+    /// Debut de la tranche.
+    pub horodatage: DateTime<Utc>,
+    pub cpu_percent: Option<f64>,
+    pub memory_used_mb: Option<f64>,
+    pub memory_limit_mb: Option<f64>,
+    /// PIC de latence de la tranche, pas sa moyenne.
+    pub rcon_latency_ms: Option<i32>,
+    pub net_rx_bytes_per_sec: Option<f64>,
+    pub net_tx_bytes_per_sec: Option<f64>,
+    /// Maximum de joueurs vus sur la tranche : c'est l'affluence qui interesse,
+    /// pas la moyenne d'un intervalle ou la moitie du monde s'est deconnectee.
+    pub player_count: Option<i32>,
+}
+
 pub fn debit_reseau(
     precedent_rx: Option<i64>,
     precedent_tx: Option<i64>,

@@ -10,8 +10,8 @@ use crate::nexus::adapters::inbound::http::handlers::ApiError;
 use crate::nexus::bootstrap::AppState;
 
 use platform_core::nexus::application::game::worker_jobs::{
-    run_daily_ping, run_health_check, run_idle_shutdown, run_image_cleanup, run_reconciler,
-    run_reveal_ip, JobContext, JobReport,
+    run_daily_ping, run_health_check, run_idle_shutdown, run_image_cleanup, run_purge_history,
+    run_reconciler, run_reveal_ip, JobContext, JobReport,
 };
 
 async fn locked<F, Fut>(
@@ -79,6 +79,20 @@ pub async fn job_reconcile(State(state): State<AppState>) -> Result<Json<JobRepo
 pub async fn job_image_cleanup(State(state): State<AppState>) -> Result<Json<JobReport>, ApiError> {
     locked(&state, "image-cleanup", || async {
         run_image_cleanup(&ctx(&state)).await
+    })
+    .await
+}
+
+/// Menage de l'historique de surveillance. La retention se regle par
+/// l'environnement : c'est un parametre d'exploitation (place disque), pas un
+/// choix de communaute.
+pub async fn job_purge_history(State(state): State<AppState>) -> Result<Json<JobReport>, ApiError> {
+    let retention = std::env::var("GAME_PERF_HISTORY_RETENTION_DAYS")
+        .ok()
+        .and_then(|v| v.trim().parse().ok())
+        .unwrap_or(platform_core::nexus::application::game::worker_jobs::RETENTION_JOURS_DEFAUT);
+    locked(&state, "purge-history", || async {
+        run_purge_history(&ctx(&state), retention).await
     })
     .await
 }

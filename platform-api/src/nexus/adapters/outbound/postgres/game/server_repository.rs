@@ -5,7 +5,9 @@ use sqlx::{FromRow, PgPool};
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
-use platform_core::nexus::domain::entities::game::server::{GameServer, GameServerStatus};
+use platform_core::nexus::domain::entities::game::server::{
+    GameServer, GameServerStatus, PointDeSurveillance,
+};
 use platform_core::nexus::domain::errors::DomainError;
 use platform_core::nexus::ports::outbound::game::game_server_repository::{
     GameServerRepository, GameServerRuntimeUpdate, NewGameServer, TemplateUsage,
@@ -111,6 +113,19 @@ const SELECT_COLS: &str = "id, guild_id, template_id, name, status, container_id
      last_error, created_at, updated_at, started_at, stopped_at, \
      restart_attempts, last_restart_at, \
      text_channel_id, voice_channel_id, ip_reveal_at, ip_revealed, closes_at, config_dirty,      rcon_latency_ms, net_rx_bytes, net_tx_bytes, net_sampled_at";
+
+/// Une tranche d'historique telle que la base la resume.
+#[derive(FromRow)]
+struct PointRow {
+    horodatage: DateTime<Utc>,
+    cpu_percent: Option<f64>,
+    memory_used_mb: Option<f64>,
+    memory_limit_mb: Option<f64>,
+    rcon_latency_ms: Option<i32>,
+    net_rx_bytes_per_sec: Option<f64>,
+    net_tx_bytes_per_sec: Option<f64>,
+    player_count: Option<i32>,
+}
 
 #[async_trait]
 impl GameServerRepository for PgGameServerRepository {
@@ -546,6 +561,86 @@ impl GameServerRepository for PgGameServerRepository {
         .await
         .map_err(pg_ctx("update_resources"))?;
         Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn record_history(
+        &self,
+        id: Uuid,
+        cpu_percent: Option<f32>,
+        memory_used_mb: Option<i32>,
+        memory_limit_mb: Option<i32>,
+        rcon_latency_ms: Option<i32>,
+        net_rx_bytes_per_sec: Option<i64>,
+        net_tx_bytes_per_sec: Option<i64>,
+        player_count: Option<i32>,
+    ) -> Result<(), DomainError> {
+        sqlx::query(
+            "INSERT INTO game_server_perf_history                  (server_id, cpu_percent, memory_used_mb, memory_limit_mb,                   rcon_latency_ms, net_rx_bytes_per_sec, net_tx_bytes_per_sec, player_count)              VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+        )
+        .bind(id)
+        .bind(cpu_percent)
+        .bind(memory_used_mb)
+        .bind(memory_limit_mb)
+        .bind(rcon_latency_ms)
+        .bind(net_rx_bytes_per_sec)
+        .bind(net_tx_bytes_per_sec)
+        .bind(player_count)
+        .execute(&self.pool)
+        .await
+        .map_err(pg_ctx("record_history"))?;
+        Ok(())
+    }
+
+    async fn history(
+        &self,
+        id: Uuid,
+        depuis_secondes: i64,
+        pas_secondes: i64,
+    ) -> Result<Vec<PointDeSurveillance>, DomainError> {
+        // `to_timestamp(floor(epoch / pas) * pas)` range chaque mesure dans sa
+        // tranche : c'est un regroupement par intervalle regulier, valable pour
+        // n'importe quel pas, la ou `date_trunc` n'accepte qu'une liste fermee
+        // d'unites (minute, heure, jour) et ne saurait pas faire dix minutes.
+        //
+        // Les tranches sans mesure n'apparaissent pas : un trou dans la courbe
+        // dit « le serveur etait eteint », ce qu'une ligne a zero cacherait.
+        let rows: Vec<PointRow> = sqlx::query_as(
+            "SELECT                  to_timestamp(floor(extract(epoch FROM sampled_at) / $3) * $3) AS horodatage,                  AVG(cpu_percent)::float8            AS cpu_percent,                  AVG(memory_used_mb)::float8         AS memory_used_mb,                  AVG(memory_limit_mb)::float8        AS memory_limit_mb,                  MAX(rcon_latency_ms)                AS rcon_latency_ms,                  AVG(net_rx_bytes_per_sec)::float8   AS net_rx_bytes_per_sec,                  AVG(net_tx_bytes_per_sec)::float8   AS net_tx_bytes_per_sec,                  MAX(player_count)                   AS player_count              FROM game_server_perf_history              WHERE server_id = $1                AND sampled_at >= NOW() - make_interval(secs => $2)              GROUP BY 1              ORDER BY 1 ASC",
+        )
+        .bind(id)
+        .bind(depuis_secondes as f64)
+        .bind(pas_secondes as f64)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(pg_ctx("history surveillance"))?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| PointDeSurveillance {
+                horodatage: r.horodatage,
+                cpu_percent: r.cpu_percent,
+                memory_used_mb: r.memory_used_mb,
+                memory_limit_mb: r.memory_limit_mb,
+                rcon_latency_ms: r.rcon_latency_ms,
+                net_rx_bytes_per_sec: r.net_rx_bytes_per_sec,
+                net_tx_bytes_per_sec: r.net_tx_bytes_per_sec,
+                player_count: r.player_count,
+            })
+            .collect())
+    }
+
+    async fn purge_history(&self, jours: i32) -> Result<u64, DomainError> {
+        // `make_interval` plutot qu'une chaine concatenee : la duree est une
+        // donnee, pas un morceau de requete.
+        let result = sqlx::query(
+            "DELETE FROM game_server_perf_history              WHERE sampled_at < NOW() - make_interval(days => $1)",
+        )
+        .bind(jours)
+        .execute(&self.pool)
+        .await
+        .map_err(pg_ctx("purge_history"))?;
+        Ok(result.rows_affected())
     }
 
     async fn record_perf_sample(

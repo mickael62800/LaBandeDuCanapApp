@@ -518,6 +518,10 @@ pub fn build_router_with(state: AppState, config: HttpConfig) -> Router {
             post(handlers::game::jobs::job_reveal_ip),
         )
         .route(
+            "/api/games/internal/jobs/purge-history",
+            post(handlers::game::jobs::job_purge_history),
+        )
+        .route(
             "/api/games/internal/jobs/daily-ping",
             post(handlers::game::jobs::job_daily_ping),
         )

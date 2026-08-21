@@ -505,6 +505,33 @@ impl GameServerRepository for DummyGameServerRepo {
     async fn update_resources(&self, _: Uuid, _: i32, _: Option<f64>) -> Result<(), DomainError> {
         Ok(())
     }
+    async fn record_history(
+        &self,
+        _: uuid::Uuid,
+        _: Option<f32>,
+        _: Option<i32>,
+        _: Option<i32>,
+        _: Option<i32>,
+        _: Option<i64>,
+        _: Option<i64>,
+        _: Option<i32>,
+    ) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn history(
+        &self,
+        _: uuid::Uuid,
+        _: i64,
+        _: i64,
+    ) -> Result<
+        Vec<platform_core::nexus::domain::entities::game::server::PointDeSurveillance>,
+        DomainError,
+    > {
+        Ok(vec![])
+    }
+    async fn purge_history(&self, _: i32) -> Result<u64, DomainError> {
+        Ok(0)
+    }
     async fn record_perf_sample(
         &self,
         _: uuid::Uuid,

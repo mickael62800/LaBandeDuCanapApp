@@ -1,6 +1,8 @@
 use super::*;
 use async_trait::async_trait;
-use platform_core::sentinel::domain::entities::system::quarantine::ActiveQuarantine;
+use platform_core::sentinel::domain::entities::system::quarantine::{
+    ActiveQuarantine, QuarantineSettings,
+};
 use platform_core::sentinel::domain::errors::DomainError;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -8,7 +10,9 @@ use std::sync::Mutex;
 /// Mock quarantaine : enregistre les appels pour verifier le mapping.
 #[derive(Default)]
 struct MockQuarantineUc {
-    marked: Mutex<Vec<(String, String, i64)>>,
+    /// Delai transmis au use case : `None` quand l'appelant laisse le reglage
+    /// de la guilde decider, ce qui est le cas normal.
+    marked: Mutex<Vec<(String, String, Option<i64>)>>,
     lifted: Mutex<Vec<(String, String)>>,
     active: Mutex<Vec<ActiveQuarantine>>,
     fail: bool,
@@ -16,12 +20,18 @@ struct MockQuarantineUc {
 
 #[async_trait]
 impl ManageQuarantineUseCase for MockQuarantineUc {
+    async fn settings(&self, _guild_id: &str) -> Result<QuarantineSettings, DomainError> {
+        if self.fail {
+            return Err(DomainError::Internal("pg down".into()));
+        }
+        Ok(QuarantineSettings::default())
+    }
     async fn quarantine_user(
         &self,
         guild_id: &str,
         user_id: &str,
-        timeout_secs: i64,
-    ) -> Result<(), DomainError> {
+        timeout_secs: Option<i64>,
+    ) -> Result<QuarantineSettings, DomainError> {
         if self.fail {
             return Err(DomainError::Internal("pg down".into()));
         }
@@ -29,7 +39,7 @@ impl ManageQuarantineUseCase for MockQuarantineUc {
             .lock()
             .unwrap()
             .push((guild_id.into(), user_id.into(), timeout_secs));
-        Ok(())
+        Ok(QuarantineSettings::default())
     }
     async fn list_active(&self) -> Result<Vec<ActiveQuarantine>, DomainError> {
         Ok(self.active.lock().unwrap().clone())
@@ -110,17 +120,62 @@ fn grpc_with(
 async fn mark_quarantine_forwards_fields() {
     let q = Arc::new(MockQuarantineUc::default());
     let grpc = grpc_with(q.clone(), Arc::default(), Arc::default());
+    let ack = grpc
+        .mark_quarantine(Request::new(proto::MarkQuarantineRequest {
+            guild_id: "g1".into(),
+            user_id: "u1".into(),
+            timeout_secs: 600,
+        }))
+        .await
+        .unwrap()
+        .into_inner();
+    assert_eq!(
+        q.marked.lock().unwrap().as_slice(),
+        &[("g1".into(), "u1".into(), Some(600))]
+    );
+    // Le reglage retenu repart vers le bot : c'est lui qui ecrit le message
+    // prive, et il doit annoncer la duree reelle plutot qu'une valeur figee.
+    assert_eq!(ack.timeout_secs, QuarantineSettings::default().timeout_secs);
+    assert!(ack.kick_enabled);
+}
+
+#[tokio::test]
+async fn un_delai_nul_laisse_le_reglage_de_la_guilde_decider() {
+    // Le bot n'a pas a connaitre le delai pour poser une quarantaine : il
+    // envoie zero, et le serveur applique ce que la guilde a configure.
+    // Transmettre `Some(0)` ferait tomber le delai au plancher, donc expulser
+    // presque aussitot.
+    let q = Arc::new(MockQuarantineUc::default());
+    let grpc = grpc_with(q.clone(), Arc::default(), Arc::default());
     grpc.mark_quarantine(Request::new(proto::MarkQuarantineRequest {
         guild_id: "g1".into(),
         user_id: "u1".into(),
-        timeout_secs: 600,
+        timeout_secs: 0,
     }))
     .await
     .unwrap();
     assert_eq!(
         q.marked.lock().unwrap().as_slice(),
-        &[("g1".into(), "u1".into(), 600)]
+        &[("g1".into(), "u1".into(), None)]
     );
+}
+
+#[tokio::test]
+async fn lire_le_reglage_ne_pose_aucune_quarantaine() {
+    // Le renvoi d'un captcha perime passe par ici : reutiliser MarkQuarantine
+    // aurait relance le compte a rebours du membre, et un clic aurait suffi a
+    // rester indefiniment.
+    let q = Arc::new(MockQuarantineUc::default());
+    let grpc = grpc_with(q.clone(), Arc::default(), Arc::default());
+    let ack = grpc
+        .get_quarantine_settings(Request::new(proto::GetQuarantineSettingsRequest {
+            guild_id: "g1".into(),
+        }))
+        .await
+        .unwrap()
+        .into_inner();
+    assert!(q.marked.lock().unwrap().is_empty());
+    assert_eq!(ack.timeout_secs, QuarantineSettings::default().timeout_secs);
 }
 
 #[tokio::test]

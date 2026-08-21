@@ -15,6 +15,30 @@ use platform_proto::sentinel::members::v1 as proto_members;
 use platform_proto::sentinel::security::v1 as proto_security;
 use platform_proto::sentinel::security_state::v1 as proto_state;
 
+/// Ce que le serveur a decide pour un membre en attente d'acceptation du
+/// reglement : la duree qu'il a devant lui, le rappel prevu, et si une
+/// expulsion suivra.
+///
+/// Les valeurs par defaut ne servent qu'au cas ou l'API est injoignable : le
+/// membre est deja en quarantaine cote Discord, mieux vaut un message qui
+/// annonce une duree plausible qu'aucun message du tout.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReglementApplique {
+    pub timeout_secs: i64,
+    pub reminder_secs: i64,
+    pub kick_enabled: bool,
+}
+
+impl Default for ReglementApplique {
+    fn default() -> Self {
+        Self {
+            timeout_secs: 24 * 3600,
+            reminder_secs: 3600,
+            kick_enabled: true,
+        }
+    }
+}
+
 #[derive(Debug, Serialize)]
 pub struct SecurityEvent {
     pub guild_id: String,
@@ -120,19 +144,46 @@ impl ApiClient {
             .collect())
     }
 
-    /// Enregistre (UPSERT idempotent) une quarantaine avec son delai avant kick.
+    /// Enregistre (UPSERT idempotent) une quarantaine et retourne le reglement
+    /// que le SERVEUR a applique.
+    ///
+    /// Le delai n'est pas envoye : il appartient a la configuration de la
+    /// guilde. Le bot le decouvre ici, et s'en sert pour ecrire un message qui
+    /// annonce la duree reelle.
     pub async fn mark_quarantine(
         &self,
         guild_id: &str,
         user_id: &str,
-        timeout_secs: i64,
-    ) -> Result<(), String> {
+    ) -> Result<ReglementApplique, String> {
         let req = proto_state::MarkQuarantineRequest {
             guild_id: guild_id.to_string(),
             user_id: user_id.to_string(),
-            timeout_secs,
+            // Zero : aucun delai impose, le reglage de la guilde fait foi.
+            timeout_secs: 0,
         };
-        crate::grpc_call!(@unit self.grpc, security_state, mark_quarantine, req)
+        let ack = crate::grpc_call!(self.grpc, security_state, mark_quarantine, req)?;
+        Ok(ReglementApplique {
+            timeout_secs: ack.timeout_secs,
+            reminder_secs: ack.reminder_secs,
+            kick_enabled: ack.kick_enabled,
+        })
+    }
+
+    /// Lit le reglement applique par la guilde, sans rien modifier.
+    ///
+    /// Passer par `mark_quarantine` aurait relance le compte a rebours du
+    /// membre : un clic sur un bouton perime lui aurait redonne un delai
+    /// complet, indefiniment.
+    pub async fn quarantine_settings(&self, guild_id: &str) -> Result<ReglementApplique, String> {
+        let req = proto_state::GetQuarantineSettingsRequest {
+            guild_id: guild_id.to_string(),
+        };
+        let ack = crate::grpc_call!(self.grpc, security_state, get_quarantine_settings, req)?;
+        Ok(ReglementApplique {
+            timeout_secs: ack.timeout_secs,
+            reminder_secs: ack.reminder_secs,
+            kick_enabled: ack.kick_enabled,
+        })
     }
 
     /// Leve la quarantaine (captcha valide ou retrait admin). Idempotent.

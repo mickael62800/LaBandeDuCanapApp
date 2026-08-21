@@ -142,6 +142,14 @@ pub fn start(config: DomainConfig) {
             "/api/internal/jobs/kick-expired-quarantine",
             env("QUARANTINE_KICK_CHECK_SECS", 15),
         ),
+        // Rappel d'accepter le reglement avant expulsion. Meme cadence que
+        // l'expulsion : le rappel doit partir AVANT elle, un balayage plus lent
+        // laisserait passer des echeances courtes.
+        (
+            "sentinel.remind-quarantine-rules",
+            "/api/internal/jobs/remind-quarantine-rules",
+            env("QUARANTINE_REMINDER_CHECK_SECS", 15),
+        ),
         (
             "sentinel.expire-lockdown",
             "/api/internal/jobs/expire-lockdown",

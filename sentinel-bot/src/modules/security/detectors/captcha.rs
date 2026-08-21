@@ -24,6 +24,26 @@ pub const CAPTCHA_BUTTON_PREFIX: &str = "sentinel_captcha_verify_";
 /// Prefixe des boutons captcha math.
 pub const CAPTCHA_MATH_PREFIX: &str = "sentinel_captcha_math_";
 
+/// Phrase qui annonce le delai laisse au membre.
+///
+/// Elle disait « 5 minutes » en dur, ce qui etait vrai tant que le delai etait
+/// une constante d'environnement. Depuis qu'il se regle par serveur, un texte
+/// fige ferait mentir le bot — et promettrait cinq minutes a quelqu'un qui en a
+/// vingt-quatre heures, ou l'inverse.
+///
+/// `kick_enabled` faux : la guilde ne veut expulser personne automatiquement.
+/// Menacer d'une expulsion qui ne viendra pas serait un mensonge de plus.
+fn phrase_delai(timeout_secs: i64, kick_enabled: bool) -> String {
+    let duree = crate::modules::security::quarantine_reminder_consumer::duree_lisible(timeout_secs);
+    if kick_enabled {
+        format!("Vous avez **{duree}** pour vous verifier, sinon vous serez expulse.")
+    } else {
+        format!(
+            "Prenez le temps qu'il vous faut : sans validation, votre acces reste              restreint (rappel dans **{duree}** au plus tard)."
+        )
+    }
+}
+
 /// Envoie un captcha math en DM avec 4 boutons.
 pub async fn send_math_challenge(
     ctx: &Context,
@@ -31,6 +51,8 @@ pub async fn send_math_challenge(
     guild_id: GuildId,
     guild_name: &str,
     pending: &CaptchaPending,
+    timeout_secs: i64,
+    kick_enabled: bool,
 ) -> bool {
     let user = match user_id.to_user(&ctx.http).await {
         Ok(u) => u,
@@ -78,7 +100,7 @@ pub async fn send_math_challenge(
         ))
         .field(
             "\u{23f1}\u{fe0f}",
-            "Vous avez **5 minutes** pour repondre, sinon vous serez expulse.",
+            phrase_delai(timeout_secs, kick_enabled),
             false,
         );
 
@@ -104,6 +126,8 @@ pub async fn send_challenge(
     user_id: UserId,
     guild_id: GuildId,
     guild_name: &str,
+    timeout_secs: i64,
+    kick_enabled: bool,
 ) -> bool {
     let user = match user_id.to_user(&ctx.http).await {
         Ok(u) => u,
@@ -136,7 +160,7 @@ pub async fn send_challenge(
         ))
         .field(
             "\u{23f1}\u{fe0f}",
-            "Vous avez **5 minutes** pour vous verifier, sinon vous serez expulse.",
+            phrase_delai(timeout_secs, kick_enabled),
             false,
         );
 

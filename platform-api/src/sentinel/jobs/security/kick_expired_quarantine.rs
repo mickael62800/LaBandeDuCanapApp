@@ -15,11 +15,19 @@ struct ExpiredQuarantine {
 }
 
 pub async fn run(pool: &PgPool, redis: &redis::aio::ConnectionManager) -> Result<(), String> {
+    // Une guilde peut avoir desactive l'expulsion automatique : le membre reste
+    // alors en attente d'une decision humaine. Sans cette jointure, le reglage
+    // s'afficherait a l'ecran sans rien commander, et les gens seraient
+    // expulses malgre lui.
     let candidates: Vec<ExpiredQuarantine> = sqlx::query_as(
-        "SELECT guild_id, user_id \
-         FROM security_quarantine_pending \
-         WHERE expires_at < NOW() \
-         ORDER BY expires_at ASC LIMIT 100",
+        "SELECT q.guild_id, q.user_id \
+         FROM security_quarantine_pending q \
+         LEFT JOIN bot_guild_config k \
+           ON k.guild_id = q.guild_id AND k.bot_name = 'security-bot' \
+          AND k.config_key = 'quarantine_kick_enabled' \
+         WHERE q.expires_at < NOW() \
+           AND COALESCE(k.config_value, 'true') IN ('true', '1') \
+         ORDER BY q.expires_at ASC LIMIT 100",
     )
     .fetch_all(pool)
     .await

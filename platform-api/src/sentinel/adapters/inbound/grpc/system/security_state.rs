@@ -28,13 +28,41 @@ impl SecurityStateService for SecurityStateGrpc {
     async fn mark_quarantine(
         &self,
         request: Request<proto::MarkQuarantineRequest>,
-    ) -> Result<Response<proto::SecurityStateAck>, Status> {
+    ) -> Result<Response<proto::MarkQuarantineAck>, Status> {
         let req = request.into_inner();
-        self.quarantine_uc
-            .quarantine_user(&req.guild_id, &req.user_id, req.timeout_secs)
+        // Zero signifie « pas de valeur imposee » : le reglage de la guilde
+        // fait foi. C'est le cas normal, le bot n'ayant pas a connaitre le
+        // delai pour poser une quarantaine.
+        let impose = Some(req.timeout_secs).filter(|v| *v > 0);
+        let applique = self
+            .quarantine_uc
+            .quarantine_user(&req.guild_id, &req.user_id, impose)
             .await
             .map_err(domain_to_status)?;
-        Ok(Response::new(proto::SecurityStateAck {}))
+        // Le reglage retenu repart vers le bot : c'est lui qui ecrit le message
+        // prive, et il doit y annoncer le delai reel.
+        Ok(Response::new(proto::MarkQuarantineAck {
+            timeout_secs: applique.timeout_secs,
+            reminder_secs: applique.reminder_secs,
+            kick_enabled: applique.kick_enabled,
+        }))
+    }
+
+    async fn get_quarantine_settings(
+        &self,
+        request: Request<proto::GetQuarantineSettingsRequest>,
+    ) -> Result<Response<proto::MarkQuarantineAck>, Status> {
+        let req = request.into_inner();
+        let reglage = self
+            .quarantine_uc
+            .settings(&req.guild_id)
+            .await
+            .map_err(domain_to_status)?;
+        Ok(Response::new(proto::MarkQuarantineAck {
+            timeout_secs: reglage.timeout_secs,
+            reminder_secs: reglage.reminder_secs,
+            kick_enabled: reglage.kick_enabled,
+        }))
     }
 
     async fn lift_quarantine(

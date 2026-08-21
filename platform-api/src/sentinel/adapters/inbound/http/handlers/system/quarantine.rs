@@ -15,8 +15,10 @@ use crate::sentinel::bootstrap::state::SystemState;
 pub struct CreateQuarantineDto {
     pub guild_id: String,
     pub user_id: String,
-    /// Duree avant kick automatique (secondes).
-    pub timeout_secs: i64,
+    /// Duree avant expulsion (secondes). Absente : le reglage de la guilde
+    /// fait foi, ce qui est le cas normal.
+    #[serde(default)]
+    pub timeout_secs: Option<i64>,
 }
 
 /// POST /api/security/quarantine — bot enregistre la mise en quarantaine
@@ -27,7 +29,11 @@ pub async fn create_quarantine(
 ) -> Result<StatusCode, ApiError> {
     state
         .quarantine_uc
-        .quarantine_user(&dto.guild_id, &dto.user_id, dto.timeout_secs)
+        .quarantine_user(
+            &dto.guild_id,
+            &dto.user_id,
+            dto.timeout_secs.filter(|v| *v > 0),
+        )
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }

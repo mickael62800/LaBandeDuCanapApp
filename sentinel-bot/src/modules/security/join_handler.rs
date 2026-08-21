@@ -9,7 +9,7 @@ use tracing::{error, info, warn};
 use crate::shared::api_client::BaseApiClient;
 use crate::shared::heartbeat::ApiClientKey;
 
-use super::api_client::{MemberPayload, RecentJoinEntry};
+use super::api_client::{MemberPayload, RecentJoinEntry, ReglementApplique};
 use super::detectors::captcha::{self, CaptchaPending};
 use super::detectors::raid_analyzer::JoinInfo;
 use super::{
@@ -374,20 +374,21 @@ pub(super) async fn on_member_add(ctx: &Context, new_member: &Member) {
             // `kick_expired_quarantine` puisse la kicker meme si le bot
             // redemarre. Le tracker RAM reste source de verite pour les
             // roles a restaurer (la persistance ne couvre que le timer).
+            // Le delai n'est plus decide ici : il appartient au serveur, et
+            // l'API le renvoie pour que le message annonce la bonne duree.
+            // Choisir la duree cote bot obligeait a la repeter dans le texte du
+            // message — deux endroits pour une seule verite, donc un texte qui
+            // finit par mentir.
+            let mut reglement = ReglementApplique::default();
             if let Some(sec_api) = data.get::<super::SecurityApiKey>() {
-                let captcha_timeout = data
-                    .get::<SecurityConfigKey>()
-                    .map(|c| c.captcha_timeout_secs)
-                    .unwrap_or(300);
-                if let Err(e) = sec_api
-                    .mark_quarantine(
-                        &guild_id.to_string(),
-                        &user.id.to_string(),
-                        captcha_timeout as i64,
-                    )
+                match sec_api
+                    .mark_quarantine(&guild_id.to_string(), &user.id.to_string())
                     .await
                 {
-                    tracing::warn!(error = %e, "Echec persistance quarantaine (best-effort)");
+                    Ok(applique) => reglement = applique,
+                    Err(e) => {
+                        tracing::warn!(error = %e, "Echec persistance quarantaine (best-effort)");
+                    }
                 }
             }
 
@@ -404,6 +405,7 @@ pub(super) async fn on_member_add(ctx: &Context, new_member: &Member) {
                     &guild_name,
                     &captcha_type,
                     captcha_pending,
+                    &reglement,
                 )
                 .await;
             }
@@ -432,13 +434,31 @@ async fn send_captcha(
     guild_name: &str,
     captcha_type: &str,
     captcha_pending: &CaptchaPending,
+    reglement: &ReglementApplique,
 ) {
     match captcha_type {
         "math" => {
-            captcha::send_math_challenge(ctx, user_id, guild_id, guild_name, captcha_pending).await;
+            captcha::send_math_challenge(
+                ctx,
+                user_id,
+                guild_id,
+                guild_name,
+                captcha_pending,
+                reglement.timeout_secs,
+                reglement.kick_enabled,
+            )
+            .await;
         }
         _ => {
-            captcha::send_challenge(ctx, user_id, guild_id, guild_name).await;
+            captcha::send_challenge(
+                ctx,
+                user_id,
+                guild_id,
+                guild_name,
+                reglement.timeout_secs,
+                reglement.kick_enabled,
+            )
+            .await;
         }
     }
 }

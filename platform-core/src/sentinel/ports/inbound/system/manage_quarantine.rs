@@ -4,19 +4,31 @@
 
 use async_trait::async_trait;
 
-use crate::sentinel::domain::entities::system::quarantine::ActiveQuarantine;
+use crate::sentinel::domain::entities::system::quarantine::{ActiveQuarantine, QuarantineSettings};
 use crate::sentinel::domain::errors::DomainError;
 
 #[async_trait]
 pub trait ManageQuarantineUseCase: Send + Sync {
-    /// Met (ou remet) un membre en quarantaine. `timeout_secs` est le delai
-    /// avant kick automatique ; une re-quarantaine reset le timer (idempotent).
+    /// Reglage de la guilde pour les membres en attente d'acceptation du
+    /// reglement (delai, rappel, expulsion). Sert aussi au bot pour ecrire un
+    /// message qui annonce le vrai delai.
+    async fn settings(&self, guild_id: &str) -> Result<QuarantineSettings, DomainError>;
+
+    /// Met (ou remet) un membre en quarantaine ; une re-quarantaine reset le
+    /// timer (idempotent).
+    ///
+    /// `timeout_secs` vaut normalement `None` : le delai vient du reglage de la
+    /// guilde, seule source de verite. `Some` reste possible pour un appel
+    /// deliberement explicite (outil d'administration).
+    ///
+    /// Retourne le reglage effectivement applique, pour que l'appelant annonce
+    /// au membre le delai reel plutot qu'une valeur ecrite en dur.
     async fn quarantine_user(
         &self,
         guild_id: &str,
         user_id: &str,
-        timeout_secs: i64,
-    ) -> Result<(), DomainError>;
+        timeout_secs: Option<i64>,
+    ) -> Result<QuarantineSettings, DomainError>;
 
     /// Liste les quarantaines encore actives (non expirees).
     async fn list_active(&self) -> Result<Vec<ActiveQuarantine>, DomainError>;

@@ -12,10 +12,15 @@ package sentinel.security_state.v1;
 // `ManageSlowmodeUseCase`, `ManageLockdownUseCase`.
 service SecurityStateService {
   // Quarantaine : enregistre (UPSERT idempotent, reset le timer) et leve.
-  rpc MarkQuarantine(MarkQuarantineRequest) returns (SecurityStateAck);
+  rpc MarkQuarantine(MarkQuarantineRequest) returns (MarkQuarantineAck);
   rpc LiftQuarantine(LiftQuarantineRequest) returns (SecurityStateAck);
   // Rehydratation au demarrage du bot : liste les quarantaines encore actives.
   rpc ListActiveQuarantines(ListActiveQuarantinesRequest) returns (ActiveQuarantineList);
+  // Lecture seule du reglage de la guilde, sans rien poser ni reinitialiser.
+  // Sert au bot quand il doit reparler du delai a quelqu'un deja en attente :
+  // reutiliser MarkQuarantine remettrait son compte a rebours a zero, et un
+  // clic suffirait alors a rester indefiniment.
+  rpc GetQuarantineSettings(GetQuarantineSettingsRequest) returns (MarkQuarantineAck);
 
   // Slowmode adaptatif de securite : enregistre l'etat actif (UPSERT idempotent).
   rpc MarkSlowmode(MarkSlowmodeRequest) returns (SecurityStateAck);
@@ -29,8 +34,31 @@ message SecurityStateAck {}
 message MarkQuarantineRequest {
   string guild_id = 1;
   string user_id = 2;
-  // Delai avant kick automatique (secondes).
+  // Delai avant expulsion (secondes). 0 ou absent : le serveur applique le
+  // reglage de la guilde, ce qui est le cas normal. Le bot n'a pas a connaitre
+  // ce delai — il le decouvre dans la reponse, et l'annonce au membre.
+  //
+  // Une valeur non nulle reste possible pour un appel deliberement explicite
+  // (outil d'administration), et court-circuite alors le reglage.
   int64 timeout_secs = 3;
+}
+
+message MarkQuarantineAck {
+  // Delai effectivement retenu, en secondes. C'est ce que le message prive
+  // annonce au membre : l'ecrire en dur cote bot le ferait mentir des que le
+  // reglage change.
+  int64 timeout_secs = 1;
+  // Rappel programme avant l'expulsion, en secondes avant l'echeance. 0 : pas
+  // de rappel.
+  int64 reminder_secs = 2;
+  // Faux si la guilde a desactive l'expulsion automatique : le membre reste en
+  // attente d'une decision humaine, et le message ne doit pas menacer d'une
+  // expulsion qui ne viendra pas.
+  bool kick_enabled = 3;
+}
+
+message GetQuarantineSettingsRequest {
+  string guild_id = 1;
 }
 
 message LiftQuarantineRequest {

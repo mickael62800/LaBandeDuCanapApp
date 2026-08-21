@@ -360,7 +360,8 @@ pub async fn build_app_state(
     // consommateur : `AppState.auth`, cf. `middleware/superadmin.rs`.
 
     // Quarantaine de securite : repo Postgres (SQL security_quarantine_pending) +
-    // use case (calcul du delai avant kick). Le handler ne fait que parse/RBAC/map.
+    // use case (reglage de la guilde et calcul de l'echeance). Le handler ne
+    // fait que parse/RBAC/map.
     let quarantine_repo: Arc<dyn platform_core::sentinel::ports::outbound::system::quarantine_repository::QuarantineRepository> =
         Arc::new(crate::sentinel::adapters::outbound::postgres::system::quarantine_repository::PgQuarantineRepository::new(pg_pool.clone()));
     let quarantine_uc: Arc<
@@ -368,6 +369,10 @@ pub async fn build_app_state(
     > = Arc::new(
         platform_core::sentinel::application::system::manage_quarantine_service::ManageQuarantineService::new(
             quarantine_repo,
+            // Le delai avant expulsion, le rappel et l'expulsion elle-meme sont
+            // des reglages du SERVEUR : le use case les lit ici plutot que de
+            // recevoir une duree decidee par l'appelant.
+            bot_config_repo.clone(),
         ),
     );
 

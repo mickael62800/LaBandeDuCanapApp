@@ -66,6 +66,9 @@ impl InternalJobRunner {
             "kick-expired-quarantine" => {
                 security::kick_expired_quarantine::run(&self.pool, &redis).await
             }
+            "remind-quarantine-rules" => {
+                security::remind_quarantine_rules::run(&self.pool, &redis).await
+            }
             "expire-lockdown" => security::expire_lockdown::run(&self.pool, &redis).await,
             "expire-slowmode" => security::expire_slowmode::run(&self.pool, &redis).await,
             "expire-temp-roles" => temp_roles::expire_temp_roles::run(&self.pool, &redis).await,

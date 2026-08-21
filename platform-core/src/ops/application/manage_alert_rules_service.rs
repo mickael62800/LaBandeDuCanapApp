@@ -74,4 +74,61 @@ mod tests {
         let result = service.list().await;
         assert!(result.is_ok());
     }
+
+    #[tokio::test]
+    async fn update_validates_before_delegating() {
+        let service = ManageAlertRulesService::new(Arc::new(FakeAlertRuleRepo));
+        let update = AlertRuleUpdate {
+            enabled: None,
+            threshold: None,
+            severity: Some("invalid_severity".into()),
+            cooldown_secs: None,
+        };
+        let result = service.update("rule1", update).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn update_returns_not_found_when_rule_missing() {
+        struct NotFoundRepo;
+        #[async_trait]
+        impl AlertRuleRepository for NotFoundRepo {
+            async fn list(&self) -> Result<Vec<AlertRule>, DomainError> {
+                Ok(vec![])
+            }
+
+            async fn update(
+                &self,
+                _id: &str,
+                _update: &AlertRuleUpdate,
+            ) -> Result<Option<AlertRule>, DomainError> {
+                Ok(None)
+            }
+        }
+
+        let service = ManageAlertRulesService::new(Arc::new(NotFoundRepo));
+        let update = AlertRuleUpdate {
+            enabled: None,
+            threshold: None,
+            severity: None,
+            cooldown_secs: None,
+        };
+        let result = service.update("missing", update).await;
+        assert!(matches!(result, Err(DomainError::NotFound(_))));
+    }
+
+    #[tokio::test]
+    async fn update_applies_valid_changes() {
+        let service = ManageAlertRulesService::new(Arc::new(FakeAlertRuleRepo));
+        let update = AlertRuleUpdate {
+            enabled: Some(false),
+            threshold: Some(75.0),
+            severity: Some("warning".into()),
+            cooldown_secs: Some(120),
+        };
+        let result = service.update("rule1", update).await;
+        assert!(result.is_ok());
+        let rule = result.unwrap();
+        assert_eq!(rule.severity, "warning");
+    }
 }

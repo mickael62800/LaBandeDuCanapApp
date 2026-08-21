@@ -215,6 +215,17 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn unban_rejects_invalid_ip() {
+        let service = ManageIpBansService::new(
+            Arc::new(FakeIpBanRepo),
+            Arc::new(FakeHostBanQueue),
+            Arc::new(FakeFail2banReader),
+        );
+        let result = service.unban("invalid.ip", None, "admin").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
     async fn list_manual_bans() {
         let service = ManageIpBansService::new(
             Arc::new(FakeIpBanRepo),
@@ -223,5 +234,46 @@ mod tests {
         );
         let result = service.list_manual_bans().await;
         assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn fail2ban_status() {
+        let service = ManageIpBansService::new(
+            Arc::new(FakeIpBanRepo),
+            Arc::new(FakeHostBanQueue),
+            Arc::new(FakeFail2banReader),
+        );
+        let result = service.fail2ban_status().await;
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_public_ipv6() {
+        assert!(validate_bannable_ip("2001:db8::1").is_ok());
+    }
+
+    #[test]
+    fn validate_rejects_unspecified() {
+        assert!(validate_bannable_ip("0.0.0.0").is_err());
+    }
+
+    #[test]
+    fn validate_rejects_link_local_ipv4() {
+        assert!(validate_bannable_ip("169.254.1.1").is_err());
+    }
+
+    #[test]
+    fn validate_rejects_broadcast() {
+        assert!(validate_bannable_ip("255.255.255.255").is_err());
+    }
+
+    #[test]
+    fn validate_rejects_ipv6_unique_local() {
+        assert!(validate_bannable_ip("fc00::1").is_err());
+    }
+
+    #[test]
+    fn validate_rejects_ipv6_link_local() {
+        assert!(validate_bannable_ip("fe80::1").is_err());
     }
 }

@@ -21,3 +21,52 @@ pub trait SystemProbe: Send + Sync {
         true
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct DefaultSystemProbe;
+    #[async_trait]
+    impl SystemProbe for DefaultSystemProbe {}
+
+    struct CustomSystemProbe;
+    #[async_trait]
+    impl SystemProbe for CustomSystemProbe {
+        async fn database_size_bytes(&self) -> Result<i64, DomainError> {
+            Ok(1_000_000)
+        }
+
+        async fn database_responding(&self) -> bool {
+            false
+        }
+    }
+
+    #[tokio::test]
+    async fn default_database_size_is_unknown() {
+        let probe = DefaultSystemProbe;
+        let size = probe.database_size_bytes().await.unwrap();
+        assert_eq!(size, -1);
+    }
+
+    #[tokio::test]
+    async fn default_database_responding() {
+        let probe = DefaultSystemProbe;
+        let responding = probe.database_responding().await;
+        assert!(responding);
+    }
+
+    #[tokio::test]
+    async fn custom_database_size() {
+        let probe = CustomSystemProbe;
+        let size = probe.database_size_bytes().await.unwrap();
+        assert_eq!(size, 1_000_000);
+    }
+
+    #[tokio::test]
+    async fn custom_database_not_responding() {
+        let probe = CustomSystemProbe;
+        let responding = probe.database_responding().await;
+        assert!(!responding);
+    }
+}

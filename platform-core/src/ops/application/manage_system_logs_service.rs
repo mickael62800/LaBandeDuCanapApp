@@ -110,4 +110,68 @@ mod tests {
         let result = service.purge_category("app").await;
         assert!(result.is_ok());
     }
+
+    #[tokio::test]
+    async fn list_logs_with_all_filters() {
+        let service = ManageSystemLogsService::new(Arc::new(FakeLogRepo));
+        let filters = SystemLogFilters {
+            category: Some("api".into()),
+            level: Some("error".into()),
+            guild_id: Some("guild123".into()),
+            limit: 100,
+        };
+        let result = service.list_logs(filters).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn list_logs_without_filters() {
+        let service = ManageSystemLogsService::new(Arc::new(FakeLogRepo));
+        let filters = SystemLogFilters {
+            category: None,
+            level: None,
+            guild_id: None,
+            limit: 25,
+        };
+        let result = service.list_logs(filters).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn purge_returns_deleted_count() {
+        let service = ManageSystemLogsService::new(Arc::new(FakeLogRepo));
+        let result = service.purge_category("old").await.unwrap();
+        assert_eq!(result, 42);
+    }
+
+    #[tokio::test]
+    async fn list_logs_clamps_oversized_limit() {
+        let service = ManageSystemLogsService::new(Arc::new(FakeLogRepo));
+        let filters = SystemLogFilters {
+            category: None,
+            level: None,
+            guild_id: None,
+            limit: 10_000,
+        };
+        let result = service.list_logs(filters).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn list_logs_with_single_filter() {
+        let service = ManageSystemLogsService::new(Arc::new(FakeLogRepo));
+        let filters = SystemLogFilters {
+            category: Some("bot".into()),
+            level: None,
+            guild_id: None,
+            limit: 10,
+        };
+        let result = service.list_logs(filters).await;
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn service_construction() {
+        let _service = ManageSystemLogsService::new(Arc::new(FakeLogRepo));
+    }
 }

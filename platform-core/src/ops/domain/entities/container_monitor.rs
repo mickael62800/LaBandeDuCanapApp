@@ -230,4 +230,39 @@ mod tests {
         // Les plus ANCIENS sont oublies : le premier restant est le 100e emis.
         assert_eq!(state.recent_changes[0].timestamp, "100");
     }
+
+    #[test]
+    fn changement_etat_seul_sans_changement_image() {
+        let avant = map(&[snap("1", "img:1", "running")]);
+        let apres = map(&[snap("1", "img:1", "paused")]);
+        let changes = detect_changes(&avant, &apres, "t");
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].kind, ContainerChangeKind::StateChanged);
+    }
+
+    #[test]
+    fn as_action_pour_tous_les_types() {
+        assert_eq!(ContainerChangeKind::Added.as_action(), "docker.added");
+        assert_eq!(ContainerChangeKind::Removed.as_action(), "docker.removed");
+        assert_eq!(ContainerChangeKind::ImageChanged.as_action(), "docker.image_changed");
+        assert_eq!(ContainerChangeKind::StateChanged.as_action(), "docker.state_changed");
+    }
+
+    #[test]
+    fn container_snapshot_creation() {
+        let snap = snap("123", "nginx:latest", "running");
+        assert_eq!(snap.id, "123");
+        assert_eq!(snap.image, "nginx:latest");
+        assert_eq!(snap.state, "running");
+    }
+
+    #[test]
+    fn container_monitor_state_apply_updates_current() {
+        let mut state = ContainerMonitorState::default();
+        let snapshot = snap("1", "img", "running");
+        state.apply("now".into(), vec![snapshot.clone()], vec![]);
+        assert_eq!(state.current.len(), 1);
+        assert_eq!(state.current[0].id, "1");
+        assert_eq!(state.last_check, "now");
+    }
 }

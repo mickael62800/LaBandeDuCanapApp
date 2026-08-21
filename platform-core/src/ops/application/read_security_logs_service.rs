@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use crate::ops::domain::entities::security_log::{AuthFailure, LogWindow, TopIp, TrafficTrend};
+use crate::ops::domain::entities::security_log::{AuthFailure, LogWindow, TopIp, TrafficTrend, TrafficPoint};
 use crate::ops::domain::errors::DomainError;
 use crate::ops::ports::inbound::read_security_logs::ReadSecurityLogsUseCase;
 use crate::ops::ports::outbound::security_log_repository::SecurityLogRepository;
@@ -62,7 +62,7 @@ impl ReadSecurityLogsUseCase for ReadSecurityLogsService {
 
 #[cfg(test)]
 mod tests {
-    use super::borne;
+    use super::*;
 
     #[test]
     fn les_valeurs_hors_bornes_sont_ramenees() {
@@ -70,5 +70,62 @@ mod tests {
         assert_eq!(borne(-5, 1, 100), 1);
         assert_eq!(borne(10_000, 1, 100), 100);
         assert_eq!(borne(20, 1, 100), 20);
+    }
+
+    struct FakeSecurityLogRepo;
+    #[async_trait]
+    impl SecurityLogRepository for FakeSecurityLogRepo {
+        async fn top_ips(
+            &self,
+            _window: LogWindow,
+            _limit: i64,
+        ) -> Result<Vec<TopIp>, DomainError> {
+            Ok(vec![])
+        }
+
+        async fn auth_failures(
+            &self,
+            _window: LogWindow,
+            _limit: i64,
+        ) -> Result<Vec<AuthFailure>, DomainError> {
+            Ok(vec![])
+        }
+
+        async fn traffic_points(
+            &self,
+            _window: LogWindow,
+            _bucket_minutes: i64,
+        ) -> Result<Vec<TrafficPoint>, DomainError> {
+            Ok(vec![])
+        }
+    }
+
+    #[test]
+    fn service_can_be_created() {
+        let _service = ReadSecurityLogsService::new(Arc::new(FakeSecurityLogRepo));
+    }
+
+    #[tokio::test]
+    async fn top_ips_clamps_limit() {
+        let service = ReadSecurityLogsService::new(Arc::new(FakeSecurityLogRepo));
+        let window = LogWindow::OneHour;
+        let result = service.top_ips(window, 0).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn auth_failures_clamps_limit() {
+        let service = ReadSecurityLogsService::new(Arc::new(FakeSecurityLogRepo));
+        let window = LogWindow::TwentyFourHours;
+        let result = service.auth_failures(window, 1000).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn traffic_trend_calculates_from_points() {
+        let service = ReadSecurityLogsService::new(Arc::new(FakeSecurityLogRepo));
+        let window = LogWindow::SevenDays;
+        let result = service.traffic_trend(window, 5).await;
+        assert!(result.is_ok());
     }
 }

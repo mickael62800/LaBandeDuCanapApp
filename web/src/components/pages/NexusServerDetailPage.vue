@@ -29,6 +29,7 @@ import {
 } from "@/services/nexusGamesService";
 import { useTemplateFieldGroups } from "@/composables/useTemplateFieldGroups";
 import GameConfigField from "../molecules/GameConfigField.vue";
+import PaginationBar from "../molecules/PaginationBar.vue";
 import AdminPageShell from "../layouts/AdminPageShell.vue";
 import GameCommandPanel from "../organisms/GameCommandPanel.vue";
 
@@ -71,6 +72,21 @@ const template = ref<GameTemplate | null>(null);
 const stats = ref<GameServerStats | null>(null);
 const logs = ref<string[]>([]);
 const sessions = ref<PlayerSession[]>([]);
+// L'historique des joueurs grossit a chaque connexion et n'est jamais purge :
+// l'onglet demandait tout et n'en affichait qu'un debut arbitraire — les cent
+// dernieres sessions, en laissant croire que c'etait l'historique entier.
+//
+// La pagination se fait cote SERVEUR (`limit` / `offset`, deja offerts par
+// l'API) et non avec `usePagination`, qui decoupe un tableau deja charge :
+// telecharger des milliers de lignes pour en montrer vingt-cinq deplacerait
+// simplement le probleme. Seule la barre est partagee avec les autres listes,
+// pour que la commande se manipule pareil partout.
+const sessionsPage = ref(1);
+const sessionsParPage = ref(25);
+const sessionsTotal = ref(0);
+const sessionsPages = computed(() =>
+  Math.max(1, Math.ceil(sessionsTotal.value / sessionsParPage.value)),
+);
 /// La fermeture planifiee vit dans l'evenement communautaire associe au
 /// serveur (Nexus ne stocke pour l'instant que l'heure d'ouverture).
 const plannedStopAt = ref<string | null>(null);
@@ -395,9 +411,33 @@ async function loadLogs() {
 
 async function loadSessions() {
   if (!selectedGuildId.value || !server.value) return;
-  sessions.value = await nexusGamesService
-    .sessions(selectedGuildId.value, server.value.id)
-    .catch(() => []);
+  const page = await nexusGamesService
+    .sessions(selectedGuildId.value, server.value.id, {
+      limit: sessionsParPage.value,
+      offset: (sessionsPage.value - 1) * sessionsParPage.value,
+    })
+    .catch(() => null);
+  // En cas d'echec, on garde la page affichee : la remplacer par du vide
+  // ferait croire a un historique efface.
+  if (!page) return;
+  sessions.value = page.items;
+  sessionsTotal.value = page.total;
+}
+
+// Changer de page ou de taille recharge depuis l'API. Le retour a la premiere
+// page lors d'un changement de taille evite de demander un decalage qui
+// n'existe plus — vingt-cinq par page, page 12, puis cent par page, et l'ecran
+// resterait vide sans rien expliquer.
+function allerALaPageDeSessions(page: number) {
+  if (page < 1 || page > sessionsPages.value) return;
+  sessionsPage.value = page;
+  void loadSessions();
+}
+
+function changerTailleDeSessions(taille: number) {
+  sessionsParPage.value = taille;
+  sessionsPage.value = 1;
+  void loadSessions();
 }
 
 async function sendRcon() {
@@ -1576,6 +1616,15 @@ function fmtDuration(secs: number | null): string {
             </tr>
           </tbody>
         </table>
+        <PaginationBar
+          v-if="sessions.length"
+          :current-page="sessionsPage"
+          :total-pages="sessionsPages"
+          :total-items="sessionsTotal"
+          :per-page="sessionsParPage"
+          @update:current-page="allerALaPageDeSessions($event)"
+          @update:per-page="changerTailleDeSessions($event)"
+        />
       </section>
     </template>
   </AdminPageShell>

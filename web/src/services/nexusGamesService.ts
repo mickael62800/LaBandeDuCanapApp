@@ -209,6 +209,14 @@ export interface PlayerSession {
   duration_seconds: number | null;
 }
 
+/// Une page d'historique, et de quoi savoir ce qu'il y a derriere.
+export interface PageDeSessions {
+  items: PlayerSession[];
+  /// Nombre total de sessions du serveur, toutes pages confondues. Sans lui,
+  /// l'ecran ne peut annoncer ni son nombre de pages ni son total.
+  total: number;
+}
+
 export const nexusGamesService = {
   /** GET /api/games/{guild}/servers */
   listServers(guildId: string): Promise<GameServer[]> {
@@ -477,9 +485,20 @@ export const nexusGamesService = {
   },
 
   /** GET /api/games/servers/{id}/sessions — historique des joueurs. */
-  sessions(guildId: string, serverId: string): Promise<PlayerSession[]> {
-    return nexusGet<PlayerSession[]>(
-      `/api/games/servers/${encodeURIComponent(serverId)}/sessions`,
+  sessions(
+    guildId: string,
+    serverId: string,
+    options: { limit?: number; offset?: number } = {},
+  ): Promise<PageDeSessions> {
+    // L'historique n'est jamais purge : sans bornes, l'ecran demandait tout et
+    // n'en affichait qu'un debut arbitraire. On demande donc une page, et le
+    // total qui l'accompagne dit ce qu'il reste derriere.
+    const parametres = new URLSearchParams();
+    if (options.limit !== undefined) parametres.set("limit", String(options.limit));
+    if (options.offset !== undefined) parametres.set("offset", String(options.offset));
+    const requete = parametres.toString();
+    return nexusGet<PageDeSessions>(
+      `/api/games/servers/${encodeURIComponent(serverId)}/sessions${requete ? `?${requete}` : ""}`,
       guildId,
     );
   },

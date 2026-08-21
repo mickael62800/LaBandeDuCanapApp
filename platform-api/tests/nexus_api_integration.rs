@@ -639,6 +639,9 @@ impl PlayerSessionRepository for DummyPlayerSessionRepo {
     > {
         Ok(vec![])
     }
+    async fn count_history(&self, _: Uuid) -> Result<i64, DomainError> {
+        Ok(0)
+    }
     async fn close_all_active(&self, _: Uuid) -> Result<(), DomainError> {
         Ok(())
     }

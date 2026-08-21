@@ -109,6 +109,16 @@ impl PlayerSessionRepository for PgPlayerSessionRepository {
         Ok(rows.into_iter().map(PlayerSession::from).collect())
     }
 
+    async fn count_history(&self, server_id: Uuid) -> Result<i64, DomainError> {
+        let total: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM game_player_sessions WHERE server_id = $1")
+                .bind(server_id)
+                .fetch_one(&self.pool)
+                .await
+                .map_err(pg_ctx("count_history sessions"))?;
+        Ok(total)
+    }
+
     async fn close_all_active(&self, server_id: Uuid) -> Result<(), DomainError> {
         sqlx::query(
             "UPDATE game_player_sessions SET left_at = NOW() \

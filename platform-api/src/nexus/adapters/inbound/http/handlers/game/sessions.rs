@@ -40,16 +40,32 @@ impl From<PlayerSession> for PlayerSessionDto {
     }
 }
 
+/// Une page d'historique, et de quoi savoir ce qu'il y a derriere.
+///
+/// La reponse etait une simple liste : l'ecran ne pouvait donc afficher ni le
+/// nombre de pages, ni le total. Il montrait les cent dernieres sessions en
+/// laissant croire que c'etait tout l'historique.
+#[derive(Debug, Serialize)]
+pub struct PageDeSessions {
+    pub items: Vec<PlayerSessionDto>,
+    /// Nombre total de sessions du serveur, toutes pages confondues.
+    pub total: i64,
+}
+
 pub async fn list_sessions(
     State(state): State<AppState>,
     Path(server_id): Path<Uuid>,
     Query(q): Query<SessionsQuery>,
-) -> Result<Json<Vec<PlayerSessionDto>>, ApiError> {
+) -> Result<Json<PageDeSessions>, ApiError> {
     let limit = q.limit.unwrap_or(100).clamp(1, 1000);
     let offset = q.offset.unwrap_or(0).max(0);
     let list = state
         .game_session_repo
         .list_history(server_id, limit, offset)
         .await?;
-    Ok(Json(list.into_iter().map(PlayerSessionDto::from).collect()))
+    let total = state.game_session_repo.count_history(server_id).await?;
+    Ok(Json(PageDeSessions {
+        items: list.into_iter().map(PlayerSessionDto::from).collect(),
+        total,
+    }))
 }

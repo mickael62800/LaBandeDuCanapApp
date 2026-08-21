@@ -24,6 +24,14 @@ pub trait PlayerSessionRepository: Send + Sync {
         offset: i64,
     ) -> Result<Vec<PlayerSession>, DomainError>;
 
+    /// Nombre total de sessions d'un serveur, toutes pages confondues.
+    ///
+    /// Sans lui, une liste paginee ne peut annoncer ni son nombre de pages ni
+    /// son total : elle affiche une page en laissant croire qu'il n'y a rien
+    /// derriere. Compter est une requete separee parce que `LIMIT` masque
+    /// justement ce qu'on cherche a savoir.
+    async fn count_history(&self, server_id: Uuid) -> Result<i64, DomainError>;
+
     /// Force-cloture toutes les sessions actives (utilise au stop / crash).
     async fn close_all_active(&self, server_id: Uuid) -> Result<(), DomainError>;
 }

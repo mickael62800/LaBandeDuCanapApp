@@ -124,4 +124,21 @@ mod tests {
         assert!(!ConflictKind::Phishing.fallback_message().is_empty());
         assert!(!ConflictKind::Other.fallback_message().is_empty());
     }
+
+    #[test]
+    fn each_kind_is_distinct() {
+        let kinds = [
+            ConflictKind::Flood,
+            ConflictKind::Toxicity,
+            ConflictKind::Phishing,
+            ConflictKind::Other,
+        ];
+        for (i, kind1) in kinds.iter().enumerate() {
+            for (j, kind2) in kinds.iter().enumerate() {
+                if i != j {
+                    assert_ne!(kind1.describe(), kind2.describe());
+                }
+            }
+        }
+    }
 }

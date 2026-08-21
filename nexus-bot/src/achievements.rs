@@ -504,4 +504,133 @@ mod tests {
         let _cmd = register();
         // CreateCommand created successfully with haut-faits name
     }
+
+    #[test]
+    fn test_module_bot_name_constant() {
+        assert_eq!(MODULE_BOT_NAME, "nexus-achievements");
+    }
+
+    #[test]
+    fn test_image_absolue_with_base_url_and_leading_slash() {
+        std::env::set_var("WEB_FRONT_URL", "https://example.com");
+        assert_eq!(
+            image_absolue("/path/to/image.png"),
+            Some("https://example.com/path/to/image.png".into())
+        );
+        std::env::remove_var("WEB_FRONT_URL");
+    }
+
+    #[test]
+    fn test_image_absolue_with_base_url_no_leading_slash() {
+        std::env::set_var("WEB_FRONT_URL", "https://example.com");
+        assert_eq!(
+            image_absolue("path/to/image.png"),
+            Some("https://example.com/path/to/image.png".into())
+        );
+        std::env::remove_var("WEB_FRONT_URL");
+    }
+
+    #[test]
+    fn test_image_absolue_https_already_absolute() {
+        assert_eq!(
+            image_absolue("https://cdn.example.com/image.png"),
+            Some("https://cdn.example.com/image.png".into())
+        );
+    }
+
+    #[test]
+    fn test_image_absolue_http_already_absolute() {
+        assert_eq!(
+            image_absolue("http://images.example.com/pic.jpg"),
+            Some("http://images.example.com/pic.jpg".into())
+        );
+    }
+
+    #[test]
+    fn test_liste_with_mixed_items() {
+        let items: Vec<AchievementProgress> = vec![
+            AchievementProgress {
+                name: "First".into(),
+                description: "Desc1".into(),
+                icon_url: None,
+                unlocked_at: Some("2026-01-01T00:00:00Z".into()),
+            },
+            AchievementProgress {
+                name: "Second".into(),
+                description: "Desc2".into(),
+                icon_url: None,
+                unlocked_at: Some("2026-01-02T00:00:00Z".into()),
+            },
+        ];
+        let refs: Vec<&AchievementProgress> = items.iter().collect();
+        let res = liste(&refs, "Empty");
+        assert!(res.contains("First"));
+        assert!(res.contains("Second"));
+        assert!(!res.contains("Empty"));
+    }
+
+    #[test]
+    fn test_liste_respects_empty_message() {
+        let items: Vec<&AchievementProgress> = vec![];
+        let res = liste(&items, "No items here");
+        assert_eq!(res, "No items here");
+    }
+
+    #[test]
+    fn test_liste_with_very_long_descriptions() {
+        let items: Vec<AchievementProgress> = vec![
+            AchievementProgress {
+                name: "Test".into(),
+                description: "x".repeat(500).into(),
+                icon_url: None,
+                unlocked_at: Some("2026-01-01T00:00:00Z".into()),
+            }
+        ];
+        let refs: Vec<&AchievementProgress> = items.iter().collect();
+        let res = liste(&refs, "Empty");
+        // Should not be empty even with very long description
+        assert!(!res.is_empty());
+        assert!(res.contains("Test"));
+    }
+
+    #[test]
+    fn test_image_absolue_base_url_with_trailing_slash() {
+        std::env::set_var("WEB_FRONT_URL", "https://example.com/");
+        assert_eq!(
+            image_absolue("/img.png"),
+            Some("https://example.com/img.png".into())
+        );
+        std::env::remove_var("WEB_FRONT_URL");
+    }
+
+    #[test]
+    fn test_image_absolue_base_url_multiple_trailing_slashes() {
+        std::env::set_var("WEB_FRONT_URL", "https://example.com//");
+        // Should handle multiple trailing slashes
+        let result = image_absolue("/img.png");
+        assert!(result.is_some());
+        std::env::remove_var("WEB_FRONT_URL");
+    }
+
+    #[test]
+    fn test_liste_boundary_at_950_chars() {
+        // Test items that approach but don't exceed 950 char limit
+        let items: Vec<AchievementProgress> = vec![
+            AchievementProgress {
+                name: "Achievement".into(),
+                description: "d".repeat(200).into(),
+                icon_url: None,
+                unlocked_at: Some("2026-01-01T00:00:00Z".into()),
+            },
+            AchievementProgress {
+                name: "Second".into(),
+                description: "e".repeat(200).into(),
+                icon_url: None,
+                unlocked_at: Some("2026-01-01T00:00:00Z".into()),
+            },
+        ];
+        let refs: Vec<&AchievementProgress> = items.iter().collect();
+        let res = liste(&refs, "Empty");
+        assert!(res.contains("Achievement"));
+    }
 }

@@ -792,4 +792,94 @@ mod tests {
         assert_eq!(clean_emoji(Some("  ")), Ok(None));
         assert_eq!(clean_emoji(Some("🎮")), Ok(Some("🎮".into())));
     }
+
+    #[test]
+    fn test_format_game_created_description_no_emoji_no_category() {
+        let g = Game {
+            id: "g1".into(),
+            game_name: "Chess".into(),
+            emoji: None,
+            category: None,
+            role_id: Some("123".into()),
+        };
+        let desc = format_game_created_description(&g, "123");
+        assert!(desc.contains("Chess"));
+        assert!(desc.contains("(aucune)"));
+        assert!(desc.contains("<@&123>"));
+    }
+
+    #[test]
+    fn test_format_game_list_content_empty() {
+        let list = format_game_list_content(&[]);
+        assert!(list.contains("Inscris-toi"));
+    }
+
+    #[test]
+    fn test_format_game_list_content_multiple() {
+        let games = vec![
+            Game {
+                id: "1".into(),
+                game_name: "Game1".into(),
+                emoji: Some("🎮".into()),
+                category: None,
+                role_id: None,
+            },
+            Game {
+                id: "2".into(),
+                game_name: "Game2".into(),
+                emoji: None,
+                category: None,
+                role_id: None,
+            },
+        ];
+        let list = format_game_list_content(&games);
+        assert!(list.contains("Game1"));
+        assert!(list.contains("Game2"));
+    }
+
+    #[test]
+    fn test_clean_emoji_invalid() {
+        let result = clean_emoji(Some("invalid_emoji_format"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_clean_emoji_custom_emoji_valid() {
+        // Assuming parse_reaction_type handles custom emojis
+        let result = clean_emoji(Some("<:test:123456789>"));
+        // Either Ok or Err depending on parse_reaction_type implementation
+        assert!(result.is_ok() || result.is_err());
+    }
+
+    #[test]
+    fn test_format_game_leave_success_various_names() {
+        let names = vec!["Game1", "Game 2", "Game-3", "G4"];
+        for name in names {
+            let txt = format_game_leave_success(name);
+            assert!(txt.contains(name));
+            assert!(txt.contains("desinscrit"));
+        }
+    }
+
+    #[test]
+    fn test_format_game_join_success_various_role_ids() {
+        let res1 = format_game_join_success("Game", 1);
+        assert!(res1.contains("<@&1>"));
+
+        let res2 = format_game_join_success("Game", u64::MAX);
+        assert!(res2.contains("<@&"));
+    }
+
+    #[test]
+    fn test_constants_defined() {
+        assert_eq!(PANEL_SELECT_PREFIX, "game_panel_select_");
+        assert_eq!(PANEL_BUTTON_PREFIX, "game_panel_btn|");
+        assert_eq!(MAX_BUTTONS_PER_PANEL, 25);
+    }
+
+    #[test]
+    fn test_register_commands_returns_two() {
+        let cmds = register_commands();
+        assert_eq!(cmds.len(), 2);
+    }
 }

@@ -148,7 +148,12 @@ impl ManageGameServersService {
         if template.supports_rcon && cfg.rcon_enabled {
             if let Some(pwd) = &server.rcon_password {
                 let rcon = presence::rcon_env(&template.slug);
-                env.insert(rcon.enable_key.to_string(), "true".to_string());
+                // Certaines images (ARK) ouvrent RCON d'elles-memes et n'ont
+                // aucune variable d'activation : en inventer une ne ferait
+                // qu'ajouter au conteneur un reglage que rien ne lit.
+                if let Some(cle) = rcon.enable_key {
+                    env.insert(cle.to_string(), "true".to_string());
+                }
                 env.insert(rcon.password_key.to_string(), pwd.clone());
                 env.insert(
                     rcon.port_key.to_string(),

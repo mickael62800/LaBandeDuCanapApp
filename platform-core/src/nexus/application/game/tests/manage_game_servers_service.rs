@@ -235,6 +235,41 @@ fn un_decalage_nul_publie_le_meme_port_dans_l_autre_protocole() {
 }
 
 #[test]
+fn ark_recoit_son_mot_de_passe_de_console_sans_variable_inventee() {
+    // L'image ARK ouvre RCON d'elle-meme : il n'existe aucune variable
+    // d'activation. En poser une donnerait, dans la configuration du
+    // conteneur, l'apparence d'un reglage qui commande la console alors que
+    // rien ne le lit.
+    let dummy_service = ManageGameServersService {
+        server_repo: Arc::new(DummyServerRepo),
+        template_repo: Arc::new(DummyTemplateRepo),
+        config_repo: Arc::new(DummyConfigRepo),
+        audit_repo: Arc::new(DummyAuditRepo),
+        port_allocator: Arc::new(DummyPortAllocator),
+        container_runtime: Arc::new(DummyContainerRuntime),
+        rcon_client: Arc::new(DummyRconClient),
+        bot_config: Arc::new(DummyBotConfig),
+    };
+
+    let mut tmpl = sample_template("ark", TemplatePortProtocol::Udp, true);
+    tmpl.supports_rcon = true;
+    let mut server = sample_server(Some(25500));
+    server.rcon_port = Some(25700);
+    server.rcon_password = Some("secret-console".to_string());
+
+    let spec = dummy_service.build_spec(&server, &tmpl, &HashMap::new(), &sample_config());
+
+    assert_eq!(
+        spec.env.get("ADMIN_PASSWORD").map(|s| s.as_str()),
+        Some("secret-console")
+    );
+    assert_eq!(spec.env.get("RCON_PORT").map(|s| s.as_str()), Some("25575"));
+    assert!(!spec.env.contains_key("ENABLE_RCON"));
+    assert!(!spec.env.contains_key("RCON_ENABLED"));
+    assert!(!spec.env.contains_key("RCON_PASSWORD"));
+}
+
+#[test]
 fn test_palworld_public_port_and_user_spec() {
     let dummy_service = ManageGameServersService {
         server_repo: Arc::new(DummyServerRepo),

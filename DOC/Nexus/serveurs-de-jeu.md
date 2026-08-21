@@ -88,6 +88,48 @@ Tout le reste de l'administration d'un serveur Palworld ne passe pas par RCON :
 - **le cycle de vie** (démarrer, arrêter, redémarrer, supprimer) vit sur la fiche du serveur ;
 - **la liste de bannis communautaire** se règle par `BAN_LIST_URL` dans la configuration.
 
+## Compter les joueurs : ce que la console sait dire
+
+Le nombre de joueurs ne s'invente pas, il se demande au jeu par sa console RCON. Trois conditions doivent être réunies avant d'activer ce comptage : l'image doit exposer une console, la variable qui porte son mot de passe doit être connue, et surtout le **format de la réponse** doit être documenté.
+
+**Minecraft, Palworld et désormais ARK** remplissent les trois. ARK ouvre RCON de lui-même, son mot de passe est l'`ADMIN_PASSWORD` déjà réglable à l'écran, et `ListPlayers` répond soit « No Players Connected », soit une liste numérotée avec les identifiants Steam — de quoi relier un joueur à un membre Discord, comme pour Palworld.
+
+Deux candidats ont été écartés après vérification. **Factorio** ne prend pas son mot de passe RCON par une variable mais par un fichier (`config/rconpw`), et le format de réponse de `/players online` n'est documenté nulle part : le deviner reviendrait à compter zéro joueur sur un serveur plein. **7 Days to Die** parle telnet, pas le protocole RCON de Valve — le client de la plateforme ne peut pas s'y connecter du tout.
+
+### « Personne » et « je ne sais pas » ne sont pas la même chose
+
+C'est le défaut de fond qui a été corrigé au passage. Une réponse que le parseur ne comprenait pas — message d'erreur, mise à jour du jeu, console d'un jeu inconnu — donnait une liste vide, donc **zéro joueur**. Ce zéro alimente `last_player_count`, donc l'extinction automatique : un serveur où des gens jouaient s'éteignait, et les journaux ne montraient qu'un comptage ordinaire.
+
+La lecture distingue désormais les deux. Un zéro n'est écrit que lorsque le jeu l'a dit explicitement — l'en-tête du tableau pour Palworld, la phrase « No Players Connected » pour ARK, « players online: » pour Minecraft. Sinon le worker s'abstient et laisse la dernière mesure connue en place, en le signalant dans les journaux.
+
+C'est aussi ce qui rend l'ajout d'un jeu sûr : un format mal deviné se traduit par une abstention, plus par une extinction.
+
+## Les salons compteurs
+
+Deux salons peuvent afficher l'activité de Nexus dans leur nom, comme les compteurs de membres de l'accueil : **« En jeu : 7 »** et **« Serveurs actifs : 2 »**. Ils se configurent dans le module Game Portal ; un salon laissé vide éteint son compteur — il n'y a pas d'interrupteur séparé, qui pourrait être allumé sans rien désigner.
+
+**Pourquoi deux, et pas un seul.** Le nombre de joueurs vient de la console RCON du jeu, que la plateforme ne sait lire que pour Minecraft et Palworld. Partout ailleurs le comptage vaut zéro — non parce que le serveur est vide, mais parce que personne ne sait poser la question. Un compteur de joueurs seul afficherait donc « 0 en jeu » en pleine soirée Valheim. Le compteur de serveurs ne dépend d'aucune console et reste juste pour les quatorze jeux.
+
+Seuls les serveurs **en ligne** sont comptés : un serveur programmé pour le soir même, ou en cours de démarrage, n'accueille personne, et l'afficher annoncerait une soirée qui n'a pas commencé.
+
+**La ressource rare est le quota de renommage**, pas le calcul : Discord n'accepte que deux renommages par salon et par tranche de dix minutes, après quoi la mise à jour est mise en file et le nom reste faux longtemps. Le rafraîchissement a donc lieu toutes les cinq minutes, et surtout n'écrit rien quand le nom ne change pas. Le format est tronqué à cent caractères avant comparaison, sinon chaque passage se croirait obligé de réécrire un nom que Discord raccourcit de son côté.
+
+Si l'API ne répond pas, les compteurs sont laissés tels quels : garder le dernier chiffre connu vaut mieux qu'écrire un zéro qui ferait croire le serveur désert.
+
+### Un troisième compteur : les membres en partie, tous jeux confondus
+
+Les deux premiers lisent l'état des serveurs de la maison. Celui-ci lit l'**activité que Discord publie** pour chaque membre : League of Legends, un solo, n'importe quel jeu. Il reste donc juste quand aucun serveur ne tourne, et il est le seul des trois à voir les jeux qu'on n'héberge pas.
+
+Deux conditions, et l'ordre compte.
+
+**Le bot doit avoir le droit de lire les présences.** C'est un intent *privilégié* : il faut cocher « Presence Intent » dans le portail Discord Developer, **puis** poser `NEXUS_PRESENCE_INTENT=true`. Dans cet ordre — demander l'intent sans l'avoir autorisé fait refuser la connexion, et le bot ne démarre plus du tout. C'est pourquoi l'interrupteur est éteint par défaut et vit dans l'environnement, pas dans le tableau de bord : les intents se décident au démarrage, et activer un compteur en cours de route ne doit pas pouvoir coûter sa connexion au bot.
+
+**Chaque membre doit partager son activité de jeu.** Ceux qui la masquent dans leurs paramètres Discord ne sont jamais comptés, et c'est leur droit : ce compteur mesure un minimum, pas une vérité.
+
+Tant que la première condition n'est pas remplie, le salon n'est pas touché du tout. Afficher « 0 en partie » parce qu'on n'a pas le droit de regarder serait mensonger, et le zéro resterait figé sans que personne comprenne pourquoi.
+
+Seules les activités de type *Playing* comptent : Discord range sous la même étiquette le statut personnalisé, l'écoute Spotify et les flux en direct. Les bots sont exclus — un bot musique « joue » en permanence. Et un membre lancé sur deux jeux ne compte qu'une fois : on compte des personnes, pas des parties.
+
 ## Diagnostiquer un lag
 
 CPU et RAM disent ce que le conteneur **consomme**, pas ce que les joueurs **ressentent** : un serveur peut ramer à 30 % de processeur. Trois mesures répondent à trois questions différentes.

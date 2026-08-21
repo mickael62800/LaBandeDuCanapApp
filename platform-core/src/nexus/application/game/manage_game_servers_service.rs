@@ -1246,7 +1246,15 @@ impl ManageGameServersUseCase for ManageGameServersService {
         // `list`. Interroger avec la mauvaise ne renvoie rien d'exploitable.
         let commande = presence::players_command(&template.slug);
         let brut = self.execute_rcon(id, commande, actor_user_id).await?;
-        Ok(presence::parse_players(&template.slug, &brut))
+        match presence::parse_players(&template.slug, &brut) {
+            presence::LecturePresence::Joueurs(joueurs) => Ok(joueurs),
+            // La console a repondu autre chose que ce qu'on sait lire. Rendre
+            // une liste vide ferait passer l'ignorance pour un serveur
+            // desert ; l'appelant merite de savoir que la lecture a echoue.
+            presence::LecturePresence::Indeterminee => Err(DomainError::Infrastructure(
+                "la console du jeu a renvoye une reponse illisible".into(),
+            )),
+        }
     }
 }
 

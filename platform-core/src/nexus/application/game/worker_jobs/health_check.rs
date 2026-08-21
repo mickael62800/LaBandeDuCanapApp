@@ -86,7 +86,23 @@ pub async fn run_health_check(ctx: &JobContext) -> Result<JobReport, DomainError
         {
             warn!(%error, server_id = %server.id, "mesures de reactivite non enregistrees");
         }
-        let presents = presence::parse_players(&slug, &resp.raw);
+        // Une reponse que le parseur ne reconnait pas ne vaut PAS zero joueur.
+        // Ecrire ce zero alimenterait `last_player_count`, donc l'extinction
+        // automatique : le serveur ou des gens jouent s'eteindrait, et le
+        // journal ne montrerait qu'un comptage ordinaire. On passe au suivant
+        // en laissant la derniere mesure connue en place.
+        let presents = match presence::parse_players(&slug, &resp.raw) {
+            presence::LecturePresence::Joueurs(joueurs) => joueurs,
+            presence::LecturePresence::Indeterminee => {
+                warn!(
+                    server_id = %server.id,
+                    jeu = %slug,
+                    "console illisible : comptage laisse inchange"
+                );
+                errors += 1;
+                continue;
+            }
+        };
         let count = presents.len() as i32;
         let players: Vec<String> = presents.into_iter().map(|p| p.name).collect();
 

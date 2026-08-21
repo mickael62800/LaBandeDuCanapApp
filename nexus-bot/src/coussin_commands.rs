@@ -756,6 +756,9 @@ mod tests {
         );
         assert_eq!(parse_coussin_challenge_button("invalid"), None);
         assert_eq!(parse_coussin_challenge_button("c:a:1"), None);
+        assert_eq!(parse_coussin_challenge_button(""), None);
+        assert_eq!(parse_coussin_challenge_button("c:::"), None);
+        assert_eq!(parse_coussin_challenge_button("x:a:1:2:3"), None);
     }
 
     #[test]

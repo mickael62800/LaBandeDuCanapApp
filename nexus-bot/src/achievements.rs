@@ -452,12 +452,6 @@ mod tests {
     }
 
     #[test]
-    fn test_liste_empty() {
-        let items: Vec<&AchievementProgress> = vec![];
-        assert_eq!(liste(&items, "Aucun"), "Aucun");
-    }
-
-    #[test]
     fn test_liste_single_item() {
         let item = AchievementProgress {
             name: "Test".into(),

@@ -22,8 +22,8 @@ import {
  *     cacherait.
  */
 export function useGameServerMonitoring(
-  guildId: () => string | undefined,
-  serverId: () => string | undefined,
+  guildId: () => string | null | undefined,
+  serverId: () => string | null | undefined,
   isRunning: Ref<boolean>,
 ) {
   registerChartJs();

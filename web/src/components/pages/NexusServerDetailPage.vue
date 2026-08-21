@@ -23,39 +23,18 @@ import {
   nexusGamesService,
   adresseServeur,
   type GameServer,
-  type GameServerStats,
   type GameTemplate,
   type PlayerSession,
 } from "@/services/nexusGamesService";
 import { useTemplateFieldGroups } from "@/composables/useTemplateFieldGroups";
+import { useGameServerMonitoring, volume, debit } from "@/composables/useGameServerMonitoring";
+import { useGameServerSchedule, useGameServerAlerts } from "@/composables/useGameServerSchedule";
 import GameConfigField from "../molecules/GameConfigField.vue";
 import PaginationBar from "../molecules/PaginationBar.vue";
 import AdminPageShell from "../layouts/AdminPageShell.vue";
 import GameCommandPanel from "../organisms/GameCommandPanel.vue";
 
 import { Line } from 'vue-chartjs'
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler
-} from 'chart.js'
-
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler
-);
 
 const route = useRoute();
 const router = useRouter();
@@ -69,7 +48,6 @@ const serverId = computed(() => String(route.params.id ?? ""));
 const server = ref<GameServer | null>(null);
 const config = ref<Record<string, string>>({});
 const template = ref<GameTemplate | null>(null);
-const stats = ref<GameServerStats | null>(null);
 const logs = ref<string[]>([]);
 const sessions = ref<PlayerSession[]>([]);
 // L'historique des joueurs grossit a chaque connexion et n'est jamais purge :
@@ -115,6 +93,64 @@ type Onglet =
 const onglet = ref<Onglet>("apercu");
 
 const isRunning = computed(() => server.value?.status === "running");
+
+// ── Surveillance : stats en direct + courbes d'historique (délégué au composable) ──
+const {
+  stats,
+  historiqueEnCours,
+  PLAGES,
+  plageChoisie,
+  pasLisible,
+  changerPlage,
+  loadHistorique,
+  chartOptions,
+  chartOptionsAuto,
+  chartOptionsReseau,
+  chartOptionsJoueurs,
+  cpuChartData,
+  ramChartData,
+  netChartData,
+  latencyChartData,
+  playersChartData,
+} = useGameServerMonitoring(
+  () => selectedGuildId.value,
+  () => serverId.value,
+  isRunning,
+);
+
+// ── Plages d'ouverture automatiques (délégué au composable) ──
+const {
+  enabled: scheduleEnabled,
+  timezone: scheduleTimezone,
+  warn: scheduleWarn,
+  ranges: scheduleRanges,
+  disabledRestartKeys: scheduleDisabledKeys,
+  saving: savingSchedule,
+  save: saveSchedule,
+  load: loadSchedule,
+  prochaineOuverture,
+  ajouterPlage,
+  retirerPlage,
+} = useGameServerSchedule(
+  () => selectedGuildId.value,
+  () => serverId.value,
+);
+
+// ── Alertes de supervision (délégué au composable) ──
+const {
+  cpuThreshold,
+  ramThreshold,
+  latencyThreshold,
+  webhookUrl,
+  configured: alertsConfigured,
+  saving: savingAlerts,
+  save: saveAlertSettings,
+  disable: disableAlerts,
+  load: loadAlerts,
+} = useGameServerAlerts(
+  () => selectedGuildId.value,
+  () => serverId.value,
+);
 
 /// Adresse de connexion, disponible des la creation cote administration.
 const adresse = computed(() => (server.value ? adresseServeur(server.value) : null));
@@ -457,134 +493,6 @@ async function sendRcon() {
   }
 }
 
-// ── Statistiques en direct + historique graphique, uniquement quand le serveur tourne ──
-let statsTimer: ReturnType<typeof setInterval> | null = null;
-const cpuHistory = ref<number[]>([]);
-const ramHistory = ref<number[]>([]);
-/// Débits réseau relevés, en Ko/s. Le débit, pas le compteur cumulé : une
-/// courbe de total ne fait que monter et ne montre aucune saturation.
-const netRxHistory = ref<number[]>([]);
-const netTxHistory = ref<number[]>([]);
-/// Temps de réponse du jeu, en ms — la mesure qui suit le lag ressenti.
-const latencyHistory = ref<number[]>([]);
-/// Joueurs connectés au fil du temps. La carte n'affichait qu'un chiffre —
-/// « 0 » — qui ne disait rien de la soirée écoulée.
-const playersHistory = ref<(number | null)[]>([]);
-
-/// Plages proposées. Les serveurs redémarrent chaque nuit : c'est la journée
-/// qui est l'unité d'observation utile, pas la demi-heure.
-const PLAGES = [
-  { libelle: "30 min", secondes: 1800 },
-  { libelle: "2 h", secondes: 7200 },
-  { libelle: "6 h", secondes: 21600 },
-  { libelle: "24 h", secondes: 86400 },
-  { libelle: "7 j", secondes: 604800 },
-] as const;
-const plageChoisie = ref<number>(1800);
-/// Pas réellement appliqué par l'API, affiché à l'écran : elle élargit le pas
-/// quand la demande produirait trop de points, et une courbe dégrossie sans
-/// explication passerait pour une perte de mesures.
-const pasApplique = ref<number>(0);
-const historiqueEnCours = ref(false);
-/// Heure de chaque point, partagée par tous les graphiques : sans axe des
-/// temps, on ne sait pas si un pic date d'une minute ou d'une demi-heure.
-const timeLabels = ref<string[]>([]);
-
-// ── Plages d'ouverture automatiques ──
-//
-// Un serveur de soirée n'a pas à tourner la journée. Les heures sont saisies
-// en heure locale : c'est ce que lit un administrateur, et le fuseau enregistré
-// avec évite le décalage d'une heure aux changements de saison.
-
-const scheduleEnabled = ref(false);
-const scheduleTimezone = ref("Europe/Paris");
-const scheduleWarn = ref(10);
-/// Plages en « HH:MM », plus lisibles à l'écran que des minutes depuis minuit.
-const scheduleRanges = ref<{ start: string; end: string }[]>([]);
-const scheduleNextOpening = ref<string | null>(null);
-const scheduleDisabledKeys = ref<string[]>([]);
-const savingSchedule = ref(false);
-
-function minutesVersHeure(minutes: number): string {
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-}
-
-function heureVersMinutes(valeur: string): number {
-  const [h, m] = valeur.split(":").map(Number);
-  return (h || 0) * 60 + (m || 0);
-}
-
-async function loadSchedule() {
-  if (!selectedGuildId.value || !serverId.value) return;
-  try {
-    const s = await nexusGamesService.getScheduleRanges(selectedGuildId.value, serverId.value);
-    scheduleEnabled.value = s.enabled;
-    scheduleTimezone.value = s.timezone;
-    scheduleWarn.value = s.warn_minutes;
-    scheduleRanges.value = s.ranges.map((r) => ({
-      start: minutesVersHeure(r.start_minute),
-      end: minutesVersHeure(r.end_minute),
-    }));
-    scheduleNextOpening.value = s.next_opening;
-  } catch {
-    // Horaires indisponibles : on garde le formulaire tel quel plutôt que de
-    // le vider sous les yeux de l'administrateur.
-  }
-}
-
-function ajouterPlage() {
-  scheduleRanges.value.push({ start: "19:00", end: "23:00" });
-}
-
-function retirerPlage(index: number) {
-  scheduleRanges.value.splice(index, 1);
-}
-
-async function saveSchedule() {
-  if (!selectedGuildId.value || !serverId.value || savingSchedule.value) return;
-  savingSchedule.value = true;
-  try {
-    const resultat = await nexusGamesService.saveScheduleRanges(
-      selectedGuildId.value,
-      serverId.value,
-      {
-        enabled: scheduleEnabled.value,
-        timezone: scheduleTimezone.value,
-        ranges: scheduleRanges.value.map((r) => ({
-          start_minute: heureVersMinutes(r.start),
-          end_minute: heureVersMinutes(r.end),
-        })),
-        warn_minutes: scheduleWarn.value,
-      },
-    );
-    scheduleNextOpening.value = resultat.next_opening;
-    scheduleDisabledKeys.value = resultat.disabled_restart_keys;
-
-    if (resultat.disabled_restart_keys.length > 0) {
-      // Le redémarrage programmé du jeu n'a de sens que sur un serveur qui
-      // tourne en continu : il rallumerait un conteneur qu'on vient d'éteindre.
-      success(
-        `Horaires enregistrés. Redémarrage automatique du jeu désactivé (${resultat.disabled_restart_keys.join(", ")}) : il ferait double emploi avec les plages.`,
-      );
-    } else {
-      success("Horaires enregistrés.");
-    }
-    await load();
-  } catch (e) {
-    showError(e instanceof Error ? e.message : "Enregistrement impossible");
-  } finally {
-    savingSchedule.value = false;
-  }
-}
-
-const prochaineOuverture = computed(() =>
-  scheduleNextOpening.value
-    ? new Date(scheduleNextOpening.value).toLocaleString("fr-FR")
-    : null,
-);
-
 // ── Ressources allouées ──
 //
 // Docker fige mémoire et processeur à la CRÉATION du conteneur : les changer
@@ -632,358 +540,12 @@ async function saveResources() {
   }
 }
 
-// ── Alertes de supervision ──
-//
-// Elles vivaient dans le navigateur : seuils et webhook en `localStorage`,
-// vérification à chaque rafraîchissement de la page. Fermer l'onglet arrêtait
-// donc la surveillance — or c'est la nuit, page fermée, qu'un serveur sature.
-//
-// Tout est passé côté serveur. L'URL du webhook est un secret : elle ne
-// revient jamais ici, l'écran sait seulement qu'un webhook est enregistré.
-
-const cpuThreshold = ref<number>(85);
-const ramThreshold = ref<number>(90);
-/// Seuil de temps de réponse : la mesure qui correspond au lag ressenti.
-/// CPU et RAM disent ce que le conteneur consomme, celle-ci ce que les joueurs
-/// subissent — un serveur peut ramer à 30 % de processeur.
-const latencyThreshold = ref<number>(500);
-const webhookUrl = ref<string>("");
-const alertsConfigured = ref(false);
-const savingAlerts = ref(false);
-
-async function loadAlertSettings() {
-  if (!selectedGuildId.value || !serverId.value) return;
-  try {
-    const settings = await nexusGamesService.getAlertSettings(
-      selectedGuildId.value,
-      serverId.value,
-    );
-    alertsConfigured.value = settings.configured;
-    cpuThreshold.value = settings.cpu_threshold;
-    ramThreshold.value = settings.ram_threshold;
-    latencyThreshold.value = settings.latency_threshold_ms;
-  } catch {
-    // Réglages indisponibles : on garde les valeurs par défaut affichées
-    // plutôt que de vider le formulaire sous les yeux de l'administrateur.
-  }
-}
-
-async function saveAlertSettings() {
-  if (!selectedGuildId.value || !serverId.value || savingAlerts.value) return;
-  savingAlerts.value = true;
-  try {
-    await nexusGamesService.saveAlertSettings(selectedGuildId.value, serverId.value, {
-      // Champ laissé vide = on garde le webhook déjà enregistré.
-      webhook_url: webhookUrl.value.trim() || undefined,
-      cpu_threshold: cpuThreshold.value,
-      ram_threshold: ramThreshold.value,
-      latency_threshold_ms: latencyThreshold.value,
-    });
-    webhookUrl.value = "";
-    success("Alertes enregistrées. La surveillance tourne côté serveur, page fermée comprise.");
-    await loadAlertSettings();
-  } catch (e) {
-    showError(e instanceof Error ? e.message : "Enregistrement impossible");
-  } finally {
-    savingAlerts.value = false;
-  }
-}
-
-async function disableAlerts() {
-  if (!selectedGuildId.value || !serverId.value) return;
-  if (!confirm("Arrêter la surveillance de ce serveur ? Le webhook enregistré sera supprimé.")) {
-    return;
-  }
-  try {
-    await nexusGamesService.deleteAlertSettings(selectedGuildId.value, serverId.value);
-    success("Surveillance arrêtée.");
-    await loadAlertSettings();
-  } catch (e) {
-    showError(e instanceof Error ? e.message : "Arrêt impossible");
-  }
-}
-
-
-async function refreshStats() {
-  if (!selectedGuildId.value || !server.value || !isRunning.value) {
-    stats.value = null;
-    return;
-  }
-  // Les CHIFFRES en tête de carte restent en direct : une valeur instantanée
-  // doit être vive. Les COURBES, elles, viennent de l'historique enregistré
-  // côté serveur — elles ne dépendent donc plus du temps passé sur la page, et
-  // survivent à un rechargement.
-  stats.value = await nexusGamesService
-    .stats(selectedGuildId.value, server.value.id)
-    .catch(() => null);
-}
-
-/// Charge les courbes pour la plage choisie.
-///
-/// Une tranche sans mesure n'est pas tracée à zéro : elle reste vide, et le
-/// trou dit « le serveur était éteint » — ce qu'une ligne au sol cacherait.
-async function loadHistorique() {
-  if (!selectedGuildId.value || !server.value) return;
-  historiqueEnCours.value = true;
-  const historique = await nexusGamesService
-    .perfHistory(selectedGuildId.value, server.value.id, plageChoisie.value)
-    .catch(() => null);
-  historiqueEnCours.value = false;
-  if (!historique) return;
-
-  pasApplique.value = historique.step_secs;
-  const points = historique.points;
-
-  // Sur une journée entière, l'heure seule suffit ; sur trente minutes, il
-  // faut les minutes. Afficher le jour partout rendrait l'axe illisible.
-  const longuePlage = plageChoisie.value > 86400;
-  timeLabels.value = points.map((p) => {
-    const d = new Date(p.horodatage);
-    return longuePlage
-      ? d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" }) +
-          " " +
-          d.toLocaleTimeString("fr-FR", { hour: "2-digit" })
-      : d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
-  });
-
-  const arrondi = (v: number | null, facteur = 10) =>
-    v === null ? null : Math.round(v * facteur) / facteur;
-
-  cpuHistory.value = points.map((p) => arrondi(p.cpu_percent)) as number[];
-  ramHistory.value = points.map((p) =>
-    p.memory_used_mb === null || !p.memory_limit_mb
-      ? null
-      : Math.round((p.memory_used_mb / p.memory_limit_mb) * 1000) / 10,
-  ) as number[];
-  netRxHistory.value = points.map((p) =>
-    p.net_rx_bytes_per_sec === null ? null : arrondi(p.net_rx_bytes_per_sec / 1024),
-  ) as number[];
-  netTxHistory.value = points.map((p) =>
-    p.net_tx_bytes_per_sec === null ? null : arrondi(p.net_tx_bytes_per_sec / 1024),
-  ) as number[];
-  latencyHistory.value = points.map((p) => p.rcon_latency_ms) as number[];
-  playersHistory.value = points.map((p) => p.player_count);
-}
-
-function changerPlage(secondes: number) {
-  plageChoisie.value = secondes;
-  void loadHistorique();
-}
-
-/// Libellé du pas appliqué, pour que l'écran dise à quoi correspond un point.
-const pasLisible = computed(() => {
-  const s = pasApplique.value;
-  if (!s) return "";
-  if (s >= 3600) return `${Math.round(s / 3600)} h`;
-  if (s >= 60) return `${Math.round(s / 60)} min`;
-  return `${s} s`;
-});
-
-/// Axe des temps commun. Les étiquettes sont espacées automatiquement par
-/// Chart.js (`autoSkip`) : les afficher toutes rendrait l'axe illisible sur
-/// une carte étroite.
-const axeTemps = {
-  display: true,
-  grid: { display: false },
-  ticks: {
-    color: "rgba(255, 255, 255, 0.45)",
-    maxRotation: 0,
-    autoSkip: true,
-    maxTicksLimit: 4,
-    font: { size: 9 },
-  },
-};
-
-/// Options des graphes en POURCENTAGE : l'échelle 0-100 est fixe, sinon une
-/// variation de 2 % remplirait la carte et ferait croire à une saturation.
-const chartOptions = {
-  responsive: true,
-  maintainAspectRatio: false,
-  animation: { duration: 0 },
-  scales: {
-    y: {
-      min: 0,
-      max: 100,
-      grid: { color: "rgba(255, 255, 255, 0.1)" },
-      ticks: { color: "rgba(255, 255, 255, 0.5)" },
-    },
-    x: axeTemps,
-  },
-  plugins: { legend: { display: false } },
-  elements: { point: { radius: 0 } },
-};
-
-/// Options des graphes SANS plafond connu — débit, temps de réponse. L'échelle
-/// s'adapte aux valeurs : imposer un maximum arbitraire écraserait la courbe
-/// ou masquerait un pic.
-const chartOptionsAuto = {
-  responsive: true,
-  maintainAspectRatio: false,
-  animation: { duration: 0 },
-  scales: {
-    y: {
-      min: 0,
-      grid: { color: "rgba(255, 255, 255, 0.1)" },
-      ticks: { color: "rgba(255, 255, 255, 0.5)", maxTicksLimit: 5 },
-    },
-    x: axeTemps,
-  },
-  plugins: { legend: { display: false } },
-  elements: { point: { radius: 0 } },
-};
-
-/// Mêmes options, mais avec la légende : le graphe réseau porte deux courbes,
-/// et sans légende on ne sait pas laquelle est le trafic reçu.
-const chartOptionsReseau = {
-  ...chartOptionsAuto,
-  plugins: {
-    legend: {
-      display: true,
-      labels: { color: "rgba(255, 255, 255, 0.6)", boxWidth: 10, font: { size: 10 } },
-    },
-  },
-};
-
-const cpuChartData = computed(() => {
-  return {
-    labels: [...timeLabels.value],
-    datasets: [
-      {
-        label: 'CPU (%)',
-        backgroundColor: 'rgba(52, 152, 219, 0.2)',
-        borderColor: '#3498db',
-        data: [...cpuHistory.value],
-        fill: true,
-        tension: 0.4,
-        borderWidth: 2,
-      }
-    ]
-  };
-});
-
-const ramChartData = computed(() => {
-  return {
-    labels: [...timeLabels.value],
-    datasets: [
-      {
-        label: 'RAM (%)',
-        backgroundColor: 'rgba(241, 196, 15, 0.2)',
-        borderColor: '#f1c40f',
-        data: [...ramHistory.value],
-        fill: true,
-        tension: 0.4,
-        borderWidth: 2,
-      }
-    ]
-  };
-});
-
-/// Deux courbes sur le même graphe : reçu et envoyé se lisent l'un par rapport
-/// à l'autre. Un serveur de jeu émet bien plus qu'il ne reçoit — c'est l'écart
-/// entre les deux qui signale une saturation en émission.
-const netChartData = computed(() => ({
-  labels: [...timeLabels.value],
-  datasets: [
-    {
-      label: "Reçu (Ko/s)",
-      backgroundColor: "rgba(46, 204, 113, 0.15)",
-      borderColor: "#2ecc71",
-      data: [...netRxHistory.value],
-      fill: true,
-      tension: 0.4,
-      borderWidth: 2,
-    },
-    {
-      label: "Envoyé (Ko/s)",
-      backgroundColor: "rgba(155, 89, 182, 0.15)",
-      borderColor: "#9b59b6",
-      data: [...netTxHistory.value],
-      fill: true,
-      tension: 0.4,
-      borderWidth: 2,
-    },
-  ],
-}));
-
-const latencyChartData = computed(() => ({
-  labels: [...timeLabels.value],
-  datasets: [
-    {
-      label: "Temps de réponse (ms)",
-      backgroundColor: "rgba(241, 196, 15, 0.15)",
-      borderColor: "#f1c40f",
-      data: [...latencyHistory.value],
-      fill: true,
-      tension: 0.4,
-      borderWidth: 2,
-    },
-  ],
-}));
-
-/// Totaux échangés depuis le démarrage du conteneur.
-///
-/// Joueurs connectés au fil du temps.
-///
-/// Remplace la carte qui n'affichait qu'un chiffre — « 0 » — sans rien dire de
-/// la soirée écoulée. C'est pourtant la courbe la plus parlante du lot : elle
-/// dit quand le serveur est utilisé, et à quelle heure il ne l'est plus.
-///
-/// `spanGaps: false` laisse les trous visibles : une tranche sans mesure est un
-/// serveur éteint, pas un serveur désert.
-const playersChartData = computed(() => ({
-  labels: [...timeLabels.value],
-  datasets: [
-    {
-      label: "Joueurs",
-      backgroundColor: "rgba(52, 152, 219, 0.2)",
-      borderColor: "#3498db",
-      data: [...playersHistory.value],
-      fill: true,
-      tension: 0.3,
-      borderWidth: 2,
-      spanGaps: false,
-    },
-  ],
-}));
-
-/// Échelle entière : un demi-joueur n'existe pas, et Chart.js graduerait
-/// volontiers en 0,5 sur un serveur qui n'en a jamais plus de deux.
-const chartOptionsJoueurs = computed(() => ({
-  ...chartOptionsAuto,
-  scales: {
-    ...chartOptionsAuto.scales,
-    y: {
-      ...chartOptionsAuto.scales.y,
-      beginAtZero: true,
-      ticks: { ...chartOptionsAuto.scales.y.ticks, precision: 0, stepSize: 1 },
-    },
-  },
-}));
-
-function syncStatsTimer() {
-  if (statsTimer) {
-    clearInterval(statsTimer);
-    statsTimer = null;
-  }
-  if (isRunning.value) {
-    void refreshStats();
-    statsTimer = setInterval(refreshStats, 5000);
-  } else {
-    stats.value = null;
-    cpuHistory.value = [];
-    ramHistory.value = [];
-  }
-}
-
-watch(isRunning, syncStatsTimer, { immediate: true });
-onUnmounted(() => statsTimer && clearInterval(statsTimer));
-
 watch(
   [selectedGuildId, serverId],
   () => {
     void load().then(resetResourceInputs);
     // Les seuils vivent cote serveur : on les relit avec la fiche.
-    void loadAlertSettings();
+    void loadAlerts();
     void loadSchedule();
   },
   { immediate: true },
@@ -998,26 +560,6 @@ watch(onglet, (o) => {
 
 /// Mêmes sections, même ordre et mêmes contrôles que le formulaire de création.
 const groupesConfig = useTemplateFieldGroups(computed(() => template.value?.config_schema));
-
-/**
- * Rend un volume d'octets lisible : 2 300 000 000 ne se lit pas, « 2,14 Go »
- * oui.
- */
-function volume(octets: number | null | undefined): string {
-  const v = Number(octets) || 0;
-  if (v < 1024) return `${v} o`;
-  if (v < 1024 * 1024) return `${(v / 1024).toFixed(1)} Ko`;
-  if (v < 1024 * 1024 * 1024) return `${(v / (1024 * 1024)).toFixed(1)} Mo`;
-  return `${(v / (1024 * 1024 * 1024)).toFixed(2)} Go`;
-}
-
-/** Rend un débit lisible : 2 300 000 o/s ne se lit pas, « 2,19 Mo/s » oui. */
-function debit(octetsParSeconde: number): string {
-  const v = Number(octetsParSeconde) || 0;
-  if (v < 1024) return `${v} o/s`;
-  if (v < 1024 * 1024) return `${(v / 1024).toFixed(1)} Ko/s`;
-  return `${(v / (1024 * 1024)).toFixed(2)} Mo/s`;
-}
 
 function fmtDate(iso: string | null): string {
   if (!iso) return "—";

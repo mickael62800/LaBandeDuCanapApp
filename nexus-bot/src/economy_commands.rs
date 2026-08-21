@@ -439,6 +439,180 @@ mod tests {
         assert!(MSG_ROUE_NO_DM.contains("sur un serveur"));
     }
 
+    #[test]
+    fn test_validate_donner_all_error_cases() {
+        let user1 = UserId::new(100);
+        let user2 = UserId::new(200);
+
+        // Self transfer
+        assert_eq!(
+            validate_donner(user1, user1, false),
+            Err("Tu ne peux pas te donner a toi-meme !")
+        );
+
+        // Transfer to bot
+        assert_eq!(
+            validate_donner(user1, user2, true),
+            Err("Tu ne peux pas donner a un bot !")
+        );
+
+        // Valid transfer
+        assert!(validate_donner(user1, user2, false).is_ok());
+    }
+
+    #[test]
+    fn test_format_target_name_all_cases() {
+        let self_id = UserId::new(1);
+        let other_id = UserId::new(2);
+
+        // Self with name
+        assert_eq!(
+            format_target_name(self_id, self_id, "Alice", None),
+            "Alice"
+        );
+
+        // Other with resolved name
+        assert_eq!(
+            format_target_name(other_id, self_id, "Alice", Some("Bob")),
+            "Bob"
+        );
+
+        // Other without resolved name
+        assert_eq!(
+            format_target_name(other_id, self_id, "Alice", None),
+            "<@2>"
+        );
+
+        // Ensure target's own name doesn't override when target != self
+        assert_eq!(
+            format_target_name(other_id, self_id, "Alice", Some("Charlie")),
+            "Charlie"
+        );
+    }
+
+    #[test]
+    fn test_build_transfer_request_payload_all_cases() {
+        let user1 = UserId::new(100);
+        let user2 = UserId::new(200);
+
+        // With reason
+        let req1 = build_transfer_request_payload(user1, "Alice", user2, "Bob", 50, Some("Gift".into()));
+        assert_eq!(req1.from_user_id, "100");
+        assert_eq!(req1.from_username, "Alice");
+        assert_eq!(req1.to_user_id, "200");
+        assert_eq!(req1.to_username, "Bob");
+        assert_eq!(req1.amount, 50);
+        assert_eq!(req1.reason, Some("Gift".into()));
+
+        // Without reason
+        let req2 = build_transfer_request_payload(user1, "Alice", user2, "Bob", 100, None);
+        assert_eq!(req2.reason, None);
+        assert_eq!(req2.amount, 100);
+
+        // Large amount
+        let req3 = build_transfer_request_payload(user1, "Alice", user2, "Bob", 1_000_000, None);
+        assert_eq!(req3.amount, 1_000_000);
+    }
+
+    #[test]
+    fn test_build_wallet_response_embed_success() {
+        let ok = Ok(api_client::WalletResponse {
+            user_id: "u1".into(),
+            coins: 500,
+            total_earned: 1000,
+            total_spent: 500,
+        });
+        let emb = build_wallet_response_embed(&ok, "TestUser");
+        let json = serde_json::to_value(&emb).unwrap();
+        assert!(json["title"].as_str().unwrap().contains("TestUser"));
+    }
+
+    #[test]
+    fn test_build_wallet_response_embed_error() {
+        let err: Result<api_client::WalletResponse, String> = Err("API Error".into());
+        let emb = build_wallet_response_embed(&err, "TestUser");
+        let json = serde_json::to_value(&emb).unwrap();
+        assert_eq!(json["description"], "API Error");
+    }
+
+    #[test]
+    fn test_build_transfer_response_embed_success() {
+        let ok = Ok(api_client::TransferResponse {
+            from_balance: 400,
+            amount: 100,
+        });
+        let emb = build_transfer_response_embed(&ok, 1, 2, Some("Reason"));
+        let json = serde_json::to_value(&emb).unwrap();
+        assert!(json["title"].as_str().unwrap().contains("Don"));
+    }
+
+    #[test]
+    fn test_build_transfer_response_embed_error() {
+        let err: Result<api_client::TransferResponse, String> = Err("Transfer failed".into());
+        let emb = build_transfer_response_embed(&err, 1, 2, None);
+        let json = serde_json::to_value(&emb).unwrap();
+        assert_eq!(json["description"], "Transfer failed");
+    }
+
+    #[test]
+    fn test_build_leaderboard_response_embed_empty() {
+        let ok: Result<Vec<api_client::WalletResponse>, String> = Ok(vec![]);
+        let emb = build_leaderboard_response_embed(&ok);
+        let json = serde_json::to_value(&emb).unwrap();
+        assert!(json["title"].as_str().unwrap().contains("Classement"));
+    }
+
+    #[test]
+    fn test_build_leaderboard_response_embed_error() {
+        let err: Result<Vec<api_client::WalletResponse>, String> = Err("LB Error".into());
+        let emb = build_leaderboard_response_embed(&err);
+        let json = serde_json::to_value(&emb).unwrap();
+        assert_eq!(json["description"], "LB Error");
+    }
+
+    #[test]
+    fn test_build_spin_response_embed_success() {
+        let ok = Ok(api_client::WheelSpinResponse {
+            case_label: "Jackpot".into(),
+            payout: 500,
+            balance_after: 1500,
+            is_memorable: true,
+        });
+        let emb = build_spin_response_embed(&ok, "Player");
+        let json = serde_json::to_value(&emb).unwrap();
+        assert!(json["title"].as_str().unwrap().contains("Player"));
+    }
+
+    #[test]
+    fn test_build_spin_response_embed_error() {
+        let err: Result<api_client::WheelSpinResponse, String> = Err("Spin failed".into());
+        let emb = build_spin_response_embed(&err, "Player");
+        let json = serde_json::to_value(&emb).unwrap();
+        assert_eq!(json["description"], "Spin failed");
+    }
+
+    #[test]
+    fn test_error_message_ephemeral() {
+        let msg = build_error_message("Critical error");
+        let json = serde_json::to_value(&msg).unwrap();
+        assert!(json["data"]["flags"].as_u64().is_some() || json["data"]["flags"].as_i64().is_some());
+    }
+
+    #[test]
+    fn test_embed_followup_structure() {
+        let wallet = api_client::WalletResponse {
+            user_id: "u1".into(),
+            coins: 500,
+            total_earned: 1000,
+            total_spent: 500,
+        };
+        let emb = build_wallet_response_embed(&Ok(wallet), "User");
+        let followup = build_embed_followup(emb);
+        let json = serde_json::to_value(&followup).unwrap();
+        assert!(json["embeds"].as_array().is_some());
+    }
+
+
     #[tokio::test]
     async fn test_execute_economy_actions() {
         use tokio::net::TcpListener;

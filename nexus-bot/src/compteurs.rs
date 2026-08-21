@@ -432,4 +432,183 @@ mod tests {
         let nom = nom_du_salon(&format, 3).unwrap();
         assert_eq!(nom.chars().count(), 100);
     }
+
+    #[test]
+    fn intent_presence_test_defaults_to_false() {
+        std::env::remove_var("NEXUS_PRESENCE_INTENT");
+        assert!(!intent_presence_demande());
+    }
+
+    #[test]
+    fn intent_presence_true_values() {
+        for val in &["1", "true", "TRUE", "yes", "YES", "oui", "OUI"] {
+            std::env::set_var("NEXUS_PRESENCE_INTENT", val);
+            assert!(intent_presence_demande(), "Failed for value: {}", val);
+        }
+        std::env::remove_var("NEXUS_PRESENCE_INTENT");
+    }
+
+    #[test]
+    fn intent_presence_false_values() {
+        for val in &["0", "false", "no", "random", ""] {
+            std::env::set_var("NEXUS_PRESENCE_INTENT", val);
+            assert!(!intent_presence_demande(), "Failed for value: {}", val);
+        }
+        std::env::remove_var("NEXUS_PRESENCE_INTENT");
+    }
+
+    #[test]
+    fn intent_presence_with_whitespace() {
+        std::env::set_var("NEXUS_PRESENCE_INTENT", "  true  ");
+        assert!(intent_presence_demande());
+        std::env::set_var("NEXUS_PRESENCE_INTENT", "  oui  ");
+        assert!(intent_presence_demande());
+        std::env::remove_var("NEXUS_PRESENCE_INTENT");
+    }
+
+    #[test]
+    fn salon_configure_found() {
+        let mut cfg = HashMap::new();
+        cfg.insert("joueurs".into(), "123456789".into());
+        assert_eq!(salon_configure(&cfg, "joueurs"), Some(ChannelId::new(123456789)));
+    }
+
+    #[test]
+    fn salon_configure_not_found() {
+        let cfg = HashMap::new();
+        assert_eq!(salon_configure(&cfg, "joueurs"), None);
+    }
+
+    #[test]
+    fn salon_configure_empty_value() {
+        let mut cfg = HashMap::new();
+        cfg.insert("joueurs".into(), "".into());
+        assert_eq!(salon_configure(&cfg, "joueurs"), None);
+    }
+
+    #[test]
+    fn salon_configure_whitespace_only() {
+        let mut cfg = HashMap::new();
+        cfg.insert("joueurs".into(), "   ".into());
+        assert_eq!(salon_configure(&cfg, "joueurs"), None);
+    }
+
+    #[test]
+    fn salon_configure_with_padding() {
+        let mut cfg = HashMap::new();
+        cfg.insert("joueurs".into(), "  999  ".into());
+        assert_eq!(salon_configure(&cfg, "joueurs"), Some(ChannelId::new(999)));
+    }
+
+    #[test]
+    fn nom_du_salon_zero_joueurs() {
+        assert_eq!(
+            nom_du_salon("🎮 {count}", 0).as_deref(),
+            Some("🎮 0")
+        );
+    }
+
+    #[test]
+    fn nom_du_salon_large_number() {
+        assert_eq!(
+            nom_du_salon("Joueurs: {count}", 123456).as_deref(),
+            Some("Joueurs: 123456")
+        );
+    }
+
+    #[test]
+    fn nom_du_salon_unicode() {
+        assert_eq!(
+            nom_du_salon("🎮 En jeu: {count} 👾", 5).as_deref(),
+            Some("🎮 En jeu: 5 👾")
+        );
+    }
+
+    #[test]
+    fn nom_du_salon_multiple_placeholders() {
+        // Seule la première occurence devrait être remplacée (behavior du replace)
+        assert_eq!(
+            nom_du_salon("{count} / {count}", 3).as_deref(),
+            Some("3 / 3")
+        );
+    }
+
+    #[test]
+    fn relever_no_servers() {
+        let releve = relever(&[]);
+        assert_eq!(releve.joueurs, 0);
+        assert_eq!(releve.serveurs, 0);
+    }
+
+    #[test]
+    fn relever_all_offline() {
+        let releve = relever(&[
+            serveur("stopped", 0),
+            serveur("scheduled", 0),
+            serveur("starting", 0),
+        ]);
+        assert_eq!(releve.joueurs, 0);
+        assert_eq!(releve.serveurs, 0);
+    }
+
+    #[test]
+    fn relever_mixed_running_and_offline() {
+        let releve = relever(&[
+            serveur("running", 10),
+            serveur("running", 20),
+            serveur("stopped", 100),  // Shouldn't count
+            serveur("starting", 50),  // Shouldn't count
+        ]);
+        assert_eq!(releve.joueurs, 30);
+        assert_eq!(releve.serveurs, 2);
+    }
+
+    #[test]
+    fn relever_clamping_zero_for_negative() {
+        let releve = relever(&[
+            serveur("running", -10),
+            serveur("running", -5),
+        ]);
+        assert_eq!(releve.joueurs, 0);
+        assert_eq!(releve.serveurs, 2);
+    }
+
+    #[test]
+    fn est_en_jeu_empty_vec() {
+        assert!(!est_en_jeu(&[]));
+    }
+
+    #[test]
+    fn est_en_jeu_only_playing() {
+        assert!(est_en_jeu(&[ActivityType::Playing]));
+    }
+
+    #[test]
+    fn est_en_jeu_multiple_playing() {
+        assert!(est_en_jeu(&[ActivityType::Playing, ActivityType::Playing, ActivityType::Playing]));
+    }
+
+    #[test]
+    fn est_en_jeu_mixed_with_other_activities() {
+        assert!(est_en_jeu(&[ActivityType::Listening, ActivityType::Playing, ActivityType::Watching]));
+    }
+
+    #[test]
+    fn est_en_jeu_no_playing() {
+        assert!(!est_en_jeu(&[ActivityType::Listening, ActivityType::Watching, ActivityType::Streaming]));
+    }
+
+    #[test]
+    fn releve_default_struct() {
+        let r = Releve::default();
+        assert_eq!(r.joueurs, 0);
+        assert_eq!(r.serveurs, 0);
+    }
+
+    #[test]
+    fn releve_equality() {
+        let r1 = Releve { joueurs: 5, serveurs: 2 };
+        let r2 = Releve { joueurs: 5, serveurs: 2 };
+        assert_eq!(r1, r2);
+    }
 }

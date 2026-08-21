@@ -17,8 +17,8 @@ import {
  * de saison.
  */
 export function useGameServerSchedule(
-  guildId: () => string | undefined,
-  serverId: () => string | undefined,
+  guildId: () => string | null | undefined,
+  serverId: () => string | null | undefined,
 ) {
   const { success, error: showError } = useToast();
 
@@ -135,8 +135,8 @@ export function useGameServerSchedule(
  * sait seulement qu'un webhook est enregistré.
  */
 export function useGameServerAlerts(
-  guildId: () => string | undefined,
-  serverId: () => string | undefined,
+  guildId: () => string | null | undefined,
+  serverId: () => string | null | undefined,
 ) {
   const { success, error: showError } = useToast();
 

@@ -128,6 +128,14 @@ Deux conditions, et l'ordre compte.
 
 Tant que la première condition n'est pas remplie, le salon n'est pas touché du tout. Afficher « 0 en partie » parce qu'on n'a pas le droit de regarder serait mensonger, et le zéro resterait figé sans que personne comprenne pourquoi.
 
+### Un quatrième : jouer ensemble
+
+« En jeu et en vocal » croise les deux informations : une partie en cours **et** une présence dans un salon vocal du serveur. C'est le seul des quatre qui mesure la vie de la communauté plutôt que l'occupation des machines — deux personnes qui jouent chacune dans leur coin comptent pour deux dans « En partie », et pour zéro ici. Il demande le même droit de lecture des présences.
+
+### Le salon doit être vocal
+
+Les quatre compteurs visent un salon **vocal**, et le sélecteur du tableau de bord ne propose que ceux-là. Ce n'est pas une préférence : Discord n'autorise ni espace, ni majuscule, ni deux-points dans le nom d'un salon textuel. « 🎮 En jeu : 7 » y deviendrait « 🎮-en-jeu-7 ». Les compteurs de membres et de connectés en vocal du module Accueil visent un salon vocal pour la même raison.
+
 Seules les activités de type *Playing* comptent : Discord range sous la même étiquette le statut personnalisé, l'écoute Spotify et les flux en direct. Les bots sont exclus — un bot musique « joue » en permanence. Et un membre lancé sur deux jeux ne compte qu'une fois : on compte des personnes, pas des parties.
 
 ## Diagnostiquer un lag

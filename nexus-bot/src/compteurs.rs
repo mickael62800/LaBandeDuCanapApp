@@ -64,6 +64,47 @@ pub struct Releve {
     pub serveurs: i64,
 }
 
+/// Compte les membres qui jouent ET sont en vocal sur ce serveur.
+///
+/// Les autres compteurs disent combien de personnes jouent, ou combien de
+/// machines tournent. Celui-ci dit combien jouent ENSEMBLE : deux personnes qui
+/// jouent chacune dans leur coin comptent pour deux dans « en partie », et pour
+/// zero ici.
+///
+/// Meme reserve que `membres_en_activite` : `None` quand l'information n'est
+/// pas disponible, ce qui n'est pas zero.
+pub fn membres_en_jeu_et_en_vocal(ctx: &Context, guild_id: GuildId) -> Option<i64> {
+    if !intent_presence_demande() {
+        return None;
+    }
+    let guilde = ctx.cache.guild(guild_id)?;
+    let total = guilde
+        .voice_states
+        .iter()
+        // Un etat vocal sans salon, c'est quelqu'un qui vient de raccrocher :
+        // Discord garde l'entree un instant.
+        .filter(|(_, etat)| etat.channel_id.is_some())
+        .filter(|(user_id, _)| {
+            let humain = guilde.members.get(*user_id).map(|m| !m.user.bot);
+            humain.unwrap_or(false)
+                && guilde
+                    .presences
+                    .get(*user_id)
+                    .map(|presence| {
+                        est_en_jeu(
+                            &presence
+                                .activities
+                                .iter()
+                                .map(|a| a.kind)
+                                .collect::<Vec<_>>(),
+                        )
+                    })
+                    .unwrap_or(false)
+        })
+        .count();
+    Some(total as i64)
+}
+
 /// Compte les membres de la guilde qui jouent a QUELQUE CHOSE, serveurs Nexus
 /// compris ou non — c'est l'activite Discord qui fait foi.
 ///
@@ -183,8 +224,30 @@ pub async fn rafraichir(ctx: &Context, api: &ApiClient, guild_id: GuildId) {
     let salon_joueurs = salon_configure(&cfg, "players_counter_channel_id");
     let salon_serveurs = salon_configure(&cfg, "servers_counter_channel_id");
     let salon_activite = salon_configure(&cfg, "activity_counter_channel_id");
-    if salon_joueurs.is_none() && salon_serveurs.is_none() && salon_activite.is_none() {
+    let salon_ensemble = salon_configure(&cfg, "ingame_voice_counter_channel_id");
+    if salon_joueurs.is_none()
+        && salon_serveurs.is_none()
+        && salon_activite.is_none()
+        && salon_ensemble.is_none()
+    {
         return;
+    }
+
+    if let Some(salon) = salon_ensemble {
+        match membres_en_jeu_et_en_vocal(ctx, guild_id) {
+            Some(total) => {
+                if let Some(nom) = nom_du_salon(
+                    &format_configure(&cfg, "ingame_voice_counter_format", "🎧 Ensemble : {count}"),
+                    total,
+                ) {
+                    appliquer(ctx, salon, &nom).await;
+                }
+            }
+            None => tracing::debug!(
+                guild = %guild_id,
+                "compteurs: presence indisponible, compteur « en jeu et en vocal » laisse tel quel"
+            ),
+        }
     }
 
     // Compteur « tous jeux confondus » : il ne depend pas de l'API, seulement

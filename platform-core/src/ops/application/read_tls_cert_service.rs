@@ -26,3 +26,37 @@ impl ReadTlsCertUseCase for ReadTlsCertService {
         self.reader.read().await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct FakeTlsCertReader;
+    #[async_trait]
+    impl TlsCertReader for FakeTlsCertReader {
+        async fn read(&self) -> Result<TlsCertInfo, DomainError> {
+            Ok(TlsCertInfo {
+                domain: "example.com".into(),
+                issuer: "CA".into(),
+                subject: "CN=example.com".into(),
+                not_before: "2024-01-01".into(),
+                not_after: "2025-01-01".into(),
+                days_until_expiry: 365,
+                is_expired: false,
+                is_warning: false,
+            })
+        }
+    }
+
+    #[test]
+    fn service_can_be_created() {
+        let _service = ReadTlsCertService::new(Arc::new(FakeTlsCertReader));
+    }
+
+    #[tokio::test]
+    async fn read_delegates_to_reader() {
+        let service = ReadTlsCertService::new(Arc::new(FakeTlsCertReader));
+        let result = service.read().await;
+        assert!(result.is_ok());
+    }
+}

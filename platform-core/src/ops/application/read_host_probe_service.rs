@@ -26,3 +26,29 @@ impl ReadHostProbeUseCase for ReadHostProbeService {
         self.reader.read(probe).await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct FakeHostProbeReader;
+    #[async_trait]
+    impl HostProbeReader for FakeHostProbeReader {
+        async fn read(&self, _probe: HostProbe) -> Result<serde_json::Value, DomainError> {
+            Ok(serde_json::json!({"cpu": 50}))
+        }
+    }
+
+    #[test]
+    fn service_can_be_created() {
+        let _service = ReadHostProbeService::new(Arc::new(FakeHostProbeReader));
+    }
+
+    #[tokio::test]
+    async fn read_delegates_to_reader() {
+        let service = ReadHostProbeService::new(Arc::new(FakeHostProbeReader));
+        let probe = HostProbe::SshFailures;
+        let result = service.read(probe).await;
+        assert!(result.is_ok());
+    }
+}

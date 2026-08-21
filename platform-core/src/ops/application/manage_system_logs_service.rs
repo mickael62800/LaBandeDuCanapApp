@@ -44,3 +44,70 @@ impl ManageSystemLogsUseCase for ManageSystemLogsService {
         self.repo.delete_by_category(category).await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct FakeLogRepo;
+    #[async_trait]
+    impl LogRepository for FakeLogRepo {
+        async fn save(&self, _entry: &LogEntry) -> Result<(), DomainError> {
+            Ok(())
+        }
+
+        async fn find_all(&self, _limit: i64) -> Result<Vec<LogEntry>, DomainError> {
+            Ok(vec![])
+        }
+
+        async fn find_filtered(
+            &self,
+            _category: Option<&str>,
+            _level: Option<&str>,
+            _guild_id: Option<&str>,
+            _limit: i64,
+        ) -> Result<Vec<LogEntry>, DomainError> {
+            Ok(vec![])
+        }
+
+        async fn delete_by_category(&self, _category: &str) -> Result<u64, DomainError> {
+            Ok(42)
+        }
+
+        async fn delete_older_than_days(&self, _days: i32) -> Result<u64, DomainError> {
+            Ok(0)
+        }
+    }
+
+    #[test]
+    fn service_can_be_created() {
+        let _service = ManageSystemLogsService::new(Arc::new(FakeLogRepo));
+    }
+
+    #[tokio::test]
+    async fn list_logs() {
+        let service = ManageSystemLogsService::new(Arc::new(FakeLogRepo));
+        let filters = SystemLogFilters {
+            category: None,
+            level: None,
+            guild_id: None,
+            limit: 50,
+        };
+        let result = service.list_logs(filters).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn purge_rejects_discord() {
+        let service = ManageSystemLogsService::new(Arc::new(FakeLogRepo));
+        let result = service.purge_category("discord").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn purge_allows_other_categories() {
+        let service = ManageSystemLogsService::new(Arc::new(FakeLogRepo));
+        let result = service.purge_category("app").await;
+        assert!(result.is_ok());
+    }
+}

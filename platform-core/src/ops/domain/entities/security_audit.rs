@@ -88,3 +88,62 @@ pub struct CleanupReport {
     pub successful_logins: CleanupTargetStatus,
     pub manual_bans: CleanupTargetStatus,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cleanup_target_deleted_returns_count() {
+        assert_eq!(CleanupTargetStatus::Deleted(42).deleted(), 42);
+        assert_eq!(CleanupTargetStatus::Deleted(0).deleted(), 0);
+    }
+
+    #[test]
+    fn cleanup_target_skipped_returns_zero() {
+        assert_eq!(CleanupTargetStatus::Skipped.deleted(), 0);
+    }
+
+    #[test]
+    fn cleanup_target_failed_returns_zero() {
+        assert_eq!(CleanupTargetStatus::Failed("error".into()).deleted(), 0);
+    }
+
+    #[test]
+    fn cleanup_target_is_ok() {
+        assert!(CleanupTargetStatus::Deleted(5).is_ok());
+        assert!(CleanupTargetStatus::Skipped.is_ok());
+        assert!(!CleanupTargetStatus::Failed("reason".into()).is_ok());
+    }
+
+    #[test]
+    fn audit_log_entry_can_be_created() {
+        let entry = AuditLogEntry {
+            id: "id".into(),
+            guild_id: "guild".into(),
+            event_type: "docker.start".into(),
+            actor_id: Some("user".into()),
+            actor_name: Some("Alice".into()),
+            target_id: None,
+            target_name: None,
+            details: serde_json::json!({}),
+            created_at: Utc::now(),
+        };
+        assert_eq!(entry.guild_id, "guild");
+        assert_eq!(entry.event_type, "docker.start");
+    }
+
+    #[test]
+    fn cleanup_options_can_be_created() {
+        let opts = CleanupOptions {
+            older_than_days: 30,
+            include_api_logs: true,
+            include_audit_logs: false,
+            include_server_events: true,
+            include_successful_logins: false,
+            include_manual_bans: true,
+        };
+        assert_eq!(opts.older_than_days, 30);
+        assert!(opts.include_api_logs);
+    }
+}

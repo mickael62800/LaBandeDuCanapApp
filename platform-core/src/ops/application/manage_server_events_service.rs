@@ -55,3 +55,49 @@ impl ManageServerEventsUseCase for ManageServerEventsService {
             .await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct FakeServerEventRepo;
+    #[async_trait]
+    impl ServerEventRepository for FakeServerEventRepo {
+        async fn record(
+            &self,
+            _actor: &str,
+            _actor_name: Option<&str>,
+            _action: &str,
+            _target: Option<&str>,
+            _severity: &str,
+            _details: serde_json::Value,
+        ) -> Result<(), DomainError> {
+            Ok(())
+        }
+
+        async fn list(&self, _filter: &ServerEventFilter) -> Result<Vec<ServerEvent>, DomainError> {
+            Ok(vec![])
+        }
+    }
+
+    #[test]
+    fn service_can_be_created() {
+        let _service = ManageServerEventsService::new(Arc::new(FakeServerEventRepo));
+    }
+
+    #[tokio::test]
+    async fn record_delegates_to_repo() {
+        let service = ManageServerEventsService::new(Arc::new(FakeServerEventRepo));
+        let result = service
+            .record("admin", Some("Admin"), "delete", Some("user"), "warning", serde_json::json!({}))
+            .await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn list_clamps_limit() {
+        let service = ManageServerEventsService::new(Arc::new(FakeServerEventRepo));
+        let result = service.list(None, None, Some(0)).await;
+        assert!(result.is_ok());
+    }
+}

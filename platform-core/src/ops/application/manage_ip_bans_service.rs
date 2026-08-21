@@ -116,3 +116,112 @@ impl ManageIpBansUseCase for ManageIpBansService {
         self.fail2ban.read_status().await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct FakeIpBanRepo;
+    #[async_trait]
+    impl IpBanRepository for FakeIpBanRepo {
+        async fn record_manual_ban(
+            &self,
+            _ip: &str,
+            _actor: &str,
+            _reason: Option<&str>,
+        ) -> Result<(), DomainError> {
+            Ok(())
+        }
+
+        async fn mark_unbanned(&self, _ip: &str, _actor: &str) -> Result<(), DomainError> {
+            Ok(())
+        }
+
+        async fn list_active(&self) -> Result<Vec<ManualIpBan>, DomainError> {
+            Ok(vec![])
+        }
+    }
+
+    struct FakeHostBanQueue;
+    #[async_trait]
+    impl HostBanQueue for FakeHostBanQueue {
+        async fn queue_ban(&self, _ip: &str, _reason: Option<&str>) -> Result<(), DomainError> {
+            Ok(())
+        }
+
+        async fn queue_unban(&self, _ip: &str, _reason: Option<&str>) -> Result<(), DomainError> {
+            Ok(())
+        }
+    }
+
+    struct FakeFail2banReader;
+    #[async_trait]
+    impl Fail2banStatusReader for FakeFail2banReader {
+        async fn read_status(&self) -> Result<Option<Fail2banStatus>, DomainError> {
+            Ok(None)
+        }
+    }
+
+    #[test]
+    fn validate_public_ipv4() {
+        assert!(validate_bannable_ip("8.8.8.8").is_ok());
+        assert!(validate_bannable_ip("1.1.1.1").is_ok());
+    }
+
+    #[test]
+    fn validate_rejects_invalid_ip() {
+        assert!(validate_bannable_ip("not.an.ip").is_err());
+        assert!(validate_bannable_ip("999.999.999.999").is_err());
+    }
+
+    #[test]
+    fn validate_rejects_loopback() {
+        assert!(validate_bannable_ip("127.0.0.1").is_err());
+        assert!(validate_bannable_ip("::1").is_err());
+    }
+
+    #[test]
+    fn validate_rejects_private_ipv4() {
+        assert!(validate_bannable_ip("192.168.1.1").is_err());
+        assert!(validate_bannable_ip("10.0.0.1").is_err());
+        assert!(validate_bannable_ip("172.16.0.1").is_err());
+    }
+
+    #[test]
+    fn validate_rejects_multicast() {
+        assert!(validate_bannable_ip("224.0.0.1").is_err());
+    }
+
+    #[tokio::test]
+    async fn ban_validates_ip_first() {
+        let service = ManageIpBansService::new(
+            Arc::new(FakeIpBanRepo),
+            Arc::new(FakeHostBanQueue),
+            Arc::new(FakeFail2banReader),
+        );
+        let result = service.ban("not.an.ip", None, "admin").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn unban_allows_any_valid_ip() {
+        let service = ManageIpBansService::new(
+            Arc::new(FakeIpBanRepo),
+            Arc::new(FakeHostBanQueue),
+            Arc::new(FakeFail2banReader),
+        );
+        let result = service.unban("192.168.1.1", None, "admin").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn list_manual_bans() {
+        let service = ManageIpBansService::new(
+            Arc::new(FakeIpBanRepo),
+            Arc::new(FakeHostBanQueue),
+            Arc::new(FakeFail2banReader),
+        );
+        let result = service.list_manual_bans().await;
+        assert!(result.is_ok());
+    }
+}

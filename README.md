@@ -552,9 +552,9 @@ Le job `coverage` de la CI conserve les rapports en artefacts **même quand une 
 
 La mesure se fait en deux temps (`cargo llvm-cov --no-report`, puis `cargo llvm-cov report`). En une seule commande, un test rouge fait sortir cargo en erreur **avant** la génération du rapport — exactement le moment où l'on en a besoin.
 
-Point de départ mesuré le 21 août 2026, hors tests PostgreSQL : **17,4 % de lignes**, 21,9 % de fonctions. Aucun seuil n'est imposé en CI pour l'instant : un seuil posé au-dessus du réel bloquerait toutes les fusions dès le lendemain. `-Seuil` / `--seuil` existe pour en fixer un quand la couverture aura été remontée là où elle compte.
+Point de départ mesuré le 21 août 2026 : **17,4 % de lignes** côté Rust (hors tests PostgreSQL) et **6,3 %** côté web. Aucun seuil n'est imposé en CI pour l'instant : un seuil posé au-dessus du réel bloquerait toutes les fusions dès le lendemain. `-Seuil` / `--seuil` existe pour en fixer un quand la couverture aura été remontée là où elle compte.
 
-> **Tests web sous Node ≥ 24.** Neuf tests échouent localement avec `localStorage.clear is not a function` : Node expose désormais un `localStorage` natif qui prend le pas sur celui de happy-dom. La CI tourne sous Node 22 et n'est pas touchée. Pour retrouver une suite verte en local, utiliser Node 22 (`nvm use 22`) — sinon la couverture web n'est pas générée, vitest s'arrêtant avant le rapport.
+Les tests web tournent sur le même stockage que le navigateur quelle que soit la version de Node : `src/test/setup.ts` réinstalle `localStorage` et `sessionStorage` du DOM sur `globalThis`. Depuis Node 24, la plateforme en expose une version native qui masque celle de happy-dom et refuse de fonctionner sans `--localstorage-file` — d'où des suites vertes en CI (Node 22) et rouges sur une machine à jour. Un test ne doit pas raconter une histoire différente selon la machine qui le lance.
 
 ---
 

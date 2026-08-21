@@ -52,6 +52,10 @@ export default defineConfig({
     environment: "happy-dom",
     globals: true,
     include: ["src/**/*.{test,spec}.ts"],
+    // Rend le stockage du navigateur utilisable sous Node 24+, dont le
+    // localStorage natif masque celui de happy-dom. Voir le fichier pour le
+    // detail.
+    setupFiles: ["src/test/setup.ts"],
     coverage: {
       provider: "v8",
       // `text` pour la lecture immediate au terminal, `lcov` pour les outils
@@ -73,6 +77,8 @@ export default defineConfig({
         "src/**/*.{test,spec}.ts",
         // Donnees statiques : des tableaux, aucune logique a exercer.
         "src/data/**",
+        // Amorcage des tests : ce n'est pas du code de produit.
+        "src/test/**",
       ],
     },
   },

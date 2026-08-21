@@ -12,6 +12,20 @@ function fichiersSurDisque(): string[] {
   return readdirSync(DOSSIER_IMAGES).filter((f) => /\.(jpe?g|png|webp|gif)$/i.test(f));
 }
 
+/// Le dossier héberge deux familles d'images, et une seule est un catalogue.
+///
+/// Les bannières d'annonce se choisissent dans un sélecteur : elles doivent
+/// toutes y figurer. Les jaquettes d'état d'un serveur de jeu
+/// (`<jeu>_game_attente.jpg`, `<jeu>_game_offline.jpg`) ne se choisissent
+/// jamais : `MemberGameServersPanel` les dérive de la jaquette de base en
+/// suffixant le nom. Les cataloguer remplirait le sélecteur de bannières
+/// « LE SERVEUR EST FERMÉ ! » que personne ne veut poster.
+const VARIANTE_ETAT = /_game_(attente|offline)\.(jpe?g|png|webp|gif)$/i;
+
+function bannieresSurDisque(): string[] {
+  return fichiersSurDisque().filter((f) => !VARIANTE_ETAT.test(f));
+}
+
 describe("catalogue des bannières", () => {
   // Le catalogue est écrit à la main : sans ces deux tests il dérive
   // silencieusement du dossier, et la dérive ne se voit qu'à l'usage —
@@ -24,10 +38,24 @@ describe("catalogue des bannières", () => {
     expect(manquants, "images cataloguées mais absentes du dossier").toEqual([]);
   });
 
-  it("couvre toutes les images du dossier", () => {
+  it("couvre toutes les bannières du dossier", () => {
     const catalogues = new Set(BANNIERES.map((b) => b.fichier));
-    const oubliees = fichiersSurDisque().filter((f) => !catalogues.has(f));
+    const oubliees = bannieresSurDisque().filter((f) => !catalogues.has(f));
     expect(oubliees, "images présentes mais absentes du catalogue").toEqual([]);
+  });
+
+  it("livre les deux jaquettes d'état de chaque jeu catalogué", () => {
+    // Un jeu dont il manque la variante affiche une image cassée dès que son
+    // serveur ferme — c'est-à-dire la plupart du temps. Ce test dit lesquelles
+    // il reste à dessiner quand un jeu entre au catalogue.
+    const surDisque = new Set(fichiersSurDisque());
+    const manquantes = BANNIERES.filter((b) => /_game\.jpg$/i.test(b.fichier))
+      .flatMap((b) => {
+        const base = b.fichier.replace(/\.jpg$/i, "");
+        return [`${base}_attente.jpg`, `${base}_offline.jpg`];
+      })
+      .filter((f) => !surDisque.has(f));
+    expect(manquantes, "jaquettes d'état à créer").toEqual([]);
   });
 
   it("n'a ni fichier ni libellé en double", () => {

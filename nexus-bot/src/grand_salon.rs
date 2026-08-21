@@ -146,4 +146,102 @@ mod tests {
         let res_prof = execute_salon_action(&client, "g1", "u1", "Alice", "profil").await;
         assert!(res_prof.contains("Alice"));
     }
+
+    #[test]
+    fn test_format_profile_all_fields() {
+        let p = crate::api_client::GrandSalonProfileResponse {
+            display_name: "Bob".into(),
+            rayonnement: 100,
+            jetons: 50,
+            reputation: 200,
+            bons_plans: 10,
+            reseau: 5,
+        };
+        let formatted = format_profile(&p);
+        assert!(formatted.contains("Bob"));
+        assert!(formatted.contains("100"));
+        assert!(formatted.contains("50"));
+        assert!(formatted.contains("200"));
+        assert!(formatted.contains("10"));
+        assert!(formatted.contains("5"));
+    }
+
+    #[test]
+    fn test_format_profile_zero_values() {
+        let p = crate::api_client::GrandSalonProfileResponse {
+            display_name: "Charlie".into(),
+            rayonnement: 0,
+            jetons: 0,
+            reputation: 0,
+            bons_plans: 0,
+            reseau: 0,
+        };
+        let formatted = format_profile(&p);
+        assert!(formatted.contains("Charlie"));
+        assert!(formatted.contains("0"));
+    }
+
+    #[test]
+    fn test_extract_salon_action_all_actions() {
+        assert_eq!(extract_salon_action(Some("rejoindre")), "rejoindre");
+        assert_eq!(extract_salon_action(Some("profil")), "profil");
+        assert_eq!(extract_salon_action(None), "profil");
+        assert_eq!(extract_salon_action(Some("")), "");
+    }
+
+    #[test]
+    fn test_build_salon_response_success() {
+        let p = crate::api_client::GrandSalonProfileResponse {
+            display_name: "Test".into(),
+            rayonnement: 1,
+            jetons: 2,
+            reputation: 3,
+            bons_plans: 4,
+            reseau: 5,
+        };
+        let res = build_salon_response(Ok(p));
+        assert!(res.contains("Test"));
+        assert!(res.contains("Rayonnement"));
+    }
+
+    #[test]
+    fn test_build_salon_response_error() {
+        let res = build_salon_response(Err("API Error".into()));
+        assert!(res.contains("API Error"));
+        assert!(res.contains("indisponible"));
+    }
+
+    #[test]
+    fn test_format_salon_error_various() {
+        let err1 = format_salon_error("timeout");
+        assert!(err1.contains("timeout"));
+
+        let err2 = format_salon_error("user not found");
+        assert!(err2.contains("user not found"));
+
+        let err3 = format_salon_error("");
+        assert!(err3.contains("indisponible"));
+    }
+
+    #[test]
+    fn test_build_salon_message() {
+        let msg = build_salon_message("Test message");
+        let json = serde_json::to_value(&msg).unwrap();
+        assert_eq!(json["data"]["content"], "Test message");
+    }
+
+    #[test]
+    fn test_build_salon_message_empty() {
+        let msg = build_salon_message("");
+        let json = serde_json::to_value(&msg).unwrap();
+        assert_eq!(json["data"]["content"], "");
+    }
+
+    #[test]
+    fn test_register_structure() {
+        let cmd = register();
+        let json = serde_json::to_value(&cmd).unwrap();
+        assert_eq!(json["name"], "salon");
+        assert!(json["options"].as_array().unwrap().len() >= 2);
+    }
 }

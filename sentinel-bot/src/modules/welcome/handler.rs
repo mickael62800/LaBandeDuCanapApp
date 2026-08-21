@@ -1043,7 +1043,11 @@ async fn handle_rules_accept(
 // ─────────────────────────────────────────────────────────────────────────
 
 /// Lit la config welcome d'une guild (helper factorise).
-async fn load_welcome_config(
+///
+/// Public depuis que le module securite en a besoin : la porte d'entree est
+/// decrite ici (salon du reglement, role attribue a l'acceptation), et un
+/// diagnostic qui la relirait ailleurs finirait par diverger.
+pub(crate) async fn load_welcome_config(
     ctx: &Context,
     guild_id: GuildId,
 ) -> Option<super::api_client::WelcomeConfig> {

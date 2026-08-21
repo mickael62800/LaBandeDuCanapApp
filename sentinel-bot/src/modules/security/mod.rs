@@ -10,7 +10,9 @@ mod commands;
 pub mod detectors;
 mod join_handler;
 pub mod lockdown_expired_consumer;
+pub mod porte;
 pub mod quarantine_expired_consumer;
+pub mod quarantine_reminder_consumer;
 pub mod raid_suggest_handler;
 pub mod slowmode_expired_consumer;
 
@@ -98,7 +100,10 @@ pub struct SecurityConfig {
     pub slowmode_seconds: u16,
     pub slowmode_duration_secs: u64,
     pub captcha_enabled: bool,
-    pub captcha_timeout_secs: u64,
+    // `captcha_timeout_secs` a disparu d'ici : le delai avant expulsion est
+    // devenu un reglage du SERVEUR (`quarantine_timeout_secs`), lu par l'API.
+    // Le garder en variable d'environnement aurait laisse un bouton
+    // deconnecte : regle, sans effet, et personne pour le dire.
     pub captcha_type: String,
     pub lockdown_enabled: bool,
     pub lockdown_duration_secs: u64,
@@ -118,7 +123,6 @@ impl SecurityConfig {
             slowmode_seconds: load_env("SLOWMODE_SECONDS", 10),
             slowmode_duration_secs: load_env("SLOWMODE_DURATION_SECS", 300),
             captcha_enabled: load_env_bool("CAPTCHA_ENABLED", false),
-            captcha_timeout_secs: load_env("CAPTCHA_TIMEOUT_SECS", 300),
             captcha_type: {
                 let ct = load_env_string("CAPTCHA_TYPE", "button");
                 if ct != "button" && ct != "math" {

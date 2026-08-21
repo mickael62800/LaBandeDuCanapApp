@@ -46,6 +46,24 @@ pub fn register() -> CreateCommand {
             "calm",
             "Leve le verrouillage panique et restaure les permissions",
         ))
+        .add_option(
+            CreateCommandOption::new(
+                CommandOptionType::SubCommand,
+                "porte",
+                "Verifie qui peut voir les membres avant d'avoir accepte le reglement",
+            )
+            .add_sub_option(
+                CreateCommandOption::new(
+                    CommandOptionType::String,
+                    "action",
+                    "Par defaut : simple diagnostic, sans rien modifier",
+                )
+                .add_string_choice("Diagnostic (ne modifie rien)", "diagnostic")
+                .add_string_choice("Verrouiller la porte", "verrouiller")
+                .add_string_choice("Annuler le verrouillage", "deverrouiller")
+                .required(false),
+            ),
+        )
 }
 
 pub async fn handle(ctx: &Context, command: &CommandInteraction) {
@@ -61,6 +79,7 @@ pub async fn handle(ctx: &Context, command: &CommandInteraction) {
         "history" => handle_history(ctx, command).await,
         "panic" => handle_panic(ctx, command).await,
         "calm" => handle_calm(ctx, command).await,
+        "porte" => handle_porte(ctx, command).await,
         _ => {}
     }
 }
@@ -267,6 +286,182 @@ async fn handle_history(ctx: &Context, command: &CommandInteraction) {
             let embed = info_embed("Security — Historique")
                 .description(format!("Erreur lors de la recuperation : {}", e));
             reply_ephemeral_embed(ctx, command, embed).await;
+        }
+    }
+}
+
+/// `/security porte` — qui voit les membres avant d'avoir accepte le reglement.
+///
+/// Sans argument, la commande REGARDE et ne touche a rien : une commande qui
+/// reecrit des permissions Discord doit demander avant, pas apres.
+async fn handle_porte(ctx: &Context, command: &CommandInteraction) {
+    if !has_manage_guild(command) {
+        reply_ephemeral_embed(
+            ctx,
+            command,
+            critical_embed("Permission refusee")
+                .description("La permission MANAGE_GUILD est requise pour toucher a la porte."),
+        )
+        .await;
+        return;
+    }
+    let Some(guild_id) = command.guild_id else {
+        return;
+    };
+
+    let action = command
+        .data
+        .options
+        .first()
+        .and_then(|o| match &o.value {
+            CommandDataOptionValue::SubCommand(opts) => opts.first(),
+            _ => None,
+        })
+        .and_then(|o| o.value.as_str())
+        .unwrap_or("diagnostic");
+
+    let Some(diag) = super::porte::diagnostiquer(ctx, guild_id).await else {
+        reply_ephemeral_embed(
+            ctx,
+            command,
+            critical_embed("Porte d'entree")
+                .description("Configuration d'accueil illisible : l'API ne repond pas."),
+        )
+        .await;
+        return;
+    };
+
+    match action {
+        "verrouiller" => {
+            let (Some(salon), Some(role)) = (diag.salon_reglement, diag.role_valide) else {
+                reply_ephemeral_embed(
+                    ctx,
+                    command,
+                    critical_embed("Rien a verrouiller").description(
+                        "Il faut un salon de reglement ET un role attribue a l'acceptation. \
+                         Configurez-les dans le module Accueil avant de reessayer.",
+                    ),
+                )
+                .await;
+                return;
+            };
+            match super::porte::verrouiller(ctx, salon, role, guild_id).await {
+                Ok(()) => {
+                    reply_ephemeral_embed(
+                        ctx,
+                        command,
+                        success_embed("Porte verrouillee").description(format!(
+                            "Le role des membres valides ne voit plus <#{salon}>.\n\n\
+                             Les arrivants continuent de le voir, et n'y trouvent donc plus que \
+                             le staff et les autres personnes en attente.\n\n\
+                             **Ce que cela ne fait pas :** les messages prives restent possibles. \
+                             Seul l'ecran de regles natif de Discord les bloque{}.\n\n\
+                             Reversible par `/security porte` → Annuler le verrouillage.",
+                            if diag.ecran_natif_actif {
+                                " — il est actif sur ce serveur"
+                            } else {
+                                ", et il est INACTIF ici (parametres du serveur → Communaute)"
+                            }
+                        )),
+                    )
+                    .await;
+                    tracing::info!(guild = %guild_id, salon = %salon, "porte d'entree verrouillee");
+                }
+                Err(error) => {
+                    reply_ephemeral_embed(
+                        ctx,
+                        command,
+                        critical_embed("Verrouillage impossible").description(format!(
+                            "{error}\n\nVerifiez que le bot a la permission de gerer les salons."
+                        )),
+                    )
+                    .await;
+                }
+            }
+        }
+        "deverrouiller" => {
+            let (Some(salon), Some(role)) = (diag.salon_reglement, diag.role_valide) else {
+                return;
+            };
+            match super::porte::deverrouiller(ctx, salon, role).await {
+                Ok(()) => {
+                    reply_ephemeral_embed(
+                        ctx,
+                        command,
+                        success_embed("Verrouillage annule")
+                            .description(format!("Le role des membres valides revoit <#{salon}>.")),
+                    )
+                    .await;
+                }
+                Err(error) => {
+                    reply_ephemeral_embed(
+                        ctx,
+                        command,
+                        critical_embed("Annulation impossible").description(error),
+                    )
+                    .await;
+                }
+            }
+        }
+        _ => {
+            let mut lignes = Vec::new();
+            lignes.push(format!(
+                "**Salon du reglement :** {}",
+                match diag.salon_reglement {
+                    Some(c) => format!("<#{c}>"),
+                    None => "aucun configure".to_string(),
+                }
+            ));
+            lignes.push(format!(
+                "**Role donne a l'acceptation :** {}",
+                match diag.role_valide {
+                    Some(r) => format!("<@&{r}>"),
+                    None => "aucun configure".to_string(),
+                }
+            ));
+            lignes.push(format!(
+                "**Bouton Sentinel :** {}",
+                if diag.bouton_actif {
+                    "actif"
+                } else {
+                    "inactif"
+                }
+            ));
+            lignes.push(String::new());
+            lignes.push(format!(
+                "**Liste des membres :** {}",
+                if diag.valides_voient_le_salon {
+                    "⚠️ les membres valides voient le salon du reglement, donc un arrivant \
+                     y lit la liste de TOUT le serveur et peut ecrire a chacun."
+                } else {
+                    "✅ un arrivant n'y voit que le staff et les autres personnes en attente."
+                }
+            ));
+            lignes.push(format!(
+                "**Messages prives :** {}",
+                if diag.ecran_natif_actif {
+                    "✅ l'ecran de regles natif de Discord est actif : tant qu'un arrivant \
+                     n'a pas accepte, ses messages prives vers les membres echouent."
+                } else {
+                    "⚠️ rien ne les empeche. Aucune permission Discord ne bloque un message \
+                     prive entre membres d'un meme serveur ; seul l'ecran de regles natif \
+                     (Parametres du serveur → Communaute) le fait."
+                }
+            ));
+            if diag.verrouillage_utile() {
+                lignes.push(String::new());
+                lignes.push(
+                    "Relancez avec **Verrouiller la porte** pour corriger le premier point."
+                        .to_string(),
+                );
+            }
+
+            reply_ephemeral_embed(
+                ctx,
+                command,
+                info_embed("\u{1f6aa} Porte d'entree").description(lignes.join("\n")),
+            )
+            .await;
         }
     }
 }

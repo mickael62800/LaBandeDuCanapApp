@@ -4,6 +4,7 @@ use serenity::all::{ComponentInteraction, Context};
 use serenity::model::id::{GuildId, RoleId};
 use tracing::{error, warn};
 
+use super::api_client::ReglementApplique;
 use crate::shared::embeds::{danger_embed, success_embed, warn_embed};
 use crate::shared::heartbeat::ApiClientKey;
 
@@ -174,12 +175,26 @@ pub(super) async fn on_component(ctx: &Context, component: &ComponentInteraction
                         .await
                         .map(|g| g.name)
                         .unwrap_or_else(|_| "le serveur".to_string());
+                    // Lecture SEULE du reglage : reposer la quarantaine
+                    // relancerait le compte a rebours, et un clic sur un
+                    // bouton perime suffirait a rester indefiniment.
+                    // Injoignable : on retombe sur des valeurs plausibles
+                    // plutot que de priver la personne de son captcha.
+                    let reglement = match ctx.data.read().await.get::<super::SecurityApiKey>() {
+                        Some(api) => api
+                            .quarantine_settings(&guild_id.to_string())
+                            .await
+                            .unwrap_or_default(),
+                        None => ReglementApplique::default(),
+                    };
                     captcha::send_math_challenge(
                         ctx,
                         user_id,
                         guild_id,
                         &guild_name,
                         captcha_pending,
+                        reglement.timeout_secs,
+                        reglement.kick_enabled,
                     )
                     .await;
                     let embed = warn_embed("\u{1f504} Nouveau captcha envoye").description(

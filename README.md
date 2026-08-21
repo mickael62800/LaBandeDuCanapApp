@@ -526,6 +526,36 @@ cd web && npm run test                          # Vitest
 
 Couverture principale : services applicatifs et value objects de `platform-core`, middlewares et repositories des APIs, modules des bots, scheduler et agents. Stack de tests dédiée : `infrastructure/docker/docker-compose.test.yml`. CI : `.github/workflows/ci.yml`.
 
+### Mesurer la couverture
+
+```powershell
+.\scripts\coverage.ps1            # Rust + web, résumé au terminal
+.\scripts\coverage.ps1 -Html      # + rapports détaillés, ouverts dans le navigateur
+.\scripts\coverage.ps1 -Rust      # un seul des deux
+.\scripts\coverage.ps1 -Seuil 40  # échoue sous 40 % de lignes couvertes
+```
+
+Sous Linux, macOS ou Git Bash : `./scripts/coverage.sh` avec `--html`, `--rust`, `--web`, `--seuil 40`.
+
+Première utilisation, côté Rust :
+
+```powershell
+rustup component add llvm-tools-preview
+cargo install cargo-llvm-cov --locked
+```
+
+`cargo-llvm-cov` plutôt que `tarpaulin` : il s'appuie sur l'instrumentation de LLVM, identique sur les trois systèmes, alors que tarpaulin s'accommode mal de Windows — le chiffre obtenu localement est donc celui de la CI.
+
+En local, la mesure Rust porte sur `--lib --bins`. Les tests d'intégration qui exigent PostgreSQL sont écartés : sans `DATABASE_URL` ils échouent, et un échec d'environnement ferait passer la couverture pour un problème de code. La CI, elle, dispose d'une base et les inclut — son chiffre est donc plus élevé, et c'est normal.
+
+Le job `coverage` de la CI conserve les rapports en artefacts **même quand une suite échoue** : c'est souvent quand ça casse qu'on veut voir ce qui n'était pas couvert. Il ne bloque pas la fusion — mesurer n'est pas valider, et c'est `rust-check` qui juge.
+
+La mesure se fait en deux temps (`cargo llvm-cov --no-report`, puis `cargo llvm-cov report`). En une seule commande, un test rouge fait sortir cargo en erreur **avant** la génération du rapport — exactement le moment où l'on en a besoin.
+
+Point de départ mesuré le 21 août 2026, hors tests PostgreSQL : **17,4 % de lignes**, 21,9 % de fonctions. Aucun seuil n'est imposé en CI pour l'instant : un seuil posé au-dessus du réel bloquerait toutes les fusions dès le lendemain. `-Seuil` / `--seuil` existe pour en fixer un quand la couverture aura été remontée là où elle compte.
+
+> **Tests web sous Node ≥ 24.** Neuf tests échouent localement avec `localStorage.clear is not a function` : Node expose désormais un `localStorage` natif qui prend le pas sur celui de happy-dom. La CI tourne sous Node 22 et n'est pas touchée. Pour retrouver une suite verte en local, utiliser Node 22 (`nvm use 22`) — sinon la couverture web n'est pas générée, vitest s'arrêtant avant le rapport.
+
 ---
 
 ## Bonnes pratiques du projet

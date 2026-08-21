@@ -125,6 +125,114 @@ jobs:
       - name: Test
         run: npm test
 
+  coverage:
+    name: Couverture — Rust + web
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: sentinel_test
+          POSTGRES_PASSWORD: sentinel_test
+          POSTGRES_DB: sentinel_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U sentinel_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://sentinel_test:sentinel_test@localhost:5433/sentinel_test
+      REDIS_URL: redis://localhost:6380
+      # La couverture compile tout avec instrumentation : les avertissements
+      # ne doivent pas faire echouer un job dont le but est de MESURER.
+      # `rust-check` reste le juge du zero avertissement.
+      RUSTFLAGS: ""
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Install protoc
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Cache cargo registry + target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-coverage-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-coverage-
+
+      # Deux temps : `--no-report` execute les tests, `report` met en forme.
+      # En une seule commande, un test rouge fait sortir cargo en erreur AVANT
+      # le rapport — or c'est justement quand ca casse qu'on veut voir ce qui
+      # n'etait pas couvert. `continue-on-error` porte donc sur l'execution
+      # seule ; `rust-check` reste le juge des tests.
+      - name: Executer les tests sous instrumentation
+        continue-on-error: true
+        run: cargo llvm-cov --no-report --workspace --no-fail-fast
+
+      - name: Rapport de couverture Rust
+        run: >-
+          cargo llvm-cov report
+          --ignore-filename-regex '(tests?/|_test\.rs|/target/)'
+          --lcov --output-path coverage-rust.lcov
+
+      - name: Resume Rust dans le compte rendu du job
+        if: always()
+        run: |
+          echo '## Couverture Rust' >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cargo llvm-cov report --summary-only             --ignore-filename-regex '(tests?/|_test\.rs|/target/)'             >> $GITHUB_STEP_SUMMARY 2>&1 || true
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install web
+        working-directory: web
+        run: npm ci
+
+      - name: Couverture web
+        working-directory: web
+        run: npm run test:coverage
+
+      # Les rapports sont conserves meme quand une suite echoue : sans eux, il
+      # faudrait relancer le job pour savoir ce qui n'est pas couvert.
+      - name: Conserver les rapports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: couverture
+          path: |
+            coverage-rust.lcov
+            web/coverage/
+          retention-days: 14
+
   docker-build:
     name: Docker — build images (no push)
     runs-on: ubuntu-latest

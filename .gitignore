@@ -48,3 +48,8 @@ coverage-html/
 **/coverage*.json
 **/coverage*.txt
 **/coverage_report.txt
+# Rapports produits par `scripts/coverage.ps1` / `.sh`. Ils se regenerent, et
+# un rapport commite serait perime des le commit suivant.
+coverage-rust.lcov
+**/*.profraw
+web/coverage/

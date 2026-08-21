@@ -52,5 +52,28 @@ export default defineConfig({
     environment: "happy-dom",
     globals: true,
     include: ["src/**/*.{test,spec}.ts"],
+    coverage: {
+      provider: "v8",
+      // `text` pour la lecture immediate au terminal, `lcov` pour les outils
+      // (VS Code, CI), `json-summary` parce que c'est ce que lit le script de
+      // seuil sans avoir a interpreter un rapport HTML.
+      reporter: ["text", "lcov", "json-summary"],
+      reportsDirectory: "coverage",
+      // Sans `all`, seuls les fichiers DEJA importes par un test comptent :
+      // un module que personne ne teste disparait du rapport, et la couverture
+      // parait excellente parce qu'on ne regarde que ce qui est teste.
+      all: true,
+      include: ["src/**/*.{ts,vue}"],
+      exclude: [
+        // Points d'entree et declarations : rien a y couvrir.
+        "src/main.ts",
+        "src/**/*.d.ts",
+        "src/**/index.ts",
+        // Les tests eux-memes ne sont pas le sujet de la mesure.
+        "src/**/*.{test,spec}.ts",
+        // Donnees statiques : des tableaux, aucune logique a exercer.
+        "src/data/**",
+      ],
+    },
   },
 });

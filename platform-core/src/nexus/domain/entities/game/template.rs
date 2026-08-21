@@ -411,4 +411,30 @@ mod tests {
         assert!(t.validate_config_value("PVP", "false").is_ok());
         assert!(t.validate_config_value("PVP", "yes").is_err());
     }
+
+    #[test]
+    fn test_port_protocol_conversions() {
+        assert_eq!(PortProtocol::from_str("udp"), PortProtocol::Udp);
+        assert_eq!(PortProtocol::from_str("tcp"), PortProtocol::Tcp);
+        assert_eq!(PortProtocol::from_str("unknown"), PortProtocol::Tcp);
+        assert_eq!(PortProtocol::Udp.as_str(), "udp");
+        assert_eq!(PortProtocol::Tcp.as_str(), "tcp");
+    }
+
+    #[test]
+    fn test_validate_memory_limits() {
+        let t = tmpl(vec![]);
+        assert!(t.validate_memory(1024).is_ok());
+        assert!(t.validate_memory(512).is_ok());
+        assert!(t.validate_memory(4096).is_ok());
+        assert!(t.validate_memory(511).is_err());
+        assert!(t.validate_memory(4097).is_err());
+    }
+
+    #[test]
+    fn test_validate_config_value_number_no_bounds() {
+        let f = field("PORT", ConfigFieldType::Number);
+        let t = tmpl(vec![f]);
+        assert!(t.validate_config_value("PORT", "25565").is_ok());
+    }
 }

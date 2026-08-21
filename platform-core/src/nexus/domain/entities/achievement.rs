@@ -307,4 +307,61 @@ mod tests {
         assert_eq!(Platform::parse(" XBOX ").unwrap(), Platform::Xbox);
         assert!(Platform::parse("playstation").is_err());
     }
+
+    #[test]
+    fn verification_conversions() {
+        assert_eq!(Verification::Auto.as_str(), "auto");
+        assert_eq!(Verification::Manual.as_str(), "manual");
+        assert_eq!(Verification::parse("auto").unwrap(), Verification::Auto);
+        assert_eq!(Verification::parse("manual").unwrap(), Verification::Manual);
+        assert!(Verification::parse("invalid").is_err());
+    }
+
+    #[test]
+    fn platform_conversions() {
+        assert_eq!(Platform::Steam.as_str(), "steam");
+        assert_eq!(Platform::Xbox.as_str(), "xbox");
+        assert_eq!(Platform::Steam.label(), "Steam");
+        assert_eq!(Platform::Xbox.label(), "Xbox");
+    }
+
+    #[test]
+    fn game_player_link_verification() {
+        let mut link = GamePlayerLink {
+            id: Uuid::nil(),
+            guild_id: "123".into(),
+            discord_user_id: "456".into(),
+            game: "palworld".into(),
+            platform: Platform::Steam,
+            game_player_id: "76561198000000000".into(),
+            verified_at: None,
+        };
+        assert!(!link.is_verified());
+        link.verified_at = Some(Utc::now());
+        assert!(link.is_verified());
+    }
+
+    #[test]
+    fn achievement_progress_unlocked() {
+        let ach = Achievement {
+            id: Uuid::nil(),
+            game: None,
+            code: "a".into(),
+            name: "a".into(),
+            description: "a".into(),
+            category: "a".into(),
+            icon_url: None,
+            criteria: serde_json::json!({}),
+            verification: Verification::Auto,
+            hidden: false,
+            enabled: true,
+        };
+        let mut prog = AchievementProgress {
+            achievement: ach,
+            unlocked_at: None,
+        };
+        assert!(!prog.is_unlocked());
+        prog.unlocked_at = Some(Utc::now());
+        assert!(prog.is_unlocked());
+    }
 }

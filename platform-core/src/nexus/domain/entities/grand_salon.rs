@@ -187,6 +187,81 @@ mod tests {
     }
 
     #[test]
+    fn ressource_methods_and_gets() {
+        assert_eq!(Ressource::Rayonnement.key(), "rayonnement");
+        assert_eq!(Ressource::Jetons.key(), "jetons");
+        assert_eq!(Ressource::Reputation.key(), "reputation");
+        assert_eq!(Ressource::BonsPlans.key(), "bons_plans");
+        assert_eq!(Ressource::Reseau.key(), "reseau");
+
+        assert_eq!(Ressource::Rayonnement.label(), "Rayonnement");
+        assert_eq!(Ressource::Jetons.label(), "Jetons canapé");
+        assert_eq!(Ressource::Reputation.label(), "Réputation");
+        assert_eq!(Ressource::BonsPlans.label(), "Bons plans");
+        assert_eq!(Ressource::Reseau.label(), "Réseau");
+
+        let r = Ressources {
+            rayonnement: 1,
+            jetons: 2,
+            reputation: 3,
+            bons_plans: 4,
+            reseau: 5,
+        };
+        assert_eq!(r.get(Ressource::Rayonnement), 1);
+        assert_eq!(r.get(Ressource::Jetons), 2);
+        assert_eq!(r.get(Ressource::Reputation), 3);
+        assert_eq!(r.get(Ressource::BonsPlans), 4);
+        assert_eq!(r.get(Ressource::Reseau), 5);
+    }
+
+    #[test]
+    fn instantiate_types_for_coverage() {
+        let habitue = Habitué {
+            id: Uuid::nil(),
+            guild_id: "123".into(),
+            user_id: "456".into(),
+            display_name: "Mickael".into(),
+            ressources: Ressources::newcomer(100),
+            joined_at: Utc::now(),
+        };
+        assert_eq!(habitue.display_name, "Mickael");
+
+        let cercle = Cercle {
+            id: Uuid::nil(),
+            guild_id: "123".into(),
+            kind: CercleKind::Bande,
+            name: "La bande".into(),
+            devise: "Canape rules".into(),
+            caisse: 100,
+            reputation: 50,
+            rayonnement: 10,
+            founder_id: Uuid::nil(),
+            created_at: Utc::now(),
+            dissolved_at: None,
+        };
+        assert_eq!(cercle.name, "La bande");
+
+        let dossier = Dossier {
+            id: Uuid::nil(),
+            guild_id: "123".into(),
+            owner_id: Uuid::nil(),
+            subject: "Sujet".into(),
+            verified: true,
+            revealed_at: None,
+        };
+        assert_eq!(dossier.subject, "Sujet");
+
+        let article = GazetteArticle {
+            id: Uuid::nil(),
+            guild_id: "123".into(),
+            headline: "News".into(),
+            body: "Le canape".into(),
+            published_at: Utc::now(),
+        };
+        assert_eq!(article.headline, "News");
+    }
+
+    #[test]
     fn a_motion_needs_a_strict_majority_after_support() {
         let motion = MotionDuSalon {
             id: Uuid::nil(),

@@ -544,6 +544,73 @@ mod tests {
         assert_eq!(matchmaking_handicap(11, 1), None);
     }
     #[test]
+    fn player_class_conversions_and_metadata() {
+        assert_eq!(PlayerClass::parse("ecraseur"), Some(PlayerClass::Ecraseur));
+        assert_eq!(PlayerClass::parse("invalid"), None);
+        assert_eq!(PlayerClass::Ecraseur.as_str(), "ecraseur");
+        assert_eq!(PlayerClass::Ecraseur.label(), "🪑 Écraseur");
+        assert!(PlayerClass::Ecraseur.pitch().len() > 0);
+        let (atk, def) = PlayerClass::Ecraseur.base_stats();
+        assert_eq!(atk, 25);
+        assert_eq!(def, 8);
+        let (atk_g, def_g) = PlayerClass::Ecraseur.growth();
+        assert_eq!(atk_g, 4);
+        assert_eq!(def_g, 1);
+        assert_eq!(PlayerClass::ALL.len(), 4);
+    }
+    #[test]
+    fn level_and_xp_capped_logic() {
+        assert_eq!(xp_for_level_capped(1, 25), 100);
+        assert_eq!(level_for_xp_capped(100, 25), 1);
+        assert_eq!(level_for_xp_capped(5000, 25), 9);
+    }
+    #[test]
+    fn titles_capped_logic() {
+        assert_eq!(title_for_level_capped(25, 25), "Le Canape, c'est Lui");
+        assert_eq!(title_for_level_capped(1, 25), "Bout d'Accoudoir");
+        assert_eq!(title_for_level_capped(10, 25), "Squatteur");
+    }
+    #[test]
+    fn matchmaking_handicap_limits() {
+        assert_eq!(matchmaking_handicap_capped(5, 5, 9), Some(1.0));
+        assert_eq!(matchmaking_handicap_capped(5, 9, 9), Some(0.8));
+        assert_eq!(matchmaking_handicap_capped(5, 12, 9), Some(0.6));
+        assert_eq!(matchmaking_handicap_capped(5, 15, 9), None);
+    }
+    #[test]
+    fn resolve_combat_edge_cases() {
+        // Test combat avec ecart de niveau trop grand
+        let res = resolve_combat(
+            10, 10, PlayerClass::Ecraseur, 20,
+            10, 10, PlayerClass::Couette, 1,
+            &[(1, 1)], CombatRules::default()
+        );
+        assert_eq!(res, Err("ecart de niveau trop important"));
+
+        // Test combat avec rage de l'ecraseur
+        let mut rules = CombatRules::default();
+        rules.max_rounds = 3;
+        let res = resolve_combat(
+            30, 0, PlayerClass::Ecraseur, 1,
+            10, 0, PlayerClass::Couette, 1,
+            &[(6, 6), (6, 6)], rules
+        ).unwrap();
+        assert!(res.attacker_damage > 0);
+
+        // Test combat avec reductions de la couette
+        let res = resolve_combat(
+            10, 10, PlayerClass::Couette, 1,
+            10, 10, PlayerClass::Couette, 1,
+            &[(1, 1)], CombatRules::default()
+        ).unwrap();
+        assert!(res.attacker_damage > 0);
+    }
+    #[test]
+    fn class_rules_default() {
+        let rules = ClassRules::default();
+        assert_eq!(rules.stats(PlayerClass::Ecraseur).atk, 25);
+    }
+    #[test]
     fn multi_round_combat_produces_a_result() {
         let result = resolve_combat(
             25,

@@ -150,4 +150,12 @@ mod tests {
         _need_user(u);
         // _need_guild(u);  // <- compile error, ce qui est l'objectif
     }
+
+    #[test]
+    fn test_as_str_and_into_inner_and_as_ref() {
+        let id = RoleId::new("role1");
+        assert_eq!(id.as_str(), "role1");
+        assert_eq!(id.as_ref(), "role1");
+        assert_eq!(id.into_inner(), "role1");
+    }
 }

@@ -280,4 +280,98 @@ mod tests {
             assert!(msg.contains("Discord"));
         }
     }
+
+    #[tokio::test]
+    async fn integration_test_full_workflow() {
+        let service = ManageSystemLogsService::new(Arc::new(FakeLogRepo));
+
+        // List with comprehensive filters
+        let filters = SystemLogFilters {
+            category: Some("api".into()),
+            level: Some("error".into()),
+            guild_id: Some("guild123".into()),
+            limit: 50,
+        };
+        let logs = service.list_logs(filters).await.unwrap();
+        assert_eq!(logs.len(), 0);
+
+        // Purge non-discord category
+        let deleted = service.purge_category("api").await.unwrap();
+        assert_eq!(deleted, 42);
+
+        // Attempt to purge discord (should fail)
+        let result = service.purge_category("discord").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn list_logs_boundary_limits() {
+        let service = ManageSystemLogsService::new(Arc::new(FakeLogRepo));
+
+        // Minimum limit
+        let filters = SystemLogFilters {
+            category: None,
+            level: None,
+            guild_id: None,
+            limit: 1,
+        };
+        assert!(service.list_logs(filters).await.is_ok());
+
+        // Very large limit
+        let filters = SystemLogFilters {
+            category: None,
+            level: None,
+            guild_id: None,
+            limit: 1_000_000,
+        };
+        assert!(service.list_logs(filters).await.is_ok());
+
+        // Negative limit
+        let filters = SystemLogFilters {
+            category: None,
+            level: None,
+            guild_id: None,
+            limit: -100,
+        };
+        assert!(service.list_logs(filters).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn purge_empty_string_category() {
+        let service = ManageSystemLogsService::new(Arc::new(FakeLogRepo));
+        let result = service.purge_category("").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn purge_whitespace_category() {
+        let service = ManageSystemLogsService::new(Arc::new(FakeLogRepo));
+        let result = service.purge_category("   ").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn list_logs_all_optional_some_none() {
+        let service = ManageSystemLogsService::new(Arc::new(FakeLogRepo));
+
+        // Mixed Some/None combinations
+        let test_cases = vec![
+            (Some("cat1"), None, None),
+            (None, Some("level1"), None),
+            (None, None, Some("guild1")),
+            (Some("cat1"), Some("level1"), None),
+            (Some("cat1"), None, Some("guild1")),
+            (None, Some("level1"), Some("guild1")),
+        ];
+
+        for (cat, level, guild) in test_cases {
+            let filters = SystemLogFilters {
+                category: cat.map(|s| s.to_string()),
+                level: level.map(|s| s.to_string()),
+                guild_id: guild.map(|s| s.to_string()),
+                limit: 100,
+            };
+            assert!(service.list_logs(filters).await.is_ok());
+        }
+    }
 }

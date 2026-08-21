@@ -257,6 +257,11 @@ pub async fn rafraichir(ctx: &Context, api: &ApiClient, guild_id: GuildId) {
 /// Lance le rafraichissement periodique. Appele une fois au `ready`.
 pub fn spawn(ctx: Context, api: Arc<ApiClient>, guild_ids: Vec<GuildId>) {
     tokio::spawn(async move {
+        // Le compteur d'activite lit le cache des membres et des presences,
+        // que Discord remplit en plusieurs envois apres la connexion. Compter
+        // immediatement donnerait un chiffre trop bas, ecrit dans le nom d'un
+        // salon — et il y resterait jusqu'au passage suivant.
+        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
         let mut horloge = tokio::time::interval(PERIODE);
         loop {
             horloge.tick().await;

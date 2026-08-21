@@ -870,6 +870,23 @@ async fn handle_event(ctx: &Context, api: &ApiClient, payload_json: &str) {
         Some(ev::DAILY_PING) => on_daily_ping(ctx, api, &server_id).await,
         _ => {}
     }
+
+    // Un serveur qui s'allume ou s'eteint change le compte affiche : on
+    // rafraichit sans attendre le prochain passage periodique, comme le
+    // compteur vocal reagit a une arrivee en salon plutot que de la decouvrir
+    // dix minutes plus tard.
+    //
+    // Le renommage n'a lieu que si le nom change vraiment : un evenement qui
+    // ne deplace aucun chiffre ne consomme donc pas le quota Discord.
+    if matches!(
+        event,
+        Some(ev::SERVER_SCHEDULED)
+            | Some(ev::SERVER_STARTED)
+            | Some(ev::SERVER_STOPPED)
+            | Some(ev::SERVER_DELETED)
+    ) {
+        crate::compteurs::rafraichir(ctx, api, GuildId::new(guild_id)).await;
+    }
 }
 
 // ── Helpers partages ──

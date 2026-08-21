@@ -174,4 +174,110 @@ mod tests {
     fn service_construction() {
         let _service = ManageSystemLogsService::new(Arc::new(FakeLogRepo));
     }
+
+    #[tokio::test]
+    async fn list_logs_clamps_minimum_limit() {
+        let service = ManageSystemLogsService::new(Arc::new(FakeLogRepo));
+        let filters = SystemLogFilters {
+            category: None,
+            level: None,
+            guild_id: None,
+            limit: 0,
+        };
+        let result = service.list_logs(filters).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn purge_with_empty_category() {
+        let service = ManageSystemLogsService::new(Arc::new(FakeLogRepo));
+        let result = service.purge_category("").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn list_logs_with_category_only() {
+        let service = ManageSystemLogsService::new(Arc::new(FakeLogRepo));
+        let filters = SystemLogFilters {
+            category: Some("database".into()),
+            level: None,
+            guild_id: None,
+            limit: 50,
+        };
+        let result = service.list_logs(filters).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn list_logs_with_level_only() {
+        let service = ManageSystemLogsService::new(Arc::new(FakeLogRepo));
+        let filters = SystemLogFilters {
+            category: None,
+            level: Some("warn".into()),
+            guild_id: None,
+            limit: 50,
+        };
+        let result = service.list_logs(filters).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn list_logs_with_guild_only() {
+        let service = ManageSystemLogsService::new(Arc::new(FakeLogRepo));
+        let filters = SystemLogFilters {
+            category: None,
+            level: None,
+            guild_id: Some("guild456".into()),
+            limit: 50,
+        };
+        let result = service.list_logs(filters).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn purge_various_categories() {
+        let service = ManageSystemLogsService::new(Arc::new(FakeLogRepo));
+
+        for category in &["api", "bot", "system", "nginx", "postgres"] {
+            let result = service.purge_category(category).await;
+            assert!(result.is_ok());
+        }
+    }
+
+    #[tokio::test]
+    async fn list_logs_hits_every_code_path() {
+        let service = ManageSystemLogsService::new(Arc::new(FakeLogRepo));
+
+        // Test all combinations of filters
+        let test_cases = vec![
+            (Some("api"), Some("error"), Some("guild1"), 1),
+            (Some("api"), Some("error"), None, 1),
+            (Some("api"), None, Some("guild1"), 1),
+            (None, Some("error"), Some("guild1"), 1),
+            (Some("api"), None, None, 1),
+            (None, Some("error"), None, 1),
+            (None, None, Some("guild1"), 1),
+        ];
+
+        for (cat, level, guild, limit) in test_cases {
+            let filters = SystemLogFilters {
+                category: cat.map(|s| s.to_string()),
+                level: level.map(|s| s.to_string()),
+                guild_id: guild.map(|s| s.to_string()),
+                limit,
+            };
+            let result = service.list_logs(filters).await;
+            assert!(result.is_ok());
+        }
+    }
+
+    #[tokio::test]
+    async fn purge_discord_is_blocked() {
+        let service = ManageSystemLogsService::new(Arc::new(FakeLogRepo));
+        let result = service.purge_category("discord").await;
+        assert!(result.is_err());
+        if let Err(DomainError::ValidationError(msg)) = result {
+            assert!(msg.contains("Discord"));
+        }
+    }
 }

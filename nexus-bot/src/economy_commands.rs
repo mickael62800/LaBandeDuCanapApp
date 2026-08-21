@@ -612,6 +612,131 @@ mod tests {
         assert!(json["embeds"].as_array().is_some());
     }
 
+    #[test]
+    fn test_format_target_name_edge_cases() {
+        let id1 = UserId::new(1);
+        let id2 = UserId::new(2);
+
+        // Very long name
+        let long_name = "a".repeat(100);
+        assert_eq!(
+            format_target_name(id1, id1, &long_name, None),
+            long_name
+        );
+
+        // Unicode name
+        assert_eq!(
+            format_target_name(id1, id1, "Café ☕", None),
+            "Café ☕"
+        );
+
+        // Large ID
+        let large_id = UserId::new(999999999999);
+        assert_eq!(
+            format_target_name(large_id, id1, "Test", None),
+            "<@999999999999>"
+        );
+    }
+
+    #[test]
+    fn test_build_transfer_request_payload_edge_cases() {
+        let ch1 = ChannelId::new(111);
+        let u1 = UserId::new(1);
+        let u2 = UserId::new(2);
+
+        // Zero amount
+        let req = build_transfer_request_payload(ch1, u1, "A", u2, "B", 0, None);
+        assert_eq!(req.amount, 0);
+
+        // Negative amount
+        let req = build_transfer_request_payload(ch1, u1, "A", u2, "B", -50, None);
+        assert_eq!(req.amount, -50);
+
+        // Very large amount
+        let req = build_transfer_request_payload(ch1, u1, "A", u2, "B", i64::MAX - 1, None);
+        assert_eq!(req.amount, i64::MAX - 1);
+
+        // Unicode usernames
+        let req = build_transfer_request_payload(ch1, u1, "Çøsé", u2, "Nördé", 100, Some("Merçi".into()));
+        assert_eq!(req.from_username, "Çøsé");
+        assert_eq!(req.to_username, "Nördé");
+    }
+
+    #[test]
+    fn test_build_wallet_response_embed_edge_cases() {
+        let ok = Ok(api_client::WalletResponse {
+            user_id: "very_long_id_string".into(),
+            coins: 0,
+            total_earned: 0,
+            total_spent: 0,
+        });
+        let emb = build_wallet_response_embed(&ok, "");
+        let json = serde_json::to_value(&emb).unwrap();
+        assert!(json["title"].as_str().is_some());
+
+        let err: Result<api_client::WalletResponse, String> = Err("".into());
+        let emb = build_wallet_response_embed(&err, "Test");
+        let json = serde_json::to_value(&emb).unwrap();
+        assert_eq!(json["description"], "");
+    }
+
+    #[test]
+    fn test_build_transfer_response_embed_no_reason() {
+        let ok = Ok(api_client::TransferResponse {
+            from_balance: 0,
+            amount: 1,
+        });
+        let emb = build_transfer_response_embed(&ok, 1, 2, None);
+        let json = serde_json::to_value(&emb).unwrap();
+        assert!(json["title"].as_str().unwrap().contains("Don"));
+    }
+
+    #[test]
+    fn test_build_leaderboard_response_embed_multiple_entries() {
+        let ok: Result<Vec<api_client::WalletResponse>, String> = Ok(vec![
+            api_client::WalletResponse {
+                user_id: "u1".into(),
+                coins: 1000,
+                total_earned: 2000,
+                total_spent: 1000,
+            },
+            api_client::WalletResponse {
+                user_id: "u2".into(),
+                coins: 500,
+                total_earned: 1000,
+                total_spent: 500,
+            },
+        ]);
+        let emb = build_leaderboard_response_embed(&ok);
+        let json = serde_json::to_value(&emb).unwrap();
+        assert!(json["title"].as_str().unwrap().contains("Classement"));
+    }
+
+    #[test]
+    fn test_message_constants_completeness() {
+        // All message constants should be non-empty and meaningful
+        assert!(!MSG_GUILD_REQUIRED.is_empty());
+        assert!(!MSG_GUILD_UNAUTHORIZED.is_empty());
+        assert!(!MSG_DONNER_NEED_TARGET.is_empty());
+        assert!(!MSG_DONNER_NEED_AMOUNT.is_empty());
+        assert!(!MSG_ROUE_NO_DM.is_empty());
+    }
+
+    #[test]
+    fn test_validate_donner_with_different_ids() {
+        let ids = [
+            (UserId::new(1), UserId::new(2)),
+            (UserId::new(100), UserId::new(200)),
+            (UserId::new(u64::MAX - 1), UserId::new(u64::MAX)),
+        ];
+
+        for (attacker, defender) in ids {
+            if attacker != defender {
+                assert!(validate_donner(attacker, defender, false).is_ok());
+            }
+        }
+    }
+
 
     #[tokio::test]
     async fn test_execute_economy_actions() {

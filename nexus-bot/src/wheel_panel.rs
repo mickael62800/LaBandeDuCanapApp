@@ -418,4 +418,124 @@ mod tests {
         assert!(MSG_DEPLOY_FAILED.contains("impossible"));
         assert!(MSG_DEPLOY_SUCCESS.contains("deploye"));
     }
+
+    #[test]
+    fn test_format_spin_result_response_various() {
+        let res1 = format_spin_result_response("Lucky 7");
+        assert!(res1.contains("Lucky 7"));
+        assert!(res1.contains("🌀"));
+
+        let res2 = format_spin_result_response("Gold Bar 1000");
+        assert!(res2.contains("Gold Bar 1000"));
+
+        let res3 = format_spin_result_response("");
+        assert!(res3.contains("🌀"));
+
+        let res4 = format_spin_result_response("Çøsé ☕");
+        assert!(res4.contains("Çøsé ☕"));
+    }
+
+    #[test]
+    fn test_build_ephemeral_reply_content() {
+        let reply1 = build_ephemeral_reply("Success!");
+        let j1 = serde_json::to_value(&reply1).unwrap();
+        assert_eq!(j1["data"]["content"], "Success!");
+
+        let reply2 = build_ephemeral_reply("");
+        let j2 = serde_json::to_value(&reply2).unwrap();
+        assert_eq!(j2["data"]["content"], "");
+
+        let reply3 = build_ephemeral_reply("Very long message with lots of text to test edge cases");
+        let j3 = serde_json::to_value(&reply3).unwrap();
+        assert!(j3["data"]["content"].as_str().unwrap().len() > 0);
+    }
+
+    #[test]
+    fn test_is_old_wheel_panel_edge_cases() {
+        let bot = UserId::new(100);
+        let other = UserId::new(200);
+
+        // Bot with correct title
+        assert!(is_old_wheel_panel(bot, bot, &[Some(PANEL_TITLE)]));
+
+        // Bot with wrong author
+        assert!(!is_old_wheel_panel(other, bot, &[Some(PANEL_TITLE)]));
+
+        // Bot with wrong title
+        assert!(!is_old_wheel_panel(bot, bot, &[Some("Wrong")]));
+
+        // Empty titles
+        assert!(!is_old_wheel_panel(bot, bot, &[]));
+
+        // Title in middle
+        assert!(is_old_wheel_panel(bot, bot, &[Some("Other"), Some(PANEL_TITLE), Some("More")]));
+
+        // None titles
+        assert!(!is_old_wheel_panel(bot, bot, &[None, None]));
+    }
+
+    #[test]
+    fn test_filter_old_wheel_panel_ids_comprehensive() {
+        let bot = UserId::new(100);
+        let other = UserId::new(200);
+
+        let msgs = vec![
+            (MessageId::new(1), bot, vec![Some(PANEL_TITLE.to_string())]),
+            (MessageId::new(2), bot, vec![Some("Wrong".to_string())]),
+            (MessageId::new(3), other, vec![Some(PANEL_TITLE.to_string())]),
+            (MessageId::new(4), bot, vec![]),
+            (MessageId::new(5), bot, vec![None]),
+            (MessageId::new(6), bot, vec![Some("X".to_string()), Some(PANEL_TITLE.to_string())]),
+        ];
+
+        let filtered = filter_old_wheel_panel_ids(&msgs, bot);
+        assert_eq!(filtered.len(), 2);
+        assert!(filtered.contains(&MessageId::new(1)));
+        assert!(filtered.contains(&MessageId::new(6)));
+    }
+
+    #[test]
+    fn test_filter_old_wheel_panel_empty() {
+        let bot = UserId::new(100);
+        let msgs = vec![];
+        let filtered = filter_old_wheel_panel_ids(&msgs, bot);
+        assert!(filtered.is_empty());
+    }
+
+    #[test]
+    fn test_filter_old_wheel_panel_no_matches() {
+        let bot = UserId::new(100);
+        let other = UserId::new(200);
+
+        let msgs = vec![
+            (MessageId::new(1), other, vec![Some(PANEL_TITLE.to_string())]),
+            (MessageId::new(2), bot, vec![Some("Wrong".to_string())]),
+        ];
+
+        let filtered = filter_old_wheel_panel_ids(&msgs, bot);
+        assert!(filtered.is_empty());
+    }
+
+    #[test]
+    fn test_build_spin_defer_response() {
+        let defer = build_spin_defer_response();
+        let json = serde_json::to_value(&defer).unwrap();
+        assert_eq!(json["type"], 5); // DeferredChannelMessage
+    }
+
+    #[test]
+    fn test_build_spin_error_edit() {
+        let edit = build_spin_error_edit("Error message");
+        let json = serde_json::to_value(&edit).unwrap();
+        assert!(json["embeds"].as_array().is_some());
+    }
+
+    #[test]
+    fn test_build_spin_final_edit() {
+        let edit = build_spin_final_edit("PQ 100");
+        let json = serde_json::to_value(&edit).unwrap();
+        let content = json["content"].as_str().unwrap();
+        assert!(content.contains("PQ 100"));
+        assert!(content.contains("🌀"));
+    }
 }

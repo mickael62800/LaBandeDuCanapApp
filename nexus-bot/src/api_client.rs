@@ -252,6 +252,11 @@ pub struct GameServer {
     pub display_state: Option<String>,
     pub text_channel_id: Option<String>,
     pub voice_channel_id: Option<String>,
+    /// Derniers joueurs vus par la console du jeu. Zero quand cette console
+    /// n'est pas lisible (la plupart des jeux) : ce n'est donc PAS une preuve
+    /// de serveur vide. Cf. `compteurs`.
+    #[serde(default)]
+    pub last_player_count: i32,
 }
 
 #[derive(Debug, Deserialize)]

@@ -16,6 +16,7 @@
 
 mod achievements;
 mod api_client;
+mod compteurs;
 mod embeds;
 mod event_bus;
 mod game_portal;
@@ -121,6 +122,20 @@ impl EventHandler for Handler {
             achievements::spawn(ctx.clone(), self.api.clone());
             games::spawn_listener(ctx.clone(), self.api.clone());
             coussin_steal_events::spawn(ctx.clone(), self.api.clone());
+            // Salons compteurs (« En jeu », « Serveurs actifs »). Dans le meme
+            // garde-fou que les autres taches de fond : `ready` est rejoue
+            // apres une reconnexion, et une seconde boucle doublerait les
+            // renommages — le quota Discord ne le supporterait pas.
+            compteurs::spawn(
+                ctx.clone(),
+                self.api.clone(),
+                ready
+                    .guilds
+                    .iter()
+                    .map(|g| g.id)
+                    .filter(|id| guilde_autorisee(*id))
+                    .collect(),
+            );
         }
         // Un evenement Redis publie pendant une indisponibilite peut avoir ete
         // manque. Rejouer les serveurs actifs/programmes garantit que leurs
@@ -392,7 +407,22 @@ async fn main() {
     // rôle et afficher le nombre d'abonnés sur les boutons des panneaux de jeux.
     // À activer aussi dans le portail Discord Developer (« Server Members Intent »),
     // sinon la passerelle refuse la connexion.
-    let intents = GatewayIntents::non_privileged() | GatewayIntents::GUILD_MEMBERS;
+    let mut intents = GatewayIntents::non_privileged() | GatewayIntents::GUILD_MEMBERS;
+
+    // Activite de jeu des membres (« Joue a League of Legends »), pour le
+    // compteur du meme nom. C'est un intent PRIVILEGIE : le demander sans
+    // l'avoir coche dans le portail Discord fait REFUSER la connexion, et le
+    // bot ne demarre plus du tout. D'ou cet interrupteur, eteint par defaut :
+    // on ne casse pas un bot en service pour une fonction d'affichage.
+    //
+    // Marche a suivre : cocher « Presence Intent » dans le portail, PUIS
+    // poser NEXUS_PRESENCE_INTENT=true. Dans cet ordre.
+    if compteurs::intent_presence_demande() {
+        intents |= GatewayIntents::GUILD_PRESENCES;
+        tracing::info!(
+            "NEXUS_PRESENCE_INTENT actif : l'activite de jeu des membres sera lue.              Si la passerelle refuse la connexion, c'est que « Presence Intent »              n'est pas coche dans le portail Discord."
+        );
+    }
     let mut client = Client::builder(&token, intents)
         .event_handler(Handler {
             api,

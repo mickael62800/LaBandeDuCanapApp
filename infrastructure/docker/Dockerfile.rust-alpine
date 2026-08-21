@@ -30,7 +30,7 @@ FROM ${CHEF_IMAGE} AS chef
 RUN apk add --no-cache \
     musl-dev pkgconf openssl-dev openssl-libs-static \
     protoc protobuf-dev \
-    make g++ linux-headers
+    make g++ linux-headers git git-lfs
 WORKDIR /app
 
 # ----- Planner -----

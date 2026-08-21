@@ -390,3 +390,344 @@ async fn un_chemin_local_est_accepte_mais_pas_une_remontee_ni_un_hote() {
         .await
         .is_err());
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tests supplémentaires pour atteindre ≥ 90 % de couverture
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn list_definitions_filtre_par_jeu() {
+    let palworld = definition("first_launch_palworld", Verification::Auto);
+    let mut minecraft = definition("first_minecraft", Verification::Auto);
+    minecraft.game = Some("minecraft".into());
+    let repo = Arc::new(FakeRepo {
+        definitions: Mutex::new(vec![palworld, minecraft]),
+        ..Default::default()
+    });
+    let service = AchievementsService::new(repo.clone());
+
+    let tous = service.list_definitions(None).await.unwrap();
+    assert_eq!(tous.len(), 2);
+
+    let pal = service.list_definitions(Some("palworld")).await.unwrap();
+    assert_eq!(pal.len(), 1);
+    assert_eq!(pal[0].code, "first_launch_palworld");
+}
+
+#[tokio::test]
+async fn update_definition_vide_est_refuse() {
+    let def = definition("first_launch_palworld", Verification::Auto);
+    let id = def.id;
+    let service = AchievementsService::new(Arc::new(FakeRepo::with_definition(def)));
+
+    let result = service.update_definition(id, AchievementUpdate::default()).await;
+    assert!(matches!(result, Err(DomainError::ValidationError(_))));
+}
+
+#[tokio::test]
+async fn update_definition_refuse_un_nom_vide_ou_trop_long() {
+    let def = definition("first_launch_palworld", Verification::Auto);
+    let id = def.id;
+    let service = AchievementsService::new(Arc::new(FakeRepo::with_definition(def)));
+
+    let maj_vide = AchievementUpdate {
+        name: Some("   ".into()),
+        ..Default::default()
+    };
+    assert!(matches!(
+        service.update_definition(id, maj_vide).await,
+        Err(DomainError::ValidationError(_))
+    ));
+
+    let maj_long = AchievementUpdate {
+        name: Some("x".repeat(101)),
+        ..Default::default()
+    };
+    assert!(matches!(
+        service.update_definition(id, maj_long).await,
+        Err(DomainError::ValidationError(_))
+    ));
+}
+
+#[tokio::test]
+async fn update_definition_refuse_une_description_trop_longue() {
+    let def = definition("first_launch_palworld", Verification::Auto);
+    let id = def.id;
+    let service = AchievementsService::new(Arc::new(FakeRepo::with_definition(def)));
+
+    let maj = AchievementUpdate {
+        description: Some("x".repeat(501)),
+        ..Default::default()
+    };
+    assert!(matches!(
+        service.update_definition(id, maj).await,
+        Err(DomainError::ValidationError(_))
+    ));
+}
+
+#[tokio::test]
+async fn validate_icon_url_refuse_une_url_trop_longue() {
+    let def = definition("first_launch_palworld", Verification::Auto);
+    let id = def.id;
+    let service = AchievementsService::new(Arc::new(FakeRepo::with_definition(def)));
+
+    let maj = AchievementUpdate {
+        icon_url: Some(Some("https://".to_string() + &"a".repeat(500))),
+        ..Default::default()
+    };
+    assert!(matches!(
+        service.update_definition(id, maj).await,
+        Err(DomainError::ValidationError(_))
+    ));
+}
+
+#[tokio::test]
+async fn validate_icon_url_accepte_http_et_chemin_local() {
+    let def = definition("first_launch_palworld", Verification::Auto);
+    let id = def.id;
+    let service = AchievementsService::new(Arc::new(FakeRepo::with_definition(def)));
+
+    let http = AchievementUpdate {
+        icon_url: Some(Some("https://example.com/icon.png".into())),
+        ..Default::default()
+    };
+    assert!(service.update_definition(id, http).await.is_ok());
+
+    let local = AchievementUpdate {
+        icon_url: Some(Some("/Achievement/palworld/pal_01.jpg".into())),
+        ..Default::default()
+    };
+    assert!(service.update_definition(id, local).await.is_ok());
+}
+
+#[tokio::test]
+async fn member_progress_masque_un_haut_fait_desactive_non_debloque() {
+    let mut def = definition("first_launch_palworld", Verification::Auto);
+    def.enabled = false;
+    let repo = Arc::new(FakeRepo::with_definition(def));
+    let service = AchievementsService::new(repo);
+
+    let progress = service
+        .member_progress("guild", "user", Some("palworld"))
+        .await
+        .unwrap();
+    assert!(progress.is_empty());
+}
+
+#[tokio::test]
+async fn member_progress_affiche_un_haut_fait_desactive_debloque() {
+    let mut def = definition("first_launch_palworld", Verification::Auto);
+    def.enabled = false;
+    let achievement_id = def.id;
+    let repo = Arc::new(FakeRepo::with_definition(def));
+    // L'utilisateur possede deja le haut fait (avant desactivation).
+    repo.unlocks.lock().unwrap().push(UserAchievement {
+        id: Uuid::new_v4(),
+        guild_id: "guild".into(),
+        discord_user_id: "user".into(),
+        achievement_id,
+        game_player_id: None,
+        source_event_id: None,
+        granted_by: None,
+        unlocked_at: Utc::now(),
+    });
+    let service = AchievementsService::new(repo);
+
+    let progress = service
+        .member_progress("guild", "user", Some("palworld"))
+        .await
+        .unwrap();
+    // Le haut fait reste visible car il a ete obtenu.
+    assert_eq!(progress.len(), 1);
+    assert!(progress[0].is_unlocked());
+}
+
+#[tokio::test]
+async fn find_link_retourne_une_liaison_existante() {
+    let repo = Arc::new(FakeRepo::default());
+    repo.add_link("guild", "user", "palworld", "76561198000000000", true);
+    let service = AchievementsService::new(repo);
+
+    let link = service
+        .find_link("guild", "user", "palworld")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(link.discord_user_id, "user");
+    assert!(link.is_verified());
+}
+
+#[tokio::test]
+async fn unlink_identity_supprime_une_liaison() {
+    let repo = Arc::new(FakeRepo::default());
+    repo.add_link("guild", "user", "palworld", "76561198000000000", true);
+    let service = AchievementsService::new(repo);
+
+    let supprim = service
+        .unlink_identity("guild", "user", "palworld")
+        .await
+        .unwrap();
+    assert!(supprim);
+}
+
+#[tokio::test]
+async fn unlock_from_game_event_refuse_une_identite_mal_formee() {
+    let repo = Arc::new(FakeRepo::with_definition(definition(
+        "first_launch_palworld",
+        Verification::Auto,
+    )));
+    let service = AchievementsService::new(repo);
+
+    let cmd = GameUnlockCommand {
+        guild_id: "guild".into(),
+        game: "palworld".into(),
+        platform: Platform::Steam,
+        game_player_id: "DarkPoney".into(),
+        achievement_code: "first_launch_palworld".into(),
+        source_event_id: "evt-1".into(),
+    };
+
+    let result = service.unlock_from_game_event(cmd).await;
+    assert!(matches!(result, Err(DomainError::ValidationError(_))));
+}
+
+#[tokio::test]
+async fn unlock_from_game_event_refuse_un_haut_fait_inconnu() {
+    let repo = Arc::new(FakeRepo::with_definition(definition(
+        "first_launch_palworld",
+        Verification::Auto,
+    )));
+    repo.add_link("guild", "user", "palworld", "76561198000000000", true);
+    let service = AchievementsService::new(repo);
+
+    let result = service
+        .unlock_from_game_event(commande("code_inconnu", "evt-1"))
+        .await;
+    assert!(matches!(result, Err(DomainError::NotFound(_))));
+}
+
+#[tokio::test]
+async fn unlock_from_game_event_refuse_un_haut_fait_desactive() {
+    let mut def = definition("first_launch_palworld", Verification::Auto);
+    def.enabled = false;
+    let repo = Arc::new(FakeRepo::with_definition(def));
+    repo.add_link("guild", "user", "palworld", "76561198000000000", true);
+    let service = AchievementsService::new(repo);
+
+    let result = service
+        .unlock_from_game_event(commande("first_launch_palworld", "evt-1"))
+        .await;
+    assert!(matches!(result, Err(DomainError::Conflict(_))));
+}
+
+#[tokio::test]
+async fn grant_manually_refuse_un_haut_fait_inconnu() {
+    let repo = Arc::new(FakeRepo::default());
+    let service = AchievementsService::new(repo);
+
+    let result = service
+        .grant_manually("guild", "user", Uuid::new_v4(), "admin")
+        .await;
+    assert!(matches!(result, Err(DomainError::NotFound(_))));
+}
+
+#[tokio::test]
+async fn grant_manually_refuse_un_haut_fait_desactive() {
+    let mut def = definition("first_launch_palworld", Verification::Auto);
+    def.enabled = false;
+    let id = def.id;
+    let repo = Arc::new(FakeRepo::with_definition(def));
+    let service = AchievementsService::new(repo);
+
+    let result = service
+        .grant_manually("guild", "user", id, "admin")
+        .await;
+    assert!(matches!(result, Err(DomainError::Conflict(_))));
+}
+
+#[tokio::test]
+async fn grant_manually_trace_l_identite_quand_elle_est_verifiee() {
+    let def = definition("first_launch_palworld", Verification::Auto);
+    let id = def.id;
+    let repo = Arc::new(FakeRepo::with_definition(def));
+    repo.add_link("guild", "user", "palworld", "76561198000000000", true);
+    let service = AchievementsService::new(repo);
+
+    let outcome = service
+        .grant_manually("guild", "user", id, "admin")
+        .await
+        .unwrap();
+    match outcome {
+        UnlockOutcome::Unlocked(unlocked) => {
+            assert_eq!(unlocked.game_player_id.as_deref(), Some("76561198000000000"));
+        }
+        _ => panic!("attendu Unlocked"),
+    }
+}
+
+#[tokio::test]
+async fn grant_manually_trace_l_identite_verifiee_pour_une_liaison_non_verifiee() {
+    let def = definition("first_launch_palworld", Verification::Auto);
+    let id = def.id;
+    let repo = Arc::new(FakeRepo::with_definition(def));
+    // Liaison non verifiee : l'identite ne doit pas etre tracee.
+    repo.add_link("guild", "user", "palworld", "76561198000000000", false);
+    let service = AchievementsService::new(repo);
+
+    let outcome = service
+        .grant_manually("guild", "user", id, "admin")
+        .await
+        .unwrap();
+    match outcome {
+        UnlockOutcome::Unlocked(unlocked) => {
+            assert!(unlocked.game_player_id.is_none());
+        }
+        _ => panic!("attendu Unlocked"),
+    }
+}
+
+#[tokio::test]
+async fn link_identity_remplace_silencieusement_sa_propriete_liaison() {
+    let repo = Arc::new(FakeRepo::default());
+    // Le meme membre re-lie la meme identite : pas de conflit.
+    repo.add_link("guild", "user", "palworld", "76561198000000000", true);
+    let service = AchievementsService::new(repo);
+
+    let result = service
+        .link_identity(
+            "guild",
+            "user",
+            "palworld",
+            Platform::Steam,
+            "76561198000000000",
+        )
+        .await;
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn un_evenement_deja_consomme_par_un_autre_membre_est_refuse() {
+    let repo = Arc::new(FakeRepo::with_definition(definition(
+        "first_launch_palworld",
+        Verification::Auto,
+    )));
+    // Le meme membre a deja consomme cet evenement.
+    repo.add_link("guild", "user", "palworld", "76561198000000000", true);
+    let service = AchievementsService::new(repo);
+
+    let cmd = GameUnlockCommand {
+        guild_id: "guild".into(),
+        game: "palworld".into(),
+        platform: Platform::Steam,
+        game_player_id: "76561198000000000".into(),
+        achievement_code: "first_launch_palworld".into(),
+        source_event_id: "evt-1".into(),
+    };
+    // Premier appel : l'evenement n'a pas encore ete consomme.
+    let premier = service.unlock_from_game_event(cmd.clone()).await.unwrap();
+    assert!(matches!(premier, UnlockOutcome::Unlocked(_)));
+
+    // Rejeu du meme evenement : deja consomme.
+    let rejeu = service.unlock_from_game_event(cmd).await.unwrap();
+    assert!(matches!(rejeu, UnlockOutcome::AlreadyOwned));
+}

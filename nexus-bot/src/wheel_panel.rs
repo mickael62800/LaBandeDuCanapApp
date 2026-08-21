@@ -123,20 +123,24 @@ pub async fn repost_panel(ctx: &Context, channel_id: ChannelId) {
     }
 }
 
+pub fn is_panel_admin(permissions: Option<Permissions>) -> bool {
+    permissions.is_some_and(|p| {
+        p.contains(Permissions::MANAGE_GUILD) || p.contains(Permissions::ADMINISTRATOR)
+    })
+}
+
+pub const MSG_PERMISSION_REQUIRED: &str = "Permission « Gerer le serveur » requise.";
+pub const MSG_DEPLOY_FAILED: &str = "Deploiement du panneau impossible.";
+pub const MSG_DEPLOY_SUCCESS: &str = "Panneau de la Roue deploye !";
+
 /// `/roue-panel` — pose le panneau dans le salon courant.
 pub async fn handle_command(ctx: &Context, cmd: &CommandInteraction) {
     // Fail-closed : sans permission LISIBLE dans l'interaction, on refuse.
     // Discord filtre deja la commande via `default_member_permissions`, mais
     // ce filtre est cote client et se contourne.
-    let autorise = cmd
-        .member
-        .as_ref()
-        .and_then(|m| m.permissions)
-        .is_some_and(|p| {
-            p.contains(Permissions::MANAGE_GUILD) || p.contains(Permissions::ADMINISTRATOR)
-        });
+    let autorise = is_panel_admin(cmd.member.as_ref().and_then(|m| m.permissions));
     if !autorise {
-        reply_ephemeral(ctx, cmd, "Permission « Gerer le serveur » requise.").await;
+        reply_ephemeral(ctx, cmd, MSG_PERMISSION_REQUIRED).await;
         return;
     }
 
@@ -146,11 +150,11 @@ pub async fn handle_command(ctx: &Context, cmd: &CommandInteraction) {
         .await
     {
         warn!(error = %e, "envoi du panneau Roue impossible");
-        reply_ephemeral(ctx, cmd, "Deploiement du panneau impossible.").await;
+        reply_ephemeral(ctx, cmd, MSG_DEPLOY_FAILED).await;
         return;
     }
 
-    reply_ephemeral(ctx, cmd, "Panneau de la Roue deploye !").await;
+    reply_ephemeral(ctx, cmd, MSG_DEPLOY_SUCCESS).await;
     info!(channel = %cmd.channel_id, "panneau Roue deploye");
 }
 
@@ -167,12 +171,7 @@ pub async fn handle_spin(api: &ApiClient, ctx: &Context, component: &ComponentIn
     let username = component.user.display_name().to_string();
 
     if let Err(e) = component
-        .create_response(
-            &ctx.http,
-            CreateInteractionResponse::Defer(
-                CreateInteractionResponseMessage::new().ephemeral(true),
-            ),
-        )
+        .create_response(&ctx.http, build_spin_defer_response())
         .await
     {
         warn!(error = %e, "defer du tirage impossible");
@@ -189,8 +188,7 @@ pub async fn handle_spin(api: &ApiClient, ctx: &Context, component: &ComponentIn
     {
         Ok(r) => r,
         Err(message) => {
-            let edit = serenity::builder::EditInteractionResponse::new()
-                .embed(embeds::build_error_embed(&message));
+            let edit = build_spin_error_edit(&message);
             let _ = component.edit_response(&ctx.http, edit).await;
             return;
         }
@@ -200,10 +198,7 @@ pub async fn handle_spin(api: &ApiClient, ctx: &Context, component: &ComponentIn
     // salon. Le resultat viendra remplacer ce message.
     let mut annonce = match component
         .channel_id
-        .send_message(
-            &ctx.http,
-            CreateMessage::new().embed(embeds::build_spinning_embed(&username)),
-        )
+        .send_message(&ctx.http, build_spin_announce_message(&username))
         .await
     {
         Ok(m) => m,
@@ -216,10 +211,7 @@ pub async fn handle_spin(api: &ApiClient, ctx: &Context, component: &ComponentIn
     tokio::time::sleep(Duration::from_millis(SPIN_ANIMATION_MS)).await;
 
     if let Err(e) = annonce
-        .edit(
-            &ctx.http,
-            EditMessage::new().embed(embeds::build_result_embed(&response, &username)),
-        )
+        .edit(&ctx.http, build_spin_result_edit(&response, &username))
         .await
     {
         warn!(error = %e, "affichage du resultat impossible");
@@ -229,16 +221,201 @@ pub async fn handle_spin(api: &ApiClient, ctx: &Context, component: &ComponentIn
     // bas.
     repost_panel(ctx, component.channel_id).await;
 
-    let edit = serenity::builder::EditInteractionResponse::new()
-        .content(format!("\u{1f300} Ton tirage : {}", response.case_label));
+    let edit = build_spin_final_edit(&response.case_label);
     let _ = component.edit_response(&ctx.http, edit).await;
 }
 
-async fn reply_ephemeral(ctx: &Context, cmd: &CommandInteraction, message: &str) {
-    let response = CreateInteractionResponse::Message(
+pub fn build_spin_defer_response() -> CreateInteractionResponse {
+    CreateInteractionResponse::Defer(
+        CreateInteractionResponseMessage::new().ephemeral(true),
+    )
+}
+
+pub fn build_spin_announce_message(username: &str) -> CreateMessage {
+    CreateMessage::new().embed(embeds::build_spinning_embed(username))
+}
+
+pub fn build_spin_result_edit(
+    response: &crate::api_client::WheelSpinResponse,
+    username: &str,
+) -> EditMessage {
+    EditMessage::new().embed(embeds::build_result_embed(response, username))
+}
+
+pub fn build_spin_error_edit(message: &str) -> serenity::builder::EditInteractionResponse {
+    serenity::builder::EditInteractionResponse::new()
+        .embed(embeds::build_error_embed(message))
+}
+
+pub fn build_spin_final_edit(case_label: &str) -> serenity::builder::EditInteractionResponse {
+    serenity::builder::EditInteractionResponse::new()
+        .content(format_spin_result_response(case_label))
+}
+
+pub fn is_old_wheel_panel(author_id: serenity::all::UserId, bot_id: serenity::all::UserId, titles: &[Option<&str>]) -> bool {
+    author_id == bot_id && titles.iter().any(|t| *t == Some(PANEL_TITLE))
+}
+
+pub fn filter_old_wheel_panel_ids(
+    messages: &[(MessageId, serenity::all::UserId, Vec<Option<String>>)],
+    bot_id: serenity::all::UserId,
+) -> Vec<MessageId> {
+    messages
+        .iter()
+        .filter_map(|(id, author, titles)| {
+            if *author == bot_id && titles.iter().any(|t| t.as_deref() == Some(PANEL_TITLE)) {
+                Some(*id)
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+pub fn format_spin_result_response(case_label: &str) -> String {
+    format!("\u{1f300} Ton tirage : {}", case_label)
+}
+
+pub fn build_ephemeral_reply(message: &str) -> CreateInteractionResponse {
+    CreateInteractionResponse::Message(
         CreateInteractionResponseMessage::new()
             .content(message)
             .ephemeral(true),
-    );
-    let _ = cmd.create_response(&ctx.http, response).await;
+    )
+}
+
+async fn reply_ephemeral(ctx: &Context, cmd: &CommandInteraction, message: &str) {
+    let _ = cmd.create_response(&ctx.http, build_ephemeral_reply(message)).await;
+}
+
+pub async fn execute_spin(
+    api: &ApiClient,
+    guild_id: &str,
+    user_id: &str,
+    username: &str,
+) -> Result<crate::api_client::WheelSpinResponse, String> {
+    api.spin_wheel(guild_id, user_id, username).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serenity::all::UserId;
+
+    #[test]
+    fn test_register() {
+        let cmd = register();
+        let json = serde_json::to_value(&cmd).unwrap();
+        assert_eq!(json["name"], "roue-panel");
+    }
+
+    #[test]
+    fn test_handles_component() {
+        assert!(handles_component(PANEL_SPIN_ID));
+        assert!(!handles_component("other_button"));
+    }
+
+    #[test]
+    fn test_build_panel_message() {
+        let msg = build_panel_message();
+        let json = serde_json::to_value(&msg).unwrap();
+        assert!(json["components"].as_array().is_some());
+    }
+
+    #[test]
+    fn test_is_panel_admin() {
+        assert!(!is_panel_admin(None));
+        assert!(!is_panel_admin(Some(Permissions::SEND_MESSAGES)));
+        assert!(is_panel_admin(Some(Permissions::MANAGE_GUILD)));
+        assert!(is_panel_admin(Some(Permissions::ADMINISTRATOR)));
+    }
+
+    #[test]
+    fn test_wheel_panel_helpers() {
+        let bot = UserId::new(100);
+        let other = UserId::new(200);
+
+        assert!(is_old_wheel_panel(bot, bot, &[Some(PANEL_TITLE)]));
+        assert!(!is_old_wheel_panel(other, bot, &[Some(PANEL_TITLE)]));
+        assert!(!is_old_wheel_panel(bot, bot, &[Some("Autre titre")]));
+
+        let msgs = vec![
+            (MessageId::new(1), bot, vec![Some(PANEL_TITLE.to_string())]),
+            (MessageId::new(2), other, vec![Some(PANEL_TITLE.to_string())]),
+            (MessageId::new(3), bot, vec![Some("Autre".to_string())]),
+            (MessageId::new(4), bot, vec![None]),
+        ];
+        let old_ids = filter_old_wheel_panel_ids(&msgs, bot);
+        assert_eq!(old_ids, vec![MessageId::new(1)]);
+
+        let res = format_spin_result_response("Jackpot 1000");
+        assert!(res.contains("Jackpot 1000"));
+
+        let err_edit = build_spin_error_edit("API down");
+        let j_err = serde_json::to_value(&err_edit).unwrap();
+        assert!(j_err["embeds"].as_array().is_some());
+
+        let final_edit = build_spin_final_edit("PQ 100");
+        let j_final = serde_json::to_value(&final_edit).unwrap();
+        assert!(j_final["content"].as_str().unwrap().contains("PQ 100"));
+
+        let eph = build_ephemeral_reply("Succès");
+        let j_eph = serde_json::to_value(&eph).unwrap();
+        assert_eq!(j_eph["data"]["content"], "Succès");
+
+        let def = build_spin_defer_response();
+        let j_def = serde_json::to_value(&def).unwrap();
+        assert_eq!(j_def["type"], 5); // Defer
+
+        let ann = build_spin_announce_message("Alice");
+        let j_ann = serde_json::to_value(&ann).unwrap();
+        assert!(j_ann["embeds"].as_array().is_some());
+
+        let res_obj = crate::api_client::WheelSpinResponse {
+            case_label: "Jackpot".into(),
+            payout: 1000,
+            balance_after: 2000,
+            is_memorable: true,
+        };
+        let res_edit = build_spin_result_edit(&res_obj, "Alice");
+        let j_res_edit = serde_json::to_value(&res_edit).unwrap();
+        assert!(j_res_edit["embeds"].as_array().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_execute_spin() {
+        use tokio::net::TcpListener;
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let base_url = format!("http://{}", addr);
+
+        tokio::spawn(async move {
+            while let Ok((mut stream, _)) = listener.accept().await {
+                let mut buf = [0u8; 4096];
+                let _ = stream.read(&mut buf).await.unwrap_or(0);
+
+                let body = r#"{"case_label":"Licorne 🦄","payout":500,"balance_after":1500,"is_memorable":true}"#;
+                let resp = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+                let _ = stream.write_all(resp.as_bytes()).await;
+            }
+        });
+
+        let client = ApiClient::new(base_url, Some("token".into()));
+        let res = execute_spin(&client, "g1", "u1", "Alice").await;
+        assert!(res.is_ok());
+        let spin = res.unwrap();
+        assert_eq!(spin.payout, 500);
+        assert_eq!(spin.balance_after, 1500);
+        assert!(spin.is_memorable);
+
+        assert!(MSG_PERMISSION_REQUIRED.contains("Gerer le serveur"));
+        assert!(MSG_DEPLOY_FAILED.contains("impossible"));
+        assert!(MSG_DEPLOY_SUCCESS.contains("deploye"));
+    }
 }

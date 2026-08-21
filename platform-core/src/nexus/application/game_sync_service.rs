@@ -266,3 +266,7 @@ impl GameSyncService {
         Ok(outcome)
     }
 }
+
+#[cfg(test)]
+#[path = "tests/game_sync.rs"]
+mod tests;

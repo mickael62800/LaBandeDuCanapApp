@@ -259,3 +259,341 @@ async fn get_wallet_returns_repo_state() {
     assert_eq!(w.guild_id, "g1");
     assert_eq!(w.user_id, "u1");
 }
+
+#[tokio::test]
+async fn test_can_spin() {
+    let (svc_can, _, _) = service(true, 1000);
+    assert!(svc_can.can_spin("g1", "u1").await.unwrap());
+
+    let (svc_cant, _, _) = service(false, 1000);
+    assert!(!svc_cant.can_spin("g1", "u1").await.unwrap());
+}
+
+struct MockWheelRepoTxFail {
+    logged: Mutex<Vec<WheelSpin>>,
+}
+
+#[async_trait]
+impl WheelRepository for MockWheelRepoTxFail {
+    async fn try_claim(&self, _g: &str, _u: &str, _h: i64) -> Result<bool, DomainError> {
+        Ok(true)
+    }
+    async fn has_claimed_recently(&self, _g: &str, _u: &str, _h: i64) -> Result<bool, DomainError> {
+        Ok(false)
+    }
+    async fn log_spin(&self, _spin: &WheelSpin) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn list_cases(
+        &self,
+        _g: &str,
+    ) -> Result<Vec<crate::nexus::domain::entities::wheel::WheelCaseData>, DomainError> {
+        Ok(vec![])
+    }
+    async fn replace_cases(
+        &self,
+        _g: &str,
+        _cases: &[crate::nexus::domain::entities::wheel::WheelCaseData],
+    ) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn execute_spin_transaction(
+        &self,
+        _guild_id: &str,
+        _user_id: &str,
+        _cooldown_hours: i64,
+        _spin: &WheelSpin,
+        _wallet: &crate::nexus::domain::entities::wallet::Wallet,
+        _mutation: Option<&crate::nexus::domain::entities::wallet::WalletMutation>,
+    ) -> Result<bool, DomainError> {
+        Ok(false) // Simule l'échec de la transaction (déjà claimé par un autre thread)
+    }
+}
+
+#[tokio::test]
+async fn test_spin_concurrent_transaction_fails() {
+    let wheel = Arc::new(MockWheelRepoTxFail {
+        logged: Mutex::new(vec![]),
+    });
+    let wallet = Arc::new(MockWalletRepo {
+        initial_coins: 1000,
+        saved: Mutex::new(vec![]),
+    });
+    let svc = PlayWheelService::new(
+        wheel.clone(),
+        wallet.clone(),
+        Arc::new(crate::nexus::application::economy_config::EnabledBotConfigRepository),
+    );
+    let err = svc.spin(cmd()).await.unwrap_err();
+    assert!(matches!(err, DomainError::Validation(_)));
+}
+
+#[tokio::test]
+async fn test_spin_with_wheel_disabled() {
+    struct MockConfigRepoWheelDisabled;
+    #[async_trait::async_trait]
+    impl crate::nexus::ports::outbound::system::bot_config_repository::BotConfigRepository
+        for MockConfigRepoWheelDisabled
+    {
+        async fn get_definitions(
+            &self,
+        ) -> Result<
+            Vec<crate::nexus::domain::entities::system::bot_config::BotDefinition>,
+            crate::nexus::domain::errors::DomainError,
+        > {
+            Ok(vec![])
+        }
+        async fn get_config(
+            &self,
+            _guild_id: &str,
+            bot_name: &str,
+        ) -> Result<Vec<crate::nexus::domain::entities::system::bot_config::BotGuildConfig>, crate::nexus::domain::errors::DomainError> {
+            if bot_name == "nexus-economy" {
+                Ok(vec![crate::nexus::domain::entities::system::bot_config::BotGuildConfig {
+                    id: uuid::Uuid::nil(),
+                    guild_id: "g1".into(),
+                    bot_name: bot_name.to_string(),
+                    config_key: "wheel_enabled".into(),
+                    config_value: "false".into(),
+                    updated_at: chrono::Utc::now(),
+                }])
+            } else {
+                Ok(vec![])
+            }
+        }
+        async fn get_all_config(
+            &self,
+            _: &str,
+        ) -> Result<Vec<crate::nexus::domain::entities::system::bot_config::BotGuildConfig>, crate::nexus::domain::errors::DomainError> {
+            Ok(vec![])
+        }
+        async fn set_config(&self, _: &str, _: &str, _: &str, _: &str) -> Result<(), crate::nexus::domain::errors::DomainError> {
+            Ok(())
+        }
+        async fn delete_config(&self, _: &str, _: &str, _: &str) -> Result<(), crate::nexus::domain::errors::DomainError> {
+            Ok(())
+        }
+    }
+
+    let wheel = Arc::new(MockWheelRepo {
+        claim_ok: true,
+        logged: Mutex::new(vec![]),
+        wallet_repo: Mutex::new(None),
+    });
+    let wallet = Arc::new(MockWalletRepo {
+        initial_coins: 1000,
+        saved: Mutex::new(vec![]),
+    });
+    let svc_disabled = PlayWheelService::new(
+        wheel.clone(),
+        wallet.clone(),
+        Arc::new(MockConfigRepoWheelDisabled),
+    );
+
+    let err = svc_disabled.spin(cmd()).await.unwrap_err();
+    assert!(matches!(err, DomainError::Validation(_)));
+}
+
+#[tokio::test]
+async fn test_can_spin_with_wheel_disabled() {
+    struct MockConfigRepoWheelDisabled;
+    #[async_trait::async_trait]
+    impl crate::nexus::ports::outbound::system::bot_config_repository::BotConfigRepository
+        for MockConfigRepoWheelDisabled
+    {
+        async fn get_definitions(
+            &self,
+        ) -> Result<
+            Vec<crate::nexus::domain::entities::system::bot_config::BotDefinition>,
+            crate::nexus::domain::errors::DomainError,
+        > {
+            Ok(vec![])
+        }
+        async fn get_config(
+            &self,
+            _guild_id: &str,
+            bot_name: &str,
+        ) -> Result<Vec<crate::nexus::domain::entities::system::bot_config::BotGuildConfig>, crate::nexus::domain::errors::DomainError> {
+            if bot_name == "nexus-economy" {
+                Ok(vec![crate::nexus::domain::entities::system::bot_config::BotGuildConfig {
+                    id: uuid::Uuid::nil(),
+                    guild_id: "g1".into(),
+                    bot_name: bot_name.to_string(),
+                    config_key: "wheel_enabled".into(),
+                    config_value: "false".into(),
+                    updated_at: chrono::Utc::now(),
+                }])
+            } else {
+                Ok(vec![])
+            }
+        }
+        async fn get_all_config(
+            &self,
+            _: &str,
+        ) -> Result<Vec<crate::nexus::domain::entities::system::bot_config::BotGuildConfig>, crate::nexus::domain::errors::DomainError> {
+            Ok(vec![])
+        }
+        async fn set_config(&self, _: &str, _: &str, _: &str, _: &str) -> Result<(), crate::nexus::domain::errors::DomainError> {
+            Ok(())
+        }
+        async fn delete_config(&self, _: &str, _: &str, _: &str) -> Result<(), crate::nexus::domain::errors::DomainError> {
+            Ok(())
+        }
+    }
+
+    let wheel = Arc::new(MockWheelRepo {
+        claim_ok: true,
+        logged: Mutex::new(vec![]),
+        wallet_repo: Mutex::new(None),
+    });
+    let wallet = Arc::new(MockWalletRepo {
+        initial_coins: 1000,
+        saved: Mutex::new(vec![]),
+    });
+    let svc = PlayWheelService::new(
+        wheel.clone(),
+        wallet.clone(),
+        Arc::new(MockConfigRepoWheelDisabled),
+    );
+
+    assert!(!svc.can_spin("g1", "u1").await.unwrap());
+}
+
+
+#[tokio::test]
+async fn test_spin_cooldown_message_with_hours() {
+    struct MockConfigRepoCooldownHours;
+    #[async_trait::async_trait]
+    impl crate::nexus::ports::outbound::system::bot_config_repository::BotConfigRepository
+        for MockConfigRepoCooldownHours
+    {
+        async fn get_definitions(
+            &self,
+        ) -> Result<
+            Vec<crate::nexus::domain::entities::system::bot_config::BotDefinition>,
+            crate::nexus::domain::errors::DomainError,
+        > {
+            Ok(vec![])
+        }
+        async fn get_config(
+            &self,
+            _guild_id: &str,
+            bot_name: &str,
+        ) -> Result<Vec<crate::nexus::domain::entities::system::bot_config::BotGuildConfig>, crate::nexus::domain::errors::DomainError> {
+            if bot_name == "nexus-economy" {
+                Ok(vec![
+                    crate::nexus::domain::entities::system::bot_config::BotGuildConfig {
+                        id: uuid::Uuid::nil(),
+                        guild_id: "g1".into(),
+                        bot_name: bot_name.to_string(),
+                        config_key: "enabled".into(),
+                        config_value: "true".into(),
+                        updated_at: chrono::Utc::now(),
+                    },
+                    crate::nexus::domain::entities::system::bot_config::BotGuildConfig {
+                        id: uuid::Uuid::nil(),
+                        guild_id: "g1".into(),
+                        bot_name: bot_name.to_string(),
+                        config_key: "wheel_cooldown_hours".into(),
+                        config_value: "6".into(),
+                        updated_at: chrono::Utc::now(),
+                    },
+                ])
+            } else {
+                Ok(vec![])
+            }
+        }
+        async fn get_all_config(
+            &self,
+            _: &str,
+        ) -> Result<Vec<crate::nexus::domain::entities::system::bot_config::BotGuildConfig>, crate::nexus::domain::errors::DomainError> {
+            Ok(vec![])
+        }
+        async fn set_config(&self, _: &str, _: &str, _: &str, _: &str) -> Result<(), crate::nexus::domain::errors::DomainError> {
+            Ok(())
+        }
+        async fn delete_config(&self, _: &str, _: &str, _: &str) -> Result<(), crate::nexus::domain::errors::DomainError> {
+            Ok(())
+        }
+    }
+
+    let wheel = Arc::new(MockWheelRepo {
+        claim_ok: false,
+        logged: Mutex::new(vec![]),
+        wallet_repo: Mutex::new(None),
+    });
+    let wallet = Arc::new(MockWalletRepo {
+        initial_coins: 1000,
+        saved: Mutex::new(vec![]),
+    });
+    let svc_cooldown = PlayWheelService::new(
+        wheel.clone(),
+        wallet.clone(),
+        Arc::new(MockConfigRepoCooldownHours),
+    );
+
+    let err = svc_cooldown.spin(cmd()).await.unwrap_err();
+    // With 6 hours cooldown, the message should show "Reviens dans moins de 6 h."
+    if let DomainError::Validation(msg) = err {
+        assert!(msg.contains("6 h"));
+    } else {
+        panic!("Expected Validation error with cooldown message");
+    }
+}
+
+#[tokio::test]
+async fn test_spin_with_economy_disabled() {
+    struct MockConfigRepoDisabled;
+    #[async_trait::async_trait]
+    impl crate::nexus::ports::outbound::system::bot_config_repository::BotConfigRepository
+        for MockConfigRepoDisabled
+    {
+        async fn get_definitions(
+            &self,
+        ) -> Result<
+            Vec<crate::nexus::domain::entities::system::bot_config::BotDefinition>,
+            crate::nexus::domain::errors::DomainError,
+        > {
+            Ok(vec![])
+        }
+        async fn get_config(
+            &self,
+            _guild_id: &str,
+            _bot_name: &str,
+        ) -> Result<Vec<crate::nexus::domain::entities::system::bot_config::BotGuildConfig>, crate::nexus::domain::errors::DomainError> {
+            // Return empty config, so enabled defaults to false (fail closed)
+            Ok(vec![])
+        }
+        async fn get_all_config(
+            &self,
+            _: &str,
+        ) -> Result<Vec<crate::nexus::domain::entities::system::bot_config::BotGuildConfig>, crate::nexus::domain::errors::DomainError> {
+            Ok(vec![])
+        }
+        async fn set_config(&self, _: &str, _: &str, _: &str, _: &str) -> Result<(), crate::nexus::domain::errors::DomainError> {
+            Ok(())
+        }
+        async fn delete_config(&self, _: &str, _: &str, _: &str) -> Result<(), crate::nexus::domain::errors::DomainError> {
+            Ok(())
+        }
+    }
+
+    let wheel = Arc::new(MockWheelRepo {
+        claim_ok: true,
+        logged: Mutex::new(vec![]),
+        wallet_repo: Mutex::new(None),
+    });
+    let wallet = Arc::new(MockWalletRepo {
+        initial_coins: 1000,
+        saved: Mutex::new(vec![]),
+    });
+    let svc = PlayWheelService::new(
+        wheel.clone(),
+        wallet.clone(),
+        Arc::new(MockConfigRepoDisabled),
+    );
+
+    // Spin should fail because economy is disabled
+    let err = svc.spin(cmd()).await.unwrap_err();
+    assert!(matches!(err, DomainError::Validation(_)));
+}

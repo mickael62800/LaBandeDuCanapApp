@@ -13,7 +13,22 @@ pub(crate) fn parse_reaction_type(raw: &str) -> Option<ReactionType> {
     if s.is_empty() {
         return None;
     }
-    // Serenity parse nativement les emojis custom ("<:name:id>", "<a:name:id>")
+    // Si c'est au format <:name:id> ou <a:name:id>
+    if (s.starts_with("<:") || s.starts_with("<a:")) && s.ends_with('>') {
+        let content = &s[2..s.len() - 1]; // Enlever <: et >
+        let is_animated = s.starts_with("<a:");
+        let content = if is_animated { &content[1..] } else { content }; // Enlever 'a'
+        if let Some((name, id_str)) = content.split_once(':') {
+            if let Ok(id) = id_str.parse::<u64>() {
+                return Some(ReactionType::Custom {
+                    animated: is_animated,
+                    id: serenity::all::EmojiId::new(id),
+                    name: Some(name.to_string()),
+                });
+            }
+        }
+    }
+    // Serenity parse nativement les emojis custom ("name:id", "a:name:id")
     // et les emojis unicode.
     match ReactionType::try_from(s) {
         Ok(rt) => Some(rt),
@@ -313,5 +328,62 @@ pub async fn handle_reaction(
             action = if is_add { "add" } else { "remove" },
             "Modification du role de jeu impossible"
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_find_game_for_reaction() {
+        let games = vec![
+            Game {
+                id: "g1".into(),
+                game_name: "Minecraft".into(),
+                role_id: Some("111".into()),
+                emoji: Some("⛏️".into()),
+                category: None,
+            },
+            Game {
+                id: "g2".into(),
+                game_name: "CustomGame".into(),
+                role_id: Some("222".into()),
+                emoji: Some("<:custom:333333>".into()),
+                category: None,
+            },
+            Game {
+                id: "g3".into(),
+                game_name: "NoEmoji".into(),
+                role_id: None,
+                emoji: None,
+                category: None,
+            },
+        ];
+
+        let found_unicode = find_game_for_reaction(&games, "⛏️");
+        assert_eq!(found_unicode.map(|g| g.game_name.as_str()), Some("Minecraft"));
+
+        let found_custom = find_game_for_reaction(&games, "333333");
+        assert_eq!(found_custom.map(|g| g.game_name.as_str()), Some("CustomGame"));
+
+        let not_found = find_game_for_reaction(&games, "🎮");
+        assert!(not_found.is_none());
+    }
+
+    #[test]
+    fn test_parse_reaction_type_cases() {
+        assert!(parse_reaction_type("").is_none());
+        assert!(parse_reaction_type("   ").is_none());
+
+        let animated = parse_reaction_type("<a:fire:99999>").unwrap();
+        match animated {
+            ReactionType::Custom { animated, id, name } => {
+                assert!(animated);
+                assert_eq!(id.get(), 99999);
+                assert_eq!(name.as_deref(), Some("fire"));
+            }
+            _ => panic!("Expected animated custom emoji"),
+        }
     }
 }

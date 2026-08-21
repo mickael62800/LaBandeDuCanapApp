@@ -172,3 +172,84 @@ fn un_module_sans_cle_enabled_est_eteint() {
 
     assert!(CoussinConfig::default().ensure_enabled().is_err());
 }
+
+// ── CoussinConfig ──
+
+#[test]
+fn validate_mise_accepte_les_valeurs_valides() {
+    let c = CoussinConfig {
+        combat_mise_min: 10,
+        combat_mise_max: 100,
+        ..Default::default()
+    };
+    assert!(c.validate_mise(50).is_ok());
+    assert!(c.validate_mise(10).is_ok());
+    assert!(c.validate_mise(100).is_ok());
+}
+
+#[test]
+fn validate_mise_refuse_hors_bornes() {
+    let c = CoussinConfig {
+        combat_mise_min: 10,
+        combat_mise_max: 100,
+        ..Default::default()
+    };
+    assert!(c.validate_mise(9).is_err());
+    assert!(c.validate_mise(101).is_err());
+}
+
+#[test]
+fn validate_mise_sans_plafond() {
+    let c = CoussinConfig {
+        combat_mise_max: 0,
+        ..Default::default()
+    };
+    assert!(c.validate_mise(1_000_000).is_ok());
+}
+
+#[test]
+fn shop_price_applique_le_multiplicateur_global() {
+    let c = CoussinConfig {
+        shop_price_pct: 120,
+        shop_prices: vec![],
+        ..Default::default()
+    };
+    assert_eq!(c.shop_price("unknown", 100), 120);
+}
+
+#[test]
+fn shop_price_respecte_les_prix_personnalises() {
+    let c = CoussinConfig {
+        shop_prices: vec![("item1".to_string(), 50)],
+        shop_price_pct: 100,
+        ..Default::default()
+    };
+    assert_eq!(c.shop_price("item1", 100), 50);
+}
+
+#[test]
+fn shop_price_jamais_moins_d_un() {
+    let c = CoussinConfig {
+        shop_price_pct: 1,
+        shop_prices: vec![],
+        ..Default::default()
+    };
+    assert_eq!(c.shop_price("any", 100), 1);
+}
+
+#[test]
+fn combat_rules_construit_la_structure() {
+    let c = CoussinConfig::default();
+    let rules = c.combat_rules();
+    assert_eq!(rules.level_gap_max, c.level_gap_max);
+    assert_eq!(rules.dice_faces, c.dice_faces);
+}
+
+#[test]
+fn ensure_enabled_avec_module_actif() {
+    let c = CoussinConfig {
+        enabled: true,
+        ..Default::default()
+    };
+    assert!(c.ensure_enabled().is_ok());
+}

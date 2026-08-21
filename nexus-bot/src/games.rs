@@ -217,16 +217,12 @@ async fn handle_create(ctx: &Context, cmd: &CommandInteraction, api: &ApiClient,
     let emoji_raw = get_string_option(cmd, "emoji");
     let category = get_string_option(cmd, "category");
 
-    // Emoji optionnel : on valide seulement s'il est fourni.
-    let emoji_clean: Option<String> = match emoji_raw.as_deref().map(str::trim) {
-        Some(e) if !e.is_empty() => {
-            if parse_reaction_type(e).is_none() {
-                reply(ctx, cmd, "Emoji invalide. Utilise un emoji unicode (ex. 🎮) ou un emoji serveur (ex. `<:name:123456>`).").await;
-                return;
-            }
-            Some(e.to_string())
+    let emoji_clean = match clean_emoji(emoji_raw.as_deref()) {
+        Ok(e) => e,
+        Err(msg) => {
+            reply(ctx, cmd, msg).await;
+            return;
         }
-        _ => None,
     };
 
     let guild_id_obj = match cmd.guild_id {
@@ -273,14 +269,7 @@ async fn handle_create(ctx: &Context, cmd: &CommandInteraction, api: &ApiClient,
         .await
     {
         Ok(game) => {
-            let desc = format!(
-                "**{}** {} est maintenant disponible.\nCategorie : {}\nRole : <@&{}>\nLes joueurs peuvent s'inscrire avec `/game join {}` ou via le panneau.",
-                game.game_name,
-                game.emoji.clone().unwrap_or_default(),
-                game.category.clone().unwrap_or_else(|| "(aucune)".into()),
-                role_id_str,
-                game.game_name,
-            );
+            let desc = format_game_created_description(&game, &role_id_str);
             let embed = success_embed("Jeu cree !").description(desc);
             reply_embed(ctx, cmd, embed).await;
             info!(game = %game.game_name, role = %role_id_str, guild = %guild_id, "Jeu cree (avec role)");
@@ -350,19 +339,8 @@ async fn handle_list(ctx: &Context, cmd: &CommandInteraction, api: &ApiClient, g
                 )
                 .await;
             } else {
-                let list: String = games
-                    .iter()
-                    .map(|g| {
-                        format!(
-                            "- {} **{}**",
-                            g.emoji.clone().unwrap_or_default(),
-                            g.game_name
-                        )
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                let embed = info_embed("Jeux disponibles")
-                    .description(format!("{}\n\n*Inscris-toi avec `/game join <nom>`*", list));
+                let content = format_game_list_content(&games);
+                let embed = info_embed("Jeux disponibles").description(content);
                 reply_embed(ctx, cmd, embed).await;
             }
         }
@@ -422,11 +400,7 @@ async fn handle_join(ctx: &Context, cmd: &CommandInteraction, api: &ApiClient, g
             reply(
                 ctx,
                 cmd,
-                &format!(
-                    "Tu es inscrit a **{}** ! Utilise <@&{}> pour pinger les joueurs.",
-                    game.game_name,
-                    role_id.get()
-                ),
+                &format_game_join_success(&game.game_name, role_id.get()),
             )
             .await
         }
@@ -483,11 +457,62 @@ async fn handle_leave(ctx: &Context, cmd: &CommandInteraction, api: &ApiClient, 
             reply(
                 ctx,
                 cmd,
-                &format!("Tu es desinscrit de **{}**.", game.game_name),
+                &format_game_leave_success(&game.game_name),
             )
             .await
         }
         Err(e) => reply(ctx, cmd, &format!("Erreur : {e}")).await,
+    }
+}
+
+pub fn format_game_created_description(game: &Game, role_id_str: &str) -> String {
+    format!(
+        "**{}** {} est maintenant disponible.\nCategorie : {}\nRole : <@&{}>\nLes joueurs peuvent s'inscrire avec `/game join {}` ou via le panneau.",
+        game.game_name,
+        game.emoji.clone().unwrap_or_default(),
+        game.category.clone().unwrap_or_else(|| "(aucune)".into()),
+        role_id_str,
+        game.game_name,
+    )
+}
+
+pub fn format_game_list_content(games: &[Game]) -> String {
+    let list: String = games
+        .iter()
+        .map(|g| {
+            format!(
+                "- {} **{}**",
+                g.emoji.clone().unwrap_or_default(),
+                g.game_name
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!("{}\n\n*Inscris-toi avec `/game join <nom>`*", list)
+}
+
+pub fn format_game_join_success(game_name: &str, role_id: u64) -> String {
+    format!(
+        "Tu es inscrit a **{}** ! Utilise <@&{}> pour pinger les joueurs.",
+        game_name,
+        role_id
+    )
+}
+
+pub fn format_game_leave_success(game_name: &str) -> String {
+    format!("Tu es desinscrit de **{}**.", game_name)
+}
+
+pub fn clean_emoji(emoji_raw: Option<&str>) -> Result<Option<String>, &'static str> {
+    match emoji_raw.map(str::trim) {
+        Some(e) if !e.is_empty() => {
+            if parse_reaction_type(e).is_none() {
+                Err("Emoji invalide. Utilise un emoji unicode (ex. 🎮) ou un emoji serveur (ex. `<:name:123456>`).")
+            } else {
+                Ok(Some(e.to_string()))
+            }
+        }
+        _ => Ok(None),
     }
 }
 
@@ -542,20 +567,41 @@ fn success_embed(title: &str) -> CreateEmbed {
     CreateEmbed::new().title(title.to_string()).color(0x2ecc71)
 }
 
-async fn reply(ctx: &Context, cmd: &CommandInteraction, content: &str) {
-    let response = CreateInteractionResponse::Message(
+pub fn build_game_reply(content: &str) -> CreateInteractionResponse {
+    CreateInteractionResponse::Message(
         CreateInteractionResponseMessage::new()
             .content(content)
             .ephemeral(true),
-    );
-    if let Err(e) = cmd.create_response(&ctx.http, response).await {
+    )
+}
+
+pub fn build_game_embed_reply(embed: CreateEmbed) -> CreateInteractionResponse {
+    CreateInteractionResponse::Message(
+        CreateInteractionResponseMessage::new()
+            .embed(embed)
+            .ephemeral(true),
+    )
+}
+
+pub fn build_game_edit_reply(content: &str) -> EditInteractionResponse {
+    EditInteractionResponse::new().content(content)
+}
+
+pub fn build_game_component_followup(content: &str) -> serenity::all::CreateInteractionResponseFollowup {
+    serenity::all::CreateInteractionResponseFollowup::new()
+        .content(content)
+        .ephemeral(true)
+}
+
+async fn reply(ctx: &Context, cmd: &CommandInteraction, content: &str) {
+    if let Err(e) = cmd.create_response(&ctx.http, build_game_reply(content)).await {
         warn!(error = %e, "Erreur reponse commande game");
     }
 }
 
 async fn edit_deferred_reply(ctx: &Context, cmd: &CommandInteraction, content: &str) {
     if let Err(e) = cmd
-        .edit_response(&ctx.http, EditInteractionResponse::new().content(content))
+        .edit_response(&ctx.http, build_game_edit_reply(content))
         .await
     {
         warn!(error = %e, "Erreur edition reponse differee commande game");
@@ -563,12 +609,7 @@ async fn edit_deferred_reply(ctx: &Context, cmd: &CommandInteraction, content: &
 }
 
 async fn reply_embed(ctx: &Context, cmd: &CommandInteraction, embed: CreateEmbed) {
-    let response = CreateInteractionResponse::Message(
-        CreateInteractionResponseMessage::new()
-            .embed(embed)
-            .ephemeral(true),
-    );
-    if let Err(e) = cmd.create_response(&ctx.http, response).await {
+    if let Err(e) = cmd.create_response(&ctx.http, build_game_embed_reply(embed)).await {
         warn!(error = %e, "Erreur reponse embed commande game");
     }
 }
@@ -580,11 +621,11 @@ async fn reply_embed(ctx: &Context, cmd: &CommandInteraction, embed: CreateEmbed
 /// les appels API et Discord qui suivent depassent les 3 s accordees par
 /// Discord et le clic echoue en « n'a pas repondu a temps ».
 async fn reply_component(ctx: &Context, component: &ComponentInteraction, content: &str) {
-    let response = serenity::all::CreateInteractionResponseFollowup::new()
-        .content(content)
-        .ephemeral(true);
-    if let Err(e) = component.create_followup(&ctx.http, response).await {
-        warn!(error = %e, "Erreur reponse ephemeral games panel");
+    if let Err(e) = component
+        .create_followup(&ctx.http, build_game_component_followup(content))
+        .await
+    {
+        warn!(error = %e, "Erreur reponse component");
     }
 }
 
@@ -600,6 +641,16 @@ mod tests {
             category: None,
             role_id: None,
         }
+    }
+
+    #[test]
+    fn test_register_commands() {
+        let cmds = register_commands();
+        assert_eq!(cmds.len(), 2);
+        let j0 = serde_json::to_value(&cmds[0]).unwrap();
+        let j1 = serde_json::to_value(&cmds[1]).unwrap();
+        assert_eq!(j0["name"], "game");
+        assert_eq!(j1["name"], "game-admin");
     }
 
     #[test]
@@ -651,5 +702,94 @@ mod tests {
             Some("custom")
         );
         assert!(find_game_for_reaction(&games, "❌").is_none());
+    }
+
+    #[test]
+    fn test_parse_reaction_type() {
+        assert_eq!(parse_reaction_type(""), None);
+        assert_eq!(parse_reaction_type("   "), None);
+
+        let custom = parse_reaction_type("<:mon_emoji:9876543210>").unwrap();
+        assert!(matches!(custom, ReactionType::Custom { id, animated: false, .. } if id.get() == 9876543210));
+
+        let custom_anim = parse_reaction_type("<a:mon_anim:1122334455>").unwrap();
+        assert!(matches!(custom_anim, ReactionType::Custom { id, animated: true, .. } if id.get() == 1122334455));
+
+        let unicode = parse_reaction_type("🎲").unwrap();
+        assert!(matches!(unicode, ReactionType::Unicode(u) if u == "🎲"));
+    }
+
+    #[test]
+    fn test_build_panel_embed() {
+        let embed_empty = build_panel_embed(None, &[]);
+        let j_empty = serde_json::to_value(&embed_empty).unwrap();
+        assert_eq!(j_empty["title"], "- [ Jeux ] -");
+
+        let g1 = Game {
+            id: "g1".into(),
+            game_name: "Minecraft".into(),
+            emoji: Some("⛏️".into()),
+            category: Some("Survie".into()),
+            role_id: Some("12345".into()),
+        };
+        let embed_with_games = build_panel_embed(Some("Survie"), &[&g1]);
+        let j_games = serde_json::to_value(&embed_with_games).unwrap();
+        assert_eq!(j_games["title"], "- [ Survie ] -");
+        assert!(j_games["description"].as_str().unwrap().contains("<@&12345>"));
+    }
+
+    #[test]
+    fn test_embed_builders() {
+        let info = info_embed("Info Title");
+        let j_info = serde_json::to_value(&info).unwrap();
+        assert_eq!(j_info["title"], "Info Title");
+
+        let success = success_embed("Success Title");
+        let j_succ = serde_json::to_value(&success).unwrap();
+        assert_eq!(j_succ["title"], "Success Title");
+    }
+
+    #[test]
+    fn test_game_formatting_helpers() {
+        let g = Game {
+            id: "g1".into(),
+            game_name: "Palworld".into(),
+            emoji: Some("🦖".into()),
+            category: Some("Aventure".into()),
+            role_id: Some("999".into()),
+        };
+        let desc = format_game_created_description(&g, "999");
+        assert!(desc.contains("Palworld"));
+        assert!(desc.contains("<@&999>"));
+
+        let list_txt = format_game_list_content(&[g]);
+        assert!(list_txt.contains("Palworld"));
+        assert!(list_txt.contains("/game join"));
+
+        let join_txt = format_game_join_success("Palworld", 999);
+        assert!(join_txt.contains("<@&999>"));
+
+        let leave_txt = format_game_leave_success("Palworld");
+        assert!(leave_txt.contains("desinscrit"));
+
+        let rep = build_game_reply("Message test");
+        let j_rep = serde_json::to_value(&rep).unwrap();
+        assert_eq!(j_rep["data"]["content"], "Message test");
+
+        let emb_rep = build_game_embed_reply(info_embed("Info Title"));
+        let j_emb_rep = serde_json::to_value(&emb_rep).unwrap();
+        assert!(j_emb_rep["data"]["embeds"].as_array().is_some());
+
+        let edit_rep = build_game_edit_reply("Edit test");
+        let j_edit = serde_json::to_value(&edit_rep).unwrap();
+        assert_eq!(j_edit["content"], "Edit test");
+
+        let comp_fup = build_game_component_followup("Followup test");
+        let j_fup = serde_json::to_value(&comp_fup).unwrap();
+        assert_eq!(j_fup["content"], "Followup test");
+
+        assert_eq!(clean_emoji(None), Ok(None));
+        assert_eq!(clean_emoji(Some("  ")), Ok(None));
+        assert_eq!(clean_emoji(Some("🎮")), Ok(Some("🎮".into())));
     }
 }

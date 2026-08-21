@@ -581,9 +581,16 @@ mod tests {
     fn resolve_combat_edge_cases() {
         // Test combat avec ecart de niveau trop grand
         let res = resolve_combat(
-            10, 10, PlayerClass::Ecraseur, 20,
-            10, 10, PlayerClass::Couette, 1,
-            &[(1, 1)], CombatRules::default()
+            10,
+            10,
+            PlayerClass::Ecraseur,
+            20,
+            10,
+            10,
+            PlayerClass::Couette,
+            1,
+            &[(1, 1)],
+            CombatRules::default(),
         );
         assert_eq!(res, Err("ecart de niveau trop important"));
 
@@ -591,18 +598,34 @@ mod tests {
         let mut rules = CombatRules::default();
         rules.max_rounds = 3;
         let res = resolve_combat(
-            30, 0, PlayerClass::Ecraseur, 1,
-            10, 0, PlayerClass::Couette, 1,
-            &[(6, 6), (6, 6)], rules
-        ).unwrap();
+            30,
+            0,
+            PlayerClass::Ecraseur,
+            1,
+            10,
+            0,
+            PlayerClass::Couette,
+            1,
+            &[(6, 6), (6, 6)],
+            rules,
+        )
+        .unwrap();
         assert!(res.attacker_damage > 0);
 
         // Test combat avec reductions de la couette
         let res = resolve_combat(
-            10, 10, PlayerClass::Couette, 1,
-            10, 10, PlayerClass::Couette, 1,
-            &[(1, 1)], CombatRules::default()
-        ).unwrap();
+            10,
+            10,
+            PlayerClass::Couette,
+            1,
+            10,
+            10,
+            PlayerClass::Couette,
+            1,
+            &[(1, 1)],
+            CombatRules::default(),
+        )
+        .unwrap();
         assert!(res.attacker_damage > 0);
     }
     #[test]

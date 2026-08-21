@@ -1,13 +1,16 @@
 use super::*;
 
+pub const MSG_GUILD_REQUIRED: &str = "Cette commande s'utilise sur un serveur, pas en MP.";
+pub const MSG_GUILD_UNAUTHORIZED: &str = "Ce bot ne sert pas ce serveur.";
+pub const MSG_DONNER_NEED_TARGET: &str = "Indique le membre a qui donner.";
+pub const MSG_DONNER_NEED_AMOUNT: &str = "Indique le montant du don.";
+pub const MSG_ROUE_NO_DM: &str = "La Roue se tire sur un serveur, pas en MP.";
+
 impl Handler {
     /// Reponse ephemere avec l'embed d'erreur standard.
     pub(super) async fn reply_error(&self, ctx: &Context, cmd: &CommandInteraction, message: &str) {
-        let msg = CreateInteractionResponseMessage::new()
-            .embed(embeds::build_error_embed(message))
-            .ephemeral(true);
         let _ = cmd
-            .create_response(&ctx.http, CreateInteractionResponse::Message(msg))
+            .create_response(&ctx.http, build_error_message(message))
             .await;
     }
 
@@ -21,7 +24,7 @@ impl Handler {
             self.reply_error(
                 ctx,
                 cmd,
-                "Cette commande s'utilise sur un serveur, pas en MP.",
+                MSG_GUILD_REQUIRED,
             )
             .await;
             return None;
@@ -34,7 +37,7 @@ impl Handler {
         // L'API refuserait de toute facon, mais avec une erreur technique
         // illisible ; autant repondre clairement.
         if !guilde_autorisee(g) {
-            self.reply_error(ctx, cmd, "Ce bot ne sert pas ce serveur.")
+            self.reply_error(ctx, cmd, MSG_GUILD_UNAUTHORIZED)
                 .await;
             return None;
         }
@@ -64,12 +67,8 @@ impl Handler {
             return;
         }
 
-        let response = self.api.get_wallet(&guild_id, &target_id.to_string()).await;
-        let embed = match &response {
-            Ok(w) => embeds::build_wallet_embed(w, &display_name),
-            Err(msg) => embeds::build_error_embed(msg),
-        };
-        let builder = serenity::all::CreateInteractionResponseFollowup::new().embed(embed);
+        let embed = execute_solde(&self.api, &guild_id, &target_id.to_string(), &display_name).await;
+        let builder = build_embed_followup(embed);
         if let Err(e) = cmd.create_followup(&ctx.http, builder).await {
             tracing::error!("followup /solde impossible: {e}");
         }
@@ -81,12 +80,12 @@ impl Handler {
         };
 
         let Some(target_id) = option_user(cmd, "membre") else {
-            self.reply_error(ctx, cmd, "Indique le membre a qui donner.")
+            self.reply_error(ctx, cmd, MSG_DONNER_NEED_TARGET)
                 .await;
             return;
         };
         let Some(amount) = option_integer(cmd, "montant") else {
-            self.reply_error(ctx, cmd, "Indique le montant du don.")
+            self.reply_error(ctx, cmd, MSG_DONNER_NEED_AMOUNT)
                 .await;
             return;
         };
@@ -94,15 +93,10 @@ impl Handler {
 
         // Pre-checks UI rapides (la regle de verite reste cote core/API :
         // auto-transfert, montant > 0, solde suffisant sans clamp).
-        if target_id == cmd.user.id {
-            self.reply_error(ctx, cmd, "Tu ne peux pas te donner a toi-meme !")
-                .await;
-            return;
-        }
         let target_user = cmd.data.resolved.users.get(&target_id);
-        if target_user.is_some_and(|u| u.bot) {
-            self.reply_error(ctx, cmd, "Tu ne peux pas donner a un bot !")
-                .await;
+        let is_bot = target_user.is_some_and(|u| u.bot);
+        if let Err(err_msg) = validate_donner(cmd.user.id, target_id, is_bot) {
+            self.reply_error(ctx, cmd, err_msg).await;
             return;
         }
         let target_username = target_user
@@ -114,32 +108,25 @@ impl Handler {
             return;
         }
 
-        let response = self
-            .api
-            .transfer_coins(
-                &guild_id,
-                &api_client::TransferRequest {
-                    from_user_id: cmd.user.id.to_string(),
-                    from_username: cmd.user.display_name().to_string(),
-                    to_user_id: target_id.to_string(),
-                    to_username: target_username,
-                    amount,
-                    reason: reason.clone(),
-                },
-            )
-            .await;
-
-        let embed = match &response {
-            Ok(res) => embeds::build_transfer_embed(
-                cmd.user.id.get(),
-                target_id.get(),
-                res.amount,
-                res.from_balance,
-                reason.as_deref(),
-            ),
-            Err(msg) => embeds::build_error_embed(msg),
+        let req = api_client::TransferRequest {
+            from_user_id: cmd.user.id.to_string(),
+            from_username: cmd.user.display_name().to_string(),
+            to_user_id: target_id.to_string(),
+            to_username: target_username,
+            amount,
+            reason: reason.clone(),
         };
-        let builder = serenity::all::CreateInteractionResponseFollowup::new().embed(embed);
+
+        let embed = execute_donner(
+            &self.api,
+            &guild_id,
+            req,
+            cmd.user.id.get(),
+            target_id.get(),
+            reason.as_deref(),
+        )
+        .await;
+        let builder = build_embed_followup(embed);
         if let Err(e) = cmd.create_followup(&ctx.http, builder).await {
             tracing::error!("followup /donner impossible: {e}");
         }
@@ -155,12 +142,8 @@ impl Handler {
             return;
         }
 
-        let response = self.api.wallet_leaderboard(&guild_id, 10).await;
-        let embed = match &response {
-            Ok(entries) => embeds::build_leaderboard_embed(entries),
-            Err(msg) => embeds::build_error_embed(msg),
-        };
-        let builder = serenity::all::CreateInteractionResponseFollowup::new().embed(embed);
+        let embed = execute_classement(&self.api, &guild_id, 10).await;
+        let builder = build_embed_followup(embed);
         if let Err(e) = cmd.create_followup(&ctx.http, builder).await {
             tracing::error!("followup /classement impossible: {e}");
         }
@@ -168,13 +151,8 @@ impl Handler {
 
     pub(super) async fn handle_roue(&self, ctx: &Context, cmd: &CommandInteraction) {
         let Some(guild_id) = cmd.guild_id else {
-            let msg = CreateInteractionResponseMessage::new()
-                .embed(embeds::build_error_embed(
-                    "La Roue se tire sur un serveur, pas en MP.",
-                ))
-                .ephemeral(true);
             let _ = cmd
-                .create_response(&ctx.http, CreateInteractionResponse::Message(msg))
+                .create_response(&ctx.http, build_error_message(MSG_ROUE_NO_DM))
                 .await;
             return;
         };
@@ -186,18 +164,362 @@ impl Handler {
         }
 
         let username = cmd.user.display_name().to_string();
-        let response = self
-            .api
-            .spin_wheel(&guild_id.to_string(), &cmd.user.id.to_string(), &username)
-            .await;
-
-        let embed = match &response {
-            Ok(resp) => embeds::build_result_embed(resp, &username),
-            Err(msg) => embeds::build_error_embed(msg),
-        };
-        let builder = serenity::all::CreateInteractionResponseFollowup::new().embed(embed);
+        let embed = execute_roue(
+            &self.api,
+            &guild_id.to_string(),
+            &cmd.user.id.to_string(),
+            &username,
+        )
+        .await;
+        let builder = build_embed_followup(embed);
         if let Err(e) = cmd.create_followup(&ctx.http, builder).await {
             tracing::error!("followup /roue impossible: {e}");
         }
+    }
+}
+
+pub async fn execute_solde(
+    api: &ApiClient,
+    guild_id: &str,
+    target_id: &str,
+    display_name: &str,
+) -> serenity::builder::CreateEmbed {
+    let response = api.get_wallet(guild_id, target_id).await;
+    build_wallet_response_embed(&response, display_name)
+}
+
+pub async fn execute_donner(
+    api: &ApiClient,
+    guild_id: &str,
+    req: api_client::TransferRequest,
+    from_user_id: u64,
+    to_user_id: u64,
+    reason: Option<&str>,
+) -> serenity::builder::CreateEmbed {
+    let response = api.transfer_coins(guild_id, &req).await;
+    build_transfer_response_embed(&response, from_user_id, to_user_id, reason)
+}
+
+pub async fn execute_classement(
+    api: &ApiClient,
+    guild_id: &str,
+    limit: i64,
+) -> serenity::builder::CreateEmbed {
+    let response = api.wallet_leaderboard(guild_id, limit).await;
+    build_leaderboard_response_embed(&response)
+}
+
+pub async fn execute_roue(
+    api: &ApiClient,
+    guild_id: &str,
+    user_id: &str,
+    username: &str,
+) -> serenity::builder::CreateEmbed {
+    let response = api.spin_wheel(guild_id, user_id, username).await;
+    build_spin_response_embed(&response, username)
+}
+
+pub fn build_error_message(message: &str) -> CreateInteractionResponse {
+    let msg = CreateInteractionResponseMessage::new()
+        .embed(embeds::build_error_embed(message))
+        .ephemeral(true);
+    CreateInteractionResponse::Message(msg)
+}
+
+pub fn build_embed_followup(embed: serenity::builder::CreateEmbed) -> serenity::all::CreateInteractionResponseFollowup {
+    serenity::all::CreateInteractionResponseFollowup::new().embed(embed)
+}
+
+pub fn build_wallet_response_embed(
+    response: &Result<api_client::WalletResponse, String>,
+    display_name: &str,
+) -> serenity::builder::CreateEmbed {
+    match response {
+        Ok(w) => embeds::build_wallet_embed(w, display_name),
+        Err(msg) => embeds::build_error_embed(msg),
+    }
+}
+
+pub fn build_transfer_response_embed(
+    response: &Result<api_client::TransferResponse, String>,
+    from_user_id: u64,
+    to_user_id: u64,
+    reason: Option<&str>,
+) -> serenity::builder::CreateEmbed {
+    match response {
+        Ok(res) => embeds::build_transfer_embed(
+            from_user_id,
+            to_user_id,
+            res.amount,
+            res.from_balance,
+            reason,
+        ),
+        Err(msg) => embeds::build_error_embed(msg),
+    }
+}
+
+pub fn build_leaderboard_response_embed(
+    response: &Result<Vec<api_client::WalletResponse>, String>,
+) -> serenity::builder::CreateEmbed {
+    match response {
+        Ok(entries) => embeds::build_leaderboard_embed(entries),
+        Err(msg) => embeds::build_error_embed(msg),
+    }
+}
+
+pub fn build_spin_response_embed(
+    response: &Result<api_client::WheelSpinResponse, String>,
+    username: &str,
+) -> serenity::builder::CreateEmbed {
+    match response {
+        Ok(resp) => embeds::build_result_embed(resp, username),
+        Err(msg) => embeds::build_error_embed(msg),
+    }
+}
+
+pub fn format_target_name(target_id: UserId, user_id: UserId, user_display_name: &str, resolved_name: Option<&str>) -> String {
+    if target_id == user_id {
+        user_display_name.to_string()
+    } else {
+        resolved_name
+            .map(|u| u.to_string())
+            .unwrap_or_else(|| format!("<@{target_id}>"))
+    }
+}
+
+pub fn validate_donner(sender_id: UserId, target_id: UserId, is_target_bot: bool) -> Result<(), &'static str> {
+    if target_id == sender_id {
+        return Err("Tu ne peux pas te donner a toi-meme !");
+    }
+    if is_target_bot {
+        return Err("Tu ne peux pas donner a un bot !");
+    }
+    Ok(())
+}
+
+pub fn build_transfer_request_payload(
+    user_id: UserId,
+    user_display_name: &str,
+    target_id: UserId,
+    target_username: &str,
+    amount: i64,
+    reason: Option<String>,
+) -> api_client::TransferRequest {
+    api_client::TransferRequest {
+        from_user_id: user_id.to_string(),
+        from_username: user_display_name.to_string(),
+        to_user_id: target_id.to_string(),
+        to_username: target_username.to_string(),
+        amount,
+        reason,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_donner() {
+        let user1 = UserId::new(100);
+        let user2 = UserId::new(200);
+
+        assert!(validate_donner(user1, user2, false).is_ok());
+        assert_eq!(
+            validate_donner(user1, user1, false),
+            Err("Tu ne peux pas te donner a toi-meme !")
+        );
+        assert_eq!(
+            validate_donner(user1, user2, true),
+            Err("Tu ne peux pas donner a un bot !")
+        );
+    }
+
+    #[test]
+    fn test_format_target_name() {
+        let self_id = UserId::new(1);
+        let other_id = UserId::new(2);
+
+        assert_eq!(
+            format_target_name(self_id, self_id, "Alice", None),
+            "Alice"
+        );
+        assert_eq!(
+            format_target_name(other_id, self_id, "Alice", Some("Bob")),
+            "Bob"
+        );
+        assert_eq!(
+            format_target_name(other_id, self_id, "Alice", None),
+            "<@2>"
+        );
+
+        let req = build_transfer_request_payload(self_id, "Alice", other_id, "Bob", 50, Some("Cadeau".into()));
+        assert_eq!(req.from_user_id, "1");
+        assert_eq!(req.from_username, "Alice");
+        assert_eq!(req.to_user_id, "2");
+        assert_eq!(req.to_username, "Bob");
+        assert_eq!(req.amount, 50);
+        assert_eq!(req.reason, Some("Cadeau".into()));
+    }
+
+    #[test]
+    fn test_build_embed_helpers() {
+        let w_ok = Ok(api_client::WalletResponse {
+            user_id: "u1".into(),
+            coins: 500,
+            total_earned: 1000,
+            total_spent: 500,
+        });
+        let emb_w = build_wallet_response_embed(&w_ok, "Alice");
+        let j_w = serde_json::to_value(&emb_w).unwrap();
+        assert!(j_w["title"].as_str().unwrap().contains("Alice"));
+
+        let w_err: Result<api_client::WalletResponse, String> = Err("Wallet fail".into());
+        let emb_w_err = build_wallet_response_embed(&w_err, "Alice");
+        let j_w_err = serde_json::to_value(&emb_w_err).unwrap();
+        assert_eq!(j_w_err["description"], "Wallet fail");
+
+        let t_ok = Ok(api_client::TransferResponse {
+            from_balance: 400,
+            amount: 50,
+        });
+        let emb_t = build_transfer_response_embed(&t_ok, 1, 2, Some("Gift"));
+        let j_t = serde_json::to_value(&emb_t).unwrap();
+        assert!(j_t["title"].as_str().unwrap().contains("Don"));
+
+        let t_err: Result<api_client::TransferResponse, String> = Err("Transfer fail".into());
+        let emb_t_err = build_transfer_response_embed(&t_err, 1, 2, None);
+        let j_t_err = serde_json::to_value(&emb_t_err).unwrap();
+        assert_eq!(j_t_err["description"], "Transfer fail");
+
+        let lb_ok = Ok(vec![
+            api_client::WalletResponse {
+                user_id: "u1".into(),
+                coins: 1000,
+                total_earned: 2000,
+                total_spent: 1000,
+            }
+        ]);
+        let emb_lb = build_leaderboard_response_embed(&lb_ok);
+        let j_lb = serde_json::to_value(&emb_lb).unwrap();
+        assert!(j_lb["title"].as_str().unwrap().contains("Classement"));
+
+        let lb_err: Result<Vec<api_client::WalletResponse>, String> = Err("LB fail".into());
+        let emb_lb_err = build_leaderboard_response_embed(&lb_err);
+        let j_lb_err = serde_json::to_value(&emb_lb_err).unwrap();
+        assert_eq!(j_lb_err["description"], "LB fail");
+
+        let s_ok = Ok(api_client::WheelSpinResponse {
+            case_label: "Licorne".into(),
+            payout: 500,
+            balance_after: 1500,
+            is_memorable: true,
+        });
+        let emb_s = build_spin_response_embed(&s_ok, "Alice");
+        let j_s = serde_json::to_value(&emb_s).unwrap();
+        assert!(j_s["title"].as_str().unwrap().contains("Alice"));
+
+        let s_err: Result<api_client::WheelSpinResponse, String> = Err("Spin fail".into());
+        let emb_s_err = build_spin_response_embed(&s_err, "Alice");
+        let j_s_err = serde_json::to_value(&emb_s_err).unwrap();
+        assert_eq!(j_s_err["description"], "Spin fail");
+
+        let err_msg = build_error_message("Erreur critique");
+        let j_err_msg = serde_json::to_value(&err_msg).unwrap();
+        assert!(j_err_msg["data"]["embeds"].as_array().is_some());
+
+        let followup = build_embed_followup(emb_w);
+        let j_followup = serde_json::to_value(&followup).unwrap();
+        assert!(j_followup["embeds"].as_array().is_some());
+
+        assert!(MSG_GUILD_REQUIRED.contains("sur un serveur"));
+        assert!(MSG_GUILD_UNAUTHORIZED.contains("ne sert pas"));
+        assert!(MSG_DONNER_NEED_TARGET.contains("membre"));
+        assert!(MSG_DONNER_NEED_AMOUNT.contains("montant"));
+        assert!(MSG_ROUE_NO_DM.contains("sur un serveur"));
+    }
+
+    #[tokio::test]
+    async fn test_execute_economy_actions() {
+        use tokio::net::TcpListener;
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let base_url = format!("http://{}", addr);
+
+        tokio::spawn(async move {
+            while let Ok((mut stream, _)) = listener.accept().await {
+                let mut buf = [0u8; 4096];
+                let n = stream.read(&mut buf).await.unwrap_or(0);
+                let req = String::from_utf8_lossy(&buf[..n]);
+
+                let body = if req.contains("/api/wallet/") && req.contains("/transfer") {
+                    r#"{"amount":50,"from_balance":450}"#
+                } else if req.contains("/api/wallet/") && req.contains("/leaderboard") {
+                    r#"[{"user_id":"u1","coins":500,"total_earned":1000,"total_spent":500}]"#
+                } else if req.contains("/api/wallet/") {
+                    r#"{"user_id":"u1","coins":500,"total_earned":1000,"total_spent":500}"#
+                } else if req.contains("/api/wheel/") {
+                    r#"{"case_label":"Jackpot","payout":1000,"balance_after":1500,"is_memorable":true}"#
+                } else {
+                    r#"{"ok":true}"#
+                };
+
+                let resp = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+                let _ = stream.write_all(resp.as_bytes()).await;
+            }
+        });
+
+        let client = ApiClient::new(base_url, Some("token".into()));
+
+        let w_emb = execute_solde(&client, "g1", "u1", "Alice").await;
+        let j_w = serde_json::to_value(&w_emb).unwrap();
+        assert!(j_w["title"].as_str().unwrap().contains("Alice"));
+
+        let t_req = api_client::TransferRequest {
+            from_user_id: "u1".into(),
+            from_username: "Alice".into(),
+            to_user_id: "u2".into(),
+            to_username: "Bob".into(),
+            amount: 50,
+            reason: Some("Cadeau".into()),
+        };
+        let t_emb = execute_donner(&client, "g1", t_req, 1, 2, Some("Cadeau")).await;
+        let j_t = serde_json::to_value(&t_emb).unwrap();
+        assert!(j_t["title"].as_str().unwrap().contains("Don"));
+
+        let lb_emb = execute_classement(&client, "g1", 10).await;
+        let j_lb = serde_json::to_value(&lb_emb).unwrap();
+        assert!(j_lb["title"].as_str().unwrap().contains("Classement"));
+
+        let r_emb = execute_roue(&client, "g1", "u1", "Alice").await;
+        let j_r = serde_json::to_value(&r_emb).unwrap();
+        assert!(j_r["title"].as_str().unwrap().contains("Alice"));
+
+        // Test error branches
+        let err_res: Result<api_client::WalletResponse, String> = Err("wallet error".into());
+        let err_w_emb = build_wallet_response_embed(&err_res, "Alice");
+        let j_err_w = serde_json::to_value(&err_w_emb).unwrap();
+        assert_eq!(j_err_w["description"], "wallet error");
+
+        let err_t_res: Result<api_client::TransferResponse, String> = Err("transfer error".into());
+        let err_t_emb = build_transfer_response_embed(&err_t_res, 1, 2, None);
+        let j_err_t = serde_json::to_value(&err_t_emb).unwrap();
+        assert_eq!(j_err_t["description"], "transfer error");
+
+        let err_lb_res: Result<Vec<api_client::WalletResponse>, String> = Err("leaderboard error".into());
+        let err_lb_emb = build_leaderboard_response_embed(&err_lb_res);
+        let j_err_lb = serde_json::to_value(&err_lb_emb).unwrap();
+        assert_eq!(j_err_lb["description"], "leaderboard error");
+
+        let err_r_res: Result<api_client::WheelSpinResponse, String> = Err("spin error".into());
+        let err_r_emb = build_spin_response_embed(&err_r_res, "Alice");
+        let j_err_r = serde_json::to_value(&err_r_emb).unwrap();
+        assert_eq!(j_err_r["description"], "spin error");
     }
 }

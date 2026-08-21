@@ -295,4 +295,102 @@ mod tests {
         assert!(ranges_overlap(25500, 25599, 25550, 25650));
         assert!(!ranges_overlap(25500, 25599, 25600, 25699));
     }
+
+    use crate::nexus::domain::entities::system::bot_config::BotDefinition;
+    use chrono::Utc;
+    use uuid::Uuid;
+
+    struct MockBotConfig {
+        config: Vec<BotGuildConfig>,
+    }
+
+    #[async_trait::async_trait]
+    impl BotConfigRepository for MockBotConfig {
+        async fn get_definitions(&self) -> Result<Vec<BotDefinition>, DomainError> {
+            Ok(vec![])
+        }
+        async fn get_config(
+            &self,
+            _guild_id: &str,
+            _bot_name: &str,
+        ) -> Result<Vec<BotGuildConfig>, DomainError> {
+            Ok(self.config.clone())
+        }
+        async fn get_all_config(
+            &self,
+            _guild_id: &str,
+        ) -> Result<Vec<BotGuildConfig>, DomainError> {
+            Ok(self.config.clone())
+        }
+        async fn set_config(
+            &self,
+            _guild_id: &str,
+            _bot_name: &str,
+            _key: &str,
+            _value: &str,
+        ) -> Result<(), DomainError> {
+            Ok(())
+        }
+        async fn delete_config(
+            &self,
+            _guild_id: &str,
+            _bot_name: &str,
+            _key: &str,
+        ) -> Result<(), DomainError> {
+            Ok(())
+        }
+    }
+
+    fn entry(key: &str, value: &str) -> BotGuildConfig {
+        use crate::nexus::domain::entities::system::discord_ids::GuildId;
+        BotGuildConfig {
+            id: Uuid::nil(),
+            guild_id: GuildId::new("123"),
+            bot_name: "game-portal".into(),
+            config_key: key.into(),
+            config_value: value.into(),
+            updated_at: Utc::now(),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_load_game_portal_config_success() {
+        let repo: Arc<dyn BotConfigRepository> = Arc::new(MockBotConfig {
+            config: vec![
+                entry("enabled", "true"),
+                entry("port_range_start", "25500"),
+                entry("port_range_end", "25599"),
+                entry("rcon_port_range_start", "25700"),
+                entry("rcon_port_range_end", "25799"),
+                entry("max_servers_per_guild", "10"),
+            ],
+        });
+        let config = load_game_portal_config(&repo, "123").await.unwrap();
+        assert!(config.enabled);
+        assert_eq!(config.port_range_start, 25500);
+        assert_eq!(config.max_servers_per_guild, 10);
+    }
+
+    #[tokio::test]
+    async fn test_load_game_portal_config_overlap_error() {
+        let repo: Arc<dyn BotConfigRepository> = Arc::new(MockBotConfig {
+            config: vec![
+                entry("port_range_start", "25500"),
+                entry("port_range_end", "25600"),
+                entry("rcon_port_range_start", "25600"),
+                entry("rcon_port_range_end", "25700"),
+            ],
+        });
+        let config = load_game_portal_config(&repo, "123").await;
+        assert!(config.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_load_multiple_configs() {
+        let repo: Arc<dyn BotConfigRepository> = Arc::new(MockBotConfig { config: vec![] });
+        let configs = load_game_portal_configs(&repo, vec!["123", "456"])
+            .await
+            .unwrap();
+        assert_eq!(configs.len(), 2);
+    }
 }

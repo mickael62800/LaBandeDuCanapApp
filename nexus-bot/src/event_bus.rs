@@ -43,4 +43,10 @@ mod tests {
         assert_ne!(STREAM_KEY, "sentinel:events");
         assert_eq!(BUS.stream_key(), STREAM_KEY);
     }
+
+    #[test]
+    fn test_default_consumer_name_format() {
+        let name = default_consumer_name();
+        assert!(!name.is_empty());
+    }
 }

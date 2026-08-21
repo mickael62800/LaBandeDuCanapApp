@@ -349,3 +349,71 @@ async fn handle_event(ctx: &Context, api: &ApiClient, payload_json: &str) {
         tracing::warn!(error = %e, guild_id, "hauts faits : publication impossible");
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::api_client::AchievementProgress;
+
+    #[test]
+    fn test_register() {
+        let cmd = register();
+        let json = serde_json::to_value(&cmd).unwrap();
+        assert_eq!(json["name"], "haut-faits");
+    }
+
+    #[test]
+    fn test_liste_empty() {
+        let res = liste(&[], "Vide");
+        assert_eq!(res, "Vide");
+    }
+
+    #[test]
+    fn test_liste_items() {
+        let item1 = AchievementProgress {
+            name: "Premier Pas".into(),
+            description: "Rejoins le jeu".into(),
+            icon_url: None,
+            unlocked_at: Some("2026-01-01T00:00:00Z".into()),
+        };
+        let res = liste(&[&item1], "Vide");
+        assert!(res.contains("Premier Pas"));
+    }
+
+    #[test]
+    fn test_liste_truncation() {
+        let items: Vec<AchievementProgress> = (0..50)
+            .map(|i| AchievementProgress {
+                name: format!("Haut Fait Long Nom Numéro {i}"),
+                description: format!("Description très détaillée du haut fait numéro {i} avec du texte long"),
+                icon_url: None,
+                unlocked_at: Some("2026-01-01T00:00:00Z".into()),
+            })
+            .collect();
+        let refs: Vec<&AchievementProgress> = items.iter().collect();
+        let res = liste(&refs, "Vide");
+        assert!(res.contains("de plus"));
+    }
+
+    #[test]
+    fn test_image_absolue() {
+        assert_eq!(image_absolue(""), None);
+        assert_eq!(image_absolue("   "), None);
+        assert_eq!(
+            image_absolue("https://example.com/icon.png"),
+            Some("https://example.com/icon.png".into())
+        );
+        assert_eq!(
+            image_absolue("http://example.com/icon.png"),
+            Some("http://example.com/icon.png".into())
+        );
+
+        std::env::set_var("WEB_FRONT_URL", "https://front.canap.fr");
+        assert_eq!(
+            image_absolue("/img/test.png"),
+            Some("https://front.canap.fr/img/test.png".into())
+        );
+        std::env::remove_var("WEB_FRONT_URL");
+        assert_eq!(image_absolue("/img/test.png"), None);
+    }
+}

@@ -317,11 +317,7 @@ pub(crate) async fn ensure_game_roles(
             .as_deref()
             .and_then(|value| value.trim().parse::<u64>().ok())
             .map(RoleId::new);
-        let role_is_valid = match (&guild_roles, stored_role) {
-            (Some(roles), Some(role_id)) => roles.contains_key(&role_id),
-            (None, Some(_)) => true,
-            _ => false,
-        };
+        let role_is_valid = is_stored_role_valid(guild_roles.as_ref(), stored_role);
         if role_is_valid {
             continue;
         }
@@ -365,5 +361,42 @@ pub(crate) async fn ensure_game_roles(
                 let _ = guild.delete_role(&ctx.http, role.id).await;
             }
         }
+    }
+}
+
+pub fn is_stored_role_valid(
+    guild_roles: Option<&std::collections::HashMap<RoleId, serenity::model::guild::Role>>,
+    stored_role: Option<RoleId>,
+) -> bool {
+    match (guild_roles, stored_role) {
+        (Some(roles), Some(role_id)) => roles.contains_key(&role_id),
+        (None, Some(_)) => true,
+        _ => false,
+    }
+}
+
+pub fn format_panel_deployed_message(game_count: usize) -> String {
+    format!("Panneau deploye ({} jeux).", game_count)
+}
+
+pub fn format_panel_refresh_message(game_count: usize) -> String {
+    format!("Panneau rafraichi ({} jeux).", game_count)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_panel_helpers() {
+        assert_eq!(format_panel_deployed_message(5), "Panneau deploye (5 jeux).");
+        assert_eq!(format_panel_refresh_message(3), "Panneau rafraichi (3 jeux).");
+
+        assert!(is_stored_role_valid(None, Some(RoleId::new(1))));
+        assert!(!is_stored_role_valid(None, None));
+
+        let roles_map = std::collections::HashMap::new();
+        assert!(!is_stored_role_valid(Some(&roles_map), Some(RoleId::new(1))));
+        assert!(!is_stored_role_valid(Some(&roles_map), None));
     }
 }

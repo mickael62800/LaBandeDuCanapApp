@@ -77,13 +77,15 @@ mod economy_commands;
 /// `PUBLIC_GUILD_ID` absente = aucun verrou. C'est le seul defaut sur :
 /// refuser par defaut ferait quitter tous ses serveurs au bot au premier
 /// demarrage mal configure, et un depart ne se rattrape pas d'un clic.
-fn guilde_autorisee(guild_id: serenity::model::id::GuildId) -> bool {
-    let attendu = std::env::var("PUBLIC_GUILD_ID")
-        .or_else(|_| std::env::var("GUILD_ID"))
-        .unwrap_or_default();
-    let attendu = attendu.trim();
-
+pub fn is_guild_allowed(guild_id: serenity::model::id::GuildId, public_guild_id: Option<&str>, guild_id_env: Option<&str>) -> bool {
+    let attendu = public_guild_id.or(guild_id_env).unwrap_or_default().trim();
     attendu.is_empty() || attendu == guild_id.to_string()
+}
+
+fn guilde_autorisee(guild_id: serenity::model::id::GuildId) -> bool {
+    let pub_id = std::env::var("PUBLIC_GUILD_ID").ok();
+    let g_id = std::env::var("GUILD_ID").ok();
+    is_guild_allowed(guild_id, pub_id.as_deref(), g_id.as_deref())
 }
 
 #[async_trait]
@@ -150,149 +152,7 @@ impl EventHandler for Handler {
                 .filter(|id| guilde_autorisee(*id))
                 .collect(),
         );
-        let commands = vec![
-            CreateCommand::new("roue")
-                .description("Tire la Roue du Destin — 1 spin par jour, le destin decide."),
-            CreateCommand::new("solde")
-                .description("Affiche ton portefeuille (ou celui d'un autre membre)")
-                .add_option(CreateCommandOption::new(
-                    CommandOptionType::User,
-                    "membre",
-                    "Le membre dont voir le solde (defaut : toi)",
-                )),
-            CreateCommand::new("donner")
-                .description("Donne des coins a un autre membre")
-                .add_option(
-                    CreateCommandOption::new(
-                        CommandOptionType::User,
-                        "membre",
-                        "Le membre a qui donner",
-                    )
-                    .required(true),
-                )
-                .add_option(
-                    CreateCommandOption::new(
-                        CommandOptionType::Integer,
-                        "montant",
-                        "Le nombre de coins a donner",
-                    )
-                    .required(true)
-                    .min_int_value(1),
-                )
-                .add_option(CreateCommandOption::new(
-                    CommandOptionType::String,
-                    "raison",
-                    "Raison du don (optionnelle)",
-                )),
-            CreateCommand::new("classement").description("Top 10 des plus riches du serveur"),
-            CreateCommand::new("coussin")
-                .description("Glisse un coussin piege sous un membre")
-                .add_option(
-                    CreateCommandOption::new(CommandOptionType::User, "membre", "Ta victime")
-                        .required(true),
-                )
-                .add_option(
-                    CreateCommandOption::new(CommandOptionType::Integer, "mise", "Mise en coins")
-                        .required(true)
-                        .min_int_value(1),
-                ),
-            CreateCommand::new("profil")
-                .description("Ta place sur le canape : classe, confort, palmares")
-                .add_option(CreateCommandOption::new(
-                    CommandOptionType::User,
-                    "membre",
-                    "Membre (defaut : toi)",
-                )),
-            CreateCommand::new("classe")
-                .description("Choisis ta maniere d'occuper le canape")
-                .add_option(
-                    CreateCommandOption::new(
-                        CommandOptionType::String,
-                        "classe",
-                        "ecraseur, ressort, piegeur ou couette",
-                    )
-                    .required(true)
-                    .add_string_choice("🪑 Écraseur — tu t'assois sans regarder", "ecraseur")
-                    .add_string_choice("🤸 Ressort — tu rebondis", "ressort")
-                    .add_string_choice("🪡 Piégeur — tu places les coussins", "piegeur")
-                    .add_string_choice("🛌 Couette — tu ne bouges plus", "couette"),
-                ),
-            CreateCommand::new("train")
-                .description("Depense un point : plus d'impact ou plus de moelleux")
-                .add_option(
-                    CreateCommandOption::new(
-                        CommandOptionType::String,
-                        "stat",
-                        "Ce que tu ameliores",
-                    )
-                    .required(true)
-                    .add_string_choice("Impact", "atk")
-                    .add_string_choice("Moelleux", "def"),
-                ),
-            CreateCommand::new("shop")
-                .description("Le coffre a coussins")
-                .add_option(
-                    CreateCommandOption::new(CommandOptionType::String, "objet", "Objet")
-                        .required(true)
-                        .add_string_choice("Coussin Plombe", "rage")
-                        .add_string_choice("Oeil sous le Plaid", "mindgame")
-                        .add_string_choice("Renversement de Chips", "explosion")
-                        .add_string_choice("Double Coussin", "double_coup")
-                        .add_string_choice("Bataille d'Oreillers", "surprise")
-                        .add_string_choice("Punaise dans le Coussin", "coup_traitre")
-                        .add_string_choice("Retourne le Canape", "inversion"),
-                ),
-            CreateCommand::new("garantie")
-                .description("Garantie anti-tache : couvre tes pertes pendant 1h"),
-            CreateCommand::new("chiper")
-                .description("Fouille sous les coussins d'un membre")
-                .add_option(
-                    CreateCommandOption::new(CommandOptionType::User, "membre", "Cible")
-                        .required(true),
-                ),
-            CreateCommand::new("contrat")
-                .description("Promets une recompense a qui fera lever quelqu'un")
-                .add_option(
-                    CreateCommandOption::new(CommandOptionType::User, "membre", "Cible")
-                        .required(true),
-                )
-                .add_option(
-                    CreateCommandOption::new(CommandOptionType::Integer, "montant", "Montant")
-                        .required(true)
-                        .min_int_value(1),
-                ),
-            CreateCommand::new("inventaire").description("Ce que tu planques sous ton coussin"),
-            CreateCommand::new("pari")
-                .description("Parie sur une bagarre en cours")
-                .add_option(
-                    CreateCommandOption::new(
-                        CommandOptionType::String,
-                        "combat",
-                        "ID de la bagarre",
-                    )
-                    .required(true),
-                )
-                .add_option(
-                    CreateCommandOption::new(
-                        CommandOptionType::User,
-                        "membre",
-                        "Celui que tu soutiens",
-                    )
-                    .required(true),
-                )
-                .add_option(
-                    CreateCommandOption::new(CommandOptionType::Integer, "montant", "Mise")
-                        .required(true)
-                        .min_int_value(1),
-                ),
-        ];
-        let commands: Vec<CreateCommand> = commands
-            .into_iter()
-            .chain(games::register_commands())
-            .chain(std::iter::once(achievements::register()))
-            .chain(std::iter::once(grand_salon::register()))
-            .chain(std::iter::once(wheel_panel::register()))
-            .collect();
+        let commands = build_all_slash_commands();
         for command in commands {
             if let Err(e) = Command::create_global_command(&ctx.http, command).await {
                 tracing::error!("enregistrement d'une commande slash impossible: {e}");
@@ -432,5 +292,207 @@ async fn main() {
         .expect("creation du client serenity");
     if let Err(e) = client.start().await {
         tracing::error!("erreur client nexus-bot: {e}");
+    }
+}
+
+pub fn build_all_slash_commands() -> Vec<CreateCommand> {
+    let commands = vec![
+        CreateCommand::new("roue")
+            .description("Tire la Roue du Destin — 1 spin par jour, le destin decide."),
+        CreateCommand::new("solde")
+            .description("Affiche ton portefeuille (ou celui d'un autre membre)")
+            .add_option(CreateCommandOption::new(
+                CommandOptionType::User,
+                "membre",
+                "Le membre dont voir le solde (defaut : toi)",
+            )),
+        CreateCommand::new("donner")
+            .description("Donne des coins a un autre membre")
+            .add_option(
+                CreateCommandOption::new(
+                    CommandOptionType::User,
+                    "membre",
+                    "Le membre a qui donner",
+                )
+                .required(true),
+            )
+            .add_option(
+                CreateCommandOption::new(
+                    CommandOptionType::Integer,
+                    "montant",
+                    "Le nombre de coins a donner",
+                )
+                .required(true)
+                .min_int_value(1),
+            )
+            .add_option(CreateCommandOption::new(
+                CommandOptionType::String,
+                "raison",
+                "Raison du don (optionnelle)",
+            )),
+        CreateCommand::new("classement").description("Top 10 des plus riches du serveur"),
+        CreateCommand::new("coussin")
+            .description("Glisse un coussin piege sous un membre")
+            .add_option(
+                CreateCommandOption::new(CommandOptionType::User, "membre", "Ta victime")
+                    .required(true),
+            )
+            .add_option(
+                CreateCommandOption::new(CommandOptionType::Integer, "mise", "Mise en coins")
+                    .required(true)
+                    .min_int_value(1),
+            ),
+        CreateCommand::new("profil")
+            .description("Ta place sur le canape : classe, confort, palmares")
+            .add_option(CreateCommandOption::new(
+                CommandOptionType::User,
+                "membre",
+                "Membre (defaut : toi)",
+            )),
+        CreateCommand::new("classe")
+            .description("Choisis ta maniere d'occuper le canape")
+            .add_option(
+                CreateCommandOption::new(
+                    CommandOptionType::String,
+                    "classe",
+                    "ecraseur, ressort, piegeur ou couette",
+                )
+                .required(true)
+                .add_string_choice("🪑 Écraseur — tu t'assois sans regarder", "ecraseur")
+                .add_string_choice("🤸 Ressort — tu rebondis", "ressort")
+                .add_string_choice("🪡 Piégeur — tu places les coussins", "piegeur")
+                .add_string_choice("🛌 Couette — tu ne bouges plus", "couette"),
+            ),
+        CreateCommand::new("train")
+            .description("Depense un point : plus d'impact ou plus de moelleux")
+            .add_option(
+                CreateCommandOption::new(
+                    CommandOptionType::String,
+                    "stat",
+                    "Ce que tu ameliores",
+                )
+                .required(true)
+                .add_string_choice("Impact", "atk")
+                .add_string_choice("Moelleux", "def"),
+            ),
+        CreateCommand::new("shop")
+            .description("Le coffre a coussins")
+            .add_option(
+                CreateCommandOption::new(CommandOptionType::String, "objet", "Objet")
+                    .required(true)
+                    .add_string_choice("Coussin Plombe", "rage")
+                    .add_string_choice("Oeil sous le Plaid", "mindgame")
+                    .add_string_choice("Renversement de Chips", "explosion")
+                    .add_string_choice("Double Coussin", "double_coup")
+                    .add_string_choice("Bataille d'Oreillers", "surprise")
+                    .add_string_choice("Punaise dans le Coussin", "coup_traitre")
+                    .add_string_choice("Retourne le Canape", "inversion"),
+            ),
+        CreateCommand::new("garantie")
+            .description("Garantie anti-tache : couvre tes pertes pendant 1h"),
+        CreateCommand::new("chiper")
+            .description("Fouille sous les coussins d'un membre")
+            .add_option(
+                CreateCommandOption::new(CommandOptionType::User, "membre", "Cible")
+                    .required(true),
+            ),
+        CreateCommand::new("contrat")
+            .description("Promets une recompense a qui fera lever quelqu'un")
+            .add_option(
+                CreateCommandOption::new(CommandOptionType::User, "membre", "Cible")
+                    .required(true),
+            )
+            .add_option(
+                CreateCommandOption::new(CommandOptionType::Integer, "montant", "Montant")
+                    .required(true)
+                    .min_int_value(1),
+            ),
+        CreateCommand::new("inventaire").description("Ce que tu planques sous ton coussin"),
+        CreateCommand::new("pari")
+            .description("Parie sur une bagarre en cours")
+            .add_option(
+                CreateCommandOption::new(
+                    CommandOptionType::String,
+                    "combat",
+                    "ID de la bagarre",
+                )
+                .required(true),
+            )
+            .add_option(
+                CreateCommandOption::new(
+                    CommandOptionType::User,
+                    "membre",
+                    "Celui que tu soutiens",
+                )
+                .required(true),
+            )
+            .add_option(
+                CreateCommandOption::new(CommandOptionType::Integer, "montant", "Mise")
+                    .required(true)
+                    .min_int_value(1),
+            ),
+    ];
+    commands
+        .into_iter()
+        .chain(games::register_commands())
+        .chain(std::iter::once(achievements::register()))
+        .chain(std::iter::once(grand_salon::register()))
+        .chain(std::iter::once(wheel_panel::register()))
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serenity::model::id::GuildId;
+
+    #[test]
+    fn test_is_guild_allowed_no_env() {
+        assert!(is_guild_allowed(GuildId::new(12345), None, None));
+        assert!(is_guild_allowed(GuildId::new(67890), None, None));
+    }
+
+    #[test]
+    fn test_is_guild_allowed_public_guild_id() {
+        assert!(is_guild_allowed(GuildId::new(12345), Some("12345"), None));
+        assert!(!is_guild_allowed(GuildId::new(67890), Some("12345"), None));
+    }
+
+    #[test]
+    fn test_is_guild_allowed_guild_id() {
+        assert!(is_guild_allowed(GuildId::new(999), None, Some("999")));
+        assert!(!is_guild_allowed(GuildId::new(12345), None, Some("999")));
+    }
+
+    #[test]
+    fn test_build_all_slash_commands() {
+        let cmds = build_all_slash_commands();
+        assert!(cmds.len() >= 18);
+        let names: Vec<String> = cmds
+            .iter()
+            .map(|c| {
+                let j = serde_json::to_value(c).unwrap();
+                j["name"].as_str().unwrap().to_string()
+            })
+            .collect();
+        assert!(names.contains(&"roue".to_string()));
+        assert!(names.contains(&"solde".to_string()));
+        assert!(names.contains(&"donner".to_string()));
+        assert!(names.contains(&"classement".to_string()));
+        assert!(names.contains(&"coussin".to_string()));
+        assert!(names.contains(&"profil".to_string()));
+        assert!(names.contains(&"classe".to_string()));
+        assert!(names.contains(&"train".to_string()));
+        assert!(names.contains(&"shop".to_string()));
+        assert!(names.contains(&"garantie".to_string()));
+        assert!(names.contains(&"chiper".to_string()));
+        assert!(names.contains(&"contrat".to_string()));
+        assert!(names.contains(&"inventaire".to_string()));
+        assert!(names.contains(&"pari".to_string()));
+        assert!(names.contains(&"game".to_string()));
+        assert!(names.contains(&"game-admin".to_string()));
+        assert!(names.contains(&"haut-faits".to_string()));
+        assert!(names.contains(&"salon".to_string()));
+        assert!(names.contains(&"roue-panel".to_string()));
     }
 }

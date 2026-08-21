@@ -131,3 +131,13 @@ pub async fn on_role_deleted(api: &ApiClient, guild_id: GuildId, role_id: sereni
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_message_is_gone() {
+        assert!(!message_is_gone(&serenity::Error::Other("something")));
+    }
+}

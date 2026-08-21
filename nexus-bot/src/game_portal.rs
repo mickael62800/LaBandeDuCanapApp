@@ -92,16 +92,12 @@ pub async fn on_component(api: &ApiClient, ctx: &Context, component: &ComponentI
     // L'API peut refuser (serveur ferme, capacite, etc.) : on ne pretend pas
     // que l'inscription a reussi -> message ephemere et on s'arrete.
     if let Err(e) = reg_result {
-        let action = if is_register {
-            "Inscription"
-        } else {
-            "Désinscription"
-        };
+        let content = format_registration_error_content(is_register, &e);
         let _ = component
             .create_followup(
                 &ctx.http,
                 CreateInteractionResponseFollowup::new()
-                    .content(format!("❌ {action} impossible : {e}"))
+                    .content(content)
                     .ephemeral(true),
             )
             .await;
@@ -497,9 +493,52 @@ fn etat_affiche(server: &GameServer) -> &str {
         .unwrap_or(server.status.as_str())
 }
 
-/// Retire un suffixe d'etat deja present, pour ne jamais produire
-/// `..._offline_offline.jpg`.
-fn strip_status_suffix(base: &str) -> &str {
+pub fn format_registration_error_content(is_register: bool, err: &str) -> String {
+    let action = if is_register {
+        "Inscription"
+    } else {
+        "Désinscription"
+    };
+    format!("❌ {action} impossible : {err}")
+}
+
+pub fn format_registration_ack_content(is_register: bool) -> &'static str {
+    if is_register {
+        "Inscription enregistrée"
+    } else {
+        "Désinscription enregistrée"
+    }
+}
+
+pub fn format_owner_only_reveal_error() -> &'static str {
+    "⛔ Seul le propriétaire du serveur peut révéler son adresse."
+}
+
+pub async fn execute_reveal_ip_logic(
+    api: &ApiClient,
+    server_id: &str,
+    user_id: &str,
+) -> Result<(crate::api_client::RevealRequest, String), String> {
+    let detail = api
+        .get_game_server(server_id)
+        .await
+        .map_err(|e| format!("❌ Serveur introuvable : {e}"))?;
+    if detail.server.owner_user_id != user_id {
+        return Err(format_owner_only_reveal_error().into());
+    }
+    let outcome = api
+        .request_reveal_ip(server_id, user_id)
+        .await
+        .map_err(|e| format!("❌ Ouverture impossible : {e}"))?;
+    let game_name = api
+        .get_game_template(&detail.server.template_id)
+        .await
+        .map(|t| t.name)
+        .unwrap_or_else(|_| "Le serveur".into());
+    Ok((outcome, game_name))
+}
+
+pub fn strip_status_suffix(base: &str) -> &str {
     for suffix in ["_attente", "_waiting", "_offline"] {
         if let Some(stripped) = base.strip_suffix(suffix) {
             return stripped;
@@ -566,71 +605,31 @@ async fn on_reveal_ip_component(
         return;
     }
 
-    let detail = match api.get_game_server(server_id).await {
-        Ok(detail) => detail,
-        Err(e) => {
-            edit_deferred(ctx, component, format!("❌ Serveur introuvable : {e}")).await;
-            return;
-        }
-    };
-    if detail.server.owner_user_id != component.user.id.to_string() {
-        edit_deferred(
-            ctx,
-            component,
-            "⛔ Seul le propriétaire du serveur peut révéler son adresse.",
-        )
-        .await;
-        return;
-    }
-    let outcome = match api
-        .request_reveal_ip(server_id, &component.user.id.to_string())
-        .await
-    {
-        Ok(outcome) => outcome,
-        Err(e) => {
-            edit_deferred(ctx, component, format!("❌ Ouverture impossible : {e}")).await;
+    let (outcome, game_name) = match execute_reveal_ip_logic(api, server_id, &component.user.id.to_string()).await {
+        Ok(res) => res,
+        Err(err_msg) => {
+            edit_deferred(ctx, component, err_msg).await;
             return;
         }
     };
 
     // Accuse ephemere au proprietaire.
     let minutes = outcome.delay_minutes;
-    let debut = if outcome.started {
-        "🚀 Le serveur démarre."
-    } else {
-        "🚀 Le serveur est déjà en ligne."
-    };
     edit_deferred(
         ctx,
         component,
-        format!(
-            "{debut} L'adresse de connexion sera révélée dans le salon privé des inscrits dans **{minutes} minute(s)**."
-        ),
+        format_reveal_ack(outcome.started, minutes),
     )
     .await;
 
     // Annonce publique dans le panneau d'inscription : tout le monde voit que la
     // session ouvre bientot. L'adresse, elle, ne parait qu'au salon prive a
     // l'echeance (publiee par le worker reveal-ip).
-    let game_name = api
-        .get_game_template(&detail.server.template_id)
-        .await
-        .map(|t| t.name)
-        .unwrap_or_else(|_| "Le serveur".into());
     let _ = component
         .channel_id
         .send_message(
             &ctx.http,
-            CreateMessage::new().embed(
-                CreateEmbed::new()
-                    .title(format!("⏳ {game_name} ouvre bientôt !"))
-                    .description(format!(
-                        "Le serveur démarre. L'adresse de connexion sera révélée dans le **salon privé des inscrits** dans **{minutes} minute(s)**.\n\nPas encore inscrit ? Clique sur **Je m'inscris** ci-dessus."
-                    ))
-                    .color(0x5865f2)
-                    .footer(CreateEmbedFooter::new("Game Portal | Nexus"))
-                    .timestamp(serenity::model::Timestamp::now()),
-            ),
+            CreateMessage::new().embed(build_opening_soon_embed(&game_name, minutes)),
         )
         .await;
 }
@@ -765,6 +764,65 @@ fn build_public_panel_embed(
     embed
 }
 
+pub fn format_reveal_ack(started: bool, delay_minutes: i64) -> String {
+    let debut = if started {
+        "🚀 Le serveur démarre."
+    } else {
+        "🚀 Le serveur est déjà en ligne."
+    };
+    format!("{debut} L'adresse de connexion sera révélée dans le salon privé des inscrits dans **{delay_minutes} minute(s)**.")
+}
+
+pub fn build_opening_soon_embed(game_name: &str, minutes: i64) -> CreateEmbed {
+    CreateEmbed::new()
+        .title(format!("⏳ {game_name} ouvre bientôt !"))
+        .description(format!(
+            "Le serveur démarre. L'adresse de connexion sera révélée dans le **salon privé des inscrits** dans **{minutes} minute(s)**.\n\nPas encore inscrit ? Clique sur **Je m'inscris** ci-dessus."
+        ))
+        .color(0x5865f2)
+        .footer(CreateEmbedFooter::new("Game Portal | Nexus"))
+        .timestamp(serenity::model::Timestamp::now())
+}
+
+pub fn build_private_reveal_card(
+    game_name: &str,
+    server_name: &str,
+    public_host: Option<&str>,
+    host_port: Option<u16>,
+    cover_url: Option<&str>,
+) -> CreateEmbed {
+    let address = match (
+        public_host.filter(|h| !h.trim().is_empty()),
+        host_port,
+    ) {
+        (Some(host), Some(port)) => format!("`{host}:{port}`"),
+        _ => "_Adresse indisponible, contacte le propriétaire._".to_string(),
+    };
+    let mut card = CreateEmbed::new()
+        .title(format!("🎮 {game_name} — {server_name}"))
+        .description(format!(
+            "🔓 **Serveur ouvert**\nConnexion : {address}\n\nTape `/game parametres` ici pour voir tous les réglages (mot de passe inclus)."
+        ))
+        .color(0x5865f2)
+        .footer(CreateEmbedFooter::new("Game Portal | Accès privé"))
+        .timestamp(serenity::model::Timestamp::now());
+    if let Some(url) = cover_url {
+        card = card.image(url);
+    }
+    card
+}
+
+pub fn format_daily_ping_content(role_id: RoleId, game_name: &str, when: &str) -> String {
+    format!("<@&{role_id}> Le serveur **{game_name}** ouvre {when} ! Inscris-toi sur le panneau.")
+}
+
+pub fn format_when_timestamp(ip_reveal_at: Option<&str>) -> String {
+    match ip_reveal_at.and_then(|d| chrono::DateTime::parse_from_rfc3339(d).ok()) {
+        Some(dt) => format!("<t:{}:R>", dt.timestamp()),
+        None => "bientôt".to_string(),
+    }
+}
+
 // ── Consumer d'evenements ──
 
 /// Spawn le consumer durable de la stream Redis. Appele une fois au `ready`.
@@ -823,31 +881,39 @@ pub fn reconcile(ctx: Context, api: Arc<ApiClient>, guild_ids: Vec<GuildId>) {
     });
 }
 
-async fn handle_event(ctx: &Context, api: &ApiClient, payload_json: &str) {
-    let Ok(env) = serde_json::from_str::<serde_json::Value>(payload_json) else {
-        return;
-    };
-    let event = env.get("event").and_then(|v| v.as_str());
-    let data = env.get("data");
-    let server_id = data
-        .and_then(|d| d.get("server_id"))
-        .and_then(|v| v.as_str())
-        .map(String::from);
-    let guild_id = data
-        .and_then(|d| d.get("guild_id"))
-        .and_then(|v| v.as_str())
-        .and_then(|s| s.parse::<u64>().ok());
+pub fn parse_portal_event(payload_json: &str) -> Option<(String, String, u64)> {
+    let env = serde_json::from_str::<serde_json::Value>(payload_json).ok()?;
+    let event = env.get("event").and_then(|v| v.as_str())?.to_string();
+    let data = env.get("data")?;
+    let server_id = data.get("server_id").and_then(|v| v.as_str())?.to_string();
+    let guild_id = data.get("guild_id").and_then(|v| v.as_str())?.parse::<u64>().ok()?;
+    Some((event, server_id, guild_id))
+}
 
-    let (Some(server_id), Some(guild_id)) = (server_id, guild_id) else {
+pub fn match_portal_event_type(event: &str) -> &'static str {
+    use platform_core::nexus::ports::outbound::events::game_events as ev;
+    match event {
+        ev::SERVER_SCHEDULED => "scheduled",
+        ev::SERVER_STARTED => "started",
+        ev::SERVER_STOPPED => "stopped",
+        ev::SERVER_DELETED => "deleted",
+        ev::IP_REVEAL => "ip_reveal",
+        ev::DAILY_PING => "daily_ping",
+        _ => "unknown",
+    }
+}
+
+async fn handle_event(ctx: &Context, api: &ApiClient, payload_json: &str) {
+    let Some((event, server_id, guild_id)) = parse_portal_event(payload_json) else {
         return;
     };
 
     use platform_core::nexus::ports::outbound::events::game_events as ev;
-    match event {
+    match event.as_str() {
         // Programmation ET demarrage creent les salons/panneau. La programmation
         // ouvre les inscriptions a l'avance ; le garde anti-doublon de
         // `on_started` evite qu'un demarrage ulterieur ne recree quoi que ce soit.
-        Some(ev::SERVER_SCHEDULED) | Some(ev::SERVER_STARTED) => {
+        ev::SERVER_SCHEDULED | ev::SERVER_STARTED => {
             on_started(ctx, api, GuildId::new(guild_id), &server_id).await;
             if let Ok(detail) = api.get_game_server(&server_id).await {
                 if detail.server.status == "scheduled" && !detail.server.ip_revealed {
@@ -864,10 +930,10 @@ async fn handle_event(ctx: &Context, api: &ApiClient, payload_json: &str) {
                 }
             }
         }
-        Some(ev::SERVER_STOPPED) => on_stopped(ctx, api, &server_id).await,
-        Some(ev::SERVER_DELETED) => on_deleted(ctx, api, &server_id).await,
-        Some(ev::IP_REVEAL) => on_ip_reveal(ctx, api, &server_id).await,
-        Some(ev::DAILY_PING) => on_daily_ping(ctx, api, &server_id).await,
+        ev::SERVER_STOPPED => on_stopped(ctx, api, &server_id).await,
+        ev::SERVER_DELETED => on_deleted(ctx, api, &server_id).await,
+        ev::IP_REVEAL => on_ip_reveal(ctx, api, &server_id).await,
+        ev::DAILY_PING => on_daily_ping(ctx, api, &server_id).await,
         _ => {}
     }
 
@@ -879,11 +945,11 @@ async fn handle_event(ctx: &Context, api: &ApiClient, payload_json: &str) {
     // Le renommage n'a lieu que si le nom change vraiment : un evenement qui
     // ne deplace aucun chiffre ne consomme donc pas le quota Discord.
     if matches!(
-        event,
-        Some(ev::SERVER_SCHEDULED)
-            | Some(ev::SERVER_STARTED)
-            | Some(ev::SERVER_STOPPED)
-            | Some(ev::SERVER_DELETED)
+        event.as_str(),
+        ev::SERVER_SCHEDULED
+            | ev::SERVER_STARTED
+            | ev::SERVER_STOPPED
+            | ev::SERVER_DELETED
     ) {
         crate::compteurs::rafraichir(ctx, api, GuildId::new(guild_id)).await;
     }
@@ -897,7 +963,7 @@ async fn handle_event(ctx: &Context, api: &ApiClient, payload_json: &str) {
 /// defaut, on reutilise le role deja cree par le module "Jeux
 /// mentionnables" : d'abord par nom de template, puis par slug/base de slug
 /// (`minecraft-vanilla` retrouve ainsi le jeu `Minecraft`).
-async fn resolve_role(
+pub(crate) async fn resolve_role(
     api: &ApiClient,
     guild_id: &str,
     slug: &str,
@@ -933,7 +999,7 @@ async fn resolve_role(
 }
 
 /// Nom lisible du jeu + role a pinguer, depuis le template du serveur.
-async fn game_name_and_role(api: &ApiClient, server: &GameServer) -> (String, Option<RoleId>) {
+pub(crate) async fn game_name_and_role(api: &ApiClient, server: &GameServer) -> (String, Option<RoleId>) {
     let template = api.get_game_template(&server.template_id).await.ok();
     let game_name = template
         .as_ref()
@@ -946,7 +1012,25 @@ async fn game_name_and_role(api: &ApiClient, server: &GameServer) -> (String, Op
     (game_name, role_id)
 }
 
-fn parse_channel(id: Option<&String>) -> Option<ChannelId> {
+pub fn build_options_embeds_for_server(
+    server: &GameServer,
+    template: Option<&crate::api_client::GameTemplate>,
+    config: &std::collections::HashMap<String, String>,
+    is_private: bool,
+) -> Vec<CreateEmbed> {
+    let game_name = template
+        .map(|t| t.name.clone())
+        .unwrap_or_else(|| "Jeu".into());
+    let schema = template.map(|t| t.config_schema.as_slice()).unwrap_or_default();
+    let options = if is_private {
+        public_game_options(config, schema)
+    } else {
+        registration_options(config, schema)
+    };
+    build_options_embeds(&game_name, &server.name, &options)
+}
+
+pub(crate) fn parse_channel(id: Option<&String>) -> Option<ChannelId> {
     id.and_then(|s| s.parse::<u64>().ok()).map(ChannelId::new)
 }
 
@@ -1035,7 +1119,7 @@ async fn ensure_session_category(
     }
 }
 
-async fn persist_category(api: &ApiClient, guild_id: &str, category: ChannelId) {
+pub(crate) async fn persist_category(api: &ApiClient, guild_id: &str, category: ChannelId) {
     if let Err(e) = api
         .set_config(
             guild_id,
@@ -1109,6 +1193,25 @@ fn build_overwrites(
     ows
 }
 
+pub fn build_create_channel_request<'a>(
+    name: &'a str,
+    kind: ChannelType,
+    category: Option<ChannelId>,
+    overwrites: &[PermissionOverwrite],
+    topic: Option<&'a str>,
+) -> CreateChannel<'a> {
+    let mut b = CreateChannel::new(name)
+        .kind(kind)
+        .permissions(overwrites.to_vec());
+    if let Some(c) = category {
+        b = b.category(c);
+    }
+    if let Some(t) = topic {
+        b = b.topic(t);
+    }
+    b
+}
+
 async fn create_channel(
     ctx: &Context,
     guild_id: GuildId,
@@ -1118,21 +1221,11 @@ async fn create_channel(
     overwrites: &[PermissionOverwrite],
     topic: Option<&str>,
 ) -> Option<ChannelId> {
-    let construire = |cat: Option<ChannelId>| {
-        let mut b = CreateChannel::new(name)
-            .kind(kind)
-            .permissions(overwrites.to_vec());
-        if let Some(c) = cat {
-            b = b.category(c);
-        }
-        if let Some(topic) = topic {
-            b = b.topic(topic);
-        }
-        b
-    };
-
     let premiere = match guild_id
-        .create_channel(&ctx.http, construire(category))
+        .create_channel(
+            &ctx.http,
+            build_create_channel_request(name, kind, category, overwrites, topic),
+        )
         .await
     {
         Ok(ch) => return Some(ch.id),
@@ -1153,7 +1246,13 @@ async fn create_channel(
             ?kind,
             "game-portal: echec creation salon dans la categorie -> nouvel essai hors categorie"
         );
-        match guild_id.create_channel(&ctx.http, construire(None)).await {
+        match guild_id
+            .create_channel(
+                &ctx.http,
+                build_create_channel_request(name, kind, None, overwrites, topic),
+            )
+            .await
+        {
             Ok(ch) => return Some(ch.id),
             Err(e) => {
                 tracing::error!(
@@ -1452,7 +1551,7 @@ async fn on_started(ctx: &Context, api: &ApiClient, guild_id: GuildId, server_id
 /// role de session (donc l'acces des inscrits) ne saute a chaque pause. La
 /// suppression effective des salons n'a lieu qu'a la suppression du jeu
 /// (`on_deleted`, evenement `game_server_deleted`).
-async fn on_stopped(_ctx: &Context, _api: &ApiClient, server_id: &str) {
+pub(crate) async fn on_stopped(_ctx: &Context, _api: &ApiClient, server_id: &str) {
     tracing::info!(server_id, "game-portal: session arretee (salons conserves)");
 }
 
@@ -1538,27 +1637,13 @@ async fn on_ip_reveal(ctx: &Context, api: &ApiClient, server_id: &str) {
                 (c.name == private_name && c.topic.as_deref() == Some(private_topic.as_str()))
                     || c.name == legacy_private_name
             }) {
-                let address = match (
-                    server
-                        .public_host
-                        .as_deref()
-                        .filter(|h| !h.trim().is_empty()),
+                let card = build_private_reveal_card(
+                    &game_name,
+                    &server.name,
+                    server.public_host.as_deref(),
                     server.host_port,
-                ) {
-                    (Some(host), Some(port)) => format!("`{host}:{port}`"),
-                    _ => "_Adresse indisponible, contacte le propriétaire._".to_string(),
-                };
-                let mut card = CreateEmbed::new()
-                    .title(format!("🎮 {game_name} — {name}", name = server.name))
-                    .description(format!(
-                        "🔓 **Serveur ouvert**\nConnexion : {address}\n\nTape `/game parametres` ici pour voir tous les réglages (mot de passe inclus)."
-                    ))
-                    .color(0x5865f2)
-                    .footer(CreateEmbedFooter::new("Game Portal | Accès privé"))
-                    .timestamp(serenity::model::Timestamp::now());
-                if let Some(url) = cover_url.as_deref() {
-                    card = card.image(url);
-                }
+                    cover_url.as_deref(),
+                );
                 let _ = private_ch
                     .send_message(&ctx.http, CreateMessage::new().embed(card))
                     .await;
@@ -1612,21 +1697,12 @@ async fn on_daily_ping(ctx: &Context, api: &ApiClient, server_id: &str) {
     let (game_name, role_id) = game_name_and_role(api, &server).await;
     let Some(rid) = role_id else { return };
 
-    let when = match server
-        .ip_reveal_at
-        .as_deref()
-        .and_then(|d| chrono::DateTime::parse_from_rfc3339(d).ok())
-    {
-        Some(dt) => format!("<t:{}:R>", dt.timestamp()),
-        None => "bientôt".to_string(),
-    };
+    let when = format_when_timestamp(server.ip_reveal_at.as_deref());
 
     let _ = text_ch
         .send_message(
             &ctx.http,
-            CreateMessage::new().content(format!(
-                "<@&{rid}> Le serveur **{game_name}** ouvre {when} ! Inscris-toi sur le panneau."
-            )),
+            CreateMessage::new().content(format_daily_ping_content(rid, &game_name, &when)),
         )
         .await;
 }
@@ -1697,7 +1773,7 @@ fn schedule_opening_soon(
 
 #[cfg(test)]
 mod tests {
-    use super::{lignes_reglages, private_text_name, registration_channel_name, valeur_lisible};
+    use super::*;
     use crate::api_client::TemplateField;
 
     fn champ(key: &str, label: &str, group: Option<&str>) -> TemplateField {
@@ -1710,9 +1786,6 @@ mod tests {
 
     #[test]
     fn les_reglages_prennent_leur_nom_francais() {
-        // Avant, la carte affichait `SPAWN_MONSTERS` : une cle technique, en
-        // anglais, qui ne dit rien a un joueur venu savoir comment se joue la
-        // partie. Le libelle existait deja dans le schema du jeu.
         let schema = vec![champ("SPAWN_MONSTERS", "Spawn monstres", Some("Monde"))];
         let config =
             std::collections::HashMap::from([("SPAWN_MONSTERS".to_string(), "true".to_string())]);
@@ -1723,14 +1796,11 @@ mod tests {
             !lignes.iter().any(|l| l.contains("SPAWN_MONSTERS")),
             "la cle technique ne doit plus apparaitre"
         );
-        // Regroupe sous sa section, comme la page de configuration.
         assert!(lignes.iter().any(|l| l.contains("Monde")));
     }
 
     #[test]
     fn un_reglage_inconnu_du_schema_reste_affiche() {
-        // Repli sur la cle brute : mieux vaut un nom technique qu'une ligne
-        // disparue de la carte.
         let config = std::collections::HashMap::from([("MYSTERE".to_string(), "42".to_string())]);
         let lignes = lignes_reglages(&config, &[], true);
         assert!(lignes.iter().any(|l| l.contains("MYSTERE")));
@@ -1741,13 +1811,13 @@ mod tests {
         assert_eq!(valeur_lisible("true"), "Oui");
         assert_eq!(valeur_lisible("false"), "Non");
         assert_eq!(valeur_lisible("1"), "Oui");
+        assert_eq!(valeur_lisible("0"), "Non");
         assert_eq!(valeur_lisible(""), "—");
         assert_eq!(valeur_lisible("normal"), "normal");
     }
 
     #[test]
     fn le_mot_de_passe_ne_sort_pas_du_salon_prive() {
-        // SECURITE : le salon d'inscription est visible de tout le role du jeu.
         let config = std::collections::HashMap::from([(
             "SERVER_PASSWORD".to_string(),
             "secret".to_string(),
@@ -1765,5 +1835,452 @@ mod tests {
             "inscription-7-days-to-die"
         );
         assert_eq!(private_text_name("7 Days to Die"), "salon-7-days-to-die");
+    }
+
+    #[test]
+    fn test_handles_component() {
+        assert!(handles_component("gp_register:123"));
+        assert!(handles_component("gp_unregister:123"));
+        assert!(handles_component("gp_reveal_ip:123"));
+        assert!(!handles_component("other_custom_id"));
+    }
+
+    #[test]
+    fn test_is_player_password_key() {
+        assert!(is_player_password_key("PASSWORD"));
+        assert!(is_player_password_key("server_pass"));
+        assert!(is_player_password_key("SERVER_PASSWORD"));
+        assert!(is_player_password_key("ServerConfig_ServerPassword"));
+        assert!(!is_player_password_key("ADMIN_PASSWORD"));
+    }
+
+    #[test]
+    fn test_is_safe_game_option() {
+        assert!(is_safe_game_option("SERVER_PASSWORD"));
+        assert!(is_safe_game_option("MAX_PLAYERS"));
+        assert!(!is_safe_game_option("OPS"));
+        assert!(!is_safe_game_option("ADMIN_PASSWORD"));
+        assert!(!is_safe_game_option("RCON_PORT"));
+        assert!(!is_safe_game_option("API_KEY"));
+        assert!(!is_safe_game_option("SECRET_TOKEN"));
+    }
+
+    #[test]
+    fn test_slugify() {
+        assert_eq!(slugify("Minecraft 1.20"), "minecraft-1-20");
+        assert_eq!(slugify("ARK: Survival Evolved"), "ark-survival-evolved");
+        assert_eq!(slugify(""), "serveur");
+    }
+
+    #[test]
+    fn test_server_id_from_topic() {
+        let topic = "Nexus Game Portal | session:abc-123-def | registration";
+        assert_eq!(server_id_from_topic(topic), Some("abc-123-def"));
+        assert_eq!(server_id_from_topic("aucun"), None);
+    }
+
+    #[test]
+    fn test_chunk_options() {
+        let options = vec!["Option 1".to_string(), "Option 2".to_string()];
+        let chunks = chunk_options(&options);
+        assert_eq!(chunks.len(), 1);
+        assert!(chunks[0].contains("Option 1"));
+        assert!(chunks[0].contains("Option 2"));
+
+        let long_opt = "A".repeat(600);
+        let chunks_multi = chunk_options(&[long_opt.clone(), long_opt.clone()]);
+        assert_eq!(chunks_multi.len(), 2);
+    }
+
+    #[test]
+    fn test_public_cover_url() {
+        assert_eq!(public_cover_url(None), None);
+        assert_eq!(public_cover_url(Some("")), None);
+        assert_eq!(
+            public_cover_url_for_status(Some("https://example.com/cover.jpg"), "open"),
+            Some("https://example.com/cover.jpg".into())
+        );
+        assert_eq!(
+            public_cover_url_for_status(Some("https://example.com/cover.jpg"), "waiting"),
+            Some("https://example.com/cover_attente.jpg".into())
+        );
+        assert_eq!(
+            public_cover_url_for_status(Some("https://example.com/cover.jpg"), "closed"),
+            Some("https://example.com/cover_offline.jpg".into())
+        );
+
+        std::env::set_var("WEB_FRONT_URL", "https://app.canap.fr");
+        assert_eq!(
+            public_cover_url_for_status(Some("/imgs/game.png"), "open"),
+            Some("https://app.canap.fr/imgs/game.png".into())
+        );
+        std::env::remove_var("WEB_FRONT_URL");
+    }
+
+    #[test]
+    fn test_panel_rows_and_embeds() {
+        let rows_revealed = panel_rows("srv_1", true);
+        assert_eq!(rows_revealed.len(), 1);
+
+        let rows_unrevealed = panel_rows("srv_1", false);
+        assert_eq!(rows_unrevealed.len(), 1);
+
+        let embed = build_panel_embed(
+            "Valheim",
+            "Serveur du Canapé",
+            &["user_1".into()],
+            Some("2026-01-01T20:00:00Z"),
+            false,
+            Some("play.canap.fr"),
+            Some(2456),
+        );
+        let json_embed = serde_json::to_value(&embed).unwrap();
+        assert_eq!(json_embed["fields"].as_array().unwrap().len(), 3);
+
+        let public_embed = build_public_panel_embed(
+            "Valheim",
+            "Serveur du Canapé",
+            &[],
+            None,
+            true,
+            Some("https://example.com/valheim.jpg"),
+        );
+        let json_pub = serde_json::to_value(&public_embed).unwrap();
+        assert_eq!(json_pub["fields"].as_array().unwrap().len(), 3);
+
+        let opts_embeds = build_options_embeds("Valheim", "Serveur", &[]);
+        assert_eq!(opts_embeds.len(), 1);
+    }
+
+    #[test]
+    fn test_build_overwrites() {
+        let g = GuildId::new(12345);
+        let r = Some(RoleId::new(67890));
+        let ow_text = build_overwrites(g, r, ChannelType::Text);
+        assert_eq!(ow_text.len(), 2);
+
+        let ow_voice = build_overwrites(g, r, ChannelType::Voice);
+        assert_eq!(ow_voice.len(), 2);
+
+        let req_text = build_create_channel_request("salon-test", ChannelType::Text, Some(ChannelId::new(111)), &ow_text, Some("topic test"));
+        let j_req_t = serde_json::to_value(&req_text).unwrap();
+        assert_eq!(j_req_t["name"], "salon-test");
+        assert_eq!(j_req_t["type"], 0); // Text
+        assert_eq!(j_req_t["parent_id"], "111");
+        assert_eq!(j_req_t["topic"], "topic test");
+
+        let req_voice = build_create_channel_request("vocal-test", ChannelType::Voice, None, &ow_voice, None);
+        let j_req_v = serde_json::to_value(&req_voice).unwrap();
+        assert_eq!(j_req_v["name"], "vocal-test");
+        assert_eq!(j_req_v["type"], 2); // Voice
+    }
+
+    #[test]
+    fn test_session_helpers_and_names() {
+        assert_eq!(session_suffix("srv-1234-5678-abc"), "srv12345");
+        assert_eq!(session_role_name("Valheim RPG", "srv-123"), "valheim-rpg_srv123");
+        assert_eq!(registration_channel_name("Valheim RPG"), "inscription-valheim-rpg");
+        assert_eq!(private_text_name("Valheim RPG"), "salon-valheim-rpg");
+        assert_eq!(legacy_private_text_name("srv-123"), "joueurs-srv123");
+        assert_eq!(private_text_topic("srv-123"), "Nexus Game Portal | session:srv-123 | private");
+    }
+
+    #[test]
+    fn test_valeur_lisible() {
+        assert_eq!(valeur_lisible("true"), "Oui");
+        assert_eq!(valeur_lisible("1"), "Oui");
+        assert_eq!(valeur_lisible("false"), "Non");
+        assert_eq!(valeur_lisible("0"), "Non");
+        assert_eq!(valeur_lisible(""), "—");
+        assert_eq!(valeur_lisible("10"), "10");
+    }
+
+    #[test]
+    fn test_lignes_and_sections_reglages() {
+        let schema = [
+            TemplateField {
+                key: "PVP".into(),
+                label: "Combat PvP".into(),
+                group: Some("Gameplay".into()),
+            }
+        ];
+        assert_eq!(nom_du_reglage(&schema, "PVP"), "Combat PvP");
+        assert_eq!(nom_du_reglage(&schema, "UNKNOWN"), "UNKNOWN");
+        assert_eq!(section_du_reglage(&schema, "PVP"), "Gameplay");
+        assert_eq!(section_du_reglage(&schema, "UNKNOWN"), "Reglages generaux");
+
+        let mut config = std::collections::HashMap::new();
+        config.insert("PVP".into(), "true".into());
+        config.insert("PASSWORD".into(), "secret".into());
+        config.insert("ADMIN_PASS".into(), "supersecret".into());
+
+        let lines_public = lignes_reglages(&config, &schema, false);
+        assert_eq!(lines_public.len(), 2); // 1 header + PVP
+
+        let lines_private = lignes_reglages(&config, &schema, true);
+        assert_eq!(lines_private.len(), 4); // 1 header Gameplay + PVP + 1 header Reglages generaux + PASSWORD
+
+        let pub_opts = public_game_options(&config, &schema);
+        assert_eq!(pub_opts.len(), 4);
+
+        let reg_opts = registration_options(&config, &schema);
+        assert_eq!(reg_opts.len(), 2);
+    }
+
+    #[test]
+    fn test_status_and_cover_helpers() {
+        assert_eq!(strip_status_suffix("cover_attente"), "cover");
+        assert_eq!(strip_status_suffix("cover_waiting"), "cover");
+        assert_eq!(strip_status_suffix("cover_offline"), "cover");
+        assert_eq!(strip_status_suffix("cover_normal"), "cover_normal");
+
+        assert_eq!(
+            public_cover_url_for_status(Some("https://example.com/cover.jpg"), "open"),
+            Some("https://example.com/cover.jpg".into())
+        );
+        assert_eq!(
+            public_cover_url_for_status(Some("https://example.com/cover.jpg"), "waiting"),
+            Some("https://example.com/cover_attente.jpg".into())
+        );
+        assert_eq!(
+            public_cover_url_for_status(Some("https://example.com/cover.jpg"), "closed"),
+            Some("https://example.com/cover_offline.jpg".into())
+        );
+        assert_eq!(
+            public_cover_url_for_status(Some("https://example.com/cover.jpg"), "scheduled"),
+            Some("https://example.com/cover_attente.jpg".into())
+        );
+        assert_eq!(
+            public_cover_url_for_status(Some("https://example.com/cover.jpg"), "stopped"),
+            Some("https://example.com/cover_offline.jpg".into())
+        );
+
+        let srv = GameServer {
+            id: "s1".into(),
+            guild_id: "g1".into(),
+            template_id: "t1".into(),
+            name: "Server".into(),
+            status: "Running".into(),
+            owner_user_id: "u1".into(),
+            host_port: Some(25565),
+            public_host: Some("play.com".into()),
+            ip_reveal_at: None,
+            ip_revealed: true,
+            display_state: Some("open".into()),
+            text_channel_id: None,
+            voice_channel_id: None,
+            last_player_count: 0,
+        };
+        assert_eq!(etat_affiche(&srv), "open");
+
+        let ch_str = "12345".to_string();
+        assert_eq!(parse_channel(Some(&ch_str)), Some(ChannelId::new(12345)));
+        assert_eq!(parse_channel(None), None);
+    }
+
+    #[test]
+    fn test_is_not_found() {
+        assert!(!is_not_found(&serenity::Error::Other("something")));
+    }
+
+    #[test]
+    fn test_parse_portal_event() {
+        let valid_json = r#"{"event":"server.started","data":{"server_id":"srv_123","guild_id":"98765"}}"#;
+        let parsed = parse_portal_event(valid_json);
+        assert_eq!(parsed, Some(("server.started".into(), "srv_123".into(), 98765)));
+
+        assert_eq!(parse_portal_event("invalid json"), None);
+        assert_eq!(parse_portal_event(r#"{"event":"server.started"}"#), None);
+        assert_eq!(parse_portal_event(r#"{"event":"server.started","data":{"server_id":"s1"}}"#), None);
+        assert_eq!(parse_portal_event(r#"{"event":"server.started","data":{"server_id":"s1","guild_id":"not_a_num"}}"#), None);
+
+        use platform_core::nexus::ports::outbound::events::game_events as ev;
+        assert_eq!(match_portal_event_type(ev::SERVER_SCHEDULED), "scheduled");
+        assert_eq!(match_portal_event_type(ev::SERVER_STARTED), "started");
+        assert_eq!(match_portal_event_type(ev::SERVER_STOPPED), "stopped");
+        assert_eq!(match_portal_event_type(ev::SERVER_DELETED), "deleted");
+        assert_eq!(match_portal_event_type(ev::IP_REVEAL), "ip_reveal");
+        assert_eq!(match_portal_event_type(ev::DAILY_PING), "daily_ping");
+        assert_eq!(match_portal_event_type("unknown"), "unknown");
+    }
+
+    #[test]
+    fn test_reveal_and_ping_helpers() {
+        let ack_start = format_reveal_ack(true, 5);
+        assert!(ack_start.contains("démarre"));
+        assert!(ack_start.contains("5 minute(s)"));
+
+        let ack_online = format_reveal_ack(false, 2);
+        assert!(ack_online.contains("déjà en ligne"));
+
+        let embed_soon = build_opening_soon_embed("Minecraft", 10);
+        let j_soon = serde_json::to_value(&embed_soon).unwrap();
+        assert!(j_soon["title"].as_str().unwrap().contains("Minecraft"));
+        assert!(j_soon["description"].as_str().unwrap().contains("10 minute(s)"));
+
+        let card = build_private_reveal_card("Minecraft", "Serveur Canap", Some("play.net"), Some(25565), Some("https://example.com/mc.jpg"));
+        let j_card = serde_json::to_value(&card).unwrap();
+        assert!(j_card["title"].as_str().unwrap().contains("Minecraft — Serveur Canap"));
+        assert!(j_card["description"].as_str().unwrap().contains("`play.net:25565`"));
+        assert_eq!(j_card["image"]["url"], "https://example.com/mc.jpg");
+
+        let card_none = build_private_reveal_card("Minecraft", "Serveur Canap", None, None, None);
+        let j_card_none = serde_json::to_value(&card_none).unwrap();
+        assert!(j_card_none["description"].as_str().unwrap().contains("Adresse indisponible"));
+
+        let ping_msg = format_daily_ping_content(RoleId::new(1234), "Minecraft", "<t:100:R>");
+        assert_eq!(ping_msg, "<@&1234> Le serveur **Minecraft** ouvre <t:100:R> ! Inscris-toi sur le panneau.");
+
+        assert_eq!(format_when_timestamp(None), "bientôt");
+        assert_eq!(format_when_timestamp(Some("2026-01-01T00:00:00Z")), "<t:1767225600:R>");
+    }
+
+    #[tokio::test]
+    async fn test_resolve_role_and_options_embeds() {
+        use tokio::net::TcpListener;
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let base_url = format!("http://{}", addr);
+
+        tokio::spawn(async move {
+            while let Ok((mut stream, _)) = listener.accept().await {
+                let mut buf = [0u8; 4096];
+                let n = stream.read(&mut buf).await.unwrap_or(0);
+                let req = String::from_utf8_lossy(&buf[..n]);
+
+                let body = if req.contains("/api/games/templates/tpl_1") {
+                    r#"{"name":"Minecraft","slug":"minecraft","config_schema":[{"key":"pvp","label":"PvP"}]}"#
+                } else if req.contains("/template-settings") {
+                    r#"[{"template_slug":"minecraft","discord_role_id":"99999"}]"#
+                } else if req.contains("/api/games/") {
+                    r#"{"id":"g1","game_name":"Minecraft","role_id":"88888"}"#
+                } else {
+                    r#"{"ok":true}"#
+                };
+
+                let resp = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+                let _ = stream.write_all(resp.as_bytes()).await;
+            }
+        });
+
+        let client = ApiClient::new(base_url, Some("token".into()));
+
+        let role = resolve_role(&client, "g1", "minecraft", "Minecraft").await;
+        assert_eq!(role, Some(RoleId::new(99999)));
+
+        let srv = GameServer {
+            id: "s1".into(),
+            guild_id: "g1".into(),
+            template_id: "tpl_1".into(),
+            name: "Mon Serveur".into(),
+            status: "Running".into(),
+            owner_user_id: "u1".into(),
+            host_port: Some(25565),
+            public_host: Some("play.net".into()),
+            ip_reveal_at: None,
+            ip_revealed: true,
+            display_state: Some("open".into()),
+            text_channel_id: None,
+            voice_channel_id: None,
+            last_player_count: 0,
+        };
+
+        let (gname, grole) = game_name_and_role(&client, &srv).await;
+        assert_eq!(gname, "Minecraft");
+        assert_eq!(grole, Some(RoleId::new(99999)));
+
+        let tpl = crate::api_client::GameTemplate {
+            name: "Minecraft".into(),
+            slug: "minecraft".into(),
+            cover_image_url: Some("https://example.com/mc.jpg".into()),
+            config_schema: vec![
+                crate::api_client::TemplateField {
+                    key: "pvp".into(),
+                    label: "PvP".into(),
+                    group: None,
+                }
+            ],
+        };
+        let mut cfg = std::collections::HashMap::new();
+        cfg.insert("pvp".into(), "true".into());
+
+        let embeds_pub = build_options_embeds_for_server(&srv, Some(&tpl), &cfg, false);
+        assert_eq!(embeds_pub.len(), 1);
+        let j_pub = serde_json::to_value(&embeds_pub[0]).unwrap();
+        assert!(j_pub["title"].as_str().unwrap().contains("Minecraft"));
+
+        let embeds_priv = build_options_embeds_for_server(&srv, Some(&tpl), &cfg, true);
+        assert_eq!(embeds_priv.len(), 1);
+        let j_priv = serde_json::to_value(&embeds_priv[0]).unwrap();
+        assert!(j_priv["title"].as_str().unwrap().contains("Minecraft"));
+
+        // Test persist_category
+        persist_category(&client, "g1", ChannelId::new(55555)).await;
+    }
+
+    #[tokio::test]
+    async fn test_portal_registration_and_reveal_logic() {
+        use tokio::net::TcpListener;
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        assert_eq!(strip_status_suffix("image_attente"), "image");
+        assert_eq!(strip_status_suffix("image_waiting"), "image");
+        assert_eq!(strip_status_suffix("image_offline"), "image");
+        assert_eq!(strip_status_suffix("image_normal"), "image_normal");
+
+        assert_eq!(format_registration_error_content(true, "quota"), "❌ Inscription impossible : quota");
+        assert_eq!(format_registration_error_content(false, "introuvable"), "❌ Désinscription impossible : introuvable");
+        assert_eq!(format_registration_ack_content(true), "Inscription enregistrée");
+        assert_eq!(format_registration_ack_content(false), "Désinscription enregistrée");
+        assert_eq!(format_owner_only_reveal_error(), "⛔ Seul le propriétaire du serveur peut révéler son adresse.");
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let base_url = format!("http://{}", addr);
+
+        tokio::spawn(async move {
+            while let Ok((mut stream, _)) = listener.accept().await {
+                let mut buf = [0u8; 4096];
+                let n = stream.read(&mut buf).await.unwrap_or(0);
+                let req = String::from_utf8_lossy(&buf[..n]);
+
+                let body = if req.contains("/api/games/servers/s1") && req.contains("/reveal-ip") {
+                    r#"{"started":true,"delay_minutes":5}"#
+                } else if req.contains("/api/games/servers/s1") {
+                    r#"{"server":{"id":"s1","guild_id":"g1","template_id":"t1","name":"Serveur Test","status":"running","owner_user_id":"u1","ip_revealed":false,"last_player_count":0},"config":{}}"#
+                } else if req.contains("/api/games/templates/t1") {
+                    r#"{"name":"Template Test","slug":"test","config_schema":[]}"#
+                } else {
+                    r#"{"ok":true}"#
+                };
+
+                let resp = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+                let _ = stream.write_all(resp.as_bytes()).await;
+            }
+        });
+
+        let client = ApiClient::new(base_url, Some("token".into()));
+
+        // Success reveal logic by owner
+        let res = execute_reveal_ip_logic(&client, "s1", "u1").await;
+        assert!(res.is_ok());
+        let (outcome, gname) = res.unwrap();
+        assert_eq!(outcome.delay_minutes, 5);
+        assert_eq!(gname, "Template Test");
+
+        // Error reveal logic by non-owner
+        let err_res = execute_reveal_ip_logic(&client, "s1", "u2").await;
+        assert!(err_res.is_err());
+        assert_eq!(err_res.unwrap_err(), format_owner_only_reveal_error());
     }
 }

@@ -372,3 +372,46 @@ fn build_sync_response(
 
     lines.join("\n")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_handles_component() {
+        assert!(handles_component("game_panel_select_123_0"));
+        assert!(handles_component("game_panel_btn|panel1|game1"));
+        assert!(!handles_component("roue_panel_spin"));
+        assert!(!handles_component("c:a:1:2:3"));
+    }
+
+    #[test]
+    fn test_build_sync_response_empty() {
+        let res = build_sync_response(&[], &[], 0, &[]);
+        assert!(res.contains("Aucun changement."));
+        assert!(res.contains("Tu ne suis aucun jeu actuellement."));
+    }
+
+    #[test]
+    fn test_build_sync_response_with_added_and_removed() {
+        let added = vec!["Minecraft".to_string(), "Valheim".to_string()];
+        let removed = vec!["Rust".to_string()];
+        let active = vec!["Minecraft".to_string(), "Valheim".to_string()];
+        let res = build_sync_response(&added, &removed, 0, &active);
+        assert!(res.contains("+ Minecraft, Valheim"));
+        assert!(res.contains("- Rust"));
+        assert!(res.contains("Tu suis actuellement (2)"));
+    }
+
+    #[test]
+    fn test_build_sync_response_overflow_and_legacy() {
+        let added: Vec<String> = (0..15).map(|i| format!("GameAdd{i}")).collect();
+        let removed: Vec<String> = (0..12).map(|i| format!("GameRem{i}")).collect();
+        let active: Vec<String> = (0..25).map(|i| format!("GameAct{i}")).collect();
+        let res = build_sync_response(&added, &removed, 3, &active);
+        assert!(res.contains("(+5 autres)"));
+        assert!(res.contains("(+2 autres)"));
+        assert!(res.contains("3 jeu(x) ignore(s)"));
+        assert!(res.contains("(+5 autres)"));
+    }
+}

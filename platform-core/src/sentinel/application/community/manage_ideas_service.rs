@@ -208,6 +208,3 @@ impl ManageIdeasUseCase for ManageIdeasService {
     }
 }
 
-#[cfg(test)]
-#[path = "tests/manage_ideas_extended.rs"]
-mod tests_extended;

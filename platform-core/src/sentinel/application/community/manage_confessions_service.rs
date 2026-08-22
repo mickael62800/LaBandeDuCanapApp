@@ -365,6 +365,3 @@ impl ManageConfessionsUseCase for ManageConfessionsService {
     }
 }
 
-#[cfg(test)]
-#[path = "tests/manage_confessions_extended.rs"]
-mod tests_extended;

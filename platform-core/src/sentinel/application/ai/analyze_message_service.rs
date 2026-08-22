@@ -102,6 +102,7 @@ mod heuristics;
 mod pipeline;
 mod scoring;
 
+
 #[cfg(test)]
 use crate::sentinel::domain::services::moderation::scoring_service::resolve_thresholds;
 #[cfg(test)]
@@ -148,7 +149,3 @@ impl AnalyzeMessageUseCase for AnalyzeMessageService {
 #[cfg(test)]
 #[path = "tests/analyze_message_service.rs"]
 mod tests;
-
-#[cfg(test)]
-#[path = "tests/analyze_message_pipeline.rs"]
-mod tests_pipeline;

@@ -414,4 +414,119 @@ mod tests {
         assert!(res.contains("3 jeu(x) ignore(s)"));
         assert!(res.contains("(+5 autres)"));
     }
+
+    #[test]
+    fn test_handles_component_prefixes() {
+        // Test both prefixes
+        assert!(handles_component(PANEL_SELECT_PREFIX));
+        assert!(handles_component(PANEL_BUTTON_PREFIX));
+        assert!(handles_component(&format!("{}abc", PANEL_SELECT_PREFIX)));
+        assert!(handles_component(&format!("{}xyz", PANEL_BUTTON_PREFIX)));
+    }
+
+    #[test]
+    fn test_handles_component_non_matching() {
+        assert!(!handles_component(""));
+        assert!(!handles_component("random_string"));
+        assert!(!handles_component("game_"));
+        assert!(!handles_component("panel_"));
+    }
+
+    #[test]
+    fn test_build_sync_response_only_added() {
+        let added = vec!["NewGame".to_string()];
+        let res = build_sync_response(&added, &[], 0, &added);
+        assert!(res.contains("+ NewGame"));
+        assert!(!res.contains("- "));
+    }
+
+    #[test]
+    fn test_build_sync_response_only_removed() {
+        let removed = vec!["OldGame".to_string()];
+        let res = build_sync_response(&[], &removed, 0, &[]);
+        assert!(res.contains("- OldGame"));
+        assert!(!res.contains("+ "));
+    }
+
+    #[test]
+    fn test_build_sync_response_only_legacy() {
+        let res = build_sync_response(&[], &[], 5, &[]);
+        assert!(res.contains("5 jeu(x) ignore(s)"));
+    }
+
+    #[test]
+    fn test_build_sync_response_only_active() {
+        let active = vec!["CurrentGame".to_string()];
+        let res = build_sync_response(&[], &[], 0, &active);
+        assert!(res.contains("Tu suis actuellement (1)"));
+        assert!(res.contains("CurrentGame"));
+    }
+
+    #[test]
+    fn test_build_sync_response_many_active() {
+        let active: Vec<String> = (0..25).map(|i| format!("Game{}", i)).collect();
+        let res = build_sync_response(&[], &[], 0, &active);
+        assert!(res.contains("Tu suis actuellement (25)"));
+        assert!(res.contains("(+5 autres)"));
+    }
+
+    #[test]
+    fn test_build_sync_response_many_added() {
+        let added: Vec<String> = (0..20).map(|i| format!("New{}", i)).collect();
+        let res = build_sync_response(&added, &[], 0, &[]);
+        assert!(res.contains("(+10 autres)"));
+    }
+
+    #[test]
+    fn test_build_sync_response_many_removed() {
+        let removed: Vec<String> = (0..15).map(|i| format!("Old{}", i)).collect();
+        let res = build_sync_response(&[], &removed, 0, &[]);
+        assert!(res.contains("(+5 autres)"));
+    }
+
+    #[test]
+    fn test_build_sync_response_all_combined() {
+        let added = vec!["Add1".to_string(), "Add2".to_string()];
+        let removed = vec!["Rem1".to_string()];
+        let active = vec!["Act1".to_string(), "Act2".to_string(), "Act3".to_string()];
+        let res = build_sync_response(&added, &removed, 2, &active);
+
+        assert!(res.contains("+ Add1, Add2"));
+        assert!(res.contains("- Rem1"));
+        assert!(res.contains("2 jeu(x) ignore(s)"));
+        assert!(res.contains("Tu suis actuellement (3)"));
+    }
+
+    #[test]
+    fn test_build_sync_response_exact_10_items() {
+        // Test boundary at 10 items (no truncation)
+        let items: Vec<String> = (0..10).map(|i| format!("Game{}", i)).collect();
+        let res = build_sync_response(&items, &[], 0, &[]);
+        assert!(res.contains("+ Game"));
+        assert!(!res.contains("(+"));
+    }
+
+    #[test]
+    fn test_build_sync_response_exactly_11_items() {
+        // Test boundary at 11 items (should truncate)
+        let items: Vec<String> = (0..11).map(|i| format!("Game{}", i)).collect();
+        let res = build_sync_response(&items, &[], 0, &[]);
+        assert!(res.contains("(+1 autres)"));
+    }
+
+    #[test]
+    fn test_build_sync_response_active_exact_20() {
+        // Boundary test at 20 active games
+        let active: Vec<String> = (0..20).map(|i| format!("G{}", i)).collect();
+        let res = build_sync_response(&[], &[], 0, &active);
+        assert!(res.contains("(20)"));
+        assert!(!res.contains("(+"));
+    }
+
+    #[test]
+    fn test_build_sync_response_no_extra_lines() {
+        // With zero legacy, no legacy line should appear
+        let res = build_sync_response(&[], &[], 0, &[]);
+        assert!(!res.contains("ignore"));
+    }
 }

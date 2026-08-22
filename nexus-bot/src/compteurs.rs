@@ -625,4 +625,55 @@ mod tests {
         };
         assert_eq!(r1, r2);
     }
+
+    #[test]
+    fn test_releve_zero_values() {
+        let r = Releve {
+            joueurs: 0,
+            serveurs: 0,
+        };
+        assert_eq!(r.joueurs, 0);
+        assert_eq!(r.serveurs, 0);
+    }
+
+    #[test]
+    fn test_releve_large_values() {
+        let r = Releve {
+            joueurs: 9999,
+            serveurs: 999,
+        };
+        assert_eq!(r.joueurs, 9999);
+        assert_eq!(r.serveurs, 999);
+    }
+
+    #[test]
+    fn test_releve_inequality() {
+        let r1 = Releve {
+            joueurs: 5,
+            serveurs: 2,
+        };
+        let r2 = Releve {
+            joueurs: 6,
+            serveurs: 2,
+        };
+        assert_ne!(r1, r2);
+    }
+
+    #[test]
+    fn test_nom_du_salon_edge_cases() {
+        // Minimum format
+        assert_eq!(nom_du_salon("{count}", 0), Some("0".into()));
+        assert_eq!(nom_du_salon("{count}", 1), Some("1".into()));
+
+        // Very large number
+        assert_eq!(nom_du_salon("Players: {count}", 99999), Some("Players: 99999".into()));
+    }
+
+
+    #[test]
+    fn test_le_format_place_le_chiffre_variations() {
+        assert_eq!(nom_du_salon("({count})", 42), Some("(42)".into()));
+        assert_eq!(nom_du_salon("[{count}]", 99), Some("[99]".into()));
+        assert_eq!(nom_du_salon("# {count}", 7), Some("# 7".into()));
+    }
 }

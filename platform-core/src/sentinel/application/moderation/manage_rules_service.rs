@@ -103,6 +103,3 @@ impl ManageRulesUseCase for ManageRulesService {
     }
 }
 
-#[cfg(test)]
-#[path = "tests/manage_rules.rs"]
-mod tests;

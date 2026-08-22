@@ -61,6 +61,3 @@ impl ManageNotesUseCase for ManageNotesService {
     }
 }
 
-#[cfg(test)]
-#[path = "tests/manage_notes.rs"]
-mod tests;

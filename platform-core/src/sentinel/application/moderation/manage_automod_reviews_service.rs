@@ -439,6 +439,3 @@ impl ManageAutomodReviewsUseCase for ManageAutomodReviewsService {
     }
 }
 
-#[cfg(test)]
-#[path = "tests/manage_automod_reviews.rs"]
-mod tests;

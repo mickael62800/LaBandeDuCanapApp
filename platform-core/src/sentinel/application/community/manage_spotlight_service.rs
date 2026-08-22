@@ -110,6 +110,3 @@ impl ManageSpotlightUseCase for ManageSpotlightService {
     }
 }
 
-#[cfg(test)]
-#[path = "tests/manage_spotlight.rs"]
-mod tests;

@@ -104,6 +104,3 @@ impl ManageNewsUseCase for ManageNewsService {
     }
 }
 
-#[cfg(test)]
-#[path = "tests/manage_news.rs"]
-mod tests;

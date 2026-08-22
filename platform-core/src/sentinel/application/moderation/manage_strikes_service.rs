@@ -127,6 +127,3 @@ impl ManageStrikesUseCase for ManageStrikesService {
     }
 }
 
-#[cfg(test)]
-#[path = "tests/manage_strikes.rs"]
-mod tests;

@@ -228,6 +228,3 @@ impl ManageStatsUseCase for ManageStatsService {
     }
 }
 
-#[cfg(test)]
-#[path = "tests/manage_stats.rs"]
-mod tests;

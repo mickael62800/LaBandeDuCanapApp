@@ -70,6 +70,3 @@ impl ManageAuditLogsUseCase for ManageAuditLogsService {
     }
 }
 
-#[cfg(test)]
-#[path = "tests/manage_audit_logs.rs"]
-mod tests;

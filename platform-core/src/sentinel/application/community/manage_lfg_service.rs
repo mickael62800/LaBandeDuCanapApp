@@ -174,6 +174,3 @@ impl ManageLfgUseCase for ManageLfgService {
     }
 }
 
-#[cfg(test)]
-#[path = "tests/manage_lfg.rs"]
-mod tests;

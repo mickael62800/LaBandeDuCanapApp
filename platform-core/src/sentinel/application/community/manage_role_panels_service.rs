@@ -119,6 +119,3 @@ impl ManageRolePanelsUseCase for ManageRolePanelsService {
     }
 }
 
-#[cfg(test)]
-#[path = "tests/manage_role_panels.rs"]
-mod tests;

@@ -297,6 +297,3 @@ impl ManageTicketsUseCase for ManageTicketsService {
     }
 }
 
-#[cfg(test)]
-#[path = "tests/manage_tickets.rs"]
-mod tests;

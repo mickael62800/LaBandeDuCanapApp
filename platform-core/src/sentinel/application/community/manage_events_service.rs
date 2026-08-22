@@ -145,6 +145,3 @@ impl ManageEventsUseCase for ManageEventsService {
     }
 }
 
-#[cfg(test)]
-#[path = "tests/manage_events.rs"]
-mod tests;

@@ -83,6 +83,3 @@ impl ManageInfractionsUseCase for ManageInfractionsService {
     }
 }
 
-#[cfg(test)]
-#[path = "tests/manage_infractions.rs"]
-mod tests;

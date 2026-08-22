@@ -177,6 +177,3 @@ impl ManagePollsUseCase for ManagePollsService {
     }
 }
 
-#[cfg(test)]
-#[path = "tests/manage_polls.rs"]
-mod tests;

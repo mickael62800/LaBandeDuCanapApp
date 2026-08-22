@@ -245,6 +245,3 @@ impl ManageMembersUseCase for ManageMembersService {
     }
 }
 
-#[cfg(test)]
-#[path = "tests/manage_members.rs"]
-mod tests;

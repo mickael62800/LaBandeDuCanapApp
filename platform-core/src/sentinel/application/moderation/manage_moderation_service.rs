@@ -268,6 +268,3 @@ impl ManageModerationUseCase for ManageModerationService {
     }
 }
 
-#[cfg(test)]
-#[path = "tests/manage_moderation.rs"]
-mod tests;

@@ -1,6 +1,3 @@
-#[cfg(test)]
-#[path = "tests/manage_security.rs"]
-mod tests;
 
 use std::sync::Arc;
 

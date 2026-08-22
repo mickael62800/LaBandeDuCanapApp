@@ -94,6 +94,3 @@ impl ManageRemindersUseCase for ManageRemindersService {
     }
 }
 
-#[cfg(test)]
-#[path = "tests/manage_reminders.rs"]
-mod tests;

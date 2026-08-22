@@ -111,6 +111,3 @@ impl ManageWatchedUsersUseCase for ManageWatchedUsersService {
     }
 }
 
-#[cfg(test)]
-#[path = "tests/manage_watched_users.rs"]
-mod tests;

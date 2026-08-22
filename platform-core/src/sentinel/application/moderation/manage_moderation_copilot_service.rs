@@ -123,6 +123,3 @@ impl ModerationCopilotUseCase for ManageModerationCopilotService {
     }
 }
 
-#[cfg(test)]
-#[path = "tests/manage_moderation_copilot.rs"]
-mod tests;

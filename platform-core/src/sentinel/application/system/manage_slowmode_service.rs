@@ -44,7 +44,3 @@ impl ManageSlowmodeUseCase for ManageSlowmodeService {
 #[cfg(test)]
 #[path = "tests/manage_slowmode.rs"]
 mod tests;
-
-#[cfg(test)]
-#[path = "tests/manage_slowmode.rs"]
-mod tests;

@@ -236,7 +236,7 @@ watch(selectedGuildId, loadTemplates, { immediate: true });
       <template v-if="chosen">
         <p v-if="chosen.description" class="nc-desc">{{ chosen.description }}</p>
 
-        <GameResourcesGuide />
+        <GameResourcesGuide :slug="chosen.slug" />
 
         <h2 class="nc-step">2. Règle le serveur</h2>
 

@@ -1,550 +1,236 @@
 <script setup lang="ts">
+// Documentation de dimensionnement des serveurs de jeu.
+//
+// Les chiffres ne sont PAS ecrits ici : ils viennent de `@/data/gameResources`,
+// que le tableau de la page de creation lit aussi. Cette page ajoute ce qu'un
+// tableau ne sait pas dire — les facteurs qui font reellement monter la
+// consommation, et quoi faire quand le serveur ralentit.
+
+import { ref } from "vue";
 import AdminPageShell from "../layouts/AdminPageShell.vue";
 import GameResourcesGuide from "../organisms/GameResourcesGuide.vue";
-import { ref } from "vue";
+import { gameResources } from "@/data/gameResources";
 
-const activeTab = ref<"overview" | "detailed" | "tips">("overview");
+type Onglet = "tableaux" | "jeux" | "conseils";
+const onglet = ref<Onglet>("tableaux");
+
+const onglets: { cle: Onglet; libelle: string }[] = [
+  { cle: "tableaux", libelle: "Tableaux" },
+  { cle: "jeux", libelle: "Par jeu" },
+  { cle: "conseils", libelle: "Conseils" },
+];
 </script>
 
 <template>
-  <AdminPageShell title="📚 Ressources & Hébergement Nexus" subtitle="Guide complet pour dimensionner tes serveurs de jeu">
-    <div class="doc-container">
-      <!-- Tabs de navigation -->
-      <div class="doc-tabs">
-        <button
-          :class="{ active: activeTab === 'overview' }"
-          @click="activeTab = 'overview'"
-        >
-          Vue d'ensemble
-        </button>
-        <button
-          :class="{ active: activeTab === 'detailed' }"
-          @click="activeTab = 'detailed'"
-        >
-          Guides détaillés
-        </button>
-        <button
-          :class="{ active: activeTab === 'tips' }"
-          @click="activeTab = 'tips'"
-        >
-          Conseils & Optimisation
-        </button>
-      </div>
+  <AdminPageShell
+    title="Ressources des serveurs de jeu"
+    subtitle="Combien de mémoire et de cœurs pour combien de joueurs"
+  >
+    <nav class="rd-tabs" role="tablist">
+      <button
+        v-for="t in onglets"
+        :key="t.cle"
+        type="button"
+        role="tab"
+        :aria-selected="onglet === t.cle"
+        :class="['rd-tab', { active: onglet === t.cle }]"
+        @click="onglet = t.cle"
+      >
+        {{ t.libelle }}
+      </button>
+    </nav>
 
-      <!-- TAB 1: Vue d'ensemble -->
-      <section v-if="activeTab === 'overview'" class="doc-section">
-        <GameResourcesGuide />
+    <!-- Tableaux : le catalogue complet, sans slug -->
+    <section v-if="onglet === 'tableaux'" class="rd-pane">
+      <GameResourcesGuide />
+    </section>
 
-        <div class="info-box">
-          <h4>🎯 Comment lire ce guide ?</h4>
-          <ul>
-            <li><strong>Joueurs :</strong> Nombre de joueurs simultanés.</li>
-            <li><strong>RAM :</strong> Mémoire vive requise en GB. Les conteneurs Docker respectent cette limite strictement.</li>
-            <li><strong>CPU :</strong> Nombre de cœurs (cores) recommandés. La fréquence (GHz) compte souvent autant que le nombre.</li>
-            <li><strong>Notes :</strong> Contexte de la configuration (vanilla, mods, exploration, etc.).</li>
-          </ul>
-        </div>
+    <!-- Par jeu : ce que le tableau ne dit pas -->
+    <section v-else-if="onglet === 'jeux'" class="rd-pane">
+      <p class="rd-lede">
+        Le tableau donne un point de départ. Ce qui décide vraiment de la
+        consommation, ce sont ces facteurs — les lire évite de doubler la RAM
+        quand le problème était ailleurs.
+      </p>
 
-        <div class="summary-grid">
-          <div class="summary-card">
-            <h4>💾 RAM: Règle générale</h4>
-            <p>Commence bas et augmente si le serveur ralentit ou crash (out of memory).</p>
-          </div>
-          <div class="summary-card">
-            <h4>⚡ CPU: Règle générale</h4>
-            <p>La fréquence (3+ GHz) vaut souvent mieux que la quantité de cœurs.</p>
-          </div>
-          <div class="summary-card">
-            <h4>🔄 Ajustement</h4>
-            <p>Vérifie les logs du serveur et redémarre le régulièrement (12-24h).</p>
-          </div>
-          <div class="summary-card">
-            <h4>🌍 Monde / Usine</h4>
-            <p>Pour Minecraft/Factorio/ARK, c'est la taille/complexité qui compte plus que les joueurs.</p>
-          </div>
-        </div>
-      </section>
+      <article v-for="jeu in gameResources" :key="jeu.slug" class="rd-game">
+        <h3 class="rd-game-title">
+          <span aria-hidden="true">{{ jeu.icon }}</span> {{ jeu.name }}
+        </h3>
+        <ul class="rd-factors">
+          <li v-for="(f, i) in jeu.facteurs" :key="i">{{ f }}</li>
+        </ul>
+        <p class="rd-range">
+          De <strong>{{ jeu.recommendations[0]?.ram_gb }} Go</strong>
+          ({{ jeu.recommendations[0]?.players }} joueurs)
+          à
+          <strong>{{ jeu.recommendations[jeu.recommendations.length - 1]?.ram_gb }} Go</strong>
+          ({{ jeu.recommendations[jeu.recommendations.length - 1]?.players }} joueurs).
+        </p>
+      </article>
+    </section>
 
-      <!-- TAB 2: Guides détaillés par jeu -->
-      <section v-if="activeTab === 'detailed'" class="doc-section">
-        <div class="game-detail">
-          <h3>⛏️ Minecraft Java</h3>
-          <p class="game-desc">Serveur vanilla ou avec plugins/mods. Très flexible en ressources.</p>
-          <div class="detail-content">
-            <div class="detail-col">
-              <h5>Facteurs clés</h5>
-              <ul>
-                <li>Distance de vue (view distance)</li>
-                <li>Nombre de plugins</li>
-                <li>Génération du monde</li>
-                <li>Nombre de joueurs éloignés</li>
-              </ul>
-            </div>
-            <div class="detail-col">
-              <h5>Recommandations</h5>
-              <ul>
-                <li><strong>4 joueurs :</strong> 4 GB RAM, 2 CPU</li>
-                <li><strong>10 joueurs :</strong> 6-8 GB RAM, 4 CPU</li>
-                <li><strong>20 joueurs :</strong> 8-12 GB RAM, 4 CPU (plugins lourds)</li>
-              </ul>
-            </div>
-          </div>
-        </div>
+    <!-- Conseils -->
+    <section v-else class="rd-pane">
+      <article class="rd-tip">
+        <h3>Lire la surveillance avant d'ajouter de la mémoire</h3>
+        <p>
+          L'onglet « Surveillance » d'un serveur montre la mémoire et le
+          processeur en direct. Il dit lequel des deux manque — doubler la RAM
+          d'un serveur limité par le processeur ne change rien.
+        </p>
+        <ul>
+          <li>Mémoire au plafond : augmenter l'allocation, ou réduire mods et distance de vue.</li>
+          <li>Processeur au plafond : réduire le monde ou les joueurs ; les cœurs en plus aident peu.</li>
+          <li>Latence élevée alors que les deux respirent : c'est le réseau.</li>
+        </ul>
+      </article>
 
-        <div class="game-detail">
-          <h3>🪓 Valheim</h3>
-          <p class="game-desc">Survie coopérative vikings, limitée à 10 joueurs max. Très stable.</p>
-          <div class="detail-content">
-            <div class="detail-col">
-              <h5>Facteurs clés</h5>
-              <ul>
-                <li>Taille du monde (exploré)</li>
-                <li>Nombre de constructions</li>
-                <li>Nombre de joueurs max: <strong>10</strong></li>
-              </ul>
-            </div>
-            <div class="detail-col">
-              <h5>Recommandations</h5>
-              <ul>
-                <li><strong>5 joueurs :</strong> 4 GB RAM, 2 CPU (3+ GHz)</li>
-                <li><strong>10 joueurs :</strong> 6-8 GB RAM, 4 CPU</li>
-              </ul>
-            </div>
-          </div>
-        </div>
+      <article class="rd-tip">
+        <h3>Redémarrer plutôt que sur-dimensionner</h3>
+        <p>
+          Plusieurs de ces jeux dérivent en mémoire tant qu'ils tournent :
+          la consommation monte avec la durée, pas avec la charge.
+        </p>
+        <ul>
+          <li>Palworld, ARK, 7 Days to Die : redémarrage quotidien.</li>
+          <li>Minecraft, Valheim : une à deux fois par semaine suffit.</li>
+          <li>Factorio : selon la taille de l'usine.</li>
+        </ul>
+      </article>
 
-        <div class="game-detail">
-          <h3>⚙️ Factorio</h3>
-          <p class="game-desc">Logistique industrielle. Scalabilité: la taille de l'usine > nombre de joueurs.</p>
-          <div class="detail-content">
-            <div class="detail-col">
-              <h5>Facteurs clés</h5>
-              <ul>
-                <li><strong>Taille de l'usine</strong> (plus important)</li>
-                <li>Nombre de mods</li>
-                <li>Uptime sans redémarrage</li>
-              </ul>
-            </div>
-            <div class="detail-col">
-              <h5>Recommandations</h5>
-              <ul>
-                <li><strong>Petite usine (4 joueurs) :</strong> 3 GB, 2 CPU</li>
-                <li><strong>Usine moyenne (8 joueurs) :</strong> 4-6 GB, 4 CPU</li>
-                <li><strong>Grosse usine :</strong> 6-8 GB, 4 CPU</li>
-              </ul>
-            </div>
-          </div>
-        </div>
+      <article class="rd-tip">
+        <h3>Fréquence plutôt que nombre de cœurs</h3>
+        <p>
+          Minecraft, Valheim, Factorio, Satisfactory, V Rising et Necesse font
+          tourner leur simulation sur très peu de threads. Un 4 cœurs à 4 GHz
+          y bat un 8 cœurs à 2,4 GHz.
+        </p>
+      </article>
 
-        <div class="game-detail">
-          <h3>🐾 Palworld</h3>
-          <p class="game-desc">Survie avec créatures. Très gourmand en RAM, surtout avec des bases actives.</p>
-          <div class="detail-content">
-            <div class="detail-col">
-              <h5>Facteurs clés</h5>
-              <ul>
-                <li>Nombre de bases</li>
-                <li>Activité des Pals (simulation continue)</li>
-                <li>Uptime entre redémarrages</li>
-              </ul>
-            </div>
-            <div class="detail-col">
-              <h5>Recommandations</h5>
-              <ul>
-                <li><strong>8 joueurs :</strong> 8 GB (redémarrage quotidien)</li>
-                <li><strong>16 joueurs :</strong> 16 GB (recommandation officielle)</li>
-                <li><strong>32 joueurs :</strong> 24+ GB</li>
-              </ul>
-            </div>
-          </div>
-        </div>
+      <article class="rd-tip">
+        <h3>Ce que Docker fait de ces valeurs</h3>
+        <p>
+          La mémoire allouée est une limite <strong>stricte</strong> : le
+          conteneur est tué s'il la dépasse. Le nombre de cœurs est un plafond
+          de temps processeur, pas une réservation.
+        </p>
+        <ul>
+          <li>Laisser de la marge à la machine hôte : au moins 2 Go hors serveurs.</li>
+          <li>
+            Docker fige ces limites à la création du conteneur : les modifier
+            ne prend effet qu'au redémarrage du serveur.
+          </li>
+        </ul>
+      </article>
 
-        <div class="game-detail">
-          <h3>🦖 ARK: Survival Evolved</h3>
-          <p class="game-desc">Dinosaures et exploration. RAM critique; mods = RAM supplémentaire.</p>
-          <div class="detail-content">
-            <div class="detail-col">
-              <h5>Facteurs clés</h5>
-              <ul>
-                <li>Carte (Théisland > Extinction)</li>
-                <li>Nombre de mods</li>
-                <li>Créatures apprivoisées</li>
-              </ul>
-            </div>
-            <div class="detail-col">
-              <h5>Recommandations</h5>
-              <ul>
-                <li><strong>10 joueurs :</strong> 8 GB, 2 CPU</li>
-                <li><strong>15 joueurs :</strong> 12-16 GB, 4 CPU</li>
-                <li><strong>20+ joueurs :</strong> 16-20 GB, 4 CPU</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-
-        <div class="game-detail">
-          <h3>🧟 7 Days to Die</h3>
-          <p class="game-desc">Zombies. CPU rapide + RAM stable; redémarrages réguliers recommandés.</p>
-          <div class="detail-content">
-            <div class="detail-col">
-              <h5>Facteurs clés</h5>
-              <ul>
-                <li>CPU rapide (3+ GHz) critique</li>
-                <li>Mods (beaucoup ralentissent)</li>
-                <li>Taille monde exploré</li>
-              </ul>
-            </div>
-            <div class="detail-col">
-              <h5>Recommandations</h5>
-              <ul>
-                <li><strong>4 joueurs (vanilla) :</strong> 4-6 GB, 4 CPU</li>
-                <li><strong>8 joueurs (modded) :</strong> 12-16 GB, 6 CPU (4+ GHz)</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-
-        <div class="game-detail">
-          <h3>🌳 Terraria</h3>
-          <p class="game-desc">Bac à sable 2D léger. Demande peu de ressources; CPU compte lors de boss fights.</p>
-          <div class="detail-content">
-            <div class="detail-col">
-              <h5>Facteurs clés</h5>
-              <ul>
-                <li>Très peu gourmand</li>
-                <li>Mods changent la donne</li>
-                <li>Boss fights = pics CPU</li>
-              </ul>
-            </div>
-            <div class="detail-col">
-              <h5>Recommandations</h5>
-              <ul>
-                <li><strong>3 joueurs :</strong> 512 MB - 1 GB, 1-2 CPU</li>
-                <li><strong>10 joueurs :</strong> 1-2 GB, 2-4 CPU</li>
-                <li><strong>Modded :</strong> 2-4 GB, 4 CPU</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- TAB 3: Conseils & Optimisation -->
-      <section v-if="activeTab === 'tips'" class="doc-section">
-        <div class="tips-group">
-          <h3>🔧 Optimisation & Maintenance</h3>
-
-          <div class="tip-card">
-            <h4>📊 Surveiller ton serveur</h4>
-            <p>Utilise l'onglet <strong>« Surveillance »</strong> pour vérifier RAM/CPU/latence en temps réel.</p>
-            <ul>
-              <li>RAM > 85% ? Augmente l'allocation ou réduis les joueurs/mods.</li>
-              <li>CPU > 90% ? Relève la fréquence (redémarrage) ou réduis le monde.</li>
-              <li>Latence ping > 300ms ? Problème réseau ou CPU saturé.</li>
-            </ul>
-          </div>
-
-          <div class="tip-card">
-            <h4>🔄 Redémarrages réguliers</h4>
-            <p>Les serveurs lourds bénéficient de redémarrages quotidiens (12-24h).</p>
-            <ul>
-              <li><strong>Palworld, ARK, 7DTD :</strong> Redémarrage quotidien recommandé.</li>
-              <li><strong>Minecraft, Valheim :</strong> 1-2x par semaine suffisent.</li>
-              <li><strong>Factorio :</strong> Selon la taille de l'usine, 2-3x/semaine.</li>
-            </ul>
-          </div>
-
-          <div class="tip-card">
-            <h4>⚙️ Configuration Docker</h4>
-            <p>
-              Nexus gère automatiquement les limits RAM/CPU Docker.
-              Tes valeurs sont respectées à la lettre (hard limits OOM-kill).
-            </p>
-            <ul>
-              <li>Ne mets jamais plus de RAM que la machine n'en dispose.</li>
-              <li>Laisse de la RAM libre pour le système (≥ 2 GB).</li>
-              <li>CPU limit = nombre de cœurs; p.ex., 2.0 = 2 cores, 4.0 = 4 cores.</li>
-            </ul>
-          </div>
-
-          <div class="tip-card">
-            <h4>🌐 Fréquence CPU vs Nombre de cœurs</h4>
-            <p>
-              <strong>La plupart des jeux bénéficient plus d'une fréquence rapide que d'un nombre élevé de cœurs.</strong>
-            </p>
-            <ul>
-              <li>Vise 3.5+ GHz pour les jeux exigeants (ARK, Palworld, 7DTD).</li>
-              <li>Un 4-core à 4 GHz > 8-core à 2.4 GHz pour presque tous les jeux.</li>
-              <li>Minecraft, Valheim, Factorio utilisent principalement un seul cœur pour la logique.</li>
-            </ul>
-          </div>
-
-          <div class="tip-card">
-            <h4>💾 Stockage</h4>
-            <p>Nexus monte automatiquement des volumes Docker pour chaque serveur.</p>
-            <ul>
-              <li>Utilise du SSD si possible (bien plus rapide que HDD).</li>
-              <li>Vérifie l'espace disque régulièrement (surtout Minecraft/ARK qui génèrent beaucoup de monde).</li>
-            </ul>
-          </div>
-
-          <div class="tip-card">
-            <h4>📈 Augmenter les ressources</h4>
-            <p>Si ton serveur ralentit ou crash:</p>
-            <ol>
-              <li>Vérifie les logs (onglet « Logs ») pour le type d'erreur.</li>
-              <li>Si « out of memory », augmente la RAM de 2-4 GB.</li>
-              <li>Si processeur surchargé, augmente les CPU ou réduis les joueurs.</li>
-              <li>Redémarre le serveur pour appliquer (arrête puis relance).</li>
-            </ol>
-          </div>
-
-          <div class="tip-card">
-            <h4>❌ Erreurs courantes</h4>
-            <ul>
-              <li><strong>« Out of Memory »:</strong> Allocation RAM insuffisante → augmente.</li>
-              <li><strong>Slow IO :</strong> Disque trop lent ou saturé → redémarrage ou SSD.</li>
-              <li><strong>High latency :</strong> Réseau ou CPU → vérifie surveillance.</li>
-              <li><strong>Crash au démarrage :</strong> Config invalide → vérifie les logs.</li>
-            </ul>
-          </div>
-        </div>
-
-        <div class="tips-group">
-          <h3>🎮 Par type de jeu</h3>
-
-          <div class="tip-card">
-            <h4>Jeux de survie (Minecraft, Valheim, ARK)</h4>
-            <ul>
-              <li>La taille du monde exploré augmente avec le temps → RAM croissante.</li>
-              <li>Redémarrages réguliers rechargent le monde frais.</li>
-              <li>Limite la distance de vue si RAM est limitée.</li>
-            </ul>
-          </div>
-
-          <div class="tip-card">
-            <h4>Jeux de simulation (Factorio)</h4>
-            <ul>
-              <li>Usine = plus important que joueurs. Grosse usine = besoin RAM/CPU élevé.</li>
-              <li>Désactive les mods inutiles si performance baisse.</li>
-              <li>Redémarrages quotidiens aident à stabiliser les UPS (updates/sec).</li>
-            </ul>
-          </div>
-
-          <div class="tip-card">
-            <h4>Jeux avec mods (7DTD, ARK, Factorio)</h4>
-            <ul>
-              <li>Les mods consomment toujours plus de ressources → prévois +2-4 GB.</li>
-              <li>Test les mods en petit avant lancer au public.</li>
-              <li>Les mods incompatibles causent souvent des crashes → logs!</li>
-            </ul>
-          </div>
-        </div>
-      </section>
-    </div>
+      <article class="rd-tip">
+        <h3>Les mods changent tout</h3>
+        <p>
+          Les tableaux décrivent des serveurs vanilla sauf mention contraire.
+          Une installation moddée demande couramment 2 à 4 Go de plus, et sur
+          Project Zomboid l'écart est encore plus net.
+        </p>
+      </article>
+    </section>
   </AdminPageShell>
 </template>
 
 <style scoped>
-.doc-container {
-  background: var(--color-background);
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.doc-tabs {
+.rd-tabs {
   display: flex;
-  gap: 0;
-  border-bottom: 2px solid var(--color-border);
-  background: var(--color-background-muted);
-  padding: 0 16px;
+  gap: var(--space-xs);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--space-lg);
   overflow-x: auto;
 }
 
-.doc-tabs button {
-  padding: 12px 20px;
-  background: transparent;
+.rd-tab {
+  padding: var(--space-sm) var(--space-md);
+  background: none;
   border: none;
-  color: var(--color-text-secondary);
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
   font-weight: 500;
+  font-size: 0.9rem;
   cursor: pointer;
-  transition: all 0.2s;
-  border-bottom: 3px solid transparent;
   white-space: nowrap;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
 }
 
-.doc-tabs button:hover {
-  color: var(--color-text-primary);
-  background: var(--color-background-hover);
+.rd-tab:hover {
+  color: var(--text-primary);
 }
 
-.doc-tabs button.active {
-  color: var(--color-accent);
-  border-bottom-color: var(--color-accent);
+.rd-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
 }
 
-.doc-section {
-  padding: 24px;
-  animation: fadeIn 0.2s;
+.rd-lede {
+  margin: 0 0 var(--space-lg);
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.6;
+  max-width: 70ch;
 }
 
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+.rd-game,
+.rd-tip {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-md) var(--space-lg);
+  margin-bottom: var(--space-md);
 }
 
-.info-box {
-  background: var(--color-background-muted);
-  border-left: 4px solid var(--color-accent);
-  padding: 16px;
-  border-radius: 4px;
-  margin: 24px 0;
+.rd-game-title,
+.rd-tip h3 {
+  margin: 0 0 var(--space-sm);
+  font-size: 1rem;
+  color: var(--text-primary);
 }
 
-.info-box h4 {
-  margin: 0 0 12px 0;
-  color: var(--color-accent);
-}
-
-.info-box ul {
+.rd-factors,
+.rd-tip ul {
   margin: 0;
-  padding-left: 20px;
+  padding-left: 1.2rem;
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+  line-height: 1.6;
 }
 
-.info-box li {
-  margin: 6px 0;
-  color: var(--color-text-secondary);
+.rd-factors li,
+.rd-tip li {
+  margin-bottom: 0.2rem;
 }
 
-.summary-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 16px;
-  margin: 24px 0;
+.rd-range {
+  margin: var(--space-sm) 0 0;
+  padding-top: var(--space-sm);
+  border-top: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 0.85rem;
 }
 
-.summary-card {
-  background: var(--color-background-muted);
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  padding: 16px;
-  transition: all 0.2s;
+.rd-range strong {
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
 }
 
-.summary-card:hover {
-  border-color: var(--color-accent);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+.rd-tip p {
+  margin: 0 0 var(--space-sm);
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+  line-height: 1.6;
+  max-width: 70ch;
 }
 
-.summary-card h4 {
-  margin: 0 0 8px 0;
-  color: var(--color-accent);
-  font-size: 0.95em;
+.rd-tip p:last-child {
+  margin-bottom: 0;
 }
 
-.summary-card p {
-  margin: 0;
-  font-size: 0.9em;
-  color: var(--color-text-secondary);
-}
-
-.game-detail {
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  padding: 20px;
-  margin-bottom: 16px;
-  background: var(--color-background-muted);
-}
-
-.game-detail h3 {
-  margin: 0 0 8px 0;
-  color: var(--color-text-primary);
-  font-size: 1.1em;
-}
-
-.game-desc {
-  margin: 0 0 16px 0;
-  color: var(--color-text-secondary);
-  font-size: 0.95em;
-  font-style: italic;
-}
-
-.detail-content {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 24px;
-}
-
-@media (max-width: 768px) {
-  .detail-content {
-    grid-template-columns: 1fr;
-  }
-}
-
-.detail-col h5 {
-  margin: 0 0 12px 0;
-  color: var(--color-accent);
-  font-size: 0.95em;
-}
-
-.detail-col ul {
-  margin: 0;
-  padding-left: 20px;
-}
-
-.detail-col li {
-  margin: 6px 0;
-  color: var(--color-text-secondary);
-  font-size: 0.9em;
-}
-
-.tips-group {
-  margin-bottom: 32px;
-}
-
-.tips-group h3 {
-  color: var(--color-text-primary);
-  margin-bottom: 16px;
-  border-bottom: 2px solid var(--color-border);
-  padding-bottom: 12px;
-}
-
-.tip-card {
-  background: var(--color-background-muted);
-  border-left: 4px solid var(--color-accent);
-  padding: 16px;
-  margin-bottom: 12px;
-  border-radius: 4px;
-}
-
-.tip-card h4 {
-  margin: 0 0 10px 0;
-  color: var(--color-accent);
-  font-size: 0.95em;
-}
-
-.tip-card p {
-  margin: 0 0 10px 0;
-  color: var(--color-text-secondary);
-  font-size: 0.95em;
-}
-
-.tip-card p strong {
-  color: var(--color-text-primary);
-}
-
-.tip-card ul,
-.tip-card ol {
-  margin: 0;
-  padding-left: 20px;
-  color: var(--color-text-secondary);
-  font-size: 0.9em;
-}
-
-.tip-card li {
-  margin: 6px 0;
+.rd-tip strong {
+  color: var(--text-primary);
 }
 </style>

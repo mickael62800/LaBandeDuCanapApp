@@ -5,6 +5,7 @@ pub const MODULE_BOT_NAME: &str = "welcome-bot";
 pub mod api_client;
 pub mod ghost;
 pub mod handler;
+pub mod rules_deadline_consumer;
 pub mod template;
 
 use serenity::all::{ComponentInteraction, Context, Member};

@@ -18,5 +18,6 @@ pub mod poll;
 pub mod presence;
 pub mod progression_calc;
 pub mod role_panel;
+pub mod rules_deadline;
 pub mod spotlight;
 pub mod voice_channel;

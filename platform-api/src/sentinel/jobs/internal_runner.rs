@@ -5,7 +5,7 @@ use platform_core::sentinel::ports::inbound::system::run_internal_job::{
 
 use super::{
     ai, appeal_sla, audit_cache, cache, cleanup, discord_audit_sync, export, guild_backup,
-    moderation, security, temp_roles, tickets,
+    moderation, security, temp_roles, tickets, welcome,
 };
 
 pub struct InternalJobRunner {
@@ -69,6 +69,12 @@ impl InternalJobRunner {
             "remind-quarantine-rules" => {
                 security::remind_quarantine_rules::run(&self.pool, &redis).await
             }
+            // Delai d'acceptation du reglement des arrivants ORDINAIRES : sans
+            // rapport avec la quarantaine ci-dessus, qui ne voit que les
+            // comptes suspects.
+            "welcome-rules-deadline" => welcome::rules_deadline::run(&self.pool, &redis)
+                .await
+                .map(|_| ()),
             "expire-lockdown" => security::expire_lockdown::run(&self.pool, &redis).await,
             "expire-slowmode" => security::expire_slowmode::run(&self.pool, &redis).await,
             "expire-temp-roles" => temp_roles::expire_temp_roles::run(&self.pool, &redis).await,

@@ -12,6 +12,7 @@ pub mod manage_monthly_ranking;
 pub mod manage_news;
 pub mod manage_polls;
 pub mod manage_role_panels;
+pub mod manage_rules_deadline;
 pub mod manage_sponsorships;
 pub mod manage_spotlight;
 pub mod manage_voice_channels;

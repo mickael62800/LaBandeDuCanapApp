@@ -13,6 +13,7 @@ pub mod monthly_ranking_repository;
 pub mod news_repository;
 pub mod poll_repository;
 pub mod role_panel_repository;
+pub mod rules_deadline_repository;
 pub mod sponsorship_repository;
 pub mod spotlight_repository;
 pub mod temp_role_repository;

@@ -17,6 +17,16 @@ fn inner() -> Router<AppState> {
             "/eligibility/{guild_id}/sponsorship",
             post(handlers::community::eligibility::validate_sponsorship),
         )
+        // Delai d'acceptation du reglement. Deux POST plutot qu'un POST et un
+        // DELETE : le bot n'emet plus aucun DELETE HTTP.
+        .route(
+            "/rules-deadline/start",
+            post(handlers::community::rules_deadline::start_rules_deadline),
+        )
+        .route(
+            "/rules-deadline/clear",
+            post(handlers::community::rules_deadline::clear_rules_deadline),
+        )
 }
 
 pub fn routes() -> Router<AppState> {

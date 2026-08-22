@@ -21,6 +21,7 @@ use platform_core::sentinel::ports::inbound::community::manage_monthly_ranking::
 use platform_core::sentinel::ports::inbound::community::manage_news::ManageNewsUseCase;
 use platform_core::sentinel::ports::inbound::community::manage_polls::ManagePollsUseCase;
 use platform_core::sentinel::ports::inbound::community::manage_role_panels::ManageRolePanelsUseCase;
+use platform_core::sentinel::ports::inbound::community::manage_rules_deadline::ManageRulesDeadlineUseCase;
 use platform_core::sentinel::ports::inbound::community::manage_sponsorships::ManageSponsorshipsUseCase;
 use platform_core::sentinel::ports::inbound::community::manage_spotlight::ManageSpotlightUseCase;
 use platform_core::sentinel::ports::inbound::community::manage_voice_channels::ManageVoiceChannelsUseCase;
@@ -49,6 +50,10 @@ pub struct CommunityState {
     /// Panneaux de roles + roles automatiques. Surface `/api/role-panels/*` et
     /// `/api/auto-roles/*`.
     pub role_panels_uc: Arc<dyn ManageRolePanelsUseCase>,
+    /// Delai d'acceptation du reglement des arrivants ORDINAIRES : ouverture et
+    /// fermeture du compte a rebours. Sans rapport avec la quarantaine
+    /// (`system.quarantine_uc`), qui ne suit que les comptes suspects.
+    pub rules_deadline_uc: Arc<dyn ManageRulesDeadlineUseCase>,
     /// Salons vocaux temporaires (themes, invites, co-admins, bans). Surface
     /// `/api/voice-channels/*`. Le handler l'orchestre avec `tickets_uc` et
     /// `audit_logs_uc` via `AppState` (cf. handlers/community/voice_channels.rs).

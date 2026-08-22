@@ -14,3 +14,4 @@ pub mod security;
 pub mod support;
 pub mod temp_roles;
 pub mod tickets;
+pub mod welcome;

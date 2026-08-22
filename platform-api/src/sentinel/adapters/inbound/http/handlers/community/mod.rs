@@ -24,3 +24,4 @@ pub mod voice_channels;
 pub mod welcome;
 
 pub mod levels;
+pub mod rules_deadline;

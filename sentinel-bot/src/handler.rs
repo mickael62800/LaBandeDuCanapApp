@@ -187,6 +187,10 @@ impl EventHandler for Handler {
         modules::security::spawn_background(ctx.clone());
         // Phase 5F — consumer Redis pour quarantine_expired (worker).
         modules::security::quarantine_expired_consumer::spawn(ctx.clone());
+        // Relance et expulsion des arrivants qui n'ont pas accepte le
+        // reglement. Consumer distinct de celui de la quarantaine : les deux
+        // populations n'ont ni le meme rythme ni le meme message.
+        modules::welcome::rules_deadline_consumer::spawn(ctx.clone());
         modules::security::quarantine_reminder_consumer::spawn(ctx.clone());
         // Phase 5G — consumer Redis pour lockdown_expired (worker).
         modules::security::lockdown_expired_consumer::spawn(ctx.clone());

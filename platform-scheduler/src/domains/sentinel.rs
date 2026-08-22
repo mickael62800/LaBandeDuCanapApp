@@ -150,6 +150,16 @@ pub fn start(config: DomainConfig) {
             "/api/internal/jobs/remind-quarantine-rules",
             env("QUARANTINE_REMINDER_CHECK_SECS", 15),
         ),
+        // Delai d'acceptation du reglement des arrivants ORDINAIRES. Rien a
+        // voir avec la quarantaine ci-dessus : ce delai se compte en JOURS, pas
+        // en secondes, et une minute de retard sur une echeance de trois jours
+        // ne se voit pas. Balayer toutes les quinze secondes ne ferait que
+        // relire la meme file pour rien.
+        (
+            "sentinel.welcome-rules-deadline",
+            "/api/internal/jobs/welcome-rules-deadline",
+            env("WELCOME_RULES_DEADLINE_CHECK_SECS", 60),
+        ),
         (
             "sentinel.expire-lockdown",
             "/api/internal/jobs/expire-lockdown",

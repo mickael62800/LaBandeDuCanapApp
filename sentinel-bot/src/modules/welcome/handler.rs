@@ -72,6 +72,39 @@ enum AgeCheckDecisionResponse {
     },
 }
 
+/// Ouvre ou referme le compte a rebours d'acceptation du reglement.
+///
+/// Fire-and-forget : un accueil ne doit pas echouer parce que l'API tarde. Le
+/// pire cas est une echeance non posee — le membre reste, ce qui est le
+/// comportement d'avant ce systeme.
+///
+/// Le bot n'envoie AUCUNE duree : l'API lit le reglage de la guilde et calcule
+/// l'echeance. Deux sources pour un meme delai finiraient par diverger, et le
+/// message annoncant « trois jours » mentirait.
+async fn rules_deadline(
+    ctx: &Context,
+    guild_id: GuildId,
+    user_id: serenity::all::UserId,
+    ouvrir: bool,
+) {
+    let api = {
+        let data = ctx.data.read().await;
+        data.get::<crate::shared::heartbeat::ApiClientKey>()
+            .cloned()
+    };
+    let Some(api) = api else { return };
+    let corps = serde_json::json!({
+        "guild_id": guild_id.to_string(),
+        "user_id": user_id.to_string(),
+    });
+    let route = if ouvrir {
+        "/api/community/rules-deadline/start"
+    } else {
+        "/api/community/rules-deadline/clear"
+    };
+    api.post_fire_and_forget(route, &corps).await;
+}
+
 /// Appele quand un nouveau membre rejoint.
 /// Compte les HUMAINS (hors bots) via le cache de la guild ; repli sur le
 /// compte approximatif Discord (qui inclut les bots) si le cache est vide.
@@ -443,6 +476,14 @@ async fn on_member_add_impl(ctx: &Context, new_member: &Member, rules_accepted: 
     // La suite du parcours est deja en place : `on_screening_complete` rejoue
     // cette fonction avec `rules_accepted = true` quand `pending` retombe.
     let accueil_differe = config.rules_enabled || new_member.pending;
+
+    // Le compte a rebours d'acceptation ne s'ouvre QUE pour un arrivant qui n'a
+    // pas encore accepte, et seulement si la guilde presente un reglement.
+    // `rules_accepted` vaut vrai quand on repasse ici apres le clic : rouvrir
+    // une echeance a ce moment expulserait quelqu'un qui vient d'accepter.
+    if config.rules_enabled && !rules_accepted {
+        rules_deadline(&ctx, guild_id, user_id, true).await;
+    }
     let accueil_autorise = rules_accepted || !accueil_differe;
 
     // ── Message de bienvenue ──
@@ -616,6 +657,14 @@ async fn send_welcome_after_rules(
 pub async fn on_member_remove(ctx: &Context, guild_id: GuildId, user: &User) {
     let ctx = ctx.clone();
     let user = user.clone();
+
+    // Quelqu'un qui est parti n'a plus d'echeance a tenir. Sans ce menage, la
+    // table garderait une ligne par depart, et le job tenterait d'expulser des
+    // gens absents a chaque passage.
+    //
+    // Avant le master switch ci-dessous : un module desactive ne doit pas
+    // laisser s'accumuler des lignes que plus rien ne viendra nettoyer.
+    rules_deadline(&ctx, guild_id, user.id, false).await;
 
     // Master switch : si le module est desactive, on saute le message de depart.
     if !is_module_enabled(
@@ -1017,6 +1066,11 @@ async fn handle_rules_accept(
     )
     .await;
 
+    // Le reglement est accepte : l'echeance n'a plus lieu d'etre. Fait meme si
+    // aucun role n'a pu etre attribue — la personne a clique, elle ne doit pas
+    // etre expulsee pour une configuration incomplete du serveur.
+    rules_deadline(ctx, guild_id, component.user.id, false).await;
+
     let content = if assigned == 0 {
         "Erreur lors de l'assignation des roles (aucun role configure ?)."
     } else {
@@ -1321,6 +1375,11 @@ pub async fn handle_age_modal(
         info!(user = %modal.user.name, guild = %guild_id, age, years, "Age insuffisant -> ban temporaire");
         return;
     }
+
+    // Le reglement est accepte par ce chemin aussi : c'est le meme bouton, avec
+    // un formulaire d'age en plus. Sans cette levee, un membre verifie resterait
+    // sous le coup d'une echeance et serait expulse malgre lui.
+    rules_deadline(ctx, guild_id, modal.user.id, false).await;
 
     // Age suffisant -> donne le role Membre PUIS retire le role temporaire.
     // Ordre important : on ajoute Membre avant de retirer le temporaire pour

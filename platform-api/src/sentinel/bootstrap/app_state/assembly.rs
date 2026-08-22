@@ -127,6 +127,14 @@ let community = crate::sentinel::bootstrap::state::CommunityState {
     lfg_uc: lfg_uc.clone(),
     members_uc: members_uc.clone(),
     role_panels_uc: role_panels_uc.clone(),
+    // Delai d'acceptation du reglement : le service lit le reglage de la guilde
+    // (`welcome-bot`) et calcule l'echeance, le repo ne fait que persister.
+    rules_deadline_uc: Arc::new(
+        platform_core::sentinel::application::community::manage_rules_deadline_service::ManageRulesDeadlineService::new(
+            Arc::new(crate::sentinel::adapters::outbound::postgres::community::rules_deadline_repository::PgRulesDeadlineRepository::new(pg_pool.clone())),
+            bot_config_repo.clone(),
+        ),
+    ),
     voice_channels_uc: voice_channels_uc.clone(),
     polls_uc: polls_uc.clone(),
     spotlight_uc: spotlight_uc.clone(),

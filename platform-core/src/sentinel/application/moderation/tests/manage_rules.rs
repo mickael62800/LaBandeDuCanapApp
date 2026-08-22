@@ -283,3 +283,22 @@ async fn create_invalidates_cache_for_guild() {
     svc.create_or_update_rule(valid_cmd()).await.unwrap();
     assert_eq!(cache.invalidations.lock().unwrap()[0], "g");
 }
+
+#[tokio::test]
+async fn delete_rule_with_invalid_guild() {
+    let repo = Arc::new(MockRuleRepo::default());
+    let cache = Arc::new(SpyCache::default());
+    let svc = ManageRulesService::new(repo, cache);
+    let id = uuid::Uuid::new_v4();
+    let result = svc.delete_rule("", id).await;
+    assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn find_by_guild_empty() {
+    let repo = Arc::new(MockRuleRepo::default());
+    let cache = Arc::new(SpyCache::default());
+    let svc = ManageRulesService::new(repo, cache);
+    let rules = svc.find_by_guild("empty_guild").await.unwrap();
+    assert!(rules.is_empty());
+}

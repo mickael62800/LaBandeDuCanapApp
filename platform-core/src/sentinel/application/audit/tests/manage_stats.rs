@@ -440,3 +440,25 @@ async fn get_guild_voice_stats_handles_zero_sessions() {
     assert_eq!(vs.total_sessions, 0);
     assert_eq!(vs.avg_session_secs, 0);
 }
+
+#[tokio::test]
+async fn get_guild_text_stats_nonexistent_returns_zeros() {
+    let svc = make_service(
+        Arc::new(MockStatsRepo::default()),
+        Arc::new(MockInfractionRepo::default()),
+        Arc::new(MockCache::default()),
+    );
+    let ts = svc.get_guild_text_stats("nonexistent", 1).await.unwrap();
+    assert_eq!(ts.total_messages, 0);
+}
+
+#[tokio::test]
+async fn get_infraction_stats_empty_guild() {
+    let svc = make_service(
+        Arc::new(MockStatsRepo::default()),
+        Arc::new(MockInfractionRepo::default()),
+        Arc::new(MockCache::default()),
+    );
+    let is = svc.get_infraction_stats("empty").await.unwrap();
+    assert_eq!(is.total_infractions, 0);
+}

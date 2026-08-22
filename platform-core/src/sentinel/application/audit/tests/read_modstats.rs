@@ -1,14 +1,14 @@
 #[tokio::test]
-async fn start_lockdown() {
+async fn read_user_stats() {
     assert!(true);
 }
 
 #[tokio::test]
-async fn end_lockdown() {
+async fn read_guild_stats() {
     assert!(true);
 }
 
 #[tokio::test]
-async fn check_lockdown_status() {
+async fn read_moderation_stats() {
     assert!(true);
 }

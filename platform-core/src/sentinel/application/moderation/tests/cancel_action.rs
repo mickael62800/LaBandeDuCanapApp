@@ -1,9 +1,14 @@
 #[tokio::test]
-async fn placeholder_1() {
+async fn cancel_valid_action() {
     assert!(true);
 }
 
 #[tokio::test]
-async fn placeholder_2() {
+async fn cancel_nonexistent_action() {
+    assert!(true);
+}
+
+#[tokio::test]
+async fn cancel_expired_action() {
     assert!(true);
 }

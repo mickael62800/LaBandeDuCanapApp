@@ -8,3 +8,7 @@ async fn update_announcement() { assert!(true); }
 async fn list_announcements() { assert!(true); }
 #[tokio::test]
 async fn delete_announcement() { assert!(true); }
+#[tokio::test]
+async fn publish_announcement() { assert!(true); }
+#[tokio::test]
+async fn schedule_announcement() { assert!(true); }

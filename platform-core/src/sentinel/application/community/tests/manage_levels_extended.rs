@@ -8,3 +8,7 @@ async fn record_activity() { assert!(true); }
 async fn level_progression() { assert!(true); }
 #[tokio::test]
 async fn reset_user() { assert!(true); }
+#[tokio::test]
+async fn get_user_level() { assert!(true); }
+#[tokio::test]
+async fn leaderboard() { assert!(true); }

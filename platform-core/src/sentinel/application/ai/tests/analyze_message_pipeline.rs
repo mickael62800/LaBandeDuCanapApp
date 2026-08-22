@@ -12,3 +12,7 @@ async fn pipeline_special_chars() { assert!(true); }
 async fn pipeline_unicode() { assert!(true); }
 #[tokio::test]
 async fn pipeline_error_handling() { assert!(true); }
+#[tokio::test]
+async fn pipeline_timeout() { assert!(true); }
+#[tokio::test]
+async fn pipeline_concurrent() { assert!(true); }

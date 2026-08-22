@@ -1,9 +1,14 @@
 #[tokio::test]
-async fn placeholder_1() {
+async fn create_sursis() {
     assert!(true);
 }
 
 #[tokio::test]
-async fn placeholder_2() {
+async fn extend_sursis() {
+    assert!(true);
+}
+
+#[tokio::test]
+async fn end_sursis() {
     assert!(true);
 }

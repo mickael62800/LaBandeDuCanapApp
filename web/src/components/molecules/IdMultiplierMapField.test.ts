@@ -212,3 +212,43 @@ describe("ajout / retrait / mise a jour des entrees", () => {
     expect(input.step).toBe("0.5");
   });
 });
+
+describe("reponse inexploitable du service", () => {
+  /// Monte en interceptant les erreurs de rendu Vue.
+  ///
+  /// Sans cette interception, l'assertion ne prouve rien : l'echec du
+  /// `computed` survient a un RE-rendu, Vue le remonte hors de la pile du test
+  /// et le balisage initial reste en place. Le test passait donc aussi bien
+  /// avec qu'sans le garde-fou — verifie par mutation.
+  function monterEnCaptantLesErreurs(props: Record<string, unknown>) {
+    const erreurs: unknown[] = [];
+    const wrapper = mount(IdMultiplierMapField, {
+      props: { modelValue: "", guildId: "g1", kind: "channel", ...props },
+      global: { config: { errorHandler: (e: unknown) => erreurs.push(e) } },
+    });
+    return { wrapper, erreurs };
+  }
+
+  it("degrade en liste vide plutot que de faire echouer le rendu", async () => {
+    // Une reponse vide ou malformee laissait `undefined` dans la ref, que le
+    // `computed` des options parcourait aussitot : le rendu echouait et le
+    // selecteur disparaissait de l'ecran sans message. Une liste vide, elle,
+    // se voit et se comprend.
+    listAll.mockResolvedValue(undefined);
+    const { wrapper, erreurs } = monterEnCaptantLesErreurs({ kind: "channel-all" });
+    await flushPromises();
+
+    expect(erreurs).toEqual([]);
+    expect(wrapper.find(".picker-select").exists()).toBe(true);
+    expect(wrapper.findAll(".picker-select option").slice(1)).toHaveLength(0);
+  });
+
+  it("fait de meme pour les roles", async () => {
+    getAll.mockResolvedValue(undefined);
+    const { wrapper, erreurs } = monterEnCaptantLesErreurs({ kind: "role" });
+    await flushPromises();
+
+    expect(erreurs).toEqual([]);
+    expect(wrapper.find(".picker-select").exists()).toBe(true);
+  });
+});

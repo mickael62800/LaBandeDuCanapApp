@@ -363,79 +363,119 @@ describe("nettoyage (prune)", () => {
     return wrapper.findAll(".prune-card button"); // boutons dans l'ordre des cartes
   }
 
+  /**
+   * Clique un bouton de la carte de nettoyage dont le titre contient `carte`.
+   *
+   * Le DOM est RE-INTERROGE a chaque appel : chaque purge se termine par un
+   * `refreshTab()` qui re-rend les cartes. Une liste de boutons capturee une
+   * fois pointe donc, apres le premier clic, sur des elements detaches — le
+   * clic suivant ne parvenait plus au composant et le service n'etait pas
+   * rappele. Le test constatait alors le dernier appel du clic PRECEDENT, ce
+   * qui donnait un echec trompeur (« attendu true, recu false ») laissant
+   * croire a un bouton mal cable, alors que le composant etait juste.
+   *
+   * La designation se fait par CARTE puis par LIBELLE, jamais par indice :
+   * neuf boutons repartis sur six cartes, vises par `btns[7]`, se decalent
+   * tous des qu'une carte en gagne un — sans que rien ne dise lequel etait
+   * attendu. La carte est necessaire car trois boutons se nomment « Nettoyer ».
+   */
+  async function cliquerNettoyage(carte: string, libelle?: string) {
+    const cible = wrapper
+      .findAll(".prune-card")
+      .find((c) => c.find("h4").text().includes(carte));
+    if (!cible) {
+      const titres = wrapper.findAll(".prune-card h4").map((h) => h.text());
+      throw new Error(`Carte « ${carte} » introuvable. Presentes : ${titres.join(" | ")}`);
+    }
+
+    const boutons = cible.findAll("button");
+    const bouton = libelle
+      ? boutons.find((b) => b.text().trim().startsWith(libelle))
+      : boutons[0];
+    if (!bouton) {
+      const dispo = boutons.map((b) => b.text().trim());
+      throw new Error(
+        `Bouton « ${libelle} » introuvable dans « ${carte} ». Disponibles : ${dispo.join(" | ")}`,
+      );
+    }
+
+    await bouton.trigger("click");
+    await flushPromises();
+  }
+
   it("purgent les conteneurs arretes", async () => {
     svc.pruneContainers.mockResolvedValue({ deleted: ["a"], space_reclaimed_bytes: 1024 });
-    const btns = await goPrune(); // carte 1 : [Nettoyer]
-    await btns[0].trigger("click");
-    await flushPromises();
+    await goPrune();
+    await cliquerNettoyage("Conteneurs arrêtés");
     expect(svc.pruneContainers).toHaveBeenCalledTimes(1);
     expect(successToast).toHaveBeenCalledWith(expect.stringContaining("conteneurs supprimés"));
   });
 
   it("purgent les images dangling puis toutes", async () => {
     svc.pruneImages.mockResolvedValue({ deleted: [], space_reclaimed_bytes: 0 });
-    const btns = await goPrune(); // carte 2 : [dangling, toutes]
-    await btns[1].trigger("click");
-    await flushPromises();
+    await goPrune();
+
+    await cliquerNettoyage("Images dangling", "Nettoyer dangling");
     expect(svc.pruneImages).toHaveBeenLastCalledWith(false);
-    await btns[2].trigger("click");
-    await flushPromises();
+
+    // Distinction qui compte : « toutes inutilisees » supprime aussi les images
+    // encore rattachees a aucun conteneur mais parfaitement valides, dont celles
+    // des serveurs de jeu a l'arret. Les confondre couterait un retelechargement
+    // complet au prochain demarrage.
+    await cliquerNettoyage("Images dangling", "Toutes inutilisées");
     expect(svc.pruneImages).toHaveBeenLastCalledWith(true);
+    expect(svc.pruneImages).toHaveBeenCalledTimes(2);
   });
 
   it("purgent les volumes orphelins", async () => {
     svc.pruneVolumes.mockResolvedValue({ deleted: [], space_reclaimed_bytes: 0 });
-    const btns = await goPrune(); // carte 3 : [Nettoyer]
-    await btns[3].trigger("click");
-    await flushPromises();
+    await goPrune();
+    await cliquerNettoyage("Volumes orphelins");
     expect(svc.pruneVolumes).toHaveBeenCalledTimes(1);
   });
 
   it("purgent les reseaux inutilises", async () => {
     svc.pruneNetworks.mockResolvedValue({ deleted: [], space_reclaimed_bytes: 0 });
-    const btns = await goPrune(); // carte 4 : [Nettoyer]
-    await btns[4].trigger("click");
-    await flushPromises();
+    await goPrune();
+    await cliquerNettoyage("Réseaux inutilisés");
     expect(svc.pruneNetworks).toHaveBeenCalledTimes(1);
   });
 
   it("purgent le build cache", async () => {
     svc.pruneBuildCache.mockResolvedValue({ deleted: [], space_reclaimed_bytes: 0 });
-    const btns = await goPrune(); // carte 5 : [Nettoyer]
-    await btns[5].trigger("click");
-    await flushPromises();
+    await goPrune();
+    await cliquerNettoyage("Build cache");
     expect(svc.pruneBuildCache).toHaveBeenCalledTimes(1);
   });
 
   it("nettoyage complet standard / +images / +volumes", async () => {
     svc.pruneSystem.mockResolvedValue({ total_space_reclaimed_bytes: 0 });
-    const btns = await goPrune(); // carte 6 : [standard, +images, +volumes]
-    await btns[6].trigger("click");
-    await flushPromises();
+    await goPrune();
+
+    await cliquerNettoyage("Nettoyage complet", "Nettoyage standard");
     expect(svc.pruneSystem).toHaveBeenLastCalledWith({ volumes: false, allImages: false });
 
-    await btns[7].trigger("click");
-    await flushPromises();
+    await cliquerNettoyage("Nettoyage complet", "+ toutes images");
     expect(svc.pruneSystem).toHaveBeenLastCalledWith({ volumes: false, allImages: true });
 
-    await btns[8].trigger("click");
-    await flushPromises();
+    // Le seul des trois qui detruit des DONNEES : un volume orphelin peut etre
+    // le monde d'un serveur de jeu supprime par erreur.
+    await cliquerNettoyage("Nettoyage complet", "+ volumes");
     expect(svc.pruneSystem).toHaveBeenLastCalledWith({ volumes: true, allImages: true });
+    expect(svc.pruneSystem).toHaveBeenCalledTimes(3);
   });
 
   it("annule le nettoyage si confirmation refusee", async () => {
     confirmMock.mockResolvedValue(false);
-    const btns = await goPrune();
-    await btns[0].trigger("click"); // pruneContainers
-    await flushPromises();
+    await goPrune();
+    await cliquerNettoyage("Conteneurs arrêtés");
     expect(svc.pruneContainers).not.toHaveBeenCalled();
   });
 
   it("propage l'erreur d'un nettoyage en toast", async () => {
     svc.pruneNetworks.mockRejectedValue(new Error("refus"));
-    const btns = await goPrune();
-    await btns[4].trigger("click"); // pruneNetworks
-    await flushPromises();
+    await goPrune();
+    await cliquerNettoyage("Réseaux inutilisés");
     expect(errorToast).toHaveBeenCalledWith(expect.stringContaining("Erreur : refus"));
   });
 

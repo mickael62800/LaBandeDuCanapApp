@@ -62,12 +62,16 @@ async function load() {
   loading.value = true;
   errorMsg.value = "";
   try {
+    // `?? []` : ces refs sont ensuite parcourues par `options`, qui suppose un
+    // tableau. Une reponse vide ou malformee de l'API y devenait `undefined`
+    // et faisait echouer le rendu du champ entier — l'ecran perdait le
+    // selecteur sans rien dire, la ou une liste vide se voit et se comprend.
     if (props.kind === "channel") {
-      channels.value = await guildChannelsService.listTextChannels(props.guildId);
+      channels.value = (await guildChannelsService.listTextChannels(props.guildId)) ?? [];
     } else if (props.kind === "channel-all") {
-      channels.value = await guildChannelsService.listAllChannels(props.guildId);
+      channels.value = (await guildChannelsService.listAllChannels(props.guildId)) ?? [];
     } else {
-      roles.value = await discordRolesService.getAll(props.guildId);
+      roles.value = (await discordRolesService.getAll(props.guildId)) ?? [];
     }
   } catch (e) {
     errorMsg.value = errMsg(e);

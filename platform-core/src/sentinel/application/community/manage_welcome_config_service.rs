@@ -187,4 +187,3 @@ mod tests;
 
 #[cfg(test)]
 #[path = "tests/manage_welcome_config.rs"]
-mod tests;

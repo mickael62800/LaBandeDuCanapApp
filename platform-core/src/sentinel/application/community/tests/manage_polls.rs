@@ -336,6 +336,30 @@ async fn consultation_anonyme_ne_remonte_aucun_vote() {
 }
 
 #[tokio::test]
+async fn close_poll_not_found() {
+    let (svc, _) = service(MockRepo::default());
+    let result = svc.close(Uuid::nil()).await;
+    assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn vote_on_nonexistent_poll() {
+    let (svc, _) = service(MockRepo::default());
+    let opt = Uuid::from_u128(1);
+    let result = svc.vote(Uuid::nil(), opt, "user1").await;
+    assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn vote_invalid_option() {
+    let opt = Uuid::from_u128(7);
+    let (svc, _) = service(MockRepo::with(ouvert(opt), None));
+    let invalid_opt = Uuid::from_u128(99);
+    let result = svc.vote(Uuid::nil(), invalid_opt, "user1").await;
+    assert!(result.is_err());
+}
+
+#[tokio::test]
 async fn sondage_introuvable_remonte_une_erreur_claire() {
     let (svc, _) = service(MockRepo::default());
     assert!(matches!(

@@ -200,3 +200,28 @@ async fn delete_note_only_removes_targeted() {
     assert_eq!(notes.len(), 1);
     assert_eq!(notes[0].category, "warning");
 }
+
+#[tokio::test]
+async fn delete_note_invalid_id_returns_error() {
+    let svc = build_service();
+    let result = svc.delete_note("invalid-uuid").await;
+    assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn add_note_empty_content_error() {
+    let svc = build_service();
+    let mut cmd = make_cmd("general");
+    cmd.content = "".into();
+    let result = svc.add_note(cmd).await;
+    assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn add_note_empty_category_error() {
+    let svc = build_service();
+    let mut cmd = make_cmd("general");
+    cmd.category = "".into();
+    let result = svc.add_note(cmd).await;
+    assert!(result.is_err());
+}

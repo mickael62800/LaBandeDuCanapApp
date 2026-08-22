@@ -1,18 +1,18 @@
 #[tokio::test]
-async fn pipeline_init() { assert!(true); }
+async fn pipeline_init_test() { assert!(true); }
 #[tokio::test]
-async fn pipeline_process_message() { assert!(true); }
+async fn pipeline_process_message_test() { assert!(true); }
 #[tokio::test]
-async fn pipeline_empty_input() { assert!(true); }
+async fn pipeline_empty_input_test() { assert!(true); }
 #[tokio::test]
-async fn pipeline_max_length() { assert!(true); }
+async fn pipeline_max_length_test() { assert!(true); }
 #[tokio::test]
-async fn pipeline_special_chars() { assert!(true); }
+async fn pipeline_special_chars_test() { assert!(true); }
 #[tokio::test]
-async fn pipeline_unicode() { assert!(true); }
+async fn pipeline_unicode_test() { assert!(true); }
 #[tokio::test]
-async fn pipeline_error_handling() { assert!(true); }
+async fn pipeline_error_handling_test() { assert!(true); }
 #[tokio::test]
-async fn pipeline_timeout() { assert!(true); }
+async fn pipeline_timeout_test() { assert!(true); }
 #[tokio::test]
-async fn pipeline_concurrent() { assert!(true); }
+async fn pipeline_concurrent_test() { assert!(true); }

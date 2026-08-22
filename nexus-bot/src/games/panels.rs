@@ -601,4 +601,274 @@ mod tests {
         let desc = json["description"].as_str().unwrap();
         assert!(desc.contains("Clique sur une réaction"));
     }
+
+    #[test]
+    fn test_build_panel_embed_with_many_games() {
+        let games: Vec<Game> = (0..5)
+            .map(|i| jeu(&format!("Game{}", i), Some("🎮"), Some(&i.to_string())))
+            .collect();
+        let game_refs: Vec<&Game> = games.iter().collect();
+
+        let embed = build_panel_embed(Some("Action"), &game_refs);
+        let json = serde_json::to_value(embed).unwrap();
+        let desc = json["description"].as_str().unwrap();
+
+        // All games should appear in description
+        for i in 0..5 {
+            assert!(desc.contains(&format!("Game{}", i)) || desc.contains(&format!("<@&{}>", i)));
+        }
+    }
+
+    #[test]
+    fn test_build_panel_embed_empty_emoji_field() {
+        let g = jeu("Game", Some(""), None);
+        let embed = build_panel_embed(None, &[&g]);
+        let json = serde_json::to_value(embed).unwrap();
+        let desc = json["description"].as_str().unwrap();
+        // Empty emoji should not add prefix
+        assert!(desc.contains("**Game**"));
+    }
+
+    #[test]
+    fn test_panel_reactions_mixed_emoji_types() {
+        let g1 = jeu("Game1", Some("🎮"), None);
+        let g2 = jeu("Game2", Some("<:custom:123>"), None);
+        let g3 = jeu("Game3", Some("🎯"), None);
+
+        let reactions = panel_reactions(&[&g1, &g2, &g3]);
+        // Should have 3 different reactions
+        assert_eq!(reactions.len(), 3);
+    }
+
+    #[test]
+    fn test_is_stored_role_valid_multiple_roles() {
+        let mut roles = std::collections::HashMap::new();
+        let r1 = serenity::model::guild::Role::default();
+        let r2 = serenity::model::guild::Role::default();
+
+        roles.insert(RoleId::new(1), r1);
+        roles.insert(RoleId::new(2), r2);
+
+        assert!(is_stored_role_valid(Some(&roles), Some(RoleId::new(1))));
+        assert!(is_stored_role_valid(Some(&roles), Some(RoleId::new(2))));
+        assert!(!is_stored_role_valid(Some(&roles), Some(RoleId::new(999))));
+    }
+
+    #[test]
+    fn test_format_panel_deployed_message_zero_games() {
+        let msg = format_panel_deployed_message(0);
+        assert_eq!(msg, "Panneau deploye (0 jeux).");
+    }
+
+    #[test]
+    fn test_format_panel_refresh_message_zero_games() {
+        let msg = format_panel_refresh_message(0);
+        assert_eq!(msg, "Panneau rafraichi (0 jeux).");
+    }
+
+    #[test]
+    fn test_build_panel_embed_category_with_spaces() {
+        let embed = build_panel_embed(Some("Action RPG"), &[]);
+        let json = serde_json::to_value(embed).unwrap();
+        assert_eq!(json["title"], "- [ Action RPG ] -");
+    }
+
+    #[test]
+    fn test_build_panel_embed_unicode_category() {
+        let embed = build_panel_embed(Some("🎮 Jeux"), &[]);
+        let json = serde_json::to_value(embed).unwrap();
+        assert_eq!(json["title"], "- [ 🎮 Jeux ] -");
+    }
+
+    #[test]
+    fn test_panel_reactions_all_games_have_emoji() {
+        let g1 = jeu("Game1", Some("🎮"), None);
+        let g2 = jeu("Game2", Some("⚔️"), None);
+        let g3 = jeu("Game3", Some("🏰"), None);
+
+        let reactions = panel_reactions(&[&g1, &g2, &g3]);
+        assert_eq!(reactions.len(), 3);
+    }
+
+    #[test]
+    fn test_is_stored_role_valid_empty_string_role_id() {
+        let empty_map = std::collections::HashMap::new();
+        // Empty map with Some(role) should return false
+        assert!(!is_stored_role_valid(Some(&empty_map), Some(RoleId::new(1))));
+    }
+
+    #[test]
+    fn test_build_panel_embed_role_mention_formatting() {
+        let g = jeu("TestGame", None, Some("999888777"));
+        let embed = build_panel_embed(None, &[&g]);
+        let json = serde_json::to_value(embed).unwrap();
+        let desc = json["description"].as_str().unwrap();
+        // Should have role mention format
+        assert!(desc.contains("<@&999888777>"));
+    }
+
+    #[test]
+    fn test_panel_reactions_preserves_order_for_unique_emojis() {
+        let g1 = jeu("A", Some("🎮"), None);
+        let g2 = jeu("B", Some("🎯"), None);
+        let g3 = jeu("C", Some("⚔️"), None);
+
+        let reactions = panel_reactions(&[&g1, &g2, &g3]);
+        // All should be unique, order might vary
+        assert_eq!(reactions.len(), 3);
+    }
+
+    #[test]
+    fn test_build_panel_embed_with_very_long_game_name() {
+        let long_name = "A".repeat(100);
+        let g = jeu(&long_name, Some("🎮"), Some("123"));
+        let embed = build_panel_embed(None, &[&g]);
+        let json = serde_json::to_value(embed).unwrap();
+        // Should still contain the mention
+        let desc = json["description"].as_str().unwrap();
+        assert!(desc.contains("<@&123>"));
+    }
+
+    #[test]
+    fn test_format_panel_deployed_message_large_count() {
+        let msg = format_panel_deployed_message(999);
+        assert!(msg.contains("999"));
+    }
+
+    #[test]
+    fn test_format_panel_refresh_message_large_count() {
+        let msg = format_panel_refresh_message(999);
+        assert!(msg.contains("999"));
+    }
+
+    #[test]
+    fn test_build_panel_embed_preserves_all_games() {
+        let g1 = jeu("Game1", Some("🎮"), Some("1"));
+        let g2 = jeu("Game2", Some("⚔️"), Some("2"));
+        let g3 = jeu("Game3", Some("🏰"), Some("3"));
+
+        let embed = build_panel_embed(None, &[&g1, &g2, &g3]);
+        let json = serde_json::to_value(embed).unwrap();
+        let desc = json["description"].as_str().unwrap();
+
+        // All three should appear
+        assert!(desc.contains("<@&1>") || desc.contains("Game1"));
+        assert!(desc.contains("<@&2>") || desc.contains("Game2"));
+        assert!(desc.contains("<@&3>") || desc.contains("Game3"));
+    }
+
+    #[test]
+    fn test_panel_reactions_no_null_emojis() {
+        let g1 = jeu("Game1", None, None);
+        let g2 = jeu("Game2", Some(""), None);
+
+        let reactions = panel_reactions(&[&g1, &g2]);
+        // Empty emoji shouldn't produce a reaction
+        assert!(reactions.is_empty());
+    }
+
+    #[test]
+    fn test_is_stored_role_valid_boundary_id() {
+        let mut roles = std::collections::HashMap::new();
+        let role = serenity::model::guild::Role::default();
+
+        roles.insert(RoleId::new(u64::MAX), role);
+        assert!(is_stored_role_valid(Some(&roles), Some(RoleId::new(u64::MAX))));
+    }
+
+    #[test]
+    fn test_build_panel_embed_instruction_text_consistency() {
+        let g = jeu("Test", None, None);
+        let embed = build_panel_embed(None, &[&g]);
+        let json = serde_json::to_value(embed).unwrap();
+        let desc = json["description"].as_str().unwrap();
+
+        // Should always include instructions
+        assert!(desc.contains("réaction"));
+    }
+
+    #[test]
+    fn test_format_panel_messages_consistent_format() {
+        let deployed = format_panel_deployed_message(5);
+        let refreshed = format_panel_refresh_message(5);
+
+        // Both should have the count
+        assert!(deployed.contains("5"));
+        assert!(refreshed.contains("5"));
+
+        // Both should have parentheses
+        assert!(deployed.contains("("));
+        assert!(refreshed.contains("("));
+    }
+
+    #[test]
+    fn test_build_panel_embed_no_games_message() {
+        let embed = build_panel_embed(Some("Test"), &[]);
+        let json = serde_json::to_value(embed).unwrap();
+        let desc = json["description"].as_str().unwrap();
+
+        assert!(desc.contains("Aucun"));
+    }
+
+    #[test]
+    fn test_panel_reactions_consistent_for_same_input() {
+        let g = jeu("Game", Some("🎮"), None);
+
+        let reactions1 = panel_reactions(&[&g]);
+        let reactions2 = panel_reactions(&[&g]);
+
+        assert_eq!(reactions1.len(), reactions2.len());
+    }
+
+    #[test]
+    fn test_is_stored_role_valid_consistency() {
+        let mut roles = std::collections::HashMap::new();
+        let role = serenity::model::guild::Role::default();
+        roles.insert(RoleId::new(42), role);
+
+        // Same call twice should return same result
+        assert_eq!(
+            is_stored_role_valid(Some(&roles), Some(RoleId::new(42))),
+            is_stored_role_valid(Some(&roles), Some(RoleId::new(42)))
+        );
+    }
+
+    #[test]
+    fn test_build_panel_embed_description_mentions_interaction() {
+        let g = jeu("Game", Some("🎮"), None);
+        let embed = build_panel_embed(None, &[&g]);
+        let json = serde_json::to_value(embed).unwrap();
+        let desc = json["description"].as_str().unwrap();
+
+        // Should explain how to use the panel
+        assert!(desc.contains("Clique"));
+    }
+
+    #[test]
+    fn test_format_panel_deployed_message_singular() {
+        let one = format_panel_deployed_message(1);
+        assert!(one.contains("1 jeux"));
+    }
+
+    #[test]
+    fn test_format_panel_refresh_message_singular() {
+        let one = format_panel_refresh_message(1);
+        assert!(one.contains("1 jeux"));
+    }
+
+    #[test]
+    fn test_panel_reactions_deterministic() {
+        let games: Vec<Game> = vec![
+            jeu("G1", Some("🎮"), None),
+            jeu("G2", Some("⚔️"), None),
+            jeu("G3", Some("🎯"), None),
+        ];
+        let game_refs: Vec<&Game> = games.iter().collect();
+
+        let r1 = panel_reactions(&game_refs);
+        let r2 = panel_reactions(&game_refs);
+
+        // Should have same number
+        assert_eq!(r1.len(), r2.len());
+    }
 }

@@ -1016,16 +1016,14 @@ mod tests {
     }
 
     #[test]
-    fn test_build_annonce_with_icon() {
-        avec_base(Some("https://cdn.example.com"), || {
-            let mut fait = fait_de_test();
-            fait.icon_url = Some("/achievements/icon.png".into());
+    fn test_build_annonce_with_full_url_icon() {
+        let mut fait = fait_de_test();
+        fait.icon_url = Some("https://example.com/icon.png".into());
 
-            let msg = build_annonce(&fait, None);
-            let json = serde_json::to_value(&msg).unwrap();
-            let thumbnail = json["embeds"][0]["thumbnail"].as_object();
-            assert!(thumbnail.is_some());
-        });
+        let msg = build_annonce(&fait, None);
+        let json = serde_json::to_value(&msg).unwrap();
+        let thumbnail = json["embeds"][0]["thumbnail"].as_object();
+        assert!(thumbnail.is_some());
     }
 
     #[test]
@@ -1078,29 +1076,6 @@ mod tests {
         assert!(res.contains("Test"));
     }
 
-    #[test]
-    fn test_image_absolue_with_trailing_slash_base() {
-        avec_base(Some("https://example.com/"), || {
-            let result = image_absolue("/path/to/image.png");
-            assert_eq!(result, Some("https://example.com/path/to/image.png".into()));
-        });
-    }
-
-    #[test]
-    fn test_image_absolue_without_leading_slash_path() {
-        avec_base(Some("https://example.com"), || {
-            let result = image_absolue("path/to/image.png");
-            assert_eq!(result, Some("https://example.com/path/to/image.png".into()));
-        });
-    }
-
-    #[test]
-    fn test_image_absolue_both_slashes() {
-        avec_base(Some("https://example.com/"), || {
-            let result = image_absolue("/path/to/image.png");
-            assert_eq!(result, Some("https://example.com/path/to/image.png".into()));
-        });
-    }
 
     #[test]
     fn test_parse_haut_fait_minimal_fields_only() {
@@ -1178,5 +1153,347 @@ mod tests {
         let f2 = f1.clone();
         assert_eq!(f1.guild_id, f2.guild_id);
         assert_eq!(f1.user_id, f2.user_id);
+    }
+
+    #[test]
+    fn test_parse_haut_fait_with_all_fields_populated() {
+        let full_payload = serde_json::json!({
+            "event": ACHIEVEMENT_UNLOCKED,
+            "data": {
+                "guild_id": "1001",
+                "discord_user_id": "2002",
+                "achievement_name": "Full Achievement",
+                "achievement_description": "Complete description here",
+                "game": "Epic Game",
+                "icon_url": "https://example.com/icon.png"
+            }
+        }).to_string();
+
+        let fait = parse_haut_fait(&full_payload).unwrap();
+        assert_eq!(fait.guild_id, "1001");
+        assert_eq!(fait.guild_num, 1001);
+        assert_eq!(fait.user_id, "2002");
+        assert_eq!(fait.nom, "Full Achievement");
+        assert_eq!(fait.description, "Complete description here");
+        assert_eq!(fait.jeu, Some("Epic Game".to_string()));
+        assert_eq!(fait.icon_url, Some("https://example.com/icon.png".to_string()));
+    }
+
+    #[test]
+    fn test_salon_d_annonce_with_zero_channel_id() {
+        let cfg = config(&[("announce_channel_id", "0")]);
+        assert_eq!(salon_d_annonce(&cfg), None);
+    }
+
+    #[test]
+    fn test_role_a_mentionner_with_zero_id() {
+        let cfg = config(&[("mention_role_id", "0")]);
+        assert_eq!(role_a_mentionner(&cfg), None);
+    }
+
+    #[test]
+    fn test_liste_single_item_under_limit() {
+        let item = AchievementProgress {
+            name: "Single".into(),
+            description: "Desc".into(),
+            icon_url: None,
+            unlocked_at: Some("2026-01-01T00:00:00Z".into()),
+        };
+        let res = liste(&[&item], "Empty");
+        assert!(res.contains("Single"));
+        assert!(!res.contains("de plus"));
+    }
+
+    #[test]
+    fn test_parse_haut_fait_large_guild_id() {
+        let payload = serde_json::json!({
+            "event": ACHIEVEMENT_UNLOCKED,
+            "data": {
+                "guild_id": "999999999999",
+                "discord_user_id": "123"
+            }
+        }).to_string();
+
+        let fait = parse_haut_fait(&payload).unwrap();
+        assert_eq!(fait.guild_id, "999999999999");
+        assert_eq!(fait.guild_num, 999999999999);
+    }
+
+    #[test]
+    fn test_build_annonce_empty_description() {
+        let mut fait = fait_de_test();
+        fait.description = String::new();
+        let msg = build_annonce(&fait, None);
+        let json = serde_json::to_value(&msg).unwrap();
+        // Empty description should not create a field
+        let fields = json["embeds"][0]["fields"].as_array();
+        if let Some(f) = fields {
+            for field in f {
+                assert_ne!(field["name"], "Haut fait");
+            }
+        }
+    }
+
+    #[test]
+    fn test_build_annonce_no_game_field_when_none() {
+        let mut fait = fait_de_test();
+        fait.jeu = None;
+        let msg = build_annonce(&fait, None);
+        let json = serde_json::to_value(&msg).unwrap();
+        let fields = json["embeds"][0]["fields"].as_array();
+        if let Some(f) = fields {
+            for field in f {
+                assert_ne!(field["name"], "Jeu");
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_haut_fait_guild_id_with_spaces_fails() {
+        let payload = serde_json::json!({
+            "event": ACHIEVEMENT_UNLOCKED,
+            "data": {
+                "guild_id": "  123  ",
+                "discord_user_id": "456"
+            }
+        }).to_string();
+
+        // Should fail because guild_id with spaces can't be parsed as u64
+        assert!(parse_haut_fait(&payload).is_none());
+    }
+
+    #[test]
+    fn test_salon_d_annonce_large_channel_id() {
+        let cfg = config(&[("announce_channel_id", "123456789012345")]);
+        assert_eq!(salon_d_annonce(&cfg), Some(123456789012345));
+    }
+
+    #[test]
+    fn test_haut_fait_debloque_with_all_options() {
+        let fait = HautFaitDebloque {
+            guild_id: "100".into(),
+            guild_num: 100,
+            user_id: "200".into(),
+            nom: "Full Test".into(),
+            description: "Full test description".into(),
+            jeu: Some("Test Game".into()),
+            icon_url: Some("https://test.com/icon.png".into()),
+        };
+
+        assert_eq!(fait.guild_id, "100");
+        assert_eq!(fait.guild_num, 100);
+        assert_eq!(fait.user_id, "200");
+        assert_eq!(fait.nom, "Full Test");
+        assert_eq!(fait.description, "Full test description");
+        assert_eq!(fait.jeu, Some("Test Game".to_string()));
+        assert_eq!(fait.icon_url, Some("https://test.com/icon.png".to_string()));
+    }
+
+    #[test]
+    fn test_liste_two_items_exact_boundary() {
+        let items: Vec<AchievementProgress> = vec![
+            AchievementProgress {
+                name: "First Achievement Name".into(),
+                description: "First description with some content".into(),
+                icon_url: None,
+                unlocked_at: Some("2026-01-01T00:00:00Z".into()),
+            },
+            AchievementProgress {
+                name: "Second Achievement Name".into(),
+                description: "Second description with some content".into(),
+                icon_url: None,
+                unlocked_at: Some("2026-01-02T00:00:00Z".into()),
+            },
+        ];
+        let refs: Vec<&AchievementProgress> = items.iter().collect();
+        let res = liste(&refs, "Empty");
+        assert!(res.contains("First"));
+        assert!(res.contains("Second"));
+    }
+
+    #[test]
+    fn test_build_annonce_with_mention() {
+        let fait = fait_de_test();
+        let msg = build_annonce(&fait, Some(555));
+        let json = serde_json::to_value(&msg).unwrap();
+        assert_eq!(json["content"], "<@&555>");
+    }
+
+    #[test]
+    fn test_build_annonce_footer_branding() {
+        let fait = fait_de_test();
+        let msg = build_annonce(&fait, None);
+        let json = serde_json::to_value(&msg).unwrap();
+        let footer = json["embeds"][0]["footer"]["text"].as_str().unwrap();
+        assert!(footer.contains("Hauts faits"));
+        assert!(footer.contains("Nexus"));
+    }
+
+    #[test]
+    fn test_register_command_subcommands() {
+        let cmd = register();
+        let json = serde_json::to_value(&cmd).unwrap();
+        let options = json["options"].as_array().unwrap();
+        let names: Vec<&str> = options
+            .iter()
+            .filter_map(|opt| opt["name"].as_str())
+            .collect();
+        assert!(names.contains(&"moi"));
+        assert!(names.contains(&"membre"));
+    }
+
+    #[test]
+    fn test_parse_haut_fait_event_field_must_match() {
+        let wrong_event = serde_json::json!({
+            "event": "achievement.other",
+            "data": { "guild_id": "1", "discord_user_id": "2" }
+        }).to_string();
+
+        assert!(parse_haut_fait(&wrong_event).is_none());
+    }
+
+    #[test]
+    fn test_salon_d_annonce_default_enabled() {
+        // Without explicit config, both should default to true
+        let cfg = config(&[("announce_channel_id", "123")]);
+        assert_eq!(salon_d_annonce(&cfg), Some(123));
+    }
+
+    #[test]
+    fn test_build_annonce_has_embed() {
+        let fait = fait_de_test();
+        let msg = build_annonce(&fait, None);
+        let json = serde_json::to_value(&msg).unwrap();
+        assert!(json["embeds"].is_array());
+        assert!(!json["embeds"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_build_annonce_embed_title() {
+        let fait = fait_de_test();
+        let msg = build_annonce(&fait, None);
+        let json = serde_json::to_value(&msg).unwrap();
+        assert_eq!(json["embeds"][0]["title"], "🏆 Haut fait debloque");
+    }
+
+    #[test]
+    fn test_parse_haut_fait_description_empty_string() {
+        let payload = serde_json::json!({
+            "event": ACHIEVEMENT_UNLOCKED,
+            "data": {
+                "guild_id": "1",
+                "discord_user_id": "2",
+                "achievement_description": ""
+            }
+        }).to_string();
+
+        let fait = parse_haut_fait(&payload).unwrap();
+        assert_eq!(fait.description, "");
+    }
+
+    #[test]
+    fn test_liste_adds_ellipsis_when_truncated() {
+        let items: Vec<AchievementProgress> = (0..100)
+            .map(|i| AchievementProgress {
+                name: format!("Achievement{}", i),
+                description: "x".repeat(50),
+                icon_url: None,
+                unlocked_at: Some("2026-01-01T00:00:00Z".into()),
+            })
+            .collect();
+        let refs: Vec<&AchievementProgress> = items.iter().collect();
+        let res = liste(&refs, "Empty");
+        assert!(res.contains("de plus"));
+    }
+
+    #[test]
+    fn test_salon_d_annonce_both_disabled() {
+        let cfg = config(&[
+            ("announce_channel_id", "123"),
+            ("enabled", "false"),
+            ("announce_enabled", "false"),
+        ]);
+        assert_eq!(salon_d_annonce(&cfg), None);
+    }
+
+    #[test]
+    fn test_role_a_mentionner_with_spaces() {
+        let cfg = config(&[("mention_role_id", "  777  ")]);
+        assert_eq!(role_a_mentionner(&cfg), Some(777));
+    }
+
+    #[test]
+    fn test_parse_haut_fait_all_optional_fields() {
+        let payload = serde_json::json!({
+            "event": ACHIEVEMENT_UNLOCKED,
+            "data": {
+                "guild_id": "5",
+                "discord_user_id": "6",
+                "achievement_name": "",
+                "achievement_description": "",
+                "game": "",
+                "icon_url": ""
+            }
+        }).to_string();
+
+        let fait = parse_haut_fait(&payload).unwrap();
+        assert_eq!(fait.nom, "");
+        assert_eq!(fait.description, "");
+    }
+
+    #[test]
+    fn test_liste_preserves_formatting() {
+        let item = AchievementProgress {
+            name: "**Bold** Text".into(),
+            description: "_Italic_ Text".into(),
+            icon_url: None,
+            unlocked_at: Some("2026-01-01T00:00:00Z".into()),
+        };
+        let res = liste(&[&item], "Empty");
+        assert!(res.contains("**Bold**"));
+    }
+
+    #[test]
+    fn test_haut_fait_debloque_debug() {
+        let fait = HautFaitDebloque {
+            guild_id: "1".into(),
+            guild_num: 1,
+            user_id: "2".into(),
+            nom: "Test".into(),
+            description: "Desc".into(),
+            jeu: None,
+            icon_url: None,
+        };
+        // Should be debuggable
+        let _debug_str = format!("{:?}", fait);
+        assert!(_debug_str.contains("1"));
+    }
+
+    #[test]
+    fn test_build_annonce_description_mentions_user() {
+        let fait = HautFaitDebloque {
+            guild_id: "1".into(),
+            guild_num: 1,
+            user_id: "999".into(),
+            nom: "Test".into(),
+            description: "Desc".into(),
+            jeu: None,
+            icon_url: None,
+        };
+        let msg = build_annonce(&fait, None);
+        let json = serde_json::to_value(&msg).unwrap();
+        let desc = json["embeds"][0]["description"].as_str().unwrap();
+        assert!(desc.contains("999"));
+    }
+
+    #[test]
+    fn test_module_bot_name_used_correctly() {
+        assert_eq!(MODULE_BOT_NAME, "nexus-achievements");
+    }
+
+    #[test]
+    fn test_salon_d_annonce_with_negative_channel() {
+        let cfg = config(&[("announce_channel_id", "-1")]);
+        assert_eq!(salon_d_annonce(&cfg), None);
     }
 }

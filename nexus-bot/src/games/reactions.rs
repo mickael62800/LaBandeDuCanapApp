@@ -584,4 +584,219 @@ mod tests {
             _ => panic!("Should be custom"),
         }
     }
+
+    #[test]
+    fn test_parse_reaction_type_malformed_custom() {
+        // Malformed custom emoji formats
+        assert!(parse_reaction_type("<:no_closing").is_some());
+        assert!(parse_reaction_type("<:>").is_some());
+        assert!(parse_reaction_type("<:name:").is_some());
+    }
+
+    #[test]
+    fn test_parse_reaction_type_emoji_with_variant_selector() {
+        let result = parse_reaction_type("👍\u{fe0f}");
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_reaction_key_custom_emoji_different_names() {
+        let emoji1 = ReactionType::Custom {
+            animated: false,
+            id: serenity::all::EmojiId::new(123),
+            name: Some("name1".into()),
+        };
+        let emoji2 = ReactionType::Custom {
+            animated: false,
+            id: serenity::all::EmojiId::new(123),
+            name: Some("name2".into()),
+        };
+        // Same ID = same key, regardless of name
+        assert_eq!(reaction_key(&emoji1), reaction_key(&emoji2));
+    }
+
+    #[test]
+    fn test_find_game_for_reaction_multiple_custom_emojis() {
+        let games = vec![
+            Game {
+                id: "1".into(),
+                game_name: "Game1".into(),
+                emoji: Some("<:emoji1:111>".into()),
+                category: None,
+                role_id: None,
+            },
+            Game {
+                id: "2".into(),
+                game_name: "Game2".into(),
+                emoji: Some("<:emoji2:222>".into()),
+                category: None,
+                role_id: None,
+            },
+        ];
+
+        assert_eq!(
+            find_game_for_reaction(&games, "111").map(|g| g.game_name.as_str()),
+            Some("Game1")
+        );
+        assert_eq!(
+            find_game_for_reaction(&games, "222").map(|g| g.game_name.as_str()),
+            Some("Game2")
+        );
+    }
+
+    #[test]
+    fn test_parse_reaction_type_emoji_sequences() {
+        // Multiple emoji in sequence
+        let result = parse_reaction_type("👨‍👩‍👧");
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_reaction_key_consistency() {
+        let emoji1 = ReactionType::Unicode("🎮".into());
+        let emoji2 = ReactionType::Unicode("🎮".into());
+        assert_eq!(reaction_key(&emoji1), reaction_key(&emoji2));
+    }
+
+    #[test]
+    fn test_find_game_for_reaction_case_sensitivity() {
+        let games = vec![Game {
+            id: "1".into(),
+            game_name: "Test".into(),
+            emoji: Some("<:EMOJI:123>".into()),
+            category: None,
+            role_id: None,
+        }];
+
+        // Emoji comparison should handle ID matching
+        assert_eq!(
+            find_game_for_reaction(&games, "123").map(|g| g.game_name.as_str()),
+            Some("Test")
+        );
+    }
+
+    #[test]
+    fn test_parse_reaction_type_flag_emoji() {
+        // Flag emojis (two regional indicator symbols)
+        let result = parse_reaction_type("🇫🇷");
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_parse_reaction_type_animated_name_parsing() {
+        let animated = parse_reaction_type("<a:anim_name:555>").unwrap();
+        match animated {
+            ReactionType::Custom { animated: is_anim, id, name } => {
+                assert!(is_anim);
+                assert_eq!(id.get(), 555);
+                assert_eq!(name.as_deref(), Some("anim_name"));
+            }
+            _ => panic!("Expected animated custom"),
+        }
+    }
+
+    #[test]
+    fn test_find_game_for_reaction_first_match_wins() {
+        let games = vec![
+            Game {
+                id: "1".into(),
+                game_name: "First".into(),
+                emoji: Some("🎮".into()),
+                category: None,
+                role_id: None,
+            },
+            Game {
+                id: "2".into(),
+                game_name: "Second".into(),
+                emoji: Some("🎮".into()),
+                category: None,
+                role_id: None,
+            },
+        ];
+
+        let found = find_game_for_reaction(&games, "🎮");
+        assert_eq!(found.map(|g| g.game_name.as_str()), Some("First"));
+    }
+
+    #[test]
+    fn test_parse_reaction_type_long_custom_id() {
+        let custom = parse_reaction_type("<:name:999999999999>").unwrap();
+        match custom {
+            ReactionType::Custom { id, .. } => {
+                assert_eq!(id.get(), 999999999999);
+            }
+            _ => panic!("Expected custom"),
+        }
+    }
+
+    #[test]
+    fn test_reaction_key_unicode_emoji_variants() {
+        let e1 = ReactionType::Unicode("❤️".into());
+        let e2 = ReactionType::Unicode("❤".into());
+        // Different variants should have different keys
+        let k1 = reaction_key(&e1);
+        let k2 = reaction_key(&e2);
+        assert_eq!(k1, Some("❤️".into()));
+        assert_eq!(k2, Some("❤".into()));
+    }
+
+    #[test]
+    fn test_find_game_for_reaction_exact_match() {
+        let games = vec![Game {
+            id: "1".into(),
+            game_name: "Game".into(),
+            emoji: Some("<:exact:123>".into()),
+            category: None,
+            role_id: None,
+        }];
+
+        assert!(find_game_for_reaction(&games, "123").is_some());
+        assert!(find_game_for_reaction(&games, "124").is_none());
+    }
+
+    #[test]
+    fn test_parse_reaction_type_max_emoji_id() {
+        let custom = parse_reaction_type("<:name:18446744073709551615>").unwrap();
+        match custom {
+            ReactionType::Custom { id, .. } => {
+                // Should parse the large number
+                assert_eq!(id.get(), 18446744073709551615);
+            }
+            _ => panic!("Expected custom"),
+        }
+    }
+
+    #[test]
+    fn test_reaction_key_empty_unicode_string() {
+        // Empty string should still be a valid key
+        let e = ReactionType::Unicode("".into());
+        assert_eq!(reaction_key(&e), Some("".into()));
+    }
+
+    #[test]
+    fn test_find_game_for_reaction_whitespace_handling() {
+        let games = vec![Game {
+            id: "1".into(),
+            game_name: "Game".into(),
+            emoji: Some("  🎮  ".into()),
+            category: None,
+            role_id: None,
+        }];
+
+        // The emoji field has spaces, but parse_reaction_type trims them
+        let found = find_game_for_reaction(&games, "🎮");
+        assert!(found.is_some());
+    }
+
+    #[test]
+    fn test_parse_reaction_type_numbers_as_emoji() {
+        let result = parse_reaction_type("123");
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_find_game_for_reaction_empty_games_list() {
+        let found = find_game_for_reaction(&[], "🎮");
+        assert!(found.is_none());
+    }
 }

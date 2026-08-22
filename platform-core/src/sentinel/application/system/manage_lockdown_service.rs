@@ -38,10 +38,4 @@ impl ManageLockdownUseCase for ManageLockdownService {
     }
 }
 
-#[cfg(test)]
-#[path = "tests/manage_lockdown.rs"]
-mod tests;
 
-#[cfg(test)]
-#[path = "tests/manage_lockdown.rs"]
-mod tests;

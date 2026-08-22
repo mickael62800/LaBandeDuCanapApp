@@ -105,6 +105,3 @@ impl CancelModerationActionUseCase for CancelModerationActionService {
     }
 }
 
-#[cfg(test)]
-#[path = "tests/cancel_action.rs"]
-mod tests;

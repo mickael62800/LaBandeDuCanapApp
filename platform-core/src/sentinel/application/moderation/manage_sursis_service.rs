@@ -58,6 +58,3 @@ impl ManageSursisUseCase for ManageSursisService {
     }
 }
 
-#[cfg(test)]
-#[path = "tests/manage_sursis.rs"]
-mod tests;

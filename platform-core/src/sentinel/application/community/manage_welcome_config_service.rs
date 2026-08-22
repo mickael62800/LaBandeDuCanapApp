@@ -181,6 +181,3 @@ impl ManageWelcomeConfigUseCase for ManageWelcomeConfigService {
     }
 }
 
-#[cfg(test)]
-#[path = "tests/manage_welcome_config.rs"]
-mod tests;

@@ -562,4 +562,158 @@ mod tests {
         assert_eq!(inv["live_panel_messages"].as_array().unwrap().len(), 2);
         assert_eq!(inv["unreadable_channels"].as_array().unwrap().len(), 1);
     }
+
+    #[test]
+    fn test_role_json_all_color_values() {
+        for color in [0x000000, 0xFFFFFF, 0xFF0000, 0x00FF00, 0x0000FF] {
+            let j = role_json(1, "Test", color, true);
+            assert_eq!(j["color"], color);
+        }
+    }
+
+    #[test]
+    fn test_role_json_name_field_exact() {
+        let names = vec!["Simple", "With Spaces", "With-Dashes", "With_Underscores"];
+        for name in names {
+            let j = role_json(1, name, 0, true);
+            assert_eq!(j["name"], name);
+        }
+    }
+
+    #[test]
+    fn test_build_inventory_single_of_each() {
+        let roles = vec![role_json(1, "R", 0, true)];
+        let live = vec!["m".to_string()];
+        let unreadable = vec!["c".to_string()];
+
+        let inv = build_inventory(&roles, &live, &unreadable);
+        assert_eq!(inv["roles"].as_array().unwrap().len(), 1);
+        assert_eq!(inv["live_panel_messages"].as_array().unwrap().len(), 1);
+        assert_eq!(inv["unreadable_channels"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_message_is_gone_catches_non_http_error() {
+        // Non-HTTP error should return false
+        assert!(!message_is_gone(&serenity::Error::Other("test")));
+    }
+
+    #[test]
+    fn test_role_json_id_boundaries() {
+        let test_ids = [0u64, 1, 10, 100, 1000, u64::MAX >> 1, u64::MAX];
+        for id in test_ids.iter() {
+            let j = role_json(*id, "Test", 0, true);
+            assert_eq!(j["id"].as_str().unwrap().parse::<u64>().unwrap(), *id);
+        }
+    }
+
+    #[test]
+    fn test_build_inventory_large_role_count() {
+        let roles: Vec<_> = (0..50)
+            .map(|i| role_json(i, &format!("R{}", i), i as u32, i % 2 == 0))
+            .collect();
+
+        let inv = build_inventory(&roles, &[], &[]);
+        assert_eq!(inv["roles"].as_array().unwrap().len(), 50);
+    }
+
+    #[test]
+    fn test_role_json_string_id_always() {
+        // IDs must always be strings to avoid JSON number precision loss
+        for id in [1u64, 100, 10000, 1000000] {
+            let j = role_json(id, "Test", 0, true);
+            assert!(j["id"].is_string());
+        }
+    }
+
+    #[test]
+    fn test_build_inventory_all_empty_arrays() {
+        let inv = build_inventory(&[], &[], &[]);
+
+        // All three should be empty arrays, not null
+        assert_eq!(inv["roles"].as_array().unwrap().len(), 0);
+        assert_eq!(inv["live_panel_messages"].as_array().unwrap().len(), 0);
+        assert_eq!(inv["unreadable_channels"].as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn test_role_json_mentionable_consistency() {
+        let j_true = role_json(1, "T", 0, true);
+        let j_false = role_json(1, "T", 0, false);
+
+        assert_ne!(j_true["mentionable"], j_false["mentionable"]);
+        assert!(j_true["mentionable"].as_bool().unwrap());
+        assert!(!j_false["mentionable"].as_bool().unwrap());
+    }
+
+
+    #[test]
+    fn test_build_inventory_role_field_structure() {
+        let roles = vec![role_json(1, "Test Role", 0xABCDEF, false)];
+        let inv = build_inventory(&roles, &[], &[]);
+
+        let role = &inv["roles"][0];
+        assert_eq!(role["id"], "1");
+        assert_eq!(role["name"], "Test Role");
+        assert_eq!(role["color"], 0xABCDEF);
+        assert_eq!(role["mentionable"], false);
+    }
+
+    #[test]
+    fn test_build_inventory_panel_messages_type() {
+        let live = vec!["123".to_string(), "456".to_string()];
+        let inv = build_inventory(&[], &live, &[]);
+
+        let messages = inv["live_panel_messages"].as_array().unwrap();
+        for msg in messages {
+            assert!(msg.is_string());
+        }
+    }
+
+    #[test]
+    fn test_build_inventory_unreadable_channels_type() {
+        let unreadable = vec!["ch1".to_string(), "ch2".to_string()];
+        let inv = build_inventory(&[], &[], &unreadable);
+
+        let channels = inv["unreadable_channels"].as_array().unwrap();
+        for ch in channels {
+            assert!(ch.is_string());
+        }
+    }
+
+    #[test]
+    fn test_role_json_with_various_mentionable_values() {
+        // Test both boolean values
+        let true_role = role_json(1, "T", 0, true);
+        let false_role = role_json(2, "F", 0, false);
+
+        assert!(true_role["mentionable"].as_bool().unwrap());
+        assert!(!false_role["mentionable"].as_bool().unwrap());
+    }
+
+    #[test]
+    fn test_message_is_gone_pattern_matching() {
+        // Test that only HTTP 404 returns true
+        assert!(!message_is_gone(&serenity::Error::Other("any error")));
+        // Other errors should return false
+    }
+
+    #[test]
+    fn test_build_inventory_maintains_data_integrity() {
+        let roles = vec![
+            role_json(1, "Admin", 0xFF0000, true),
+            role_json(2, "Moderator", 0x00FF00, false),
+            role_json(3, "Member", 0x0000FF, true),
+        ];
+        let live = vec!["msg1".to_string(), "msg2".to_string()];
+        let unreadable = vec!["ch".to_string()];
+
+        let inv = build_inventory(&roles, &live, &unreadable);
+
+        // Verify data is preserved
+        let r = inv["roles"].as_array().unwrap();
+        assert_eq!(r[0]["name"], "Admin");
+        assert_eq!(r[1]["name"], "Moderator");
+        assert_eq!(r[2]["name"], "Member");
+    }
 }

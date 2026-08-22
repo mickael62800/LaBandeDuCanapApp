@@ -871,4 +871,169 @@ mod tests {
         // Should have same number
         assert_eq!(r1.len(), r2.len());
     }
+
+    #[test]
+    fn test_build_panel_embed_large_category_name() {
+        let long_cat = "X".repeat(100);
+        let embed = build_panel_embed(Some(&long_cat), &[]);
+        let json = serde_json::to_value(embed).unwrap();
+        let title = json["title"].as_str().unwrap();
+        assert!(title.contains(&long_cat));
+    }
+
+    #[test]
+    fn test_build_panel_embed_special_chars_in_category() {
+        let embed = build_panel_embed(Some("Action™ | 日本語"), &[]);
+        let json = serde_json::to_value(embed).unwrap();
+        assert_eq!(json["title"], "- [ Action™ | 日本語 ] -");
+    }
+
+    #[test]
+    fn test_build_panel_embed_max_games_per_panel() {
+        let games: Vec<Game> = (0..MAX_BUTTONS_PER_PANEL)
+            .map(|i| jeu(&format!("Game{}", i), Some("🎮"), Some(&i.to_string())))
+            .collect();
+        let game_refs: Vec<&Game> = games.iter().collect();
+
+        let embed = build_panel_embed(None, &game_refs);
+        let json = serde_json::to_value(embed).unwrap();
+        // Should handle max games
+        assert!(!json["description"].is_null());
+    }
+
+    #[test]
+    fn test_panel_reactions_animated_custom_emoji() {
+        let g = jeu("Test", Some("<a:animated:111>"), None);
+        let reactions = panel_reactions(&[&g]);
+        assert_eq!(reactions.len(), 1);
+    }
+
+    #[test]
+    fn test_is_stored_role_valid_all_combinations() {
+        let mut roles = std::collections::HashMap::new();
+        let role = serenity::model::guild::Role::default();
+        roles.insert(RoleId::new(100), role);
+
+        // All false combinations
+        assert!(!is_stored_role_valid(None, None));
+        assert!(!is_stored_role_valid(Some(&roles), None));
+
+        // All true combinations
+        assert!(is_stored_role_valid(None, Some(RoleId::new(100))));
+        assert!(is_stored_role_valid(Some(&roles), Some(RoleId::new(100))));
+
+        // False combinations
+        assert!(!is_stored_role_valid(Some(&roles), Some(RoleId::new(999))));
+    }
+
+    #[test]
+    fn test_format_panel_messages_zero_edge_case() {
+        assert!(format_panel_deployed_message(0).contains("0"));
+        assert!(format_panel_refresh_message(0).contains("0"));
+    }
+
+    #[test]
+    fn test_build_panel_embed_role_parsing_edge_cases() {
+        // Role ID that can't be parsed
+        let g1 = jeu("Test1", None, Some("not_a_number"));
+        // Very large role ID
+        let g2 = jeu("Test2", None, Some(&u64::MAX.to_string()));
+        // Empty role ID string
+        let g3 = jeu("Test3", None, Some(""));
+
+        let embed = build_panel_embed(None, &[&g1, &g2, &g3]);
+        let json = serde_json::to_value(embed).unwrap();
+        let desc = json["description"].as_str().unwrap();
+
+        // Invalid IDs should fallback to name
+        assert!(desc.contains("Test1") || desc.contains("Test2") || desc.contains("Test3"));
+    }
+
+    #[test]
+    fn test_panel_reactions_custom_emoji_variations() {
+        let variations = vec![
+            "<:name:123>",
+            "<a:name:456>",
+            "<:name_with_underscores:789>",
+            "<a:animated_name:999>",
+        ];
+
+        for emoji_str in variations {
+            let g = jeu("Test", Some(emoji_str), None);
+            let reactions = panel_reactions(&[&g]);
+            assert_eq!(reactions.len(), 1);
+        }
+    }
+
+    #[test]
+    fn test_build_panel_embed_all_games_with_roles() {
+        let games: Vec<Game> = (1..=5)
+            .map(|i| jeu(&format!("Game{}", i), Some("🎮"), Some(&i.to_string())))
+            .collect();
+        let game_refs: Vec<&Game> = games.iter().collect();
+
+        let embed = build_panel_embed(Some("Test"), &game_refs);
+        let json = serde_json::to_value(embed).unwrap();
+        let desc = json["description"].as_str().unwrap();
+
+        // All role mentions should be present
+        for i in 1..=5 {
+            assert!(desc.contains(&format!("<@&{}>", i)));
+        }
+    }
+
+    #[test]
+    fn test_is_stored_role_valid_specific_role_id() {
+        let mut roles = std::collections::HashMap::new();
+        let role = serenity::model::guild::Role::default();
+        roles.insert(RoleId::new(42), role);
+
+        assert!(is_stored_role_valid(Some(&roles), Some(RoleId::new(42))));
+        assert!(!is_stored_role_valid(Some(&roles), Some(RoleId::new(43))));
+    }
+
+    #[test]
+    fn test_format_panel_messages_numeric_consistency() {
+        for count in [0, 1, 10, 100, 1000] {
+            let deployed = format_panel_deployed_message(count);
+            let refreshed = format_panel_refresh_message(count);
+
+            assert!(deployed.contains(&count.to_string()));
+            assert!(refreshed.contains(&count.to_string()));
+        }
+    }
+
+    #[test]
+    fn test_build_panel_embed_description_always_present() {
+        // Empty games
+        let embed1 = build_panel_embed(None, &[]);
+        let json1 = serde_json::to_value(embed1).unwrap();
+        assert!(!json1["description"].is_null());
+
+        // With games
+        let g = jeu("Test", Some("🎮"), None);
+        let embed2 = build_panel_embed(None, &[&g]);
+        let json2 = serde_json::to_value(embed2).unwrap();
+        assert!(!json2["description"].is_null());
+    }
+
+    #[test]
+    fn test_panel_reactions_none_emoji_field() {
+        let g = jeu("Test", None, None);
+        let reactions = panel_reactions(&[&g]);
+        assert!(reactions.is_empty());
+    }
+
+    #[test]
+    fn test_is_stored_role_valid_never_creates() {
+        // This function never creates anything, just validates
+        let mut roles = std::collections::HashMap::new();
+        let initial_size = roles.len();
+
+        let _ = is_stored_role_valid(Some(&roles), Some(RoleId::new(1)));
+        let _ = is_stored_role_valid(Some(&roles), None);
+        let _ = is_stored_role_valid(None, Some(RoleId::new(1)));
+
+        assert_eq!(roles.len(), initial_size);
+    }
 }

@@ -204,16 +204,21 @@ mkdir -p /var/lib/sentinel
 
 # Snapshot actuel : liste tous les filesystems locaux REELS (exclut tmpfs,
 # devtmpfs, overlay, squashfs, fuse.snapfuse). On garde uniquement les
-# devices /dev/* pour ignorer les pseudo-FS et les bind mounts internes a
-# Docker. Si plusieurs disques physiques sont montes (ex: / et /mnt/data),
-# ils apparaissent tous.
+# devices /dev/* pour ignorer les pseudo-FS. Si plusieurs disques physiques
+# sont montes (ex: / et /mnt/docker), ils apparaissent tous.
+#
+# UN DISQUE = UNE LIGNE. `df` liste aussi les montages LIES, qui exposent le
+# meme device sous un second point de montage : /mnt/docker et son bind
+# /var/lib/containerd sont le meme /dev/sda1. Sans deduplication, le tableau
+# de bord comptait ce disque deux fois et doublait l espace total annonce.
+# On ne garde donc que la PREMIERE occurrence de chaque device.
 NOW=$(date -Iseconds)
 SNAPSHOT=$(df -BG --output=source,target,size,used,pcent \
         -x tmpfs -x devtmpfs -x overlay -x squashfs -x fuse.snapfuse \
         -x proc -x sysfs -x cgroup -x cgroup2 -x autofs \
         2>/dev/null | tail -n +2 | \
     awk -v ts="$NOW" '
-        $1 ~ /^\/dev\// && $1 !~ /\/loop/ {
+        $1 ~ /^\/dev\// && $1 !~ /\/loop/ && !vu[$1]++ {
             gsub("G","",$3); gsub("G","",$4); gsub("%","",$5);
             printf "{\"timestamp\":\"%s\",\"mount\":\"%s\",\"used_gb\":%s,\"total_gb\":%s,\"usage_pct\":%s}\n", ts, $2, $4, $3, $5
         }')

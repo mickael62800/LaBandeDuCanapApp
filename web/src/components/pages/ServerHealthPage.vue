@@ -7,7 +7,6 @@ import DiskTrendChart from "@/components/organisms/DiskTrendChart.vue";
 import ServerHealthBanner from "@/components/organisms/ServerHealthBanner.vue";
 import ServerHealthResources from "@/components/organisms/ServerHealthResources.vue";
 import ServerHealthDisks from "@/components/organisms/ServerHealthDisks.vue";
-import ServerHealthServices from "@/components/organisms/ServerHealthServices.vue";
 import AdminPageShell from "@/components/layouts/AdminPageShell.vue";
 import DashboardHero from "@/components/organisms/DashboardHero.vue";
 
@@ -103,7 +102,6 @@ onUnmounted(stopPolling);
       <ServerHealthBanner :info="info" />
       <ServerHealthResources :info="info" />
       <ServerHealthDisks :info="info" />
-      <ServerHealthServices :info="info" />
 
       <!-- Disque tendance 7j (depuis cron host) -->
       <DiskTrendChart />

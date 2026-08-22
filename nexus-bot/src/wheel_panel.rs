@@ -226,9 +226,7 @@ pub async fn handle_spin(api: &ApiClient, ctx: &Context, component: &ComponentIn
 }
 
 pub fn build_spin_defer_response() -> CreateInteractionResponse {
-    CreateInteractionResponse::Defer(
-        CreateInteractionResponseMessage::new().ephemeral(true),
-    )
+    CreateInteractionResponse::Defer(CreateInteractionResponseMessage::new().ephemeral(true))
 }
 
 pub fn build_spin_announce_message(username: &str) -> CreateMessage {
@@ -243,8 +241,7 @@ pub fn build_spin_result_edit(
 }
 
 pub fn build_spin_error_edit(message: &str) -> serenity::builder::EditInteractionResponse {
-    serenity::builder::EditInteractionResponse::new()
-        .embed(embeds::build_error_embed(message))
+    serenity::builder::EditInteractionResponse::new().embed(embeds::build_error_embed(message))
 }
 
 pub fn build_spin_final_edit(case_label: &str) -> serenity::builder::EditInteractionResponse {
@@ -252,8 +249,12 @@ pub fn build_spin_final_edit(case_label: &str) -> serenity::builder::EditInterac
         .content(format_spin_result_response(case_label))
 }
 
-pub fn is_old_wheel_panel(author_id: serenity::all::UserId, bot_id: serenity::all::UserId, titles: &[Option<&str>]) -> bool {
-    author_id == bot_id && titles.iter().any(|t| *t == Some(PANEL_TITLE))
+pub fn is_old_wheel_panel(
+    author_id: serenity::all::UserId,
+    bot_id: serenity::all::UserId,
+    titles: &[Option<&str>],
+) -> bool {
+    author_id == bot_id && titles.contains(&Some(PANEL_TITLE))
 }
 
 pub fn filter_old_wheel_panel_ids(
@@ -285,7 +286,9 @@ pub fn build_ephemeral_reply(message: &str) -> CreateInteractionResponse {
 }
 
 async fn reply_ephemeral(ctx: &Context, cmd: &CommandInteraction, message: &str) {
-    let _ = cmd.create_response(&ctx.http, build_ephemeral_reply(message)).await;
+    let _ = cmd
+        .create_response(&ctx.http, build_ephemeral_reply(message))
+        .await;
 }
 
 pub async fn execute_spin(
@@ -341,7 +344,11 @@ mod tests {
 
         let msgs = vec![
             (MessageId::new(1), bot, vec![Some(PANEL_TITLE.to_string())]),
-            (MessageId::new(2), other, vec![Some(PANEL_TITLE.to_string())]),
+            (
+                MessageId::new(2),
+                other,
+                vec![Some(PANEL_TITLE.to_string())],
+            ),
             (MessageId::new(3), bot, vec![Some("Autre".to_string())]),
             (MessageId::new(4), bot, vec![None]),
         ];
@@ -384,8 +391,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_spin() {
-        use tokio::net::TcpListener;
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::TcpListener;
 
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
@@ -445,9 +452,10 @@ mod tests {
         let j2 = serde_json::to_value(&reply2).unwrap();
         assert_eq!(j2["data"]["content"], "");
 
-        let reply3 = build_ephemeral_reply("Very long message with lots of text to test edge cases");
+        let reply3 =
+            build_ephemeral_reply("Very long message with lots of text to test edge cases");
         let j3 = serde_json::to_value(&reply3).unwrap();
-        assert!(j3["data"]["content"].as_str().unwrap().len() > 0);
+        assert!(!j3["data"]["content"].as_str().unwrap().is_empty());
     }
 
     #[test]
@@ -468,7 +476,11 @@ mod tests {
         assert!(!is_old_wheel_panel(bot, bot, &[]));
 
         // Title in middle
-        assert!(is_old_wheel_panel(bot, bot, &[Some("Other"), Some(PANEL_TITLE), Some("More")]));
+        assert!(is_old_wheel_panel(
+            bot,
+            bot,
+            &[Some("Other"), Some(PANEL_TITLE), Some("More")]
+        ));
 
         // None titles
         assert!(!is_old_wheel_panel(bot, bot, &[None, None]));
@@ -482,10 +494,18 @@ mod tests {
         let msgs = vec![
             (MessageId::new(1), bot, vec![Some(PANEL_TITLE.to_string())]),
             (MessageId::new(2), bot, vec![Some("Wrong".to_string())]),
-            (MessageId::new(3), other, vec![Some(PANEL_TITLE.to_string())]),
+            (
+                MessageId::new(3),
+                other,
+                vec![Some(PANEL_TITLE.to_string())],
+            ),
             (MessageId::new(4), bot, vec![]),
             (MessageId::new(5), bot, vec![None]),
-            (MessageId::new(6), bot, vec![Some("X".to_string()), Some(PANEL_TITLE.to_string())]),
+            (
+                MessageId::new(6),
+                bot,
+                vec![Some("X".to_string()), Some(PANEL_TITLE.to_string())],
+            ),
         ];
 
         let filtered = filter_old_wheel_panel_ids(&msgs, bot);
@@ -508,7 +528,11 @@ mod tests {
         let other = UserId::new(200);
 
         let msgs = vec![
-            (MessageId::new(1), other, vec![Some(PANEL_TITLE.to_string())]),
+            (
+                MessageId::new(1),
+                other,
+                vec![Some(PANEL_TITLE.to_string())],
+            ),
             (MessageId::new(2), bot, vec![Some("Wrong".to_string())]),
         ];
 

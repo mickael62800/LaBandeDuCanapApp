@@ -21,12 +21,7 @@ impl Handler {
         cmd: &CommandInteraction,
     ) -> Option<String> {
         let Some(g) = cmd.guild_id else {
-            self.reply_error(
-                ctx,
-                cmd,
-                MSG_GUILD_REQUIRED,
-            )
-            .await;
+            self.reply_error(ctx, cmd, MSG_GUILD_REQUIRED).await;
             return None;
         };
 
@@ -37,8 +32,7 @@ impl Handler {
         // L'API refuserait de toute facon, mais avec une erreur technique
         // illisible ; autant repondre clairement.
         if !guilde_autorisee(g) {
-            self.reply_error(ctx, cmd, MSG_GUILD_UNAUTHORIZED)
-                .await;
+            self.reply_error(ctx, cmd, MSG_GUILD_UNAUTHORIZED).await;
             return None;
         }
 
@@ -67,7 +61,8 @@ impl Handler {
             return;
         }
 
-        let embed = execute_solde(&self.api, &guild_id, &target_id.to_string(), &display_name).await;
+        let embed =
+            execute_solde(&self.api, &guild_id, &target_id.to_string(), &display_name).await;
         let builder = build_embed_followup(embed);
         if let Err(e) = cmd.create_followup(&ctx.http, builder).await {
             tracing::error!("followup /solde impossible: {e}");
@@ -80,13 +75,11 @@ impl Handler {
         };
 
         let Some(target_id) = option_user(cmd, "membre") else {
-            self.reply_error(ctx, cmd, MSG_DONNER_NEED_TARGET)
-                .await;
+            self.reply_error(ctx, cmd, MSG_DONNER_NEED_TARGET).await;
             return;
         };
         let Some(amount) = option_integer(cmd, "montant") else {
-            self.reply_error(ctx, cmd, MSG_DONNER_NEED_AMOUNT)
-                .await;
+            self.reply_error(ctx, cmd, MSG_DONNER_NEED_AMOUNT).await;
             return;
         };
         let reason = option_string(cmd, "raison");
@@ -226,7 +219,9 @@ pub fn build_error_message(message: &str) -> CreateInteractionResponse {
     CreateInteractionResponse::Message(msg)
 }
 
-pub fn build_embed_followup(embed: serenity::builder::CreateEmbed) -> serenity::all::CreateInteractionResponseFollowup {
+pub fn build_embed_followup(
+    embed: serenity::builder::CreateEmbed,
+) -> serenity::all::CreateInteractionResponseFollowup {
     serenity::all::CreateInteractionResponseFollowup::new().embed(embed)
 }
 
@@ -277,7 +272,12 @@ pub fn build_spin_response_embed(
     }
 }
 
-pub fn format_target_name(target_id: UserId, user_id: UserId, user_display_name: &str, resolved_name: Option<&str>) -> String {
+pub fn format_target_name(
+    target_id: UserId,
+    user_id: UserId,
+    user_display_name: &str,
+    resolved_name: Option<&str>,
+) -> String {
     if target_id == user_id {
         user_display_name.to_string()
     } else {
@@ -287,7 +287,11 @@ pub fn format_target_name(target_id: UserId, user_id: UserId, user_display_name:
     }
 }
 
-pub fn validate_donner(sender_id: UserId, target_id: UserId, is_target_bot: bool) -> Result<(), &'static str> {
+pub fn validate_donner(
+    sender_id: UserId,
+    target_id: UserId,
+    is_target_bot: bool,
+) -> Result<(), &'static str> {
     if target_id == sender_id {
         return Err("Tu ne peux pas te donner a toi-meme !");
     }
@@ -340,20 +344,21 @@ mod tests {
         let self_id = UserId::new(1);
         let other_id = UserId::new(2);
 
-        assert_eq!(
-            format_target_name(self_id, self_id, "Alice", None),
-            "Alice"
-        );
+        assert_eq!(format_target_name(self_id, self_id, "Alice", None), "Alice");
         assert_eq!(
             format_target_name(other_id, self_id, "Alice", Some("Bob")),
             "Bob"
         );
-        assert_eq!(
-            format_target_name(other_id, self_id, "Alice", None),
-            "<@2>"
-        );
+        assert_eq!(format_target_name(other_id, self_id, "Alice", None), "<@2>");
 
-        let req = build_transfer_request_payload(self_id, "Alice", other_id, "Bob", 50, Some("Cadeau".into()));
+        let req = build_transfer_request_payload(
+            self_id,
+            "Alice",
+            other_id,
+            "Bob",
+            50,
+            Some("Cadeau".into()),
+        );
         assert_eq!(req.from_user_id, "1");
         assert_eq!(req.from_username, "Alice");
         assert_eq!(req.to_user_id, "2");
@@ -392,14 +397,12 @@ mod tests {
         let j_t_err = serde_json::to_value(&emb_t_err).unwrap();
         assert_eq!(j_t_err["description"], "Transfer fail");
 
-        let lb_ok = Ok(vec![
-            api_client::WalletResponse {
-                user_id: "u1".into(),
-                coins: 1000,
-                total_earned: 2000,
-                total_spent: 1000,
-            }
-        ]);
+        let lb_ok = Ok(vec![api_client::WalletResponse {
+            user_id: "u1".into(),
+            coins: 1000,
+            total_earned: 2000,
+            total_spent: 1000,
+        }]);
         let emb_lb = build_leaderboard_response_embed(&lb_ok);
         let j_lb = serde_json::to_value(&emb_lb).unwrap();
         assert!(j_lb["title"].as_str().unwrap().contains("Classement"));
@@ -466,10 +469,7 @@ mod tests {
         let other_id = UserId::new(2);
 
         // Self with name
-        assert_eq!(
-            format_target_name(self_id, self_id, "Alice", None),
-            "Alice"
-        );
+        assert_eq!(format_target_name(self_id, self_id, "Alice", None), "Alice");
 
         // Other with resolved name
         assert_eq!(
@@ -478,10 +478,7 @@ mod tests {
         );
 
         // Other without resolved name
-        assert_eq!(
-            format_target_name(other_id, self_id, "Alice", None),
-            "<@2>"
-        );
+        assert_eq!(format_target_name(other_id, self_id, "Alice", None), "<@2>");
 
         // Ensure target's own name doesn't override when target != self
         assert_eq!(
@@ -496,7 +493,8 @@ mod tests {
         let user2 = UserId::new(200);
 
         // With reason
-        let req1 = build_transfer_request_payload(user1, "Alice", user2, "Bob", 50, Some("Gift".into()));
+        let req1 =
+            build_transfer_request_payload(user1, "Alice", user2, "Bob", 50, Some("Gift".into()));
         assert_eq!(req1.from_user_id, "100");
         assert_eq!(req1.from_username, "Alice");
         assert_eq!(req1.to_user_id, "200");
@@ -595,7 +593,9 @@ mod tests {
     fn test_error_message_ephemeral() {
         let msg = build_error_message("Critical error");
         let json = serde_json::to_value(&msg).unwrap();
-        assert!(json["data"]["flags"].as_u64().is_some() || json["data"]["flags"].as_i64().is_some());
+        assert!(
+            json["data"]["flags"].as_u64().is_some() || json["data"]["flags"].as_i64().is_some()
+        );
     }
 
     #[test]
@@ -615,20 +615,13 @@ mod tests {
     #[test]
     fn test_format_target_name_edge_cases() {
         let id1 = UserId::new(1);
-        let id2 = UserId::new(2);
 
         // Very long name
         let long_name = "a".repeat(100);
-        assert_eq!(
-            format_target_name(id1, id1, &long_name, None),
-            long_name
-        );
+        assert_eq!(format_target_name(id1, id1, &long_name, None), long_name);
 
         // Unicode name
-        assert_eq!(
-            format_target_name(id1, id1, "Café ☕", None),
-            "Café ☕"
-        );
+        assert_eq!(format_target_name(id1, id1, "Café ☕", None), "Café ☕");
 
         // Large ID
         let large_id = UserId::new(999999999999);
@@ -640,24 +633,24 @@ mod tests {
 
     #[test]
     fn test_build_transfer_request_payload_edge_cases() {
-        let ch1 = ChannelId::new(111);
         let u1 = UserId::new(1);
         let u2 = UserId::new(2);
 
         // Zero amount
-        let req = build_transfer_request_payload(ch1, u1, "A", u2, "B", 0, None);
+        let req = build_transfer_request_payload(u1, "A", u2, "B", 0, None);
         assert_eq!(req.amount, 0);
 
         // Negative amount
-        let req = build_transfer_request_payload(ch1, u1, "A", u2, "B", -50, None);
+        let req = build_transfer_request_payload(u1, "A", u2, "B", -50, None);
         assert_eq!(req.amount, -50);
 
         // Very large amount
-        let req = build_transfer_request_payload(ch1, u1, "A", u2, "B", i64::MAX - 1, None);
+        let req = build_transfer_request_payload(u1, "A", u2, "B", i64::MAX - 1, None);
         assert_eq!(req.amount, i64::MAX - 1);
 
         // Unicode usernames
-        let req = build_transfer_request_payload(ch1, u1, "Çøsé", u2, "Nördé", 100, Some("Merçi".into()));
+        let req =
+            build_transfer_request_payload(u1, "Çøsé", u2, "Nördé", 100, Some("Merçi".into()));
         assert_eq!(req.from_username, "Çøsé");
         assert_eq!(req.to_username, "Nördé");
     }
@@ -737,11 +730,10 @@ mod tests {
         }
     }
 
-
     #[tokio::test]
     async fn test_execute_economy_actions() {
-        use tokio::net::TcpListener;
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::TcpListener;
 
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
@@ -811,7 +803,8 @@ mod tests {
         let j_err_t = serde_json::to_value(&err_t_emb).unwrap();
         assert_eq!(j_err_t["description"], "transfer error");
 
-        let err_lb_res: Result<Vec<api_client::WalletResponse>, String> = Err("leaderboard error".into());
+        let err_lb_res: Result<Vec<api_client::WalletResponse>, String> =
+            Err("leaderboard error".into());
         let err_lb_emb = build_leaderboard_response_embed(&err_lb_res);
         let j_err_lb = serde_json::to_value(&err_lb_emb).unwrap();
         assert_eq!(j_err_lb["description"], "leaderboard error");

@@ -453,14 +453,7 @@ async fn handle_leave(ctx: &Context, cmd: &CommandInteraction, api: &ApiClient, 
         }
     };
     match member.remove_role(&ctx.http, role_id).await {
-        Ok(()) => {
-            reply(
-                ctx,
-                cmd,
-                &format_game_leave_success(&game.game_name),
-            )
-            .await
-        }
+        Ok(()) => reply(ctx, cmd, &format_game_leave_success(&game.game_name)).await,
         Err(e) => reply(ctx, cmd, &format!("Erreur : {e}")).await,
     }
 }
@@ -494,8 +487,7 @@ pub fn format_game_list_content(games: &[Game]) -> String {
 pub fn format_game_join_success(game_name: &str, role_id: u64) -> String {
     format!(
         "Tu es inscrit a **{}** ! Utilise <@&{}> pour pinger les joueurs.",
-        game_name,
-        role_id
+        game_name, role_id
     )
 }
 
@@ -587,14 +579,19 @@ pub fn build_game_edit_reply(content: &str) -> EditInteractionResponse {
     EditInteractionResponse::new().content(content)
 }
 
-pub fn build_game_component_followup(content: &str) -> serenity::all::CreateInteractionResponseFollowup {
+pub fn build_game_component_followup(
+    content: &str,
+) -> serenity::all::CreateInteractionResponseFollowup {
     serenity::all::CreateInteractionResponseFollowup::new()
         .content(content)
         .ephemeral(true)
 }
 
 async fn reply(ctx: &Context, cmd: &CommandInteraction, content: &str) {
-    if let Err(e) = cmd.create_response(&ctx.http, build_game_reply(content)).await {
+    if let Err(e) = cmd
+        .create_response(&ctx.http, build_game_reply(content))
+        .await
+    {
         warn!(error = %e, "Erreur reponse commande game");
     }
 }
@@ -609,7 +606,10 @@ async fn edit_deferred_reply(ctx: &Context, cmd: &CommandInteraction, content: &
 }
 
 async fn reply_embed(ctx: &Context, cmd: &CommandInteraction, embed: CreateEmbed) {
-    if let Err(e) = cmd.create_response(&ctx.http, build_game_embed_reply(embed)).await {
+    if let Err(e) = cmd
+        .create_response(&ctx.http, build_game_embed_reply(embed))
+        .await
+    {
         warn!(error = %e, "Erreur reponse embed commande game");
     }
 }
@@ -710,10 +710,14 @@ mod tests {
         assert_eq!(parse_reaction_type("   "), None);
 
         let custom = parse_reaction_type("<:mon_emoji:9876543210>").unwrap();
-        assert!(matches!(custom, ReactionType::Custom { id, animated: false, .. } if id.get() == 9876543210));
+        assert!(
+            matches!(custom, ReactionType::Custom { id, animated: false, .. } if id.get() == 9876543210)
+        );
 
         let custom_anim = parse_reaction_type("<a:mon_anim:1122334455>").unwrap();
-        assert!(matches!(custom_anim, ReactionType::Custom { id, animated: true, .. } if id.get() == 1122334455));
+        assert!(
+            matches!(custom_anim, ReactionType::Custom { id, animated: true, .. } if id.get() == 1122334455)
+        );
 
         let unicode = parse_reaction_type("🎲").unwrap();
         assert!(matches!(unicode, ReactionType::Unicode(u) if u == "🎲"));
@@ -735,7 +739,10 @@ mod tests {
         let embed_with_games = build_panel_embed(Some("Survie"), &[&g1]);
         let j_games = serde_json::to_value(&embed_with_games).unwrap();
         assert_eq!(j_games["title"], "- [ Survie ] -");
-        assert!(j_games["description"].as_str().unwrap().contains("<@&12345>"));
+        assert!(j_games["description"]
+            .as_str()
+            .unwrap()
+            .contains("<@&12345>"));
     }
 
     #[test]
@@ -838,17 +845,28 @@ mod tests {
     }
 
     #[test]
-    fn test_clean_emoji_invalid() {
-        let result = clean_emoji(Some("invalid_emoji_format"));
-        assert!(result.is_err());
+    fn un_emoji_de_serveur_est_accepte_tel_quel() {
+        assert_eq!(
+            clean_emoji(Some("<:test:123456789>")),
+            Ok(Some("<:test:123456789>".into()))
+        );
+        assert_eq!(
+            clean_emoji(Some("<a:anim:987654321>")),
+            Ok(Some("<a:anim:987654321>".into()))
+        );
     }
 
     #[test]
-    fn test_clean_emoji_custom_emoji_valid() {
-        // Assuming parse_reaction_type handles custom emojis
-        let result = clean_emoji(Some("<:test:123456789>"));
-        // Either Ok or Err depending on parse_reaction_type implementation
-        assert!(result.is_ok() || result.is_err());
+    fn toute_saisie_non_vide_est_retenue_comme_emoji() {
+        // Constat, pas souhait : `parse_reaction_type` retombe sur
+        // `ReactionType::Unicode` pour n'importe quelle chaine non vide. La
+        // branche « Emoji invalide » de `clean_emoji` est donc INATTEIGNABLE,
+        // et une saisie fantaisiste finit comme reaction sur le panneau, ou
+        // Discord la refusera silencieusement.
+        assert_eq!(
+            clean_emoji(Some("pas_un_emoji")),
+            Ok(Some("pas_un_emoji".into()))
+        );
     }
 
     #[test]

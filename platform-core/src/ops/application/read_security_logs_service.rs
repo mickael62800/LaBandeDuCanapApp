@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use crate::ops::domain::entities::security_log::{AuthFailure, LogWindow, TopIp, TrafficTrend, TrafficPoint};
+use crate::ops::domain::entities::security_log::{AuthFailure, LogWindow, TopIp, TrafficTrend};
 use crate::ops::domain::errors::DomainError;
 use crate::ops::ports::inbound::read_security_logs::ReadSecurityLogsUseCase;
 use crate::ops::ports::outbound::security_log_repository::SecurityLogRepository;
@@ -63,6 +63,7 @@ impl ReadSecurityLogsUseCase for ReadSecurityLogsService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ops::domain::entities::security_log::TrafficPoint;
 
     #[test]
     fn les_valeurs_hors_bornes_sont_ramenees() {

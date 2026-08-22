@@ -385,7 +385,9 @@ mod tests {
         let items: Vec<AchievementProgress> = (0..50)
             .map(|i| AchievementProgress {
                 name: format!("Haut Fait Long Nom Numéro {i}"),
-                description: format!("Description très détaillée du haut fait numéro {i} avec du texte long"),
+                description: format!(
+                    "Description très détaillée du haut fait numéro {i} avec du texte long"
+                ),
                 icon_url: None,
                 unlocked_at: Some("2026-01-01T00:00:00Z".into()),
             })
@@ -395,10 +397,25 @@ mod tests {
         assert!(res.contains("de plus"));
     }
 
+    /// Pose `WEB_FRONT_URL` le temps d'une verification, puis la retire.
+    ///
+    /// Les variables d'environnement sont GLOBALES au processus, et les tests
+    /// tournent en parallele : deux tests qui posent puis retirent la meme
+    /// variable se marchent dessus, et l'un des deux echoue au hasard. D'ou un
+    /// seul test pour toute la variable, plutot qu'un par cas.
+    fn avec_base(valeur: Option<&str>, verifier: impl FnOnce()) {
+        match valeur {
+            Some(v) => std::env::set_var("WEB_FRONT_URL", v),
+            None => std::env::remove_var("WEB_FRONT_URL"),
+        }
+        verifier();
+        std::env::remove_var("WEB_FRONT_URL");
+    }
+
     #[test]
-    fn test_image_absolue() {
-        assert_eq!(image_absolue(""), None);
-        assert_eq!(image_absolue("   "), None);
+    fn une_url_deja_absolue_part_telle_quelle() {
+        // Ce cas sort avant meme de lire la configuration : il ne depend donc
+        // pas de la variable d'environnement.
         assert_eq!(
             image_absolue("https://example.com/icon.png"),
             Some("https://example.com/icon.png".into())
@@ -407,48 +424,62 @@ mod tests {
             image_absolue("http://example.com/icon.png"),
             Some("http://example.com/icon.png".into())
         );
-
-        std::env::set_var("WEB_FRONT_URL", "https://front.canap.fr");
-        assert_eq!(
-            image_absolue("/img/test.png"),
-            Some("https://front.canap.fr/img/test.png".into())
-        );
-        std::env::remove_var("WEB_FRONT_URL");
-        assert_eq!(image_absolue("/img/test.png"), None);
     }
 
     #[test]
-    fn test_image_absolue_with_trailing_slash() {
-        std::env::set_var("WEB_FRONT_URL", "https://front.canap.fr/");
-        assert_eq!(
-            image_absolue("img/test.png"),
-            Some("https://front.canap.fr/img/test.png".into())
-        );
-        std::env::remove_var("WEB_FRONT_URL");
+    fn une_image_vide_n_est_jamais_une_url() {
+        assert_eq!(image_absolue(""), None);
+        assert_eq!(image_absolue("   "), None);
     }
 
     #[test]
-    fn test_image_absolue_empty_url() {
-        std::env::set_var("WEB_FRONT_URL", "");
-        assert_eq!(image_absolue("/img/test.png"), None);
-        std::env::remove_var("WEB_FRONT_URL");
-    }
+    fn le_chemin_local_devient_absolu_selon_la_base() {
+        // Sans base configuree, on renonce a la vignette plutot que d'envoyer
+        // a Discord une URL qu'il refusera.
+        avec_base(None, || {
+            assert_eq!(image_absolue("/img/test.png"), None);
+        });
 
-    #[test]
-    fn test_image_absolue_whitespace_url() {
-        std::env::set_var("WEB_FRONT_URL", "   ");
-        assert_eq!(image_absolue("/img/test.png"), None);
-        std::env::remove_var("WEB_FRONT_URL");
-    }
+        avec_base(Some("https://front.canap.fr"), || {
+            assert_eq!(
+                image_absolue("/img/test.png"),
+                Some("https://front.canap.fr/img/test.png".into())
+            );
+            // Sans barre de tete non plus : le chemin est recolle proprement.
+            assert_eq!(
+                image_absolue("img/test.png"),
+                Some("https://front.canap.fr/img/test.png".into())
+            );
+        });
 
-    #[test]
-    fn test_image_absolue_relative_paths() {
-        std::env::set_var("WEB_FRONT_URL", "https://cdn.example.com");
-        assert_eq!(
-            image_absolue("achievements/icon.png"),
-            Some("https://cdn.example.com/achievements/icon.png".into())
-        );
-        std::env::remove_var("WEB_FRONT_URL");
+        // Barre finale sur la base : pas de double barre dans le resultat.
+        avec_base(Some("https://front.canap.fr/"), || {
+            assert_eq!(
+                image_absolue("img/test.png"),
+                Some("https://front.canap.fr/img/test.png".into())
+            );
+        });
+        avec_base(Some("https://front.canap.fr//"), || {
+            assert_eq!(
+                image_absolue("/img/test.png"),
+                Some("https://front.canap.fr/img/test.png".into())
+            );
+        });
+
+        // Une base vide ou blanche vaut une base absente.
+        avec_base(Some(""), || {
+            assert_eq!(image_absolue("/img/test.png"), None);
+        });
+        avec_base(Some("   "), || {
+            assert_eq!(image_absolue("/img/test.png"), None);
+        });
+
+        avec_base(Some("https://cdn.example.com"), || {
+            assert_eq!(
+                image_absolue("achievements/icon.png"),
+                Some("https://cdn.example.com/achievements/icon.png".into())
+            );
+        });
     }
 
     #[test]
@@ -511,42 +542,6 @@ mod tests {
     }
 
     #[test]
-    fn test_image_absolue_with_base_url_and_leading_slash() {
-        std::env::set_var("WEB_FRONT_URL", "https://example.com");
-        assert_eq!(
-            image_absolue("/path/to/image.png"),
-            Some("https://example.com/path/to/image.png".into())
-        );
-        std::env::remove_var("WEB_FRONT_URL");
-    }
-
-    #[test]
-    fn test_image_absolue_with_base_url_no_leading_slash() {
-        std::env::set_var("WEB_FRONT_URL", "https://example.com");
-        assert_eq!(
-            image_absolue("path/to/image.png"),
-            Some("https://example.com/path/to/image.png".into())
-        );
-        std::env::remove_var("WEB_FRONT_URL");
-    }
-
-    #[test]
-    fn test_image_absolue_https_already_absolute() {
-        assert_eq!(
-            image_absolue("https://cdn.example.com/image.png"),
-            Some("https://cdn.example.com/image.png".into())
-        );
-    }
-
-    #[test]
-    fn test_image_absolue_http_already_absolute() {
-        assert_eq!(
-            image_absolue("http://images.example.com/pic.jpg"),
-            Some("http://images.example.com/pic.jpg".into())
-        );
-    }
-
-    #[test]
     fn test_liste_with_mixed_items() {
         let items: Vec<AchievementProgress> = vec![
             AchievementProgress {
@@ -578,14 +573,12 @@ mod tests {
 
     #[test]
     fn test_liste_with_very_long_descriptions() {
-        let items: Vec<AchievementProgress> = vec![
-            AchievementProgress {
-                name: "Test".into(),
-                description: "x".repeat(500).into(),
-                icon_url: None,
-                unlocked_at: Some("2026-01-01T00:00:00Z".into()),
-            }
-        ];
+        let items: Vec<AchievementProgress> = vec![AchievementProgress {
+            name: "Test".into(),
+            description: "x".repeat(500),
+            icon_url: None,
+            unlocked_at: Some("2026-01-01T00:00:00Z".into()),
+        }];
         let refs: Vec<&AchievementProgress> = items.iter().collect();
         let res = liste(&refs, "Empty");
         // Should not be empty even with very long description
@@ -594,37 +587,18 @@ mod tests {
     }
 
     #[test]
-    fn test_image_absolue_base_url_with_trailing_slash() {
-        std::env::set_var("WEB_FRONT_URL", "https://example.com/");
-        assert_eq!(
-            image_absolue("/img.png"),
-            Some("https://example.com/img.png".into())
-        );
-        std::env::remove_var("WEB_FRONT_URL");
-    }
-
-    #[test]
-    fn test_image_absolue_base_url_multiple_trailing_slashes() {
-        std::env::set_var("WEB_FRONT_URL", "https://example.com//");
-        // Should handle multiple trailing slashes
-        let result = image_absolue("/img.png");
-        assert!(result.is_some());
-        std::env::remove_var("WEB_FRONT_URL");
-    }
-
-    #[test]
     fn test_liste_boundary_at_950_chars() {
         // Test items that approach but don't exceed 950 char limit
         let items: Vec<AchievementProgress> = vec![
             AchievementProgress {
                 name: "Achievement".into(),
-                description: "d".repeat(200).into(),
+                description: "d".repeat(200),
                 icon_url: None,
                 unlocked_at: Some("2026-01-01T00:00:00Z".into()),
             },
             AchievementProgress {
                 name: "Second".into(),
-                description: "e".repeat(200).into(),
+                description: "e".repeat(200),
                 icon_url: None,
                 unlocked_at: Some("2026-01-01T00:00:00Z".into()),
             },

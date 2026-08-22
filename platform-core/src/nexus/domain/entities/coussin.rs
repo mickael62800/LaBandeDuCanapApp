@@ -549,7 +549,7 @@ mod tests {
         assert_eq!(PlayerClass::parse("invalid"), None);
         assert_eq!(PlayerClass::Ecraseur.as_str(), "ecraseur");
         assert_eq!(PlayerClass::Ecraseur.label(), "🪑 Écraseur");
-        assert!(PlayerClass::Ecraseur.pitch().len() > 0);
+        assert!(!PlayerClass::Ecraseur.pitch().is_empty());
         let (atk, def) = PlayerClass::Ecraseur.base_stats();
         assert_eq!(atk, 25);
         assert_eq!(def, 8);
@@ -595,8 +595,10 @@ mod tests {
         assert_eq!(res, Err("ecart de niveau trop important"));
 
         // Test combat avec rage de l'ecraseur
-        let mut rules = CombatRules::default();
-        rules.max_rounds = 3;
+        let rules = CombatRules {
+            max_rounds: 3,
+            ..Default::default()
+        };
         let res = resolve_combat(
             30,
             0,

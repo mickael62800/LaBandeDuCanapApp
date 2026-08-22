@@ -58,7 +58,7 @@ impl GameRepository for MockGameRepo {
     }
     async fn set_role_id(
         &self,
-        guild_id: &str,
+        _guild_id: &str,
         game_id: &str,
         role_id: Option<&str>,
     ) -> Result<Option<Game>, DomainError> {

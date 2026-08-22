@@ -391,7 +391,8 @@ mod tests {
 
     #[test]
     fn test_deserialize_wheel_and_wallet() {
-        let wheel_json = r#"{"case_label":"Jackpot","payout":1000,"balance_after":1500,"is_memorable":true}"#;
+        let wheel_json =
+            r#"{"case_label":"Jackpot","payout":1000,"balance_after":1500,"is_memorable":true}"#;
         let wheel: WheelSpinResponse = serde_json::from_str(wheel_json).unwrap();
         assert_eq!(wheel.case_label, "Jackpot");
         assert_eq!(wheel.payout, 1000);
@@ -409,7 +410,9 @@ mod tests {
 
     #[test]
     fn test_serialize_requests() {
-        let wheel_req = WheelSpinRequest { username: "Alice".into() };
+        let wheel_req = WheelSpinRequest {
+            username: "Alice".into(),
+        };
         let json = serde_json::to_string(&wheel_req).unwrap();
         assert!(json.contains("Alice"));
 
@@ -424,7 +427,9 @@ mod tests {
         let json_trans = serde_json::to_string(&trans_req).unwrap();
         assert!(json_trans.contains("gift"));
 
-        let join_req = GrandSalonJoinRequest { display_name: "Alice".into() };
+        let join_req = GrandSalonJoinRequest {
+            display_name: "Alice".into(),
+        };
         assert!(serde_json::to_string(&join_req).unwrap().contains("Alice"));
 
         let challenge_req = CoussinChallengeRequest {
@@ -435,18 +440,32 @@ mod tests {
             defender_name: "Def".into(),
             mise: 100,
         };
-        assert!(serde_json::to_string(&challenge_req).unwrap().contains("100"));
+        assert!(serde_json::to_string(&challenge_req)
+            .unwrap()
+            .contains("100"));
 
-        let def_req = CoussinDefenderRequest { defender_id: "d1".into() };
+        let def_req = CoussinDefenderRequest {
+            defender_id: "d1".into(),
+        };
         assert!(serde_json::to_string(&def_req).unwrap().contains("d1"));
 
-        let class_req = CoussinClassRequest { username: "Alice".into(), class: "guerrier".into() };
-        assert!(serde_json::to_string(&class_req).unwrap().contains("guerrier"));
+        let class_req = CoussinClassRequest {
+            username: "Alice".into(),
+            class: "guerrier".into(),
+        };
+        assert!(serde_json::to_string(&class_req)
+            .unwrap()
+            .contains("guerrier"));
 
-        let train_req = CoussinTrainRequest { username: "Alice".into(), stat: "atk".into() };
+        let train_req = CoussinTrainRequest {
+            username: "Alice".into(),
+            stat: "atk".into(),
+        };
         assert!(serde_json::to_string(&train_req).unwrap().contains("atk"));
 
-        let buy_req = CoussinBuyItemRequest { item_key: "potion".into() };
+        let buy_req = CoussinBuyItemRequest {
+            item_key: "potion".into(),
+        };
         assert!(serde_json::to_string(&buy_req).unwrap().contains("potion"));
 
         let steal_req = CoussinStealRequest {
@@ -499,7 +518,8 @@ mod tests {
         let steal_opened: CoussinStealOpened = serde_json::from_str(steal_opened_json).unwrap();
         assert_eq!(steal_opened.attempt_id, "att_1");
 
-        let steal_out_json = r#"{"thief_id":"th1","success":true,"amount":100,"thief_total":15,"victim_total":10}"#;
+        let steal_out_json =
+            r#"{"thief_id":"th1","success":true,"amount":100,"thief_total":15,"victim_total":10}"#;
         let steal_out: CoussinStealOutcome = serde_json::from_str(steal_out_json).unwrap();
         assert!(steal_out.success);
 
@@ -529,7 +549,8 @@ mod tests {
         assert_eq!(s.name, "Mon Serveur");
         assert_eq!(s.last_player_count, 3);
 
-        let server_detail_json = format!(r#"{{"server":{server_json},"config":{{"MOTD":"Bienvenue"}}}}"#);
+        let server_detail_json =
+            format!(r#"{{"server":{server_json},"config":{{"MOTD":"Bienvenue"}}}}"#);
         let sd: ServerDetailResponse = serde_json::from_str(&server_detail_json).unwrap();
         assert_eq!(sd.server.id, "s1");
         assert_eq!(sd.config.get("MOTD").map(|s| s.as_str()), Some("Bienvenue"));
@@ -566,8 +587,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_all_api_client_http_endpoints() {
-        use tokio::net::TcpListener;
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::TcpListener;
 
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
@@ -611,17 +632,24 @@ mod tests {
                     r#"{"attempt_id":"att_1","defense_window_seconds":30}"#
                 } else if req_str.contains("/api/coussin/") && req_str.contains("/inventory") {
                     r#"[{"item_key":"shield","quantity":1}]"#
-                } else if req_str.contains("/api/games/servers/") && req_str.contains("/reveal-ip/request") {
+                } else if req_str.contains("/api/games/servers/")
+                    && req_str.contains("/reveal-ip/request")
+                {
                     r#"{"delay_minutes":5,"started":true}"#
-                } else if req_str.contains("/api/games/servers/") && req_str.contains("/registrations") {
+                } else if req_str.contains("/api/games/servers/")
+                    && req_str.contains("/registrations")
+                {
                     r#"[{"user_id":"u1"}]"#
-                } else if req_str.contains("/api/games/servers/") && req_str.contains("/session-channels") {
+                } else if req_str.contains("/api/games/servers/")
+                    && req_str.contains("/session-channels")
+                {
                     r#"{"claimed":true}"#
                 } else if req_str.contains("/api/games/servers/") {
                     r#"{"server":{"id":"s1","guild_id":"g1","template_id":"t1","name":"Server","status":"Running","owner_user_id":"u1","host_port":25565,"public_host":"host","ip_reveal_at":null,"ip_revealed":true,"display_state":"open","text_channel_id":null,"voice_channel_id":null,"last_player_count":0},"config":{}}"#
                 } else if req_str.contains("/api/games/templates/") {
                     r#"{"slug":"valheim","name":"Valheim","cover_image_url":null,"config_schema":[]}"#
-                } else if req_str.contains("/api/games/") && req_str.contains("/template-settings") {
+                } else if req_str.contains("/api/games/") && req_str.contains("/template-settings")
+                {
                     r#"[{"template_slug":"valheim","discord_role_id":"123"}]"#
                 } else if req_str.contains("/api/games/") && req_str.contains("/servers") {
                     r#"[{"id":"s1","guild_id":"g1","template_id":"t1","name":"Server","status":"Running","owner_user_id":"u1","host_port":25565,"public_host":"host","ip_reveal_at":null,"ip_revealed":true,"display_state":"open","text_channel_id":null,"voice_channel_id":null,"last_player_count":0}]"#
@@ -662,70 +690,134 @@ mod tests {
         assert!(client.grand_salon_join("g1", "u1", "Alice").await.is_ok());
         assert!(client.grand_salon_profile("g1", "u1").await.is_ok());
         assert!(client.get_wallet("g1", "u1").await.is_ok());
-        assert!(client.transfer_coins("g1", &TransferRequest {
-            from_user_id: "u1".into(),
-            from_username: "Alice".into(),
-            to_user_id: "u2".into(),
-            to_username: "Bob".into(),
-            amount: 50,
-            reason: None,
-        }).await.is_ok());
+        assert!(client
+            .transfer_coins(
+                "g1",
+                &TransferRequest {
+                    from_user_id: "u1".into(),
+                    from_username: "Alice".into(),
+                    to_user_id: "u2".into(),
+                    to_username: "Bob".into(),
+                    amount: 50,
+                    reason: None,
+                }
+            )
+            .await
+            .is_ok());
         assert!(client.wallet_leaderboard("g1", 10).await.is_ok());
         assert!(client.spin_wheel("g1", "u1", "Alice").await.is_ok());
 
         // Achievements
-        assert!(client.member_achievements("g1", "u1", Some("valheim")).await.is_ok());
+        assert!(client
+            .member_achievements("g1", "u1", Some("valheim"))
+            .await
+            .is_ok());
 
         // Coussin
-        assert!(client.challenge_coussin("g1", &CoussinChallengeRequest {
-            channel_id: "c1".into(),
-            attacker_id: "a1".into(),
-            attacker_name: "Att".into(),
-            defender_id: "d1".into(),
-            defender_name: "Def".into(),
-            mise: 100,
-        }).await.is_ok());
-        assert_eq!(client.accept_coussin("cb_1", "d1").await.unwrap(), true);
-        assert_eq!(client.refuse_coussin("cb_1", "d1").await.unwrap(), true);
-        assert_eq!(client.resolve_coussin("cb_1").await.unwrap(), true);
+        assert!(client
+            .challenge_coussin(
+                "g1",
+                &CoussinChallengeRequest {
+                    channel_id: "c1".into(),
+                    attacker_id: "a1".into(),
+                    attacker_name: "Att".into(),
+                    defender_id: "d1".into(),
+                    defender_name: "Def".into(),
+                    mise: 100,
+                }
+            )
+            .await
+            .is_ok());
+        assert!(client.accept_coussin("cb_1", "d1").await.unwrap());
+        assert!(client.refuse_coussin("cb_1", "d1").await.unwrap());
+        assert!(client.resolve_coussin("cb_1").await.unwrap());
         assert!(client.coussin_profile("g1", "u1", "Alice").await.is_ok());
-        assert!(client.choose_coussin_class("g1", "u1", "Alice", "guerrier").await.is_ok());
-        assert!(client.train_coussin("g1", "u1", "Alice", "atk").await.is_ok());
-        assert_eq!(client.buy_coussin_item("g1", "u1", "potion").await.unwrap(), 80);
-        assert_eq!(client.buy_coussin_insurance("g1", "u1").await.unwrap().0, false);
-        assert!(client.steal_coussin("g1", "u1", &CoussinStealRequest {
-            thief_name: "Thief".into(),
-            victim_id: "v1".into(),
-            victim_name: "Vic".into(),
-            channel_id: "c1".into(),
-        }).await.is_ok());
+        assert!(client
+            .choose_coussin_class("g1", "u1", "Alice", "guerrier")
+            .await
+            .is_ok());
+        assert!(client
+            .train_coussin("g1", "u1", "Alice", "atk")
+            .await
+            .is_ok());
+        assert_eq!(
+            client.buy_coussin_item("g1", "u1", "potion").await.unwrap(),
+            80
+        );
+        assert!(!client.buy_coussin_insurance("g1", "u1").await.unwrap().0);
+        assert!(client
+            .steal_coussin(
+                "g1",
+                "u1",
+                &CoussinStealRequest {
+                    thief_name: "Thief".into(),
+                    victim_id: "v1".into(),
+                    victim_name: "Vic".into(),
+                    channel_id: "c1".into(),
+                }
+            )
+            .await
+            .is_ok());
         assert!(client.attach_steal_message("att_1", "msg_1").await.is_ok());
         assert!(client.defend_steal("att_1", "v1").await.is_ok());
-        assert!(client.prime_coussin("g1", "u1", &CoussinPrimeRequest {
-            target_id: "t1".into(),
-            target_name: "T".into(),
-            placer_name: "P".into(),
-            amount: 50,
-        }).await.is_ok());
+        assert!(client
+            .prime_coussin(
+                "g1",
+                "u1",
+                &CoussinPrimeRequest {
+                    target_id: "t1".into(),
+                    target_name: "T".into(),
+                    placer_name: "P".into(),
+                    amount: 50,
+                }
+            )
+            .await
+            .is_ok());
         assert!(client.inventory_coussin("g1", "u1").await.is_ok());
-        assert!(client.bet_coussin("g1", "u1", &CoussinBetRequest {
-            combat_id: "cb_1".into(),
-            bettor_name: "B".into(),
-            backed_id: "u2".into(),
-            amount: 20,
-        }).await.is_ok());
+        assert!(client
+            .bet_coussin(
+                "g1",
+                "u1",
+                &CoussinBetRequest {
+                    combat_id: "cb_1".into(),
+                    bettor_name: "B".into(),
+                    backed_id: "u2".into(),
+                    amount: 20,
+                }
+            )
+            .await
+            .is_ok());
 
         // Games
         assert!(client.list_games("g1").await.is_ok());
-        assert!(client.list_games_by_category("g1", Some("RPG")).await.is_ok());
-        assert!(client.create_game("g1", "Valheim", "u1", Some("r1"), Some("⚔️"), Some("Survie")).await.is_ok());
+        assert!(client
+            .list_games_by_category("g1", Some("RPG"))
+            .await
+            .is_ok());
+        assert!(client
+            .create_game(
+                "g1",
+                "Valheim",
+                "u1",
+                Some("r1"),
+                Some("⚔️"),
+                Some("Survie")
+            )
+            .await
+            .is_ok());
         assert!(client.set_game_role("g1", "g1", "r1").await.is_ok());
         assert!(client.delete_game("g1", "g1").await.is_ok());
         assert!(client.get_game_by_name("g1", "Minecraft").await.is_ok());
-        assert!(client.save_panel("g1", "c1", "m1", Some("Survie")).await.is_ok());
+        assert!(client
+            .save_panel("g1", "c1", "m1", Some("Survie"))
+            .await
+            .is_ok());
         assert!(client.list_panels("g1").await.is_ok());
         assert!(client.find_panel_by_message("g1", "m1").await.is_ok());
-        assert!(client.put_sync_inventory("g1", &serde_json::json!({})).await.is_ok());
+        assert!(client
+            .put_sync_inventory("g1", &serde_json::json!({}))
+            .await
+            .is_ok());
         assert!(client.report_vanished_role("g1", "r1").await.is_ok());
 
         // Game portal
@@ -738,7 +830,13 @@ mod tests {
         assert!(client.list_server_registrations("s1").await.is_ok());
         assert!(client.list_template_settings("g1").await.is_ok());
         assert!(client.get_guild_config("g1", "game-portal").await.is_ok());
-        assert!(client.set_config("g1", "game-portal", "k", "v").await.is_ok());
-        assert_eq!(client.set_session_channels("s1", Some("c1"), Some("c2")).await.unwrap(), true);
+        assert!(client
+            .set_config("g1", "game-portal", "k", "v")
+            .await
+            .is_ok());
+        assert!(client
+            .set_session_channels("s1", Some("c1"), Some("c2"))
+            .await
+            .unwrap());
     }
 }

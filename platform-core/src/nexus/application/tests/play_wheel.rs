@@ -269,9 +269,9 @@ async fn test_can_spin() {
     assert!(!svc_cant.can_spin("g1", "u1").await.unwrap());
 }
 
-struct MockWheelRepoTxFail {
-    logged: Mutex<Vec<WheelSpin>>,
-}
+/// Transaction perdue au profit d'un autre thread. Rien n'est journalise ici :
+/// c'est justement ce que le test verifie.
+struct MockWheelRepoTxFail;
 
 #[async_trait]
 impl WheelRepository for MockWheelRepoTxFail {
@@ -312,9 +312,7 @@ impl WheelRepository for MockWheelRepoTxFail {
 
 #[tokio::test]
 async fn test_spin_concurrent_transaction_fails() {
-    let wheel = Arc::new(MockWheelRepoTxFail {
-        logged: Mutex::new(vec![]),
-    });
+    let wheel = Arc::new(MockWheelRepoTxFail);
     let wallet = Arc::new(MockWalletRepo {
         initial_coins: 1000,
         saved: Mutex::new(vec![]),
@@ -347,16 +345,21 @@ async fn test_spin_with_wheel_disabled() {
             &self,
             _guild_id: &str,
             bot_name: &str,
-        ) -> Result<Vec<crate::nexus::domain::entities::system::bot_config::BotGuildConfig>, crate::nexus::domain::errors::DomainError> {
+        ) -> Result<
+            Vec<crate::nexus::domain::entities::system::bot_config::BotGuildConfig>,
+            crate::nexus::domain::errors::DomainError,
+        > {
             if bot_name == "nexus-economy" {
-                Ok(vec![crate::nexus::domain::entities::system::bot_config::BotGuildConfig {
-                    id: uuid::Uuid::nil(),
-                    guild_id: "g1".into(),
-                    bot_name: bot_name.to_string(),
-                    config_key: "wheel_enabled".into(),
-                    config_value: "false".into(),
-                    updated_at: chrono::Utc::now(),
-                }])
+                Ok(vec![
+                    crate::nexus::domain::entities::system::bot_config::BotGuildConfig {
+                        id: uuid::Uuid::nil(),
+                        guild_id: "g1".into(),
+                        bot_name: bot_name.to_string(),
+                        config_key: "wheel_enabled".into(),
+                        config_value: "false".into(),
+                        updated_at: chrono::Utc::now(),
+                    },
+                ])
             } else {
                 Ok(vec![])
             }
@@ -364,13 +367,27 @@ async fn test_spin_with_wheel_disabled() {
         async fn get_all_config(
             &self,
             _: &str,
-        ) -> Result<Vec<crate::nexus::domain::entities::system::bot_config::BotGuildConfig>, crate::nexus::domain::errors::DomainError> {
+        ) -> Result<
+            Vec<crate::nexus::domain::entities::system::bot_config::BotGuildConfig>,
+            crate::nexus::domain::errors::DomainError,
+        > {
             Ok(vec![])
         }
-        async fn set_config(&self, _: &str, _: &str, _: &str, _: &str) -> Result<(), crate::nexus::domain::errors::DomainError> {
+        async fn set_config(
+            &self,
+            _: &str,
+            _: &str,
+            _: &str,
+            _: &str,
+        ) -> Result<(), crate::nexus::domain::errors::DomainError> {
             Ok(())
         }
-        async fn delete_config(&self, _: &str, _: &str, _: &str) -> Result<(), crate::nexus::domain::errors::DomainError> {
+        async fn delete_config(
+            &self,
+            _: &str,
+            _: &str,
+            _: &str,
+        ) -> Result<(), crate::nexus::domain::errors::DomainError> {
             Ok(())
         }
     }
@@ -413,16 +430,21 @@ async fn test_can_spin_with_wheel_disabled() {
             &self,
             _guild_id: &str,
             bot_name: &str,
-        ) -> Result<Vec<crate::nexus::domain::entities::system::bot_config::BotGuildConfig>, crate::nexus::domain::errors::DomainError> {
+        ) -> Result<
+            Vec<crate::nexus::domain::entities::system::bot_config::BotGuildConfig>,
+            crate::nexus::domain::errors::DomainError,
+        > {
             if bot_name == "nexus-economy" {
-                Ok(vec![crate::nexus::domain::entities::system::bot_config::BotGuildConfig {
-                    id: uuid::Uuid::nil(),
-                    guild_id: "g1".into(),
-                    bot_name: bot_name.to_string(),
-                    config_key: "wheel_enabled".into(),
-                    config_value: "false".into(),
-                    updated_at: chrono::Utc::now(),
-                }])
+                Ok(vec![
+                    crate::nexus::domain::entities::system::bot_config::BotGuildConfig {
+                        id: uuid::Uuid::nil(),
+                        guild_id: "g1".into(),
+                        bot_name: bot_name.to_string(),
+                        config_key: "wheel_enabled".into(),
+                        config_value: "false".into(),
+                        updated_at: chrono::Utc::now(),
+                    },
+                ])
             } else {
                 Ok(vec![])
             }
@@ -430,13 +452,27 @@ async fn test_can_spin_with_wheel_disabled() {
         async fn get_all_config(
             &self,
             _: &str,
-        ) -> Result<Vec<crate::nexus::domain::entities::system::bot_config::BotGuildConfig>, crate::nexus::domain::errors::DomainError> {
+        ) -> Result<
+            Vec<crate::nexus::domain::entities::system::bot_config::BotGuildConfig>,
+            crate::nexus::domain::errors::DomainError,
+        > {
             Ok(vec![])
         }
-        async fn set_config(&self, _: &str, _: &str, _: &str, _: &str) -> Result<(), crate::nexus::domain::errors::DomainError> {
+        async fn set_config(
+            &self,
+            _: &str,
+            _: &str,
+            _: &str,
+            _: &str,
+        ) -> Result<(), crate::nexus::domain::errors::DomainError> {
             Ok(())
         }
-        async fn delete_config(&self, _: &str, _: &str, _: &str) -> Result<(), crate::nexus::domain::errors::DomainError> {
+        async fn delete_config(
+            &self,
+            _: &str,
+            _: &str,
+            _: &str,
+        ) -> Result<(), crate::nexus::domain::errors::DomainError> {
             Ok(())
         }
     }
@@ -459,7 +495,6 @@ async fn test_can_spin_with_wheel_disabled() {
     assert!(!svc.can_spin("g1", "u1").await.unwrap());
 }
 
-
 #[tokio::test]
 async fn test_spin_cooldown_message_with_hours() {
     struct MockConfigRepoCooldownHours;
@@ -479,7 +514,10 @@ async fn test_spin_cooldown_message_with_hours() {
             &self,
             _guild_id: &str,
             bot_name: &str,
-        ) -> Result<Vec<crate::nexus::domain::entities::system::bot_config::BotGuildConfig>, crate::nexus::domain::errors::DomainError> {
+        ) -> Result<
+            Vec<crate::nexus::domain::entities::system::bot_config::BotGuildConfig>,
+            crate::nexus::domain::errors::DomainError,
+        > {
             if bot_name == "nexus-economy" {
                 Ok(vec![
                     crate::nexus::domain::entities::system::bot_config::BotGuildConfig {
@@ -506,13 +544,27 @@ async fn test_spin_cooldown_message_with_hours() {
         async fn get_all_config(
             &self,
             _: &str,
-        ) -> Result<Vec<crate::nexus::domain::entities::system::bot_config::BotGuildConfig>, crate::nexus::domain::errors::DomainError> {
+        ) -> Result<
+            Vec<crate::nexus::domain::entities::system::bot_config::BotGuildConfig>,
+            crate::nexus::domain::errors::DomainError,
+        > {
             Ok(vec![])
         }
-        async fn set_config(&self, _: &str, _: &str, _: &str, _: &str) -> Result<(), crate::nexus::domain::errors::DomainError> {
+        async fn set_config(
+            &self,
+            _: &str,
+            _: &str,
+            _: &str,
+            _: &str,
+        ) -> Result<(), crate::nexus::domain::errors::DomainError> {
             Ok(())
         }
-        async fn delete_config(&self, _: &str, _: &str, _: &str) -> Result<(), crate::nexus::domain::errors::DomainError> {
+        async fn delete_config(
+            &self,
+            _: &str,
+            _: &str,
+            _: &str,
+        ) -> Result<(), crate::nexus::domain::errors::DomainError> {
             Ok(())
         }
     }
@@ -560,20 +612,37 @@ async fn test_spin_with_economy_disabled() {
             &self,
             _guild_id: &str,
             _bot_name: &str,
-        ) -> Result<Vec<crate::nexus::domain::entities::system::bot_config::BotGuildConfig>, crate::nexus::domain::errors::DomainError> {
+        ) -> Result<
+            Vec<crate::nexus::domain::entities::system::bot_config::BotGuildConfig>,
+            crate::nexus::domain::errors::DomainError,
+        > {
             // Return empty config, so enabled defaults to false (fail closed)
             Ok(vec![])
         }
         async fn get_all_config(
             &self,
             _: &str,
-        ) -> Result<Vec<crate::nexus::domain::entities::system::bot_config::BotGuildConfig>, crate::nexus::domain::errors::DomainError> {
+        ) -> Result<
+            Vec<crate::nexus::domain::entities::system::bot_config::BotGuildConfig>,
+            crate::nexus::domain::errors::DomainError,
+        > {
             Ok(vec![])
         }
-        async fn set_config(&self, _: &str, _: &str, _: &str, _: &str) -> Result<(), crate::nexus::domain::errors::DomainError> {
+        async fn set_config(
+            &self,
+            _: &str,
+            _: &str,
+            _: &str,
+            _: &str,
+        ) -> Result<(), crate::nexus::domain::errors::DomainError> {
             Ok(())
         }
-        async fn delete_config(&self, _: &str, _: &str, _: &str) -> Result<(), crate::nexus::domain::errors::DomainError> {
+        async fn delete_config(
+            &self,
+            _: &str,
+            _: &str,
+            _: &str,
+        ) -> Result<(), crate::nexus::domain::errors::DomainError> {
             Ok(())
         }
     }

@@ -433,36 +433,35 @@ mod tests {
         assert_eq!(nom.chars().count(), 100);
     }
 
+    /// L'intent de presence se lit dans une variable d'environnement, donc
+    /// GLOBALE au processus. Les tests tournant en parallele, un seul test
+    /// couvre toute la variable : deux tests qui la posent puis la retirent se
+    /// marcheraient dessus, et l'un des deux echouerait au hasard.
     #[test]
-    fn intent_presence_test_defaults_to_false() {
+    fn l_intent_de_presence_se_lit_de_facon_permissive() {
+        // Absente : fail closed, le bot ne reclame pas l'intent.
         std::env::remove_var("NEXUS_PRESENCE_INTENT");
         assert!(!intent_presence_demande());
-    }
 
-    #[test]
-    fn intent_presence_true_values() {
-        for val in &["1", "true", "TRUE", "yes", "YES", "oui", "OUI"] {
-            std::env::set_var("NEXUS_PRESENCE_INTENT", val);
-            assert!(intent_presence_demande(), "Failed for value: {}", val);
+        for valeur in ["1", "true", "TRUE", "yes", "YES", "oui", "OUI"] {
+            std::env::set_var("NEXUS_PRESENCE_INTENT", valeur);
+            assert!(intent_presence_demande(), "« {valeur} » devrait activer");
         }
-        std::env::remove_var("NEXUS_PRESENCE_INTENT");
-    }
 
-    #[test]
-    fn intent_presence_false_values() {
-        for val in &["0", "false", "no", "random", ""] {
-            std::env::set_var("NEXUS_PRESENCE_INTENT", val);
-            assert!(!intent_presence_demande(), "Failed for value: {}", val);
+        // Les espaces autour ne changent rien : un .env se saisit a la main.
+        for valeur in ["  true  ", "  oui  "] {
+            std::env::set_var("NEXUS_PRESENCE_INTENT", valeur);
+            assert!(intent_presence_demande(), "« {valeur} » devrait activer");
         }
-        std::env::remove_var("NEXUS_PRESENCE_INTENT");
-    }
 
-    #[test]
-    fn intent_presence_with_whitespace() {
-        std::env::set_var("NEXUS_PRESENCE_INTENT", "  true  ");
-        assert!(intent_presence_demande());
-        std::env::set_var("NEXUS_PRESENCE_INTENT", "  oui  ");
-        assert!(intent_presence_demande());
+        for valeur in ["0", "false", "no", "random", ""] {
+            std::env::set_var("NEXUS_PRESENCE_INTENT", valeur);
+            assert!(
+                !intent_presence_demande(),
+                "« {valeur} » ne doit pas activer"
+            );
+        }
+
         std::env::remove_var("NEXUS_PRESENCE_INTENT");
     }
 
@@ -470,7 +469,10 @@ mod tests {
     fn salon_configure_found() {
         let mut cfg = HashMap::new();
         cfg.insert("joueurs".into(), "123456789".into());
-        assert_eq!(salon_configure(&cfg, "joueurs"), Some(ChannelId::new(123456789)));
+        assert_eq!(
+            salon_configure(&cfg, "joueurs"),
+            Some(ChannelId::new(123456789))
+        );
     }
 
     #[test]
@@ -502,10 +504,7 @@ mod tests {
 
     #[test]
     fn nom_du_salon_zero_joueurs() {
-        assert_eq!(
-            nom_du_salon("🎮 {count}", 0).as_deref(),
-            Some("🎮 0")
-        );
+        assert_eq!(nom_du_salon("🎮 {count}", 0).as_deref(), Some("🎮 0"));
     }
 
     #[test]
@@ -556,8 +555,8 @@ mod tests {
         let releve = relever(&[
             serveur("running", 10),
             serveur("running", 20),
-            serveur("stopped", 100),  // Shouldn't count
-            serveur("starting", 50),  // Shouldn't count
+            serveur("stopped", 100), // Shouldn't count
+            serveur("starting", 50), // Shouldn't count
         ]);
         assert_eq!(releve.joueurs, 30);
         assert_eq!(releve.serveurs, 2);
@@ -565,10 +564,7 @@ mod tests {
 
     #[test]
     fn relever_clamping_zero_for_negative() {
-        let releve = relever(&[
-            serveur("running", -10),
-            serveur("running", -5),
-        ]);
+        let releve = relever(&[serveur("running", -10), serveur("running", -5)]);
         assert_eq!(releve.joueurs, 0);
         assert_eq!(releve.serveurs, 2);
     }
@@ -585,17 +581,29 @@ mod tests {
 
     #[test]
     fn est_en_jeu_multiple_playing() {
-        assert!(est_en_jeu(&[ActivityType::Playing, ActivityType::Playing, ActivityType::Playing]));
+        assert!(est_en_jeu(&[
+            ActivityType::Playing,
+            ActivityType::Playing,
+            ActivityType::Playing
+        ]));
     }
 
     #[test]
     fn est_en_jeu_mixed_with_other_activities() {
-        assert!(est_en_jeu(&[ActivityType::Listening, ActivityType::Playing, ActivityType::Watching]));
+        assert!(est_en_jeu(&[
+            ActivityType::Listening,
+            ActivityType::Playing,
+            ActivityType::Watching
+        ]));
     }
 
     #[test]
     fn est_en_jeu_no_playing() {
-        assert!(!est_en_jeu(&[ActivityType::Listening, ActivityType::Watching, ActivityType::Streaming]));
+        assert!(!est_en_jeu(&[
+            ActivityType::Listening,
+            ActivityType::Watching,
+            ActivityType::Streaming
+        ]));
     }
 
     #[test]
@@ -607,8 +615,14 @@ mod tests {
 
     #[test]
     fn releve_equality() {
-        let r1 = Releve { joueurs: 5, serveurs: 2 };
-        let r2 = Releve { joueurs: 5, serveurs: 2 };
+        let r1 = Releve {
+            joueurs: 5,
+            serveurs: 2,
+        };
+        let r2 = Releve {
+            joueurs: 5,
+            serveurs: 2,
+        };
         assert_eq!(r1, r2);
     }
 }

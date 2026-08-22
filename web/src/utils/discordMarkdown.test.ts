@@ -41,11 +41,20 @@ describe("renderDiscordMarkdown", () => {
   });
 
   it("laisse le markdown brut quand l'URL est invalide", () => {
-    // `https://` seul passe la regex (`[^\s)]+` accepte n'importe quoi) mais
-    // n'est pas une URL analysable.
+    // `https://` seul a aucun caractere apres `//`, donc il ne passe PAS la
+    // regex des liens : le texte ressort tel quel, sans lien.
     const html = renderDiscordMarkdown("[clic](https://)");
     expect(html).not.toContain("<a ");
     expect(html).toContain("[clic](https://)");
+  });
+
+  it("laisse le markdown brut quand new URL lève", () => {
+    // `http://user:pass@` a une identite mais PAS d'host : la regex des liens
+    // le laisse passer, mais `new URL` leve. C'est exactement le cas du catch
+    // de hrefSur — on doit garder le texte brut, pas un lien mort.
+    const html = renderDiscordMarkdown("[clic](http://user:pass@)");
+    expect(html).not.toContain("<a ");
+    expect(html).toContain("[clic](http://user:pass@)");
   });
 
   it("conserve les paramètres d'une URL", () => {

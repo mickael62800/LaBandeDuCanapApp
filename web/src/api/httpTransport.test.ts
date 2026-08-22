@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+﻿import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HttpError, HttpTimeoutError } from "./httpError";
 import { fetchWithTimeout, requestJson } from "./httpTransport";
 import { tryRefreshSession } from "./http";
@@ -146,6 +146,81 @@ describe("requestJson", () => {
       retryStatuses: new Set([404, 502, 503]),
     })).resolves.toMatchObject({ data: { ok: true } });
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+
+  it("retente les GET 503 en suivant un Retry-After exprime en date", async () => {
+    const future = new Date(Date.now() + 2_000).toUTCString();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ error: "busy" }, 503, { "Retry-After": future }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(requestJson<{ ok: boolean }>({ url: "/api/items", method: "GET" }))
+      .resolves.toMatchObject({ data: { ok: true } });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("epuise les trois tentatives puis propage la derniere reponse", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValue(jsonResponse({ error: "busy" }, 503, { "Retry-After": "0" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(requestJson({ url: "/api/items", method: "GET" }))
+      .rejects.toMatchObject({ status: 503 });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("interrompt la rejeu quand le signal est deja annule", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      jsonResponse({ error: "busy" }, 503, { "Retry-After": "0" }),
+    ));
+    const controller = new AbortController();
+    controller.abort(new DOMException("Aborted", "AbortError"));
+
+    await expect(requestJson({ url: "/api/items", method: "GET", signal: controller.signal }))
+      .rejects.toBeInstanceOf(DOMException);
+  });
+
+  it("interrompt la pause de retry si le signal est annule pendant l'attente", async () => {
+    // Le delai d'attente utilise window.setTimeout : on intercepte les callbacks
+    // pour rejouer manuellement la fin du timer, sans attendre reellement.
+    const timers: Array<() => void> = [];
+    vi.stubGlobal("setTimeout", (cb: () => void) => { timers.push(cb); return 1; });
+    vi.stubGlobal("clearTimeout", () => undefined);
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValueOnce(jsonResponse({ error: "busy" }, 503, { "Retry-After": "2" })),
+    );
+    const controller = new AbortController();
+
+    const promesse = requestJson<{ ok: boolean }>({ url: "/api/items", method: "GET", signal: controller.signal });
+    // La premiere reponse est en attente de retry : on annule pendant la pause.
+    await Promise.resolve();
+    controller.abort(new DOMException("Aborted", "AbortError"));
+
+    await expect(promesse).rejects.toBeInstanceOf(DOMException);
+  });
+
+  it("propage l'erreur reseau sans la convertir en timeout", async () => {
+    const networkError = new TypeError("Failed to fetch");
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(networkError));
+
+    await expect(fetchWithTimeout("/api/down", {}, 10_000))
+      .rejects.toBe(networkError);
+  });
+
+  it("retourne data undefined pour un statut vide declare", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 204 })));
+
+    const { data } = await requestJson<unknown>({
+      url: "/api/items/1",
+      method: "DELETE",
+      emptyStatuses: new Set([204]),
+    });
+
+    expect(data).toBeUndefined();
   });
 
   it("ne retente pas un 404 par defaut", async () => {

@@ -1,0 +1,19 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90mF:/LaBandeDuCanapApp/web[39m
+
+(node:15884) Warning: `--localstorage-file` was provided without a valid path
+(Use `node --trace-warnings ...` to show where the warning was created)
+[90mstdout[2m | src/components/organisms/_diag.test.ts[2m > [22m[2mdiag10 prune images[2m > [22m[2mreproduit le test exact avec btn2 uniquement
+[22m[39mnb: [33m9[39m btn2: "Toutes inutilisées"
+
+[90mstdout[2m | src/components/organisms/_diag.test.ts[2m > [22m[2mdiag10 prune images[2m > [22m[2mreproduit le test exact avec btn2 uniquement
+[22m[39mAPRES BTN2 pruneImages: [[true]]
+successToast: [["0 images supprimées · — libérés."]] errorToast: []
+
+ [32m✓[39m src/components/organisms/_diag.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 20[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m   Start at [22m 07:45:12
+[2m   Duration [22m 599ms[2m (transform 250ms, setup 20ms, import 285ms, tests 20ms, environment 172ms)[22m
+

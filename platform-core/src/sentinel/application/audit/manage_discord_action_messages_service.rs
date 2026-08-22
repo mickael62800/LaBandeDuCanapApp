@@ -48,3 +48,7 @@ impl ManageDiscordActionMessagesUseCase for ManageDiscordActionMessagesService {
         self.repo.list_for_action(action_id).await
     }
 }
+
+#[cfg(test)]
+#[path = "tests/manage_discord_action_messages.rs"]
+mod tests;

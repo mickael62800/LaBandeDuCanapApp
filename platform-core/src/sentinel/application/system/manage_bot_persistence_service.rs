@@ -43,3 +43,7 @@ impl ManageBotPersistenceUseCase for ManageBotPersistenceService {
             .await
     }
 }
+
+#[cfg(test)]
+#[path = "tests/manage_bot_persistence.rs"]
+mod tests;

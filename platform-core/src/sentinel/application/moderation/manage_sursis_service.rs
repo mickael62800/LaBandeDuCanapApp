@@ -57,3 +57,7 @@ impl ManageSursisUseCase for ManageSursisService {
         self.repo.list_due(Utc::now()).await
     }
 }
+
+#[cfg(test)]
+#[path = "tests/manage_sursis.rs"]
+mod tests;

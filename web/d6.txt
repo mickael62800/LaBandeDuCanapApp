@@ -1,0 +1,437 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90mF:/LaBandeDuCanapApp/web[39m
+
+(node:32408) Warning: `--localstorage-file` was provided without a valid path
+(Use `node --trace-warnings ...` to show where the warning was created)
+[90mstderr[2m | src/components/organisms/DockerAdminSection.test.ts[2m > [22m[2mchargement des onglets[2m > [22m[2maffiche l'erreur du service dans un toast
+[22m[39mError: docker down
+    at F:/LaBandeDuCanapApp/web/src/components/organisms/DockerAdminSection.test.ts:129:39
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:302:11
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:1903:26
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel [90m(file:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2323:10[90m)[39m
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout [90m(file:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2272:10[90m)[39m
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2956:64
+
+[90mstderr[2m | src/components/organisms/DockerAdminSection.test.ts[2m > [22m[2mfiltres de conteneurs[2m > [22m[2mfiltre par etat running / arretes via le selecteur
+[22m[39mError: docker down
+    at F:/LaBandeDuCanapApp/web/src/components/organisms/DockerAdminSection.test.ts:129:39
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:302:11
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:1903:26
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel [90m(file:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2323:10[90m)[39m
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout [90m(file:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2272:10[90m)[39m
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2956:64
+
+[90mstderr[2m | src/components/organisms/DockerAdminSection.test.ts[2m > [22m[2mfiltres de conteneurs[2m > [22m[2maffiche le nom propre, les ports et la taille formatee
+[22m[39mError: docker down
+    at F:/LaBandeDuCanapApp/web/src/components/organisms/DockerAdminSection.test.ts:129:39
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:302:11
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:1903:26
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel [90m(file:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2323:10[90m)[39m
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout [90m(file:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2272:10[90m)[39m
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2956:64
+
+[90mstderr[2m | src/components/organisms/DockerAdminSection.test.ts[2m > [22m[2mactions conteneurs[2m > [22m[2mdemarre un conteneur
+[22m[39mError: docker down
+    at F:/LaBandeDuCanapApp/web/src/components/organisms/DockerAdminSection.test.ts:129:39
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:302:11
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:1903:26
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel [90m(file:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2323:10[90m)[39m
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout [90m(file:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2272:10[90m)[39m
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2956:64
+
+[90mstderr[2m | src/components/organisms/DockerAdminSection.test.ts[2m > [22m[2mactions conteneurs[2m > [22m[2marrete un conteneur apres confirmation
+[22m[39mError: docker down
+    at F:/LaBandeDuCanapApp/web/src/components/organisms/DockerAdminSection.test.ts:129:39
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:302:11
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:1903:26
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel [90m(file:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2323:10[90m)[39m
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout [90m(file:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2272:10[90m)[39m
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2956:64
+
+[90mstderr[2m | src/components/organisms/DockerAdminSection.test.ts[2m > [22m[2mactions conteneurs[2m > [22m[2mn'arrete pas si confirmation refusee
+[22m[39mError: docker down
+    at F:/LaBandeDuCanapApp/web/src/components/organisms/DockerAdminSection.test.ts:129:39
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:302:11
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:1903:26
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel [90m(file:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2323:10[90m)[39m
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout [90m(file:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2272:10[90m)[39m
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2956:64
+
+[90mstderr[2m | src/components/organisms/DockerAdminSection.test.ts[2m > [22m[2mactions conteneurs[2m > [22m[2mredemarre un conteneur
+[22m[39mError: docker down
+    at F:/LaBandeDuCanapApp/web/src/components/organisms/DockerAdminSection.test.ts:129:39
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:302:11
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:1903:26
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel [90m(file:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2323:10[90m)[39m
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout [90m(file:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2272:10[90m)[39m
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2956:64
+
+[90mstderr[2m | src/components/organisms/DockerAdminSection.test.ts[2m > [22m[2mactions conteneurs[2m > [22m[2msupprime un conteneur (force si running)
+[22m[39mError: docker down
+    at F:/LaBandeDuCanapApp/web/src/components/organisms/DockerAdminSection.test.ts:129:39
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:302:11
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:1903:26
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel [90m(file:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2323:10[90m)[39m
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout [90m(file:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2272:10[90m)[39m
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2956:64
+
+[90mstderr[2m | src/components/organisms/DockerAdminSection.test.ts[2m > [22m[2mactions conteneurs[2m > [22m[2mpropage l'erreur d'un demarrage en toast
+[22m[39mError: docker down
+    at F:/LaBandeDuCanapApp/web/src/components/organisms/DockerAdminSection.test.ts:129:39
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:302:11
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:1903:26
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel [90m(file:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2323:10[90m)[39m
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout [90m(file:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2272:10[90m)[39m
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2956:64
+
+[90mstderr[2m | src/components/organisms/DockerAdminSection.test.ts[2m > [22m[2mactions conteneurs[2m > [22m[2mouvre puis ferme le modal de logs
+[22m[39mError: docker down
+    at F:/LaBandeDuCanapApp/web/src/components/organisms/DockerAdminSection.test.ts:129:39
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:302:11
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:1903:26
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel [90m(file:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2323:10[90m)[39m
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout [90m(file:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2272:10[90m)[39m
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2956:64
+
+[90mstderr[2m | src/components/organisms/DockerAdminSection.test.ts[2m > [22m[2mimages[2m > [22m[2mfiltre les images dangling / non utilisees via la case a cocher
+[22m[39mError: docker down
+    at F:/LaBandeDuCanapApp/web/src/components/organisms/DockerAdminSection.test.ts:129:39
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:302:11
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:1903:26
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel [90m(file:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2323:10[90m)[39m
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout [90m(file:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2272:10[90m)[39m
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2956:64
+
+[90mstderr[2m | src/components/organisms/DockerAdminSection.test.ts[2m > [22m[2mimages[2m > [22m[2maffiche <none> et le badge dangling pour une image sans tag
+[22m[39mError: docker down
+    at F:/LaBandeDuCanapApp/web/src/components/organisms/DockerAdminSection.test.ts:129:39
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:302:11
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:1903:26
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel [90m(file:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2323:10[90m)[39m
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout [90m(file:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2272:10[90m)[39m
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2956:64
+
+[90mstderr[2m | src/components/organisms/DockerAdminSection.test.ts[2m > [22m[2mimages[2m > [22m[2msupprime une image apres confirmation
+[22m[39mError: docker down
+    at F:/LaBandeDuCanapApp/web/src/components/organisms/DockerAdminSection.test.ts:129:39
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:302:11
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:1903:26
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel [90m(file:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2323:10[90m)[39m
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout [90m(file:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2272:10[90m)[39m
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2956:64
+
+[90mstderr[2m | src/components/organisms/DockerAdminSection.test.ts[2m > [22m[2mimages[2m > [22m[2mn'efface pas l'image si confirmation refusee
+[22m[39mError: docker down
+    at F:/LaBandeDuCanapApp/web/src/components/organisms/DockerAdminSection.test.ts:129:39
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:302:11
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:1903:26
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel [90m(file:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2323:10[90m)[39m
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout [90m(file:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2272:10[90m)[39m
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2956:64
+
+[90mstderr[2m | src/components/organisms/DockerAdminSection.test.ts[2m > [22m[2mvolumes[2m > [22m[2mfiltre les volumes orphelins via la case a cocher
+[22m[39mError: docker down
+    at F:/LaBandeDuCanapApp/web/src/components/organisms/DockerAdminSection.test.ts:129:39
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:302:11
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:1903:26
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel [90m(file:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2323:10[90m)[39m
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout [90m(file:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2272:10[90m)[39m
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2956:64
+
+[90mstderr[2m | src/components/organisms/DockerAdminSection.test.ts[2m > [22m[2mvolumes[2m > [22m[2maffiche le badge orphelin et supprime apres confirmation
+[22m[39mError: docker down
+    at F:/LaBandeDuCanapApp/web/src/components/organisms/DockerAdminSection.test.ts:129:39
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:302:11
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:1903:26
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel [90m(file:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2323:10[90m)[39m
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout [90m(file:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2272:10[90m)[39m
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2956:64
+
+[90mstderr[2m | src/components/organisms/DockerAdminSection.test.ts[2m > [22m[2mvolumes[2m > [22m[2mpropage l'erreur de suppression en toast
+[22m[39mError: docker down
+    at F:/LaBandeDuCanapApp/web/src/components/organisms/DockerAdminSection.test.ts:129:39
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:302:11
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:1903:26
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel [90m(file:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2323:10[90m)[39m
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout [90m(file:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2272:10[90m)[39m
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2956:64
+
+[90mstderr[2m | src/components/organisms/DockerAdminSection.test.ts[2m > [22m[2mreseaux[2m > [22m[2maffiche les details du reseau (driver, scope, interne)
+[22m[39mError: docker down
+    at F:/LaBandeDuCanapApp/web/src/components/organisms/DockerAdminSection.test.ts:129:39
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:302:11
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:1903:26
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel [90m(file:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2323:10[90m)[39m
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout [90m(file:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2272:10[90m)[39m
+    at [90mfile:///F:/LaBandeDuCanapApp/web/[39mnode_modules/[4m@vitest/runner[24m/dist/chunk-artifact.js:2956:64
+
+ [31m❯[39m src/components/organisms/DockerAdminSection.test.ts [2m([22m[2m33 tests[22m[2m | [22m[31m8 failed[39m[2m)[22m[32m 150[2mms[22m[39m
+     [32m✓[39m charge la vue d'ensemble au montage[32m 12[2mms[22m[39m
+     [32m✓[39m charge les conteneurs sur l'onglet Conteneurs[32m 8[2mms[22m[39m
+     [32m✓[39m charge les images sur l'onglet Images[32m 13[2mms[22m[39m
+     [32m✓[39m charge les volumes sur l'onglet Volumes[32m 2[2mms[22m[39m
+     [32m✓[39m charge les reseaux sur l'onglet Reseaux[32m 4[2mms[22m[39m
+     [32m✓[39m recharge l'overview sur l'onglet Nettoyage[32m 3[2mms[22m[39m
+     [32m✓[39m affiche l'erreur du service dans un toast[32m 4[2mms[22m[39m
+     [32m✓[39m filtre par etat running / arretes via le selecteur[32m 7[2mms[22m[39m
+[31m     [31m×[31m affiche le nom propre, les ports et la taille formatee[39m[32m 5[2mms[22m[39m
+[31m     [31m×[31m demarre un conteneur[39m[32m 5[2mms[22m[39m
+     [32m✓[39m arrete un conteneur apres confirmation[32m 5[2mms[22m[39m
+     [32m✓[39m n'arrete pas si confirmation refusee[32m 2[2mms[22m[39m
+     [32m✓[39m redemarre un conteneur[32m 4[2mms[22m[39m
+     [32m✓[39m supprime un conteneur (force si running)[32m 4[2mms[22m[39m
+[31m     [31m×[31m propage l'erreur d'un demarrage en toast[39m[32m 3[2mms[22m[39m
+     [32m✓[39m ouvre puis ferme le modal de logs[32m 9[2mms[22m[39m
+[31m     [31m×[31m filtre les images dangling / non utilisees via la case a cocher[39m[32m 3[2mms[22m[39m
+     [32m✓[39m affiche <none> et le badge dangling pour une image sans tag[32m 2[2mms[22m[39m
+     [32m✓[39m supprime une image apres confirmation[32m 3[2mms[22m[39m
+     [32m✓[39m n'efface pas l'image si confirmation refusee[32m 2[2mms[22m[39m
+[31m     [31m×[31m filtre les volumes orphelins via la case a cocher[39m[32m 2[2mms[22m[39m
+     [32m✓[39m affiche le badge orphelin et supprime apres confirmation[32m 3[2mms[22m[39m
+     [32m✓[39m propage l'erreur de suppression en toast[32m 4[2mms[22m[39m
+     [32m✓[39m affiche les details du reseau (driver, scope, interne)[32m 1[2mms[22m[39m
+     [32m✓[39m purgent les conteneurs arretes[32m 4[2mms[22m[39m
+[31m     [31m×[31m purgent les images dangling puis toutes[39m[32m 5[2mms[22m[39m
+     [32m✓[39m purgent les volumes orphelins[32m 4[2mms[22m[39m
+     [32m✓[39m purgent les reseaux inutilises[32m 7[2mms[22m[39m
+     [32m✓[39m purgent le build cache[32m 4[2mms[22m[39m
+[31m     [31m×[31m nettoyage complet standard / +images / +volumes[39m[32m 8[2mms[22m[39m
+     [32m✓[39m annule le nettoyage si confirmation refusee[32m 2[2mms[22m[39m
+     [32m✓[39m propage l'erreur d'un nettoyage en toast[32m 2[2mms[22m[39m
+[31m     [31m×[31m affiche les tailles recuperables de l'overview sur chaque carte[39m[32m 3[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 8 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m src/components/organisms/DockerAdminSection.test.ts[2m > [22mfiltres de conteneurs[2m > [22maffiche le nom propre, les ports et la taille formatee
+[31m[1mAssertionError[22m: expected 'webnginxrunningUp 2h80/tcp->805.00 GB…' to contain '5.0 GB'[39m
+
+Expected: [32m"5.0 GB"[39m
+Received: [31m"[7mwebnginxrunningUp 2h80/tcp->80[27m5.0[7m0[27m GB[7m▶⏹↻📋🗑[27m"[39m
+
+[36m [2m❯[22m src/components/organisms/DockerAdminSection.test.ts:[2m159:24[22m[39m
+    [90m157|[39m     [35mconst[39m row [33m=[39m wrapper[33m.[39m[34mfind[39m([32m".docker-table tbody tr"[39m)[33m;[39m
+    [90m158|[39m     [34mexpect[39m(row[33m.[39m[34mtext[39m())[33m.[39m[34mtoContain[39m([32m"web"[39m)[33m;[39m [90m// cleanName retire le /[39m
+    [90m159|[39m     [34mexpect[39m(row[33m.[39m[34mtext[39m())[33m.[39m[34mtoContain[39m([32m"5.0 GB"[39m)[33m;[39m [90m// fmtBytes[39m
+    [90m   |[39m                        [31m^[39m
+    [90m160|[39m   })[33m;[39m
+    [90m161|[39m })[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/8]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/components/organisms/DockerAdminSection.test.ts[2m > [22mactions conteneurs[2m > [22mdemarre un conteneur
+[31m[1mAssertionError[22m: expected "vi.fn()" to be called with arguments: [ 'c1' ][90m
+
+Number of calls: [1m0[22m
+[31m[39m
+[36m [2m❯[22m src/components/organisms/DockerAdminSection.test.ts:[2m177:32[22m[39m
+    [90m175|[39m     [35mawait[39m btns[[34m0[39m][33m.[39m[34mtrigger[39m([32m"click"[39m)[33m;[39m
+    [90m176|[39m     [35mawait[39m [34mflushPromises[39m()[33m;[39m
+    [90m177|[39m     [34mexpect[39m(svc[33m.[39mstartContainer)[33m.[39m[34mtoHaveBeenCalledWith[39m([32m"c1"[39m)[33m;[39m
+    [90m   |[39m                                [31m^[39m
+    [90m178|[39m     [34mexpect[39m(successToast)[33m.[39m[34mtoHaveBeenCalled[39m()[33m;[39m
+    [90m179|[39m   })[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/8]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/components/organisms/DockerAdminSection.test.ts[2m > [22mactions conteneurs[2m > [22mpropage l'erreur d'un demarrage en toast
+[31m[1mAssertionError[22m: expected "vi.fn()" to be called with arguments: [ StringContaining{…} ][90m
+
+Received:
+
+[1m  1st vi.fn() call:
+
+[22m[2m  [[22m
+[32m-   StringContaining "Erreur start : boom",[90m
+[31m+   "Erreur Docker : docker down",[90m
+[2m  ][22m
+[31m[90m
+
+Number of calls: [1m1[22m
+[31m[39m
+[36m [2m❯[22m src/components/organisms/DockerAdminSection.test.ts:[2m219:24[22m[39m
+    [90m217|[39m     [35mawait[39m btns[[34m0[39m][33m.[39m[34mtrigger[39m([32m"click"[39m)[33m;[39m
+    [90m218|[39m     [35mawait[39m [34mflushPromises[39m()[33m;[39m
+    [90m219|[39m     expect(errorToast).toHaveBeenCalledWith(expect.stringContaining("E…
+    [90m   |[39m                        [31m^[39m
+    [90m220|[39m   })[33m;[39m
+    [90m221|[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/8]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/components/organisms/DockerAdminSection.test.ts[2m > [22mimages[2m > [22mfiltre les images dangling / non utilisees via la case a cocher
+[31m[1mAssertionError[22m: expected 2 to be 1 // Object.is equality[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 1[39m
+[31m+ 2[39m
+
+[36m [2m❯[22m src/components/organisms/DockerAdminSection.test.ts:[2m252:62[22m[39m
+    [90m250|[39m     checkbox[33m.[39m[34msetChecked[39m([35mtrue[39m)[33m;[39m
+    [90m251|[39m     [90m// i1 (utilisee) est exclue, i2 (dangling) reste.[39m
+    [90m252|[39m     [34mexpect[39m(wrapper[33m.[39m[34mfindAll[39m([32m".docker-table tbody tr"[39m)[33m.[39mlength)[33m.[39m[34mtoBe[39m([34m1[39m)[33m;[39m
+    [90m   |[39m                                                              [31m^[39m
+    [90m253|[39m   })[33m;[39m
+    [90m254|[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/8]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/components/organisms/DockerAdminSection.test.ts[2m > [22mvolumes[2m > [22mfiltre les volumes orphelins via la case a cocher
+[31m[1mAssertionError[22m: expected 2 to be 1 // Object.is equality[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 1[39m
+[31m+ 2[39m
+
+[36m [2m❯[22m src/components/organisms/DockerAdminSection.test.ts:[2m302:62[22m[39m
+    [90m300|[39m     const checkbox = wrapper.find('.filters input[type="checkbox"]') a…
+    [90m301|[39m     checkbox[33m.[39m[34msetChecked[39m([35mtrue[39m)[33m;[39m
+    [90m302|[39m     expect(wrapper.findAll(".docker-table tbody tr").length).toBe(1); …
+    [90m   |[39m                                                              [31m^[39m
+    [90m303|[39m   })[33m;[39m
+    [90m304|[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/8]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/components/organisms/DockerAdminSection.test.ts[2m > [22mnettoyage (prune)[2m > [22mpurgent les images dangling puis toutes
+[31m[1mAssertionError[22m: expected last "vi.fn()" call to have been called with [ true ][39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  [[22m
+[32m-   true,[39m
+[31m+   false,[39m
+[2m  ][22m
+
+[36m [2m❯[22m src/components/organisms/DockerAdminSection.test.ts:[2m371:29[22m[39m
+    [90m369|[39m     [35mawait[39m btns[[34m2[39m][33m.[39m[34mtrigger[39m([32m"click"[39m)[33m;[39m
+    [90m370|[39m     [35mawait[39m [34mflushPromises[39m()[33m;[39m
+    [90m371|[39m     [34mexpect[39m(svc[33m.[39mpruneImages)[33m.[39m[34mtoHaveBeenLastCalledWith[39m([35mtrue[39m)[33m;[39m
+    [90m   |[39m                             [31m^[39m
+    [90m372|[39m   })[33m;[39m
+    [90m373|[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/8]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/components/organisms/DockerAdminSection.test.ts[2m > [22mnettoyage (prune)[2m > [22mnettoyage complet standard / +images / +volumes
+[31m[1mAssertionError[22m: expected last "vi.fn()" call to have been called with [ { volumes: false, allImages: true } ][39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  [[22m
+[2m    {[22m
+[32m-     "allImages": true,[39m
+[31m+     "allImages": false,[39m
+[2m      "volumes": false,[22m
+[2m    },[22m
+[2m  ][22m
+
+[36m [2m❯[22m src/components/organisms/DockerAdminSection.test.ts:[2m407:29[22m[39m
+    [90m405|[39m     [35mawait[39m btns[[34m7[39m][33m.[39m[34mtrigger[39m([32m"click"[39m)[33m;[39m
+    [90m406|[39m     [35mawait[39m [34mflushPromises[39m()[33m;[39m
+    [90m407|[39m     expect(svc.pruneSystem).toHaveBeenLastCalledWith({ volumes: false,…
+    [90m   |[39m                             [31m^[39m
+    [90m408|[39m
+    [90m409|[39m     [35mawait[39m btns[[34m8[39m][33m.[39m[34mtrigger[39m([32m"click"[39m)[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/8]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/components/organisms/DockerAdminSection.test.ts[2m > [22mnettoyage (prune)[2m > [22maffiche les tailles recuperables de l'overview sur chaque carte
+[31m[1mAssertionError[22m: expected '📦 Conteneurs arrêtésSupprime tous le…' to contain '1.0 KB'[39m
+
+Expected: [32m"1.0 KB"[39m
+Received: [31m"[7m📦 Conteneurs arrêtésSupprime tous les conteneurs en état non running.Récupérable : [27m1.0[7m0[27m KB[7mNettoyer🖼 Images danglingImages sans tag, jamais utilisées.Récupérable : 2.00 GBNettoyer danglingToutes inutilisées💾 Volumes orphelins⚠️ Volumes sans conteneur lié. Risque de perte de données.Récupérable : —Nettoyer🌐 Réseaux inutilisésRéseaux sans conteneur attaché.Nettoyer🧱 Build cacheCache de couches buildées non utilisées.Récupérable : —Nettoyer le build cache (—)🚀 Nettoyage completconteneurs + images dangling + réseaux.Nettoyage standard+ toutes images inutilisées+ volumes ⚠️[27m"[39m
+
+[36m [2m❯[22m src/components/organisms/DockerAdminSection.test.ts:[2m436:18[22m[39m
+    [90m434|[39m     [35mawait[39m [34mflushPromises[39m()[33m;[39m
+    [90m435|[39m     [35mconst[39m text [33m=[39m wrapper[33m.[39m[34mfind[39m([32m".prune-grid"[39m)[33m.[39m[34mtext[39m()[33m;[39m
+    [90m436|[39m     [34mexpect[39m(text)[33m.[39m[34mtoContain[39m([32m"1.0 KB"[39m)[33m;[39m [90m// fmtBytes(1024)[39m
+    [90m   |[39m                  [31m^[39m
+    [90m437|[39m   })[33m;[39m
+    [90m438|[39m })[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/8]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m8 failed[39m[22m[2m | [22m[1m[32m25 passed[39m[22m[90m (33)[39m
+[2m   Start at [22m 07:28:40
+[2m   Duration [22m 741ms[2m (transform 259ms, setup 20ms, import 295ms, tests 150ms, environment 179ms)[22m
+

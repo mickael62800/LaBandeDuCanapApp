@@ -1,0 +1,38 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90mF:/LaBandeDuCanapApp/web[39m
+
+(node:12724) Warning: `--localstorage-file` was provided without a valid path
+(Use `node --trace-warnings ...` to show where the warning was created)
+[90mstdout[2m | src/components/organisms/_diag.test.ts[2m > [22m[2mdiag4[2m > [22m[2mfiltre select : change event + row count timing
+[22m[39mROWS initial: [33m2[39m
+
+[90mstdout[2m | src/components/organisms/_diag.test.ts[2m > [22m[2mdiag4[2m > [22m[2mfiltre select : change event + row count timing
+[22m[39mafter setValue: el.value= running changeFired= [33m1[39m
+
+[90mstdout[2m | src/components/organisms/_diag.test.ts[2m > [22m[2mdiag4[2m > [22m[2mfiltre select : change event + row count timing
+[22m[39mROWS after tick: [33m1[39m
+
+ [31m❯[39m src/components/organisms/_diag.test.ts [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 24[2mms[22m[39m
+[31m     [31m×[31m filtre select : change event + row count timing[39m[32m 23[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m src/components/organisms/_diag.test.ts[2m > [22mdiag4[2m > [22mfiltre select : change event + row count timing
+[31m[1mError[22m: Cannot call findAll on an empty DOMWrapper.[39m
+[90m [2m❯[22m Object.get node_modules/@vue/test-utils/dist/vue-test-utils.cjs.js:[2m1482:27[22m[39m
+[36m [2m❯[22m src/components/organisms/_diag.test.ts:[2m44:25[22m[39m
+    [90m 42|[39m     [35mawait[39m [34mflushPromises[39m()[33m;[39m
+    [90m 43|[39m     [35mconst[39m row [33m=[39m w[33m.[39m[34mfind[39m([32m".docker-table tbody tr"[39m)[33m;[39m
+    [90m 44|[39m     [35mfor[39m ([35mconst[39m b [35mof[39m row[33m.[39m[34mfindAll[39m([32m"button"[39m)) {
+    [90m   |[39m                         [31m^[39m
+    [90m 45|[39m       console.log("BTN:", JSON.stringify(b.attributes()), "disabled=",…
+    [90m 46|[39m     }
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m   Start at [22m 07:28:03
+[2m   Duration [22m 607ms[2m (transform 251ms, setup 23ms, import 286ms, tests 24ms, environment 175ms)[22m
+

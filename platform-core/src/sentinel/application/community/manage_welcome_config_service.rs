@@ -180,3 +180,7 @@ impl ManageWelcomeConfigUseCase for ManageWelcomeConfigService {
         self.repo.save_config(guild_id, &current).await
     }
 }
+
+#[cfg(test)]
+#[path = "tests/manage_welcome_config.rs"]
+mod tests;

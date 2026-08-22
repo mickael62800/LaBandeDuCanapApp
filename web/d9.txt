@@ -1,0 +1,24 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90mF:/LaBandeDuCanapApp/web[39m
+
+(node:30680) Warning: `--localstorage-file` was provided without a valid path
+(Use `node --trace-warnings ...` to show where the warning was created)
+[90mstdout[2m | src/components/organisms/_diag.test.ts[2m > [22m[2mdiag6 prune[2m > [22m[2mliste les boutons prune dans l'ordre
+[22m[39mBTN [33m0[39m "Nettoyer" disabled= [33mfalse[39m
+BTN [33m1[39m "Nettoyer dangling" disabled= [33mfalse[39m
+BTN [33m2[39m "Toutes inutilisées" disabled= [33mfalse[39m
+BTN [33m3[39m "Nettoyer" disabled= [33mfalse[39m
+BTN [33m4[39m "Nettoyer" disabled= [33mfalse[39m
+BTN [33m5[39m "Nettoyer le build cache (4.0 B)" disabled= [33mfalse[39m
+BTN [33m6[39m "Nettoyage standard" disabled= [33mfalse[39m
+BTN [33m7[39m "+ toutes images inutilisées" disabled= [33mfalse[39m
+BTN [33m8[39m "+ volumes ⚠️" disabled= [33mfalse[39m
+TOTAL: [33m9[39m
+
+ [32m✓[39m src/components/organisms/_diag.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 17[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m   Start at [22m 07:42:41
+[2m   Duration [22m 579ms[2m (transform 242ms, setup 18ms, import 278ms, tests 17ms, environment 168ms)[22m
+

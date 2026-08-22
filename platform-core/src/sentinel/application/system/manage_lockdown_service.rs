@@ -37,3 +37,7 @@ impl ManageLockdownUseCase for ManageLockdownService {
         self.repo.delete(guild_id).await
     }
 }
+
+#[cfg(test)]
+#[path = "tests/manage_lockdown.rs"]
+mod tests;

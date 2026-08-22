@@ -33,3 +33,7 @@ impl ManageExportJobsUseCase for ManageExportJobsService {
         self.repo.find(id).await
     }
 }
+
+#[cfg(test)]
+#[path = "tests/manage_export_jobs.rs"]
+mod tests;

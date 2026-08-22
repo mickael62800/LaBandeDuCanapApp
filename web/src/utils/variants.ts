@@ -1,4 +1,4 @@
-export type BadgeVariant = "danger" | "warning" | "info" | "success" | "default";
+﻿export type BadgeVariant = "danger" | "warning" | "info" | "success" | "default";
 
 export function severityVariant(severity: string): BadgeVariant {
   switch (severity) {
@@ -69,9 +69,9 @@ export function priorityVariant(priority: string): BadgeVariant {
 }
 
 export function levelVariant(level: string): BadgeVariant {
-  if (level === "info" || level === "warn" || level === "error") {
-    return level === "error" ? "danger" : level as BadgeVariant;
-  }
+  if (level === "info") return "info";
+  if (level === "warn") return "warning";
+  if (level === "error") return "danger";
   return "default";
 }
 

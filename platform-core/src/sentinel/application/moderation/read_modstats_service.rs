@@ -41,3 +41,7 @@ impl ReadModstatsUseCase for ReadModstatsService {
         self.repo.daily_trend(guild_id, days).await
     }
 }
+
+#[cfg(test)]
+#[path = "tests/read_modstats.rs"]
+mod tests;

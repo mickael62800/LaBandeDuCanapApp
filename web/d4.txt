@@ -1,0 +1,36 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90mF:/LaBandeDuCanapApp/web[39m
+
+(node:6620) Warning: `--localstorage-file` was provided without a valid path
+(Use `node --trace-warnings ...` to show where the warning was created)
+ [31m❯[39m src/components/organisms/_diag.test.ts [2m([22m[2m0 test[22m[2m)[22m
+
+[31m⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Suites 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m src/components/organisms/_diag.test.ts[2m [ src/components/organisms/_diag.test.ts ][22m
+[31m[1mError[22m: Transform failed with 1 error:
+F:/LaBandeDuCanapApp/web/src/components/organisms/_diag.test.ts:2:56: ERROR: Syntax error "n"[39m
+  Plugin: [35mvite:esbuild[39m
+  File: [36mF:/LaBandeDuCanapApp/web/src/components/organisms/_diag.test.ts[39m:2:56
+[33m  
+  [33mSyntax error "n"[33m
+  1  |  import { describe, it, vi } from "vitest";
+  2  |  import { mount, flushPromises } from "@vue/test-utils";\nimport { nextTick } from "vue";
+     |                                                          ^
+  3  |  
+  4  |  vi.mock("@/services/dockerService", () => ({
+  [39m
+[90m [2m❯[22m failureErrorWithLog node_modules/esbuild/lib/main.js:[2m1467:15[22m[39m
+[90m [2m❯[22m node_modules/esbuild/lib/main.js:[2m736:50[22m[39m
+[90m [2m❯[22m responseCallbacks.<computed> node_modules/esbuild/lib/main.js:[2m603:9[22m[39m
+[90m [2m❯[22m handleIncomingPacket node_modules/esbuild/lib/main.js:[2m658:12[22m[39m
+[90m [2m❯[22m Socket.readFromStdout node_modules/esbuild/lib/main.js:[2m581:7[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [2mno tests[22m
+[2m   Start at [22m 07:27:34
+[2m   Duration [22m 296ms[2m (transform 14ms, setup 18ms, import 0ms, tests 0ms, environment 172ms)[22m
+

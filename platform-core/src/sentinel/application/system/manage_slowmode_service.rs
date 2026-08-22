@@ -40,3 +40,7 @@ impl ManageSlowmodeUseCase for ManageSlowmodeService {
         self.repo.delete(guild_id).await
     }
 }
+
+#[cfg(test)]
+#[path = "tests/manage_slowmode.rs"]
+mod tests;

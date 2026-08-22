@@ -171,11 +171,18 @@
 }
 
 /* Colonnes un peu plus larges que le strict necessaire : a 16 rem, les
-   libelles longs passaient a trois lignes et hachaient la grille. */
+   libelles longs passaient a trois lignes et hachaient la grille.
+
+   `align-items: start` est ESSENTIEL. Sans lui, une grille etire chaque
+   cellule a la hauteur de la plus haute de sa rangee : un seul reglage muni
+   d'un avertissement long rendait toute la rangee haute de 400 px, et comme
+   le libelle absorbe l'espace libre (voir .gcf-label), les controles voisins
+   se retrouvaient rejetes tout en bas de leur cellule, loin de leur libelle. */
 .sd-form {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
   gap: var(--space-md) var(--space-lg);
+  align-items: start;
   margin-bottom: var(--space-md);
 }
 

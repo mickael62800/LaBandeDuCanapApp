@@ -112,14 +112,58 @@ const dateError = computed(() => {
   return "";
 });
 
-const canSubmit = computed(
+/// Ce qui est exigé dans TOUS les cas : sans jeu, sans nom valide ou sans
+/// mémoire dans les bornes, il n'y a pas de conteneur possible.
+const baseValide = computed(
   () =>
     !!chosen.value &&
     !nameError.value &&
     !memoryError.value &&
-    !dateError.value &&
     !submitting.value,
 );
+
+/// Programmer une soirée exige en plus des dates cohérentes.
+const canSubmit = computed(() => baseValide.value && !dateError.value);
+
+/// Créer sans programmer n'a pas besoin de dates : c'est tout l'intérêt.
+const canSubmitSansDiscord = computed(() => baseValide.value);
+
+/**
+ * Crée le serveur, et lui seul.
+ *
+ * La création persiste un conteneur à l'arrêt : elle ne prévient personne. Ce
+ * sont la PROGRAMMATION (qui publie `game_server_scheduled` vers nexus-bot, et
+ * déclenche la création des salons Discord et du panneau d'inscription) et
+ * l'événement communautaire qui rendent la soirée publique.
+ *
+ * Les séparer permet de préparer un serveur — l'essayer, régler ses options,
+ * le supprimer s'il ne convient pas — sans avoir annoncé quoi que ce soit sur
+ * Discord. Les salons se demandent ensuite depuis la page du serveur, en le
+ * programmant.
+ */
+async function creerSeulement() {
+  if (!canSubmitSansDiscord.value || !selectedGuildId.value || !chosen.value) return;
+  submitting.value = true;
+  try {
+    const created = await nexusGamesService.create(selectedGuildId.value, {
+      template_slug: chosen.value.slug,
+      name: name.value.trim(),
+      memory_mb: memoryMb.value,
+      cpu_limit: cpuLimit.value,
+      owner_user_id: user.value?.id ?? "",
+      config: values.value,
+      // Sans programmation, il n'y a pas d'heure d'ouverture a laquelle
+      // rattacher une revelation d'IP : elle se reglera au moment de programmer.
+      ip_reveal_days: 0,
+    });
+    success(`Serveur « ${created.name} » créé. Aucun salon Discord n'a été demandé.`);
+    router.push(`/nexus/servers/${created.id}`);
+  } catch (e) {
+    showError(e instanceof Error ? e.message : "Création impossible");
+  } finally {
+    submitting.value = false;
+  }
+}
 
 async function submit() {
   if (!canSubmit.value || !selectedGuildId.value || !chosen.value) return;
@@ -317,8 +361,14 @@ watch(selectedGuildId, loadTemplates, { immediate: true });
             </small>
           </label>
 
+          <!-- Presente comme une condition a la PROGRAMMATION, pas comme une
+               faute : « Creer sans annoncer » reste possible sans dates, et
+               une erreur rouge sur un champ facultatif ferait croire l'inverse. -->
           <div v-if="dateError" class="nc-field nc-field-full">
-            <small class="nc-err">{{ dateError }}</small>
+            <small class="nc-note">
+              Nécessaire pour programmer la soirée : {{ dateError.charAt(0).toLowerCase() + dateError.slice(1) }}
+              La création sans annonce reste possible.
+            </small>
           </div>
 
         </div>
@@ -341,10 +391,25 @@ watch(selectedGuildId, loadTemplates, { immediate: true });
 
         <div class="nc-actions">
           <AppButton variant="primary" :disabled="!canSubmit" @click="submit">
-            {{ submitting ? "Création…" : "Créer le serveur" }}
+            {{ submitting ? "Création…" : "Créer et programmer la soirée" }}
+          </AppButton>
+          <AppButton
+            variant="secondary"
+            :disabled="!canSubmitSansDiscord"
+            @click="creerSeulement"
+          >
+            {{ submitting ? "Création…" : "Créer sans annoncer" }}
           </AppButton>
           <RouterLink to="/nexus/servers" class="nc-cancel">Annuler</RouterLink>
         </div>
+
+        <p class="nc-note nc-actions-note">
+          <strong>Créer et programmer</strong> demande à Nexus-bot les salons Discord
+          et le panneau d'inscription, et ajoute la soirée au calendrier communautaire.
+          <strong>Créer sans annoncer</strong> ne fait qu'installer le serveur, à
+          l'arrêt et sans rien publier : les dates sont alors inutiles, et la soirée
+          se programme plus tard depuis la page du serveur.
+        </p>
 
         <p class="nc-warn">
           Le conteneur est créé à l'arrêt. Il faudra le démarrer depuis la liste
@@ -437,10 +502,14 @@ watch(selectedGuildId, loadTemplates, { immediate: true });
 
 /* Colonnes un peu plus larges que le strict necessaire : a 16 rem, les
    libelles longs passaient a trois lignes et hachaient la grille. */
+/* `align-items: start` : voir la note de .sd-form dans
+   styles/nexus-server-detail.css — sans lui, une rangee prend la hauteur de sa
+   cellule la plus haute et les controles se detachent de leur libelle. */
 .nc-form {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
   gap: var(--space-md) var(--space-lg);
+  align-items: start;
 }
 
 .nc-field {
@@ -527,8 +596,17 @@ watch(selectedGuildId, loadTemplates, { immediate: true });
 .nc-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--space-md);
   margin-top: var(--space-lg);
+}
+
+/* Deux boutons aux effets tres differents : dire lequel publie sur Discord
+   evite d'avoir a l'apprendre en annoncant une soiree par erreur. */
+.nc-actions-note {
+  margin-top: var(--space-sm);
+  max-width: 70ch;
+  line-height: 1.5;
 }
 
 

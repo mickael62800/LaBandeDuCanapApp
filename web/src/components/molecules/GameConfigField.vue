@@ -153,14 +153,25 @@ function update(value: string | number | boolean): void {
   font-size: 0.9rem;
 }
 
-/* Le libelle absorbe la hauteur libre de la cellule, ce qui colle tous les
-   controles d'une meme rangee sur la meme ligne.
-   Sans cela, un libelle sur trois lignes (« Regeneration au repos (joueur) »)
-   poussait son curseur plus bas que ses voisins et toute la section paraissait
-   decalee. */
+/* Deux lignes reservees : la plupart des libelles y tiennent, donc les
+   controles d'une meme rangee s'alignent sans rien etirer.
+   L'ancienne version employait `flex-grow: 1` pour absorber la hauteur libre
+   de la cellule. Cela marchait tant que les cellules restaient basses, mais
+   des qu'un reglage voisin portait un avertissement long, la rangee devenait
+   haute de plusieurs centaines de pixels et le libelle avalait tout l'ecart :
+   le controle partait au fond de la cellule, separe de son libelle. La grille
+   pose desormais `align-items: start` et le libelle ne s'etire plus. */
 .gcf-label {
   color: var(--text-secondary);
-  flex-grow: 1;
+  min-height: 2.4em;
+  line-height: 1.2;
+}
+
+/* Un mot plus long que la colonne (une URL de modpack) ne doit pas elargir la
+   cellule ni deborder : il se coupe. */
+.gcf-note,
+.gcf-warning {
+  overflow-wrap: anywhere;
 }
 
 .gcf-input {

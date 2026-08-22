@@ -11,7 +11,8 @@
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "lint": "eslint . --max-warnings=0",
-    "lint:fix": "eslint . --fix"
+    "lint:fix": "eslint . --fix",
+    "typecheck:test": "vue-tsc --noEmit -p tsconfig.vitest.json"
   },
   "dependencies": {
     "@vueuse/motion": "^3.0.3",

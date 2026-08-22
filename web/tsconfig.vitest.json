@@ -1,0 +1,19 @@
+// Type-check des fichiers de TEST, separe du build.
+//
+// `tsconfig.json` les exclut volontairement : une fixture de test incomplete
+// ne doit pas empecher un deploiement, puisque rien de tout cela n'est livre.
+// Ce fichier garde malgre tout les tests sous verification, via
+// `npm run typecheck:test`, pour que la dette reste visible et reductible.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["vitest/globals", "node"]
+  },
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.d.ts",
+    "src/**/*.tsx",
+    "src/**/*.vue"
+  ],
+  "exclude": []
+}

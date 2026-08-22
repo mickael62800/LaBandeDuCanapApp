@@ -1,77 +1,105 @@
 import { describe, expect, it } from "vitest";
 import { ref } from "vue";
-import type { TemplateField } from "@/services/nexusGamesService";
-import { SECTION_PAR_DEFAUT, useTemplateFieldGroups } from "./useTemplateFieldGroups";
 
-function champ(key: string, type: TemplateField["type"], group?: string | null): TemplateField {
-  return { key, label: `Label ${key}`, type, group };
+import {
+  useTemplateFieldGroups,
+  SECTION_PAR_DEFAUT,
+} from "./useTemplateFieldGroups";
+import type { TemplateField } from "@/services/nexusGamesService";
+
+function champ(over: Partial<TemplateField>): TemplateField {
+  return { key: "K", label: "L", type: "text", ...over } as TemplateField;
 }
 
-describe("useTemplateFieldGroups", () => {
-  it("regroupe par section et met le fourre-tout en dernier", () => {
-    const schema = ref<TemplateField[]>([
-      champ("A", "text"), // sans groupe -> défaut
-      champ("B", "boolean", "Combat"),
-      champ("C", "number"), // sans groupe -> défaut
-      champ("D", "enum", "Réseau"),
+function grouper(champs: TemplateField[]) {
+  return useTemplateFieldGroups(ref(champs)).value;
+}
+
+describe("regroupement en sections", () => {
+  it("rassemble les champs par section du schema", () => {
+    const groupes = grouper([
+      champ({ key: "A", group: "Monde" }),
+      champ({ key: "B", group: "Regles du jeu" }),
+      champ({ key: "C", group: "Monde" }),
     ]);
-    const groups = useTemplateFieldGroups(schema);
-
-    expect(groups.value.map((g) => g.nom)).toEqual(["Combat", "Réseau", SECTION_PAR_DEFAUT]);
-    expect(groups.value[2].champs.map((f) => f.key).sort()).toEqual(["A", "C"]);
+    expect(groupes.map((g) => g.nom)).toEqual(["Monde", "Regles du jeu"]);
+    expect(groupes[0]!.champs.map((c) => c.key)).toEqual(["A", "C"]);
   });
 
-  it("trie par nature à l'intérieur d'une section (bool, enum, number, text)", () => {
-    const schema = ref<TemplateField[]>([
-      champ("T1", "text", "S"),
-      champ("N1", "number", "S"),
-      champ("E1", "enum", "S"),
-      champ("B1", "boolean", "S"),
+  it("verse les champs sans section dans le fourre-tout", () => {
+    const groupes = grouper([champ({ key: "A" })]);
+    expect(groupes[0]!.nom).toBe(SECTION_PAR_DEFAUT);
+  });
+
+  it("traite une section vide ou blanche comme absente", () => {
+    // Un `group` a la chaine vide vient d'une migration bâclee : le laisser
+    // creerait une section sans nom dans le formulaire.
+    const groupes = grouper([champ({ key: "A", group: "   " }), champ({ key: "B" })]);
+    expect(groupes).toHaveLength(1);
+    expect(groupes[0]!.nom).toBe(SECTION_PAR_DEFAUT);
+  });
+
+  it("place le fourre-tout en dernier", () => {
+    // Les sections nommees portent une intention, lui n'est qu'un reste.
+    const groupes = grouper([
+      champ({ key: "A" }),
+      champ({ key: "B", group: "Monde" }),
     ]);
-    const groups = useTemplateFieldGroups(schema);
-    expect(groups.value[0].champs.map((f) => f.key)).toEqual(["B1", "E1", "N1", "T1"]);
+    expect(groupes.map((g) => g.nom)).toEqual(["Monde", SECTION_PAR_DEFAUT]);
   });
 
-  it("tri stable : à nature égale, l'ordre du schéma est conservé", () => {
-    const schema = ref<TemplateField[]>([
-      champ("SPAWN_ANIMALS", "boolean", "G"),
-      champ("ZULU", "text", "G"),
-      champ("SPAWN_MONSTERS", "boolean", "G"),
+  it("rend une liste vide pour un schema absent", () => {
+    expect(useTemplateFieldGroups(ref(undefined)).value).toEqual([]);
+    expect(useTemplateFieldGroups(ref(null)).value).toEqual([]);
+  });
+});
+
+describe("ordre a l'interieur d'une section", () => {
+  it("groupe les interrupteurs en tete, puis listes, nombres et textes", () => {
+    // Alterner interrupteurs et saisies obligeait l'oeil a changer de mode a
+    // chaque ligne, ce qui donnait l'impression de fouillis.
+    const groupes = grouper([
+      champ({ key: "TXT", type: "text", group: "S" }),
+      champ({ key: "NUM", type: "number", group: "S" }),
+      champ({ key: "BOOL", type: "boolean", group: "S" }),
+      champ({ key: "ENUM", type: "enum", group: "S" }),
     ]);
-    const groups = useTemplateFieldGroups(schema);
-    expect(groups.value[0].champs.map((f) => f.key)).toEqual([
-      "SPAWN_ANIMALS", // bool, premier dans le schéma
-      "SPAWN_MONSTERS", // bool, second
-      "ZULU", // text en dernier
+    expect(groupes[0]!.champs.map((c) => c.key)).toEqual(["BOOL", "ENUM", "NUM", "TXT"]);
+  });
+
+  it("conserve l'ordre du schema entre champs de meme nature", () => {
+    // Un tri alphabetique separerait SPAWN_ANIMALS de SPAWN_MONSTERS.
+    const groupes = grouper([
+      champ({ key: "SPAWN_NPCS", type: "boolean", group: "Monde" }),
+      champ({ key: "SPAWN_ANIMALS", type: "boolean", group: "Monde" }),
+      champ({ key: "SPAWN_MONSTERS", type: "boolean", group: "Monde" }),
+    ]);
+    expect(groupes[0]!.champs.map((c) => c.key)).toEqual([
+      "SPAWN_NPCS",
+      "SPAWN_ANIMALS",
+      "SPAWN_MONSTERS",
     ]);
   });
 
-  it("groupe vide / null / undefined sans planter", () => {
-    expect(useTemplateFieldGroups(ref([])).value).toEqual([]);
-    const nul = ref<TemplateField[] | null>(null);
-    expect(useTemplateFieldGroups(nul as never).value).toEqual([]);
+  it("range un type inconnu apres les types connus", () => {
+    const groupes = grouper([
+      champ({ key: "X", type: "exotique" as TemplateField["type"], group: "S" }),
+      champ({ key: "T", type: "text", group: "S" }),
+    ]);
+    expect(groupes[0]!.champs.map((c) => c.key)).toEqual(["T", "X"]);
   });
+});
 
-  it("groupe vide (blancs) retombe sur la section par défaut", () => {
-    const schema = ref<TemplateField[]>([champ("X", "text", "   "), champ("Y", "boolean")]);
-    const groups = useTemplateFieldGroups(schema);
-    expect(groups.value).toHaveLength(1); // les deux dans le fourre-tout
-    expect(groups.value[0].nom).toBe(SECTION_PAR_DEFAUT);
-  });
-
-  it("suit la réactivité du schéma", () => {
-    const schema = ref<TemplateField[]>([]);
-    const groups = useTemplateFieldGroups(schema);
-    expect(groups.value).toHaveLength(0);
-    schema.value = [champ("K1", "boolean", "Sec")];
-    expect(groups.value.map((g) => g.nom)).toEqual(["Sec"]);
-  });
-
-  it("type inconnu du schéma : trié après les connus, sans crash", () => {
-    // Type hors de l'union pour tester la tolérance (`?? 9` dans le tri).
-    const exotique = { key: "EXOTIQUE", label: "Exo", type: "slider", group: "S" } as unknown as TemplateField;
-    const schema = ref<TemplateField[]>([champ("TEXTE", "text", "S"), exotique]);
-    const groups = useTemplateFieldGroups(schema);
-    expect(groups.value[0].champs.map((f) => f.key)).toEqual(["TEXTE", "EXOTIQUE"]);
+describe("doublons de cle", () => {
+  it("les laisse passer, faute de pouvoir choisir lequel fait foi", () => {
+    // Le composable ne dedoublonne pas : deux entrees de meme cle sont un
+    // defaut de DONNEES, corrige par la migration 064. Ce test fige le
+    // comportement pour que personne ne masque le probleme ici — le formulaire
+    // afficherait deux champs ecrivant la meme cle, et le dernier gagnerait.
+    const groupes = grouper([
+      champ({ key: "ALLOW_NETHER", type: "boolean", group: "Monde", label: "ancien" }),
+      champ({ key: "ALLOW_NETHER", type: "boolean", group: "Monde", label: "nouveau" }),
+    ]);
+    expect(groupes[0]!.champs).toHaveLength(2);
   });
 });

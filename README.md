@@ -500,7 +500,6 @@ TRUST_PROXY_HOPS=1                 # proxies de confiance devant l'API
 
 ```bash
 bash infrastructure/scripts/dev.sh              # Lance API + bot + web
-bash infrastructure/scripts/build-all.sh        # Build release de tous les crates
 bash infrastructure/scripts/start-all.sh        # Démarre la stack complète
 bash infrastructure/scripts/health-check.sh     # Vérifie que tous les services répondent
 bash infrastructure/scripts/seed-rules.sh       # Seed de règles de dev

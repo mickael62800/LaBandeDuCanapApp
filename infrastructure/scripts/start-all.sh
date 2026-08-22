@@ -59,7 +59,7 @@ start_service() {
     local image
     image=$(docker compose config --images 2>/dev/null | grep "$svc" || true)
     if [ -z "$image" ]; then
-      echo -e "${YELLOW}    [SKIP] Image non trouvee — lance 'bash build-all.sh' d'abord${NC}"
+      echo -e "${YELLOW}    [SKIP] Image non trouvee — lance 'docker compose build' d'abord${NC}"
       SKIPPED+=("$svc")
       return
     fi

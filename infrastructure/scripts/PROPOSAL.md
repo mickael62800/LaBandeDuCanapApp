@@ -6,7 +6,7 @@ Ce document décrit 4 scripts proposés pour faciliter la gestion quotidienne de
 
 Le projet contient déjà dans `scripts/` :
 
-- `build-all.sh`, `start-all.sh`, `dev.sh` — build / démarrage
+- `start-all.sh`, `dev.sh` — démarrage
 - `health-check.sh` — vérification santé
 - `run-tests.sh` / `run-tests.ps1` — tests
 - `seed-rules.sh` — seed initial

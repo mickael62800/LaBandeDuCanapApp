@@ -197,10 +197,16 @@ describe("valeur", () => {
 /// et le composant s'affiche « correctement » en test tout en etant disloque a
 /// l'ecran. La feuille de style est donc la seule trace verifiable en CI.
 describe("mise en page de la grille (non-regression)", () => {
+  /// Les DECLARATIONS d'une regle, commentaires retires.
+  ///
+  /// Sans ce depouillage, une assertion porterait aussi sur la prose : le
+  /// commentaire qui explique pourquoi `auto-fit` a ete abandonne contient le
+  /// mot, et faisait echouer le test cense verifier son absence.
   const bloc = (css: string, selecteur: string) => {
     const debut = css.indexOf(selecteur);
     expect(debut, `${selecteur} introuvable`).toBeGreaterThan(-1);
-    return css.slice(debut, css.indexOf("}", debut));
+    const regle = css.slice(debut, css.indexOf("}", debut));
+    return regle.replace(/\/\*[\s\S]*?\*\//g, "");
   };
 
   it("la grille de la page de detail n'etire pas ses cellules", async () => {
@@ -216,6 +222,37 @@ describe("mise en page de la grille (non-regression)", () => {
     const { readFileSync } = await import("node:fs");
     const vue = readFileSync("src/components/pages/NexusServerCreatePage.vue", "utf8");
     expect(bloc(vue, ".nc-form {")).toContain("align-items: start");
+  });
+
+  it("les deux grilles plafonnent a quatre colonnes", async () => {
+    // `auto-fit` en posait six sur un ecran large : cartes etroites,
+    // avertissements hauts, et une densite qui changeait d'un ecran a l'autre.
+    // Un nombre fixe donne la meme page partout.
+    const { readFileSync } = await import("node:fs");
+    const sources: [string, string][] = [
+      ["src/styles/nexus-server-detail.css", ".sd-form {"],
+      ["src/components/pages/NexusServerCreatePage.vue", ".nc-form {"],
+    ];
+    for (const [fichier, selecteur] of sources) {
+      const b = bloc(readFileSync(fichier, "utf8"), selecteur);
+      expect(b, `${selecteur} doit poser quatre colonnes`).toContain("repeat(4,");
+      expect(b, `${selecteur} ne doit plus utiliser auto-fit`).not.toContain("auto-fit");
+      // Sans borne basse a zero, une colonne ne peut pas descendre sous la
+      // largeur intrinseque de son contenu : le curseur deborderait.
+      expect(b, `${selecteur} doit poser minmax(0, 1fr)`).toContain("minmax(0, 1fr)");
+    }
+  });
+
+  it("chaque reglage est encadre, pas seulement les interrupteurs", async () => {
+    // Une liste deroulante ou un curseur flottait sans limite visible a cote
+    // d'un booleen encadre : rien ne disait ou finissait un reglage.
+    const { readFileSync } = await import("node:fs");
+    const vue = readFileSync("src/components/molecules/GameConfigField.vue", "utf8");
+    const carte = bloc(vue, ".gcf {");
+    expect(carte, "la carte doit etre portee par .gcf").toContain("border:");
+    expect(carte).toContain("background:");
+    // ...et non plus reservee au modificateur booleen.
+    expect(bloc(vue, ".gcf.gcf--boolean {")).not.toContain("background:");
   });
 
   it("le libelle ne reclame plus l'espace libre de la cellule", async () => {

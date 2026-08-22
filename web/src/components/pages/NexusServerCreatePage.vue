@@ -502,14 +502,36 @@ watch(selectedGuildId, loadTemplates, { immediate: true });
 
 /* Colonnes un peu plus larges que le strict necessaire : a 16 rem, les
    libelles longs passaient a trois lignes et hachaient la grille. */
-/* `align-items: start` : voir la note de .sd-form dans
-   styles/nexus-server-detail.css — sans lui, une rangee prend la hauteur de sa
-   cellule la plus haute et les controles se detachent de leur libelle. */
 .nc-form {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  /* QUATRE colonnes au plus. `auto-fit` en posait six sur un ecran large : les
+     cartes devenaient etroites, les avertissements hauts, et la densite variait
+     d'un ecran a l'autre. Un nombre fixe donne la meme page partout.
+
+     `minmax(0, 1fr)` et non `1fr` : sans la borne basse a zero, une colonne ne
+     peut pas descendre sous la largeur intrinseque de son contenu, et un
+     curseur ou une longue option la ferait deborder. */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--space-md) var(--space-lg);
   align-items: start;
+}
+
+@media (max-width: 1500px) {
+  .nc-form {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1100px) {
+  .nc-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .nc-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .nc-field {

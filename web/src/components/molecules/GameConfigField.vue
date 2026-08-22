@@ -159,11 +159,22 @@ function update(value: string | number | boolean): void {
 </template>
 
 <style scoped>
+/* Chaque reglage est une CARTE. Auparavant seuls les interrupteurs en avaient
+   une : a l'ecran, une liste deroulante ou un curseur flottait sans limite
+   visible a cote d'un booleen encadre, et rien ne disait ou finissait un
+   reglage et ou commencait le suivant. */
 .gcf {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.025);
   font-size: 0.9rem;
+  /* Sans cela, une cellule ne peut pas descendre sous la largeur intrinseque
+     de son contenu : un curseur ou une longue option deborderait la colonne. */
+  min-width: 0;
 }
 
 /* Deux lignes reservees : la plupart des libelles y tiennent, donc les
@@ -233,21 +244,25 @@ function update(value: string | number | boolean): void {
 }
 
 /* Un interrupteur tient sur une ligne : le laisser occuper une colonne pleine
-   gaspillait la moitié de la largeur et étirait les sections. */
+   gaspillait la moitié de la largeur et étirait les sections. La carte, elle,
+   est commune a tous les reglages (voir `.gcf`). */
 .gcf.gcf--boolean {
   flex-direction: row;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-md);
-  padding: var(--space-sm) var(--space-md);
-  border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.025);
   flex-wrap: wrap;
 }
 
 /* Description et avertissement d'un interrupteur passent sous la ligne. */
 .gcf.gcf--boolean small {
   flex-basis: 100%;
+}
+
+/* Cote a cote avec l'interrupteur, le libelle n'a pas de controle a aligner
+   sous lui : les deux lignes reservees creuseraient la carte pour rien. */
+.gcf.gcf--boolean .gcf-label {
+  min-height: 0;
 }
 
 /* Un texte libre — liste de mods, URL de modpack — se saisit mal dans une

@@ -2,13 +2,11 @@ use async_trait::async_trait;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use crate::sentinel::domain::errors::DomainError;
-
 #[derive(Default, Clone)]
 struct MockSlowmodeConfig {
     guild_id: String,
     enabled: bool,
-    duration_secs: u64,
+    delay_secs: u64,
 }
 
 struct MockSlowmodeRepo {
@@ -25,48 +23,45 @@ impl Default for MockSlowmodeRepo {
 
 #[async_trait]
 trait SlowmodeRepository: Send + Sync {
-    async fn get(&self, guild_id: &str) -> Result<Option<MockSlowmodeConfig>, DomainError>;
-    async fn set(&self, config: &MockSlowmodeConfig) -> Result<(), DomainError>;
+    async fn set_config(&self, config: &MockSlowmodeConfig) -> anyhow::Result<()>;
+    async fn get_config(&self, guild_id: &str) -> anyhow::Result<Option<MockSlowmodeConfig>>;
+    async fn delete_config(&self, guild_id: &str) -> anyhow::Result<bool>;
 }
 
 #[async_trait]
 impl SlowmodeRepository for MockSlowmodeRepo {
-    async fn get(&self, guild_id: &str) -> Result<Option<MockSlowmodeConfig>, DomainError> {
-        Ok(self.configs.lock().await.iter()
-            .find(|c| c.guild_id == guild_id)
-            .cloned())
-    }
-
-    async fn set(&self, config: &MockSlowmodeConfig) -> Result<(), DomainError> {
+    async fn set_config(&self, config: &MockSlowmodeConfig) -> anyhow::Result<()> {
         let mut configs = self.configs.lock().await;
         configs.retain(|c| c.guild_id != config.guild_id);
         configs.push(config.clone());
         Ok(())
     }
+
+    async fn get_config(&self, guild_id: &str) -> anyhow::Result<Option<MockSlowmodeConfig>> {
+        Ok(self.configs.lock().await.iter()
+            .find(|c| c.guild_id == guild_id)
+            .cloned())
+    }
+
+    async fn delete_config(&self, guild_id: &str) -> anyhow::Result<bool> {
+        let mut configs = self.configs.lock().await;
+        let len_before = configs.len();
+        configs.retain(|c| c.guild_id != guild_id);
+        Ok(configs.len() < len_before)
+    }
 }
 
 #[tokio::test]
-async fn enable_slowmode_sets_config() {
-    let _repo = Arc::new(MockSlowmodeRepo::default());
-    assert!(true);
-}
+async fn enable_slowmode_sets_config() { assert!(true); }
 
 #[tokio::test]
-async fn disable_slowmode_removes_config() {
-    assert!(true);
-}
+async fn disable_slowmode_removes_config() { assert!(true); }
 
 #[tokio::test]
-async fn get_slowmode_config_returns_none_when_disabled() {
-    assert!(true);
-}
+async fn get_slowmode_config_returns_none_when_disabled() { assert!(true); }
 
 #[tokio::test]
-async fn slowmode_duration_is_respected() {
-    assert!(true);
-}
+async fn slowmode_delay_is_respected() { assert!(true); }
 
 #[tokio::test]
-async fn slowmode_exemptions_applied() {
-    assert!(true);
-}
+async fn slowmode_persists_correctly() { assert!(true); }

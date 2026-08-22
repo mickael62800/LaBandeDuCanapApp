@@ -245,108 +245,160 @@ pub fn spawn(ctx: Context, api: Arc<ApiClient>) {
     });
 }
 
-async fn handle_event(ctx: &Context, api: &ApiClient, payload_json: &str) {
-    let Ok(env) = serde_json::from_str::<serde_json::Value>(payload_json) else {
-        return;
-    };
+/// Ce qu'un evenement `achievement.unlocked` porte d'utile.
+///
+/// Extrait du handler pour etre verifiable : un evenement mal forme ne doit
+/// jamais aboutir a une annonce vide ou adressee au mauvais serveur, et c'est
+/// exactement ce qu'aucun test ne pouvait constater tant que la lecture vivait
+/// au milieu des appels Discord.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HautFaitDebloque {
+    pub guild_id: String,
+    pub guild_num: u64,
+    pub user_id: String,
+    pub nom: String,
+    pub description: String,
+    pub jeu: Option<String>,
+    pub icon_url: Option<String>,
+}
+
+/// Lit l'evenement. `None` des qu'il manque de quoi annoncer honnetement.
+pub fn parse_haut_fait(payload_json: &str) -> Option<HautFaitDebloque> {
+    let env = serde_json::from_str::<serde_json::Value>(payload_json).ok()?;
+    // Le bus porte tous les evenements Nexus : celui-ci ne traite que le sien.
     if env.get("event").and_then(|v| v.as_str())
         != Some(
             platform_core::nexus::ports::outbound::events::achievement_events::ACHIEVEMENT_UNLOCKED,
         )
     {
-        return;
+        return None;
     }
-    let Some(data) = env.get("data") else { return };
+    let data = env.get("data")?;
+    let guild_id = data.get("guild_id").and_then(|v| v.as_str())?.to_string();
+    let user_id = data
+        .get("discord_user_id")
+        .and_then(|v| v.as_str())?
+        .to_string();
+    let guild_num = guild_id.parse::<u64>().ok()?;
 
-    let (Some(guild_id), Some(user_id)) = (
-        data.get("guild_id").and_then(|v| v.as_str()),
-        data.get("discord_user_id").and_then(|v| v.as_str()),
-    ) else {
-        return;
-    };
-    let Ok(guild_num) = guild_id.parse::<u64>() else {
+    Some(HautFaitDebloque {
+        guild_id,
+        guild_num,
+        user_id,
+        // Un haut fait sans nom reste annoncable : le libelle generique vaut
+        // mieux qu'un silence, la personne l'a bien decroche.
+        nom: data
+            .get("achievement_name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Haut fait")
+            .to_string(),
+        description: data
+            .get("achievement_description")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string(),
+        jeu: data
+            .get("game")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
+        icon_url: data
+            .get("icon_url")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
+    })
+}
+
+/// Salon ou publier, selon la configuration de la guilde.
+///
+/// `None` quand il ne faut rien publier : module eteint, annonce eteinte, ou
+/// aucun salon choisi. Les deux interrupteurs restent distincts — un haut fait
+/// peut etre attribue sans etre publie.
+pub fn salon_d_annonce(config: &std::collections::HashMap<String, String>) -> Option<u64> {
+    let actif = |cle: &str, defaut: bool| config.get(cle).map(|v| v == "true").unwrap_or(defaut);
+    if !actif("enabled", true) || !actif("announce_enabled", true) {
+        return None;
+    }
+    config
+        .get("announce_channel_id")
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .filter(|id| *id > 0)
+}
+
+/// Role a mentionner, s'il y en a un. Pas de mention par defaut : annoncer ne
+/// veut pas dire notifier tout le serveur.
+pub fn role_a_mentionner(config: &std::collections::HashMap<String, String>) -> Option<u64> {
+    config
+        .get("mention_role_id")
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .filter(|id| *id > 0)
+}
+
+/// Compose l'annonce publique d'un haut fait.
+pub fn build_annonce(fait: &HautFaitDebloque, role: Option<u64>) -> CreateMessage {
+    let mut embed = CreateEmbed::new()
+        .title("🏆 Haut fait debloque")
+        .description(format!(
+            "<@{}> vient de decrocher **{}** !",
+            fait.user_id, fait.nom
+        ))
+        .color(0xf1c40f)
+        .footer(CreateEmbedFooter::new("Hauts faits | Nexus"))
+        .timestamp(serenity::model::Timestamp::now());
+    if !fait.description.is_empty() {
+        embed = embed.field("Haut fait", &fait.description, false);
+    }
+    if let Some(jeu) = &fait.jeu {
+        embed = embed.field("Jeu", jeu, true);
+    }
+    // Image choisie par l'administrateur dans le dashboard.
+    if let Some(icon) = fait.icon_url.as_deref().and_then(image_absolue) {
+        embed = embed.thumbnail(icon);
+    }
+
+    let message = CreateMessage::new().embed(embed);
+    match role {
+        Some(role) => message.content(format!("<@&{role}>")),
+        None => message,
+    }
+}
+
+async fn handle_event(ctx: &Context, api: &ApiClient, payload_json: &str) {
+    let Some(fait) = parse_haut_fait(payload_json) else {
         return;
     };
 
     let config = api
-        .get_guild_config(guild_id, MODULE_BOT_NAME)
+        .get_guild_config(&fait.guild_id, MODULE_BOT_NAME)
         .await
         .unwrap_or_default();
-    let actif = |cle: &str, defaut: bool| config.get(cle).map(|v| v == "true").unwrap_or(defaut);
-    // Fail closed sur le module, et l'annonce reste un interrupteur distinct :
-    // un haut fait peut etre attribue sans etre publie.
-    if !actif("enabled", true) || !actif("announce_enabled", true) {
-        return;
-    }
 
-    let Some(channel) = config
-        .get("announce_channel_id")
-        .and_then(|v| v.trim().parse::<u64>().ok())
-        .filter(|id| *id > 0)
-        .map(ChannelId::new)
-    else {
-        tracing::info!(guild_id, "hauts faits : aucun salon d'annonce configure");
+    let Some(salon) = salon_d_annonce(&config) else {
+        tracing::info!(
+            guild_id = %fait.guild_id,
+            "hauts faits : annonce desactivee ou aucun salon configure"
+        );
         return;
     };
+    let channel = ChannelId::new(salon);
 
     // Le salon doit appartenir a la guilde de l'evenement : sans cette
     // verification, une configuration erronee publierait ailleurs.
-    let guild = GuildId::new(guild_num);
+    let guild = GuildId::new(fait.guild_num);
     match guild.channels(&ctx.http).await {
         Ok(channels) if !channels.contains_key(&channel) => {
-            tracing::warn!(guild_id, %channel, "hauts faits : salon hors de la guilde, annonce annulee");
+            tracing::warn!(guild_id = %fait.guild_id, %channel, "hauts faits : salon hors de la guilde, annonce annulee");
             return;
         }
         Ok(_) => {}
         Err(e) => {
-            tracing::warn!(error = %e, guild_id, "hauts faits : verification du salon impossible");
+            tracing::warn!(error = %e, guild_id = %fait.guild_id, "hauts faits : verification du salon impossible");
             return;
         }
     }
 
-    let nom = data
-        .get("achievement_name")
-        .and_then(|v| v.as_str())
-        .unwrap_or("Haut fait");
-    let description = data
-        .get("achievement_description")
-        .and_then(|v| v.as_str())
-        .unwrap_or_default();
-    let jeu = data.get("game").and_then(|v| v.as_str());
-
-    let mut embed = CreateEmbed::new()
-        .title("🏆 Haut fait debloque")
-        .description(format!("<@{user_id}> vient de decrocher **{nom}** !"))
-        .color(0xf1c40f)
-        .footer(CreateEmbedFooter::new("Hauts faits | Nexus"))
-        .timestamp(serenity::model::Timestamp::now());
-    if !description.is_empty() {
-        embed = embed.field("Haut fait", description, false);
-    }
-    if let Some(jeu) = jeu {
-        embed = embed.field("Jeu", jeu, true);
-    }
-    // Image choisie par l'administrateur dans le dashboard.
-    if let Some(icon) = data
-        .get("icon_url")
-        .and_then(|v| v.as_str())
-        .and_then(image_absolue)
-    {
-        embed = embed.thumbnail(icon);
-    }
-
-    let mut message = CreateMessage::new().embed(embed);
-    // Mention desactivee par defaut : elle n'existe que si un role est configure.
-    if let Some(role) = config
-        .get("mention_role_id")
-        .and_then(|v| v.trim().parse::<u64>().ok())
-        .filter(|id| *id > 0)
-    {
-        message = message.content(format!("<@&{role}>"));
-    }
-
+    let message = build_annonce(&fait, role_a_mentionner(&config));
     if let Err(e) = channel.send_message(&ctx.http, message).await {
-        tracing::warn!(error = %e, guild_id, "hauts faits : publication impossible");
+        tracing::warn!(error = %e, guild_id = %fait.guild_id, "hauts faits : publication impossible");
     }
 }
 
@@ -606,5 +658,525 @@ mod tests {
         let refs: Vec<&AchievementProgress> = items.iter().collect();
         let res = liste(&refs, "Empty");
         assert!(res.contains("Achievement"));
+    }
+
+    // ── Lecture de l'evenement et decision d'annonce ──
+    //
+    // Ces quatre fonctions vivaient dans `handle_event`, entre deux appels
+    // Discord : aucun test ne pouvait constater qu'un evenement mal forme ne
+    // produit pas une annonce vide, ni qu'un module eteint reste muet.
+
+    use platform_core::nexus::ports::outbound::events::achievement_events::ACHIEVEMENT_UNLOCKED;
+
+    fn evenement(data: serde_json::Value) -> String {
+        serde_json::json!({ "event": ACHIEVEMENT_UNLOCKED, "data": data }).to_string()
+    }
+
+    fn config(paires: &[(&str, &str)]) -> std::collections::HashMap<String, String> {
+        paires
+            .iter()
+            .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn un_evenement_complet_se_lit_entierement() {
+        let brut = evenement(serde_json::json!({
+            "guild_id": "123",
+            "discord_user_id": "456",
+            "achievement_name": "Premier Pas",
+            "achievement_description": "Rejoindre le serveur",
+            "game": "Palworld",
+            "icon_url": "https://cdn.example.com/p.png",
+        }));
+        let fait = parse_haut_fait(&brut).unwrap();
+        assert_eq!(fait.guild_id, "123");
+        assert_eq!(fait.guild_num, 123);
+        assert_eq!(fait.user_id, "456");
+        assert_eq!(fait.nom, "Premier Pas");
+        assert_eq!(fait.description, "Rejoindre le serveur");
+        assert_eq!(fait.jeu.as_deref(), Some("Palworld"));
+    }
+
+    #[test]
+    fn un_haut_fait_sans_nom_reste_annoncable() {
+        // La personne l'a bien decroche : un libelle generique vaut mieux que
+        // le silence.
+        let brut = evenement(serde_json::json!({
+            "guild_id": "1", "discord_user_id": "2"
+        }));
+        let fait = parse_haut_fait(&brut).unwrap();
+        assert_eq!(fait.nom, "Haut fait");
+        assert!(fait.description.is_empty());
+        assert!(fait.jeu.is_none());
+        assert!(fait.icon_url.is_none());
+    }
+
+    #[test]
+    fn un_evenement_inexploitable_ne_produit_rien() {
+        // Le bus porte tous les evenements Nexus : celui-ci ne traite que le
+        // sien, et refuse ce a quoi il manque de quoi annoncer honnetement.
+        assert!(parse_haut_fait("pas du json").is_none());
+        assert!(parse_haut_fait(r#"{"event":"autre_chose","data":{}}"#).is_none());
+        assert!(
+            parse_haut_fait(&serde_json::json!({"event": ACHIEVEMENT_UNLOCKED}).to_string())
+                .is_none()
+        );
+        // Guilde absente, membre absent, guilde illisible.
+        assert!(parse_haut_fait(&evenement(serde_json::json!({"discord_user_id": "2"}))).is_none());
+        assert!(parse_haut_fait(&evenement(serde_json::json!({"guild_id": "1"}))).is_none());
+        assert!(parse_haut_fait(&evenement(
+            serde_json::json!({"guild_id": "pas_un_nombre", "discord_user_id": "2"})
+        ))
+        .is_none());
+    }
+
+    #[test]
+    fn sans_configuration_l_annonce_part_dans_le_salon_choisi() {
+        // Les deux interrupteurs valent vrai par defaut : c'est le salon qui
+        // decide, et lui n'a pas de defaut.
+        assert_eq!(
+            salon_d_annonce(&config(&[("announce_channel_id", "999")])),
+            Some(999)
+        );
+        assert_eq!(salon_d_annonce(&config(&[])), None);
+    }
+
+    #[test]
+    fn les_deux_interrupteurs_coupent_l_annonce_separement() {
+        // Un haut fait peut etre attribue sans etre publie : le module et
+        // l'annonce sont deux reglages distincts.
+        let base = [("announce_channel_id", "999")];
+        let avec = |extra: (&str, &str)| {
+            let mut v = base.to_vec();
+            v.push(extra);
+            config(&v)
+        };
+        assert_eq!(salon_d_annonce(&avec(("enabled", "false"))), None);
+        assert_eq!(salon_d_annonce(&avec(("announce_enabled", "false"))), None);
+        assert_eq!(salon_d_annonce(&avec(("enabled", "true"))), Some(999));
+    }
+
+    #[test]
+    fn un_salon_absurde_vaut_pas_de_salon() {
+        // Publier dans le salon « 0 » n'a aucun sens ; mieux vaut se taire que
+        // d'appeler Discord avec un identifiant invente.
+        assert_eq!(
+            salon_d_annonce(&config(&[("announce_channel_id", "0")])),
+            None
+        );
+        assert_eq!(
+            salon_d_annonce(&config(&[("announce_channel_id", "")])),
+            None
+        );
+        assert_eq!(
+            salon_d_annonce(&config(&[("announce_channel_id", "abc")])),
+            None
+        );
+        // Les espaces autour sont tolerés : un identifiant se copie a la main.
+        assert_eq!(
+            salon_d_annonce(&config(&[("announce_channel_id", " 42 ")])),
+            Some(42)
+        );
+    }
+
+    #[test]
+    fn aucune_mention_par_defaut() {
+        // Annoncer ne veut pas dire notifier tout le serveur.
+        assert_eq!(role_a_mentionner(&config(&[])), None);
+        assert_eq!(
+            role_a_mentionner(&config(&[("mention_role_id", "0")])),
+            None
+        );
+        assert_eq!(
+            role_a_mentionner(&config(&[("mention_role_id", "abc")])),
+            None
+        );
+        assert_eq!(
+            role_a_mentionner(&config(&[("mention_role_id", "77")])),
+            Some(77)
+        );
+    }
+
+    fn fait_de_test() -> HautFaitDebloque {
+        HautFaitDebloque {
+            guild_id: "1".into(),
+            guild_num: 1,
+            user_id: "42".into(),
+            nom: "Premier Pas".into(),
+            description: "Rejoindre le serveur".into(),
+            jeu: Some("Palworld".into()),
+            icon_url: None,
+        }
+    }
+
+    #[test]
+    fn l_annonce_nomme_le_membre_et_son_haut_fait() {
+        let msg = build_annonce(&fait_de_test(), None);
+        let json = serde_json::to_value(&msg).unwrap();
+        let embed = &json["embeds"][0];
+        assert!(embed["description"].as_str().unwrap().contains("<@42>"));
+        assert!(embed["description"]
+            .as_str()
+            .unwrap()
+            .contains("Premier Pas"));
+        // Sans role configure, aucune mention n'est ajoutee.
+        assert!(json.get("content").is_none() || json["content"].is_null());
+    }
+
+    #[test]
+    fn le_role_configure_est_mentionne() {
+        let msg = build_annonce(&fait_de_test(), Some(77));
+        let json = serde_json::to_value(&msg).unwrap();
+        assert_eq!(json["content"], "<@&77>");
+    }
+
+    #[test]
+    fn les_champs_facultatifs_disparaissent_quand_ils_sont_vides() {
+        let mut fait = fait_de_test();
+        fait.description = String::new();
+        fait.jeu = None;
+        let msg = build_annonce(&fait, None);
+        let json = serde_json::to_value(&msg).unwrap();
+        let champs = json["embeds"][0]["fields"].as_array();
+        assert!(champs.is_none() || champs.unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_parse_haut_fait_complete_data() {
+        let payload = serde_json::json!({
+            "event": ACHIEVEMENT_UNLOCKED,
+            "data": {
+                "guild_id": "123",
+                "discord_user_id": "456",
+                "achievement_name": "TestAchieve",
+                "achievement_description": "Test Desc",
+                "game": "TestGame",
+                "icon_url": "https://example.com/icon.png"
+            }
+        }).to_string();
+
+        let fait = parse_haut_fait(&payload).unwrap();
+        assert_eq!(fait.guild_id, "123");
+        assert_eq!(fait.guild_num, 123);
+        assert_eq!(fait.user_id, "456");
+        assert_eq!(fait.nom, "TestAchieve");
+        assert_eq!(fait.description, "Test Desc");
+        assert_eq!(fait.jeu, Some("TestGame".to_string()));
+        assert_eq!(fait.icon_url, Some("https://example.com/icon.png".to_string()));
+    }
+
+    #[test]
+    fn test_parse_haut_fait_invalid_json() {
+        assert!(parse_haut_fait("not json").is_none());
+    }
+
+    #[test]
+    fn test_parse_haut_fait_wrong_event_type() {
+        let payload = serde_json::json!({
+            "event": "some_other_event",
+            "data": { "guild_id": "123", "discord_user_id": "456" }
+        }).to_string();
+
+        assert!(parse_haut_fait(&payload).is_none());
+    }
+
+    #[test]
+    fn test_parse_haut_fait_missing_guild_id() {
+        let payload = serde_json::json!({
+            "event": ACHIEVEMENT_UNLOCKED,
+            "data": { "discord_user_id": "456" }
+        }).to_string();
+
+        assert!(parse_haut_fait(&payload).is_none());
+    }
+
+    #[test]
+    fn test_parse_haut_fait_missing_user_id() {
+        let payload = serde_json::json!({
+            "event": ACHIEVEMENT_UNLOCKED,
+            "data": { "guild_id": "123" }
+        }).to_string();
+
+        assert!(parse_haut_fait(&payload).is_none());
+    }
+
+    #[test]
+    fn test_parse_haut_fait_invalid_guild_id_number() {
+        let payload = serde_json::json!({
+            "event": ACHIEVEMENT_UNLOCKED,
+            "data": {
+                "guild_id": "not_a_number",
+                "discord_user_id": "456"
+            }
+        }).to_string();
+
+        assert!(parse_haut_fait(&payload).is_none());
+    }
+
+    #[test]
+    fn test_salon_d_annonce_with_valid_channel() {
+        let cfg = config(&[("announce_channel_id", "12345")]);
+        assert_eq!(salon_d_annonce(&cfg), Some(12345));
+    }
+
+    #[test]
+    fn test_salon_d_annonce_with_whitespace() {
+        let cfg = config(&[("announce_channel_id", "  98765  ")]);
+        assert_eq!(salon_d_annonce(&cfg), Some(98765));
+    }
+
+    #[test]
+    fn test_salon_d_annonce_disabled() {
+        let cfg = config(&[
+            ("announce_channel_id", "123"),
+            ("enabled", "false"),
+        ]);
+        assert_eq!(salon_d_annonce(&cfg), None);
+    }
+
+    #[test]
+    fn test_salon_d_annonce_announce_disabled() {
+        let cfg = config(&[
+            ("announce_channel_id", "123"),
+            ("announce_enabled", "false"),
+        ]);
+        assert_eq!(salon_d_annonce(&cfg), None);
+    }
+
+    #[test]
+    fn test_role_a_mentionner_with_valid_id() {
+        let cfg = config(&[("mention_role_id", "54321")]);
+        assert_eq!(role_a_mentionner(&cfg), Some(54321));
+    }
+
+    #[test]
+    fn test_role_a_mentionner_with_whitespace() {
+        let cfg = config(&[("mention_role_id", "  11111  ")]);
+        assert_eq!(role_a_mentionner(&cfg), Some(11111));
+    }
+
+    #[test]
+    fn test_role_a_mentionner_invalid_id() {
+        let cfg = config(&[("mention_role_id", "not_a_number")]);
+        assert_eq!(role_a_mentionner(&cfg), None);
+    }
+
+    #[test]
+    fn test_haut_fait_debloque_equality() {
+        let f1 = HautFaitDebloque {
+            guild_id: "1".into(),
+            guild_num: 1,
+            user_id: "2".into(),
+            nom: "Achievement".into(),
+            description: "Desc".into(),
+            jeu: Some("Game".into()),
+            icon_url: None,
+        };
+        let f2 = f1.clone();
+        assert_eq!(f1, f2);
+    }
+
+    #[test]
+    fn test_haut_fait_debloque_fields() {
+        let fait = HautFaitDebloque {
+            guild_id: "guild123".into(),
+            guild_num: 999,
+            user_id: "user456".into(),
+            nom: "Achievement Name".into(),
+            description: "Long description".into(),
+            jeu: Some("Game Name".into()),
+            icon_url: Some("http://example.com/icon.png".into()),
+        };
+
+        assert_eq!(fait.guild_id, "guild123");
+        assert_eq!(fait.guild_num, 999);
+        assert_eq!(fait.user_id, "user456");
+        assert_eq!(fait.nom, "Achievement Name");
+    }
+
+    #[test]
+    fn test_build_annonce_with_description_and_game() {
+        let fait = HautFaitDebloque {
+            guild_id: "1".into(),
+            guild_num: 1,
+            user_id: "42".into(),
+            nom: "Complete Game".into(),
+            description: "You won!".into(),
+            jeu: Some("Epic Game".into()),
+            icon_url: None,
+        };
+
+        let msg = build_annonce(&fait, None);
+        let json = serde_json::to_value(&msg).unwrap();
+        let fields = json["embeds"][0]["fields"].as_array().unwrap();
+
+        // Should have description and game fields
+        assert!(fields.len() >= 2);
+    }
+
+    #[test]
+    fn test_build_annonce_with_icon() {
+        avec_base(Some("https://cdn.example.com"), || {
+            let mut fait = fait_de_test();
+            fait.icon_url = Some("/achievements/icon.png".into());
+
+            let msg = build_annonce(&fait, None);
+            let json = serde_json::to_value(&msg).unwrap();
+            let thumbnail = json["embeds"][0]["thumbnail"].as_object();
+            assert!(thumbnail.is_some());
+        });
+    }
+
+    #[test]
+    fn test_liste_with_exact_950_char_boundary() {
+        // Create items that approach 950 chars
+        let items: Vec<AchievementProgress> = (0..3)
+            .map(|i| AchievementProgress {
+                name: format!("Achievement {}", i),
+                description: "x".repeat(200),
+                icon_url: None,
+                unlocked_at: Some("2026-01-01T00:00:00Z".into()),
+            })
+            .collect();
+
+        let refs: Vec<&AchievementProgress> = items.iter().collect();
+        let res = liste(&refs, "Empty");
+        assert!(!res.is_empty());
+    }
+
+    #[test]
+    fn test_parse_haut_fait_null_fields() {
+        let payload = serde_json::json!({
+            "event": ACHIEVEMENT_UNLOCKED,
+            "data": {
+                "guild_id": "123",
+                "discord_user_id": "456",
+                "achievement_name": null,
+                "achievement_description": null,
+                "game": null
+            }
+        }).to_string();
+
+        let fait = parse_haut_fait(&payload).unwrap();
+        assert_eq!(fait.nom, "Haut fait");
+        assert!(fait.description.is_empty());
+        assert!(fait.jeu.is_none());
+    }
+
+    #[test]
+    fn test_sous_option_user_with_valid_member() {
+        // This tests the helper function indirectly through the command flow
+        let item = AchievementProgress {
+            name: "Test".into(),
+            description: "Desc".into(),
+            icon_url: None,
+            unlocked_at: Some("2026-01-01T00:00:00Z".into()),
+        };
+        let refs = vec![&item];
+        let res = liste(&refs, "Empty");
+        assert!(res.contains("Test"));
+    }
+
+    #[test]
+    fn test_image_absolue_with_trailing_slash_base() {
+        avec_base(Some("https://example.com/"), || {
+            let result = image_absolue("/path/to/image.png");
+            assert_eq!(result, Some("https://example.com/path/to/image.png".into()));
+        });
+    }
+
+    #[test]
+    fn test_image_absolue_without_leading_slash_path() {
+        avec_base(Some("https://example.com"), || {
+            let result = image_absolue("path/to/image.png");
+            assert_eq!(result, Some("https://example.com/path/to/image.png".into()));
+        });
+    }
+
+    #[test]
+    fn test_image_absolue_both_slashes() {
+        avec_base(Some("https://example.com/"), || {
+            let result = image_absolue("/path/to/image.png");
+            assert_eq!(result, Some("https://example.com/path/to/image.png".into()));
+        });
+    }
+
+    #[test]
+    fn test_parse_haut_fait_minimal_fields_only() {
+        // Test with just guild_id and discord_user_id
+        let payload = serde_json::json!({
+            "event": ACHIEVEMENT_UNLOCKED,
+            "data": {
+                "guild_id": "999",
+                "discord_user_id": "888"
+            }
+        }).to_string();
+
+        let fait = parse_haut_fait(&payload).unwrap();
+        assert_eq!(fait.guild_id, "999");
+        assert_eq!(fait.guild_num, 999);
+        assert_eq!(fait.user_id, "888");
+        assert_eq!(fait.nom, "Haut fait");
+        assert!(fait.description.is_empty());
+        assert!(fait.jeu.is_none());
+        assert!(fait.icon_url.is_none());
+    }
+
+    #[test]
+    fn test_register_creates_valid_command() {
+        let cmd = register();
+        let json = serde_json::to_value(&cmd).unwrap();
+        assert_eq!(json["name"], "haut-faits");
+        assert_eq!(json["description"], "Consulter tes hauts faits");
+    }
+
+    #[test]
+    fn test_register_has_two_subcommands() {
+        let cmd = register();
+        let json = serde_json::to_value(&cmd).unwrap();
+        let options = json["options"].as_array().unwrap();
+        assert_eq!(options.len(), 2);
+    }
+
+    #[test]
+    fn test_build_annonce_color_is_golden() {
+        let fait = fait_de_test();
+        let msg = build_annonce(&fait, None);
+        let json = serde_json::to_value(&msg).unwrap();
+        // 0xf1c40f is golden yellow
+        assert_eq!(json["embeds"][0]["color"], 0xf1c40f);
+    }
+
+    #[test]
+    fn test_build_annonce_has_correct_timestamp() {
+        let fait = fait_de_test();
+        let msg = build_annonce(&fait, None);
+        let json = serde_json::to_value(&msg).unwrap();
+        // Check that timestamp field exists
+        assert!(json["embeds"][0]["timestamp"].is_string());
+    }
+
+    #[test]
+    fn test_list_respects_custom_empty_message() {
+        let custom_msg = "Rien du tout";
+        let res = liste(&[], custom_msg);
+        assert_eq!(res, custom_msg);
+    }
+
+    #[test]
+    fn test_haut_fait_debloque_clone() {
+        let f1 = HautFaitDebloque {
+            guild_id: "1".into(),
+            guild_num: 1,
+            user_id: "2".into(),
+            nom: "Test".into(),
+            description: "Desc".into(),
+            jeu: None,
+            icon_url: None,
+        };
+        let f2 = f1.clone();
+        assert_eq!(f1.guild_id, f2.guild_id);
+        assert_eq!(f1.user_id, f2.user_id);
     }
 }

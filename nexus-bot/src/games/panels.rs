@@ -398,4 +398,207 @@ mod tests {
         ));
         assert!(!is_stored_role_valid(Some(&roles_map), None));
     }
+
+    fn jeu(nom: &str, emoji: Option<&str>, role: Option<&str>) -> Game {
+        Game {
+            id: format!("id-{nom}"),
+            game_name: nom.into(),
+            emoji: emoji.map(str::to_string),
+            category: None,
+            role_id: role.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn le_titre_du_panneau_porte_la_categorie() {
+        let vide: Vec<&Game> = vec![];
+        let json = serde_json::to_value(build_panel_embed(Some("Survie"), &vide)).unwrap();
+        assert_eq!(json["title"], "- [ Survie ] -");
+
+        // Sans categorie, un titre generique plutot qu'un titre vide.
+        let json = serde_json::to_value(build_panel_embed(None, &vide)).unwrap();
+        assert_eq!(json["title"], "- [ Jeux ] -");
+    }
+
+    #[test]
+    fn un_panneau_sans_jeu_le_dit_au_lieu_d_etre_muet() {
+        let vide: Vec<&Game> = vec![];
+        let json = serde_json::to_value(build_panel_embed(None, &vide)).unwrap();
+        assert_eq!(json["description"], "*Aucun jeu.*");
+    }
+
+    #[test]
+    fn un_jeu_avec_role_s_affiche_en_pastille_cliquable() {
+        // La mention rend le jeu cliquable et colore ; le nom en gras, non.
+        // C'est la seule difference visible entre un jeu configure et un jeu
+        // legacy reste sans role.
+        let g = jeu("Minecraft", Some("\u{26cf}"), Some("12345"));
+        let json = serde_json::to_value(build_panel_embed(None, &[&g])).unwrap();
+        let desc = json["description"].as_str().unwrap();
+        assert!(desc.contains("<@&12345>"));
+        assert!(!desc.contains("**Minecraft**"));
+        assert!(desc.contains("\u{26cf}"));
+    }
+
+    #[test]
+    fn un_jeu_legacy_sans_role_retombe_sur_son_nom() {
+        let g = jeu("Valheim", None, None);
+        let json = serde_json::to_value(build_panel_embed(None, &[&g])).unwrap();
+        let desc = json["description"].as_str().unwrap();
+        assert!(desc.contains("**Valheim**"));
+        assert!(!desc.contains("<@&"));
+    }
+
+    #[test]
+    fn un_role_illisible_vaut_un_jeu_sans_role() {
+        // Fail closed : mieux vaut le nom en clair qu'une mention forgee a
+        // partir d'un identifiant qu'on n'a pas su lire.
+        let g = jeu("Terraria", None, Some("pas_un_nombre"));
+        let json = serde_json::to_value(build_panel_embed(None, &[&g])).unwrap();
+        let desc = json["description"].as_str().unwrap();
+        assert!(desc.contains("**Terraria**"));
+        assert!(!desc.contains("<@&"));
+    }
+
+    #[test]
+    fn le_panneau_explique_toujours_comment_s_en_servir() {
+        // Sans cette phrase, les reactions sous le panneau n'ont aucun sens
+        // pour qui decouvre le salon.
+        let g = jeu("Ark", None, None);
+        let json = serde_json::to_value(build_panel_embed(None, &[&g])).unwrap();
+        assert!(json["description"]
+            .as_str()
+            .unwrap()
+            .contains("Clique sur une réaction"));
+    }
+
+    #[test]
+    fn les_reactions_du_panneau_sont_dedupliquees() {
+        // Discord refuse deux fois la meme reaction sur un message : deux jeux
+        // qui partagent un emoji ne doivent en poser qu'une.
+        let a = jeu("A", Some("\u{1f3ae}"), None);
+        let b = jeu("B", Some("\u{1f3ae}"), None);
+        let c = jeu("C", Some("\u{1f9df}"), None);
+        assert_eq!(panel_reactions(&[&a, &b, &c]).len(), 2);
+    }
+
+    #[test]
+    fn un_jeu_sans_emoji_ne_pose_aucune_reaction() {
+        let a = jeu("A", None, None);
+        let b = jeu("B", Some(""), None);
+        assert!(panel_reactions(&[&a, &b]).is_empty());
+    }
+
+    #[test]
+    fn un_role_stocke_est_valide_tant_qu_on_ne_peut_pas_prouver_le_contraire() {
+        // Sans la liste des roles de la guilde, on ne conclut pas a une
+        // disparition : recreer un role qui existe deja en ferait deux.
+        assert!(is_stored_role_valid(None, Some(RoleId::new(1))));
+
+        // Avec la liste, l'absence est une preuve.
+        let mut roles = std::collections::HashMap::new();
+        assert!(!is_stored_role_valid(Some(&roles), Some(RoleId::new(1))));
+
+        // Et la presence aussi.
+        let role = serenity::model::guild::Role::default();
+        roles.insert(RoleId::new(1), role);
+        assert!(is_stored_role_valid(Some(&roles), Some(RoleId::new(1))));
+
+        // Aucun role stocke : il n'y a rien a valider.
+        assert!(!is_stored_role_valid(Some(&roles), None));
+        assert!(!is_stored_role_valid(None, None));
+    }
+
+    #[test]
+    fn test_build_panel_embed_with_category() {
+        let g = jeu("Game1", Some("🎮"), Some("123"));
+        let embed = build_panel_embed(Some("Action"), &[&g]);
+        let json = serde_json::to_value(embed).unwrap();
+        assert_eq!(json["title"], "- [ Action ] -");
+    }
+
+    #[test]
+    fn test_build_panel_embed_no_category() {
+        let g = jeu("Game1", Some("🎮"), None);
+        let embed = build_panel_embed(None, &[&g]);
+        let json = serde_json::to_value(embed).unwrap();
+        assert_eq!(json["title"], "- [ Jeux ] -");
+    }
+
+    #[test]
+    fn test_build_panel_embed_multiple_games() {
+        let g1 = jeu("Game1", Some("🎮"), Some("1"));
+        let g2 = jeu("Game2", Some("🎯"), Some("2"));
+        let embed = build_panel_embed(None, &[&g1, &g2]);
+        let json = serde_json::to_value(embed).unwrap();
+        let desc = json["description"].as_str().unwrap();
+        assert!(desc.contains("<@&1>"));
+        assert!(desc.contains("<@&2>"));
+    }
+
+    #[test]
+    fn test_build_panel_embed_game_without_emoji() {
+        let g = jeu("Game1", None, Some("123"));
+        let embed = build_panel_embed(None, &[&g]);
+        let json = serde_json::to_value(embed).unwrap();
+        let desc = json["description"].as_str().unwrap();
+        assert!(desc.contains("<@&123>"));
+        assert!(!desc.contains("🎮"));
+    }
+
+    #[test]
+    fn test_panel_reactions_deduplicates_emojis() {
+        let g1 = jeu("Game1", Some("🎮"), None);
+        let g2 = jeu("Game2", Some("🎮"), None);
+        let g3 = jeu("Game3", Some("🎯"), None);
+        let reactions = panel_reactions(&[&g1, &g2, &g3]);
+        // Should have 2 unique reactions
+        assert_eq!(reactions.len(), 2);
+    }
+
+    #[test]
+    fn test_panel_reactions_empty_games() {
+        let reactions = panel_reactions(&[]);
+        assert!(reactions.is_empty());
+    }
+
+    #[test]
+    fn test_format_panel_deployed_message_single_game() {
+        let msg = format_panel_deployed_message(1);
+        assert_eq!(msg, "Panneau deploye (1 jeux).");
+    }
+
+    #[test]
+    fn test_format_panel_deployed_message_multiple_games() {
+        let msg = format_panel_deployed_message(10);
+        assert_eq!(msg, "Panneau deploye (10 jeux).");
+    }
+
+    #[test]
+    fn test_format_panel_refresh_message_single_game() {
+        let msg = format_panel_refresh_message(1);
+        assert_eq!(msg, "Panneau rafraichi (1 jeux).");
+    }
+
+    #[test]
+    fn test_format_panel_refresh_message_multiple_games() {
+        let msg = format_panel_refresh_message(5);
+        assert_eq!(msg, "Panneau rafraichi (5 jeux).");
+    }
+
+    #[test]
+    fn test_is_stored_role_valid_with_empty_map() {
+        let empty_map = std::collections::HashMap::new();
+        assert!(!is_stored_role_valid(Some(&empty_map), Some(RoleId::new(999))));
+        assert!(!is_stored_role_valid(Some(&empty_map), None));
+    }
+
+    #[test]
+    fn test_panel_embed_includes_instructions() {
+        let g = jeu("TestGame", Some("🎮"), None);
+        let embed = build_panel_embed(None, &[&g]);
+        let json = serde_json::to_value(embed).unwrap();
+        let desc = json["description"].as_str().unwrap();
+        assert!(desc.contains("Clique sur une réaction"));
+    }
 }

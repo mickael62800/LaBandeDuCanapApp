@@ -36,6 +36,22 @@ pub(crate) fn parse_reaction_type(raw: &str) -> Option<ReactionType> {
     }
 }
 
+/// Cle d'une reaction, telle qu'elle sert a retrouver le jeu correspondant.
+///
+/// Un emoji de SERVEUR s'identifie par son identifiant numerique, jamais par
+/// son nom : renommer l'emoji ne doit pas detacher les abonnes du jeu. Un emoji
+/// unicode, lui, EST sa propre cle.
+///
+/// `None` pour les formes que Discord peut envoyer sans qu'on sache quoi en
+/// faire : mieux vaut ignorer la reaction que de la rattacher au mauvais jeu.
+pub(super) fn reaction_key(emoji: &ReactionType) -> Option<String> {
+    match emoji {
+        ReactionType::Custom { id, .. } => Some(id.to_string()),
+        ReactionType::Unicode(valeur) => Some(valeur.clone()),
+        _ => None,
+    }
+}
+
 pub(super) fn find_game_for_reaction<'a>(games: &'a [Game], reaction: &str) -> Option<&'a Game> {
     games.iter().find(|game| {
         game.emoji.as_deref().is_some_and(|emoji| {
@@ -252,11 +268,8 @@ pub async fn handle_reaction(
         None => return,
     };
 
-    // Obtenir la reaction textuelle
-    let reaction_str = match &reaction.emoji {
-        ReactionType::Custom { id, .. } => id.to_string(),
-        ReactionType::Unicode(u) => u.clone(),
-        _ => return,
+    let Some(reaction_str) = reaction_key(&reaction.emoji) else {
+        return;
     };
 
     let guild_id_str = guild_id.to_string();
@@ -390,6 +403,185 @@ mod tests {
                 assert_eq!(name.as_deref(), Some("fire"));
             }
             _ => panic!("Expected animated custom emoji"),
+        }
+    }
+
+    fn jeu(nom: &str, emoji: Option<&str>) -> Game {
+        Game {
+            id: format!("id-{nom}"),
+            game_name: nom.into(),
+            emoji: emoji.map(str::to_string),
+            category: None,
+            role_id: None,
+        }
+    }
+
+    #[test]
+    fn un_emoji_de_serveur_est_identifie_par_son_numero() {
+        // Renommer l'emoji ne doit pas detacher les abonnes du jeu : c'est
+        // l'identifiant qui fait foi, jamais le nom.
+        let custom = ReactionType::Custom {
+            animated: false,
+            id: serenity::all::EmojiId::new(987654321),
+            name: Some("minecraft".into()),
+        };
+        assert_eq!(reaction_key(&custom).as_deref(), Some("987654321"));
+
+        // Meme identifiant sous un autre nom : meme cle.
+        let renomme = ReactionType::Custom {
+            animated: true,
+            id: serenity::all::EmojiId::new(987654321),
+            name: Some("mc_nouveau_nom".into()),
+        };
+        assert_eq!(reaction_key(&renomme), reaction_key(&custom));
+    }
+
+    #[test]
+    fn un_emoji_unicode_est_sa_propre_cle() {
+        let uni = ReactionType::Unicode("\u{1f3ae}".into());
+        assert_eq!(reaction_key(&uni).as_deref(), Some("\u{1f3ae}"));
+    }
+
+    #[test]
+    fn une_reaction_inconnue_ne_rattache_aucun_jeu() {
+        // Fail closed : rattacher au hasard donnerait un role qui n'a rien a
+        // voir avec ce sur quoi la personne a clique.
+        let jeux = vec![jeu("Minecraft", Some("\u{26cf}"))];
+        assert!(find_game_for_reaction(&jeux, "\u{274c}").is_none());
+        assert!(find_game_for_reaction(&jeux, "").is_none());
+        assert!(find_game_for_reaction(&[], "\u{26cf}").is_none());
+    }
+
+    #[test]
+    fn un_jeu_sans_emoji_n_est_jamais_retrouve() {
+        let jeux = vec![jeu("SansEmoji", None)];
+        assert!(find_game_for_reaction(&jeux, "").is_none());
+        assert!(find_game_for_reaction(&jeux, "\u{26cf}").is_none());
+    }
+
+    #[test]
+    fn un_emoji_vide_en_configuration_repond_a_une_reaction_vide() {
+        // Constat, pas souhait : la comparaison est une egalite de chaines, et
+        // `"" == ""` est vrai. En pratique Discord n'envoie jamais de reaction
+        // vide, et le panneau ne pose aucune reaction pour un tel jeu — il
+        // resterait donc inatteignable. Le test fige le comportement plutot que
+        // de laisser croire a une garde qui n'existe pas.
+        let jeux = vec![jeu("Vide", Some(""))];
+        assert_eq!(
+            find_game_for_reaction(&jeux, "").map(|g| g.game_name.as_str()),
+            Some("Vide")
+        );
+        assert!(find_game_for_reaction(&jeux, "\u{26cf}").is_none());
+    }
+
+    #[test]
+    fn le_premier_jeu_qui_correspond_l_emporte() {
+        // Deux jeux ne devraient pas partager un emoji — le panneau les
+        // deduplique — mais si la configuration l'a laisse passer, le resultat
+        // doit rester previsible plutot qu'arbitraire.
+        let jeux = vec![
+            jeu("Premier", Some("\u{1f3ae}")),
+            jeu("Second", Some("\u{1f3ae}")),
+        ];
+        assert_eq!(
+            find_game_for_reaction(&jeux, "\u{1f3ae}").map(|g| g.game_name.as_str()),
+            Some("Premier")
+        );
+    }
+
+    #[test]
+    fn une_saisie_vide_ne_donne_aucune_reaction() {
+        assert!(parse_reaction_type("").is_none());
+        assert!(parse_reaction_type("   ").is_none());
+    }
+
+    #[test]
+    fn test_parse_reaction_type_custom_emoji() {
+        let custom = parse_reaction_type("<:smiling_face:123456>").unwrap();
+        match custom {
+            ReactionType::Custom { animated, id, name } => {
+                assert!(!animated);
+                assert_eq!(id.get(), 123456);
+                assert_eq!(name.as_deref(), Some("smiling_face"));
+            }
+            _ => panic!("Expected custom emoji"),
+        }
+    }
+
+    #[test]
+    fn test_parse_reaction_type_animated_emoji() {
+        let animated = parse_reaction_type("<a:star:654321>").unwrap();
+        match animated {
+            ReactionType::Custom { animated, id, name } => {
+                assert!(animated);
+                assert_eq!(id.get(), 654321);
+                assert_eq!(name.as_deref(), Some("star"));
+            }
+            _ => panic!("Expected animated custom emoji"),
+        }
+    }
+
+    #[test]
+    fn test_parse_reaction_type_unicode_emoji() {
+        let unicode = parse_reaction_type("😀").unwrap();
+        match unicode {
+            ReactionType::Unicode(val) => {
+                assert_eq!(val, "😀");
+            }
+            _ => panic!("Expected unicode emoji"),
+        }
+    }
+
+    #[test]
+    fn test_parse_reaction_type_invalid_custom_format() {
+        // Malformed custom emoji formats fall back to unicode parsing
+        let result = parse_reaction_type("<:invalid");
+        assert!(result.is_some());
+    }
+
+
+    #[test]
+    fn test_find_game_for_reaction_with_custom_emoji() {
+        let games = vec![Game {
+            id: "g1".into(),
+            game_name: "Test".into(),
+            role_id: None,
+            emoji: Some("<:custom:111111>".into()),
+            category: None,
+        }];
+
+        // Should match by ID
+        let found = find_game_for_reaction(&games, "111111");
+        assert_eq!(found.map(|g| g.game_name.as_str()), Some("Test"));
+    }
+
+    #[test]
+    fn test_find_game_for_reaction_no_emoji() {
+        let games = vec![Game {
+            id: "g1".into(),
+            game_name: "NoEmoji".into(),
+            role_id: None,
+            emoji: None,
+            category: None,
+        }];
+
+        assert!(find_game_for_reaction(&games, "🎮").is_none());
+    }
+
+    #[test]
+    fn test_parse_reaction_type_whitespace_trimming() {
+        // Extra whitespace should be trimmed
+        let result = parse_reaction_type("  😀  ");
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_parse_reaction_type_custom_with_spaces_in_name() {
+        // Names with no spaces should parse fine
+        let custom = parse_reaction_type("<:name_test:123>").unwrap();
+        match custom {
+            ReactionType::Custom { .. } => {}
+            _ => panic!("Should be custom"),
         }
     }
 }

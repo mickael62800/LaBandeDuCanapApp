@@ -771,11 +771,40 @@ banaction = ufw
 EOF
     fi
 
-    # Patch retroactif si le bloc existe deja sans backend (installations < 2026-05).
-    if grep -q "^\[nginx-scanner\]" /etc/fail2ban/jail.local 2>/dev/null \
-       && ! awk '/^\[nginx-scanner\]/,/^\[/' /etc/fail2ban/jail.local | grep -q "^backend"; then
-        sed -i '/^\[nginx-scanner\]/a backend  = polling' /etc/fail2ban/jail.local
-        echo "  🔧 backend=polling ajoute au jail existant"
+    # Garantit UNE ligne `backend` et une seule dans la section.
+    #
+    # La version precedente testait la presence de `backend` avec
+    # `awk '/^\[nginx-scanner\]/,/^\[/'`. Or dans une plage awk, si la ligne de
+    # DEBUT satisfait aussi le motif de FIN — ce qui est le cas ici, les deux
+    # commencent par `[` — la plage se referme aussitot : awk ne rendait que
+    # l'en-tete de section, jamais son corps. Le test ne trouvait donc jamais
+    # `backend`, et le script en ajoutait un A CHAQUE EXECUTION.
+    #
+    # Consequence observee : trois lignes `backend = polling` empilees, et
+    # fail2ban refusant de demarrer sur « option 'backend' already exists »
+    # pendant douze jours. Le pare-feu applicatif etait hors service sans que
+    # rien ne le signale — le script annoncant meme « configure » a chaque fois.
+    #
+    # On ne teste donc plus : on NORMALISE. La section est reecrite avec
+    # exactement une ligne `backend`, ce qui est idempotent par construction et
+    # repare au passage les installations deja abimees.
+    if grep -q "^\[nginx-scanner\]" /etc/fail2ban/jail.local 2>/dev/null; then
+        awk '
+            /^\[nginx-scanner\]/ { print; print "backend  = polling"; dans=1; next }
+            /^\[/                { dans=0 }
+            dans && /^[[:space:]]*backend[[:space:]]*=/ { next }
+            { print }
+        ' /etc/fail2ban/jail.local > /etc/fail2ban/jail.local.tmp \
+            && mv /etc/fail2ban/jail.local.tmp /etc/fail2ban/jail.local
+        echo "  🔧 section nginx-scanner normalisee (une seule ligne backend)"
+    fi
+
+    # Refuse de redemarrer sur une configuration invalide : mieux vaut laisser
+    # tourner l'ancienne que tuer le service, comme cela s'est produit ici.
+    if ! fail2ban-client -t &>/dev/null; then
+        echo "  ⚠ configuration fail2ban invalide — service NON redemarre"
+        echo "     detail : fail2ban-client -t"
+        return
     fi
 
     systemctl restart fail2ban

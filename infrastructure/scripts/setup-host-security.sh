@@ -697,6 +697,27 @@ EOF
     echo "  ✅ tls-errors configure (toutes les 15 min)"
 }
 
+# ── Attente du chargement d'un jail fail2ban ────────────────────────────
+#
+# `systemctl restart fail2ban` rend la main des que le processus est lance,
+# pas quand ses jails sont prets. Le controle qui suivait immediatement un
+# `sleep 1` annoncait donc « jail non charge » sur une installation parfaitement
+# saine — un faux negatif d'autant plus frequent que `backend = polling` et
+# plusieurs jails ralentissent le demarrage.
+#
+# On interroge donc jusqu'a quinze secondes, en s'arretant des que le jail
+# repond. Un echec au bout de ce delai est un vrai probleme, pas une course.
+attendre_jail() {
+    local jail="$1" i
+    for i in $(seq 1 15); do
+        if fail2ban-client status "$jail" &>/dev/null; then
+            return 0
+        fi
+        sleep 1
+    done
+    return 1
+}
+
 # ── Module nginx-scanner (jail fail2ban) ────────────────────────────────
 # Bannit les IPs qui hit notre trap 444 (paths /laravel, /wp-admin, .env,
 # .php, etc. — cf. web/nginx.conf "Anti-scanner"). Les requetes 444
@@ -758,8 +779,7 @@ EOF
     fi
 
     systemctl restart fail2ban
-    sleep 1
-    if fail2ban-client status nginx-scanner &>/dev/null; then
+    if attendre_jail nginx-scanner; then
         echo "  ✅ jail nginx-scanner actif (3 hits/1h -> ban 24h)"
     else
         echo "  ⚠ jail nginx-scanner non charge — verifie 'systemctl status fail2ban'"
@@ -797,8 +817,7 @@ EOF
     fi
 
     systemctl restart fail2ban
-    sleep 1
-    if fail2ban-client status recidive &>/dev/null; then
+    if attendre_jail recidive; then
         echo "  ✅ jail recidive actif (3 bans/24h -> ban 1 semaine)"
     else
         echo "  ⚠ jail recidive non charge — verifie 'systemctl status fail2ban'"

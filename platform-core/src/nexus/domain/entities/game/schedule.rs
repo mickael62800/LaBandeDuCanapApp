@@ -283,12 +283,15 @@ fn decide_restart(schedule: &AutoSchedule, running: bool, now: DateTime<Utc>) ->
     };
     let restant = (prochain - now).num_minutes().max(0) as u16;
 
-    // Preavis final. Sa fenetre s'ouvre a `prochain - 1 min` : un envoi date
-    // d'apres cet instant porte forcement sur ce creneau-ci.
+    // Preavis final. Meme piege que le preavis anticipe plus bas : ancree sur
+    // `prochain - 1 min`, la fenetre ne reconnaissait pas un envoi parti a
+    // 1 min 50 s du creneau — le job passant a la minute, c'est le cas courant —
+    // et l'annonce « Redemarrage dans 1 minute » repartait au tour suivant.
+    // On remonte donc au creneau precedent.
     if restant <= FINAL_WARN_MINUTES {
         let deja = schedule
             .last_final_warned_at
-            .is_some_and(|t| t >= prochain - chrono::Duration::minutes(FINAL_WARN_MINUTES as i64));
+            .is_some_and(|t| t > debut_du_creneau(schedule, prochain) && t <= prochain);
         return if deja {
             ScheduleAction::Nothing
         } else {
@@ -297,17 +300,56 @@ fn decide_restart(schedule: &AutoSchedule, running: bool, now: DateTime<Utc>) ->
     }
 
     if schedule.warn_minutes > 0 && restant <= schedule.warn_minutes {
-        let deja = schedule.last_warned_at.is_some_and(|t| {
-            t >= prochain - chrono::Duration::minutes(schedule.warn_minutes as i64)
-        });
+        // « Deja prevenu » se juge par rapport au CRENEAU, pas a l'instant
+        // exact ou la fenetre s'ouvre.
+        //
+        // L'ancienne condition etait `t >= prochain - warn_minutes`. Or le job
+        // tourne a la minute : il entre dans la fenetre a un moment quelconque
+        // entre `warn_minutes` et `warn_minutes - 1` restantes, disons a 15 min
+        // 30 s. Le preavis partait bien (`num_minutes()` tronque a 15), mais il
+        // etait enregistre CINQ SECONDES AVANT le debut de la fenetre : au tour
+        // suivant, le marqueur ne comptait pas, et un second preavis annoncait
+        // « 14 minutes ». D'ou les deux messages a la place d'un.
+        //
+        // La fenetre remonte donc au creneau precedent : tout preavis emis
+        // depuis lors porte forcement sur celui-ci.
+        let deja = schedule
+            .last_warned_at
+            .is_some_and(|t| t > debut_du_creneau(schedule, prochain) && t <= prochain);
         if !deja {
             return ScheduleAction::RestartWarn {
-                minutes_left: restant,
+                // Arrondi a la minute la plus proche, et jamais plus que le
+                // preavis annonce. `num_minutes()` tronque : a 14 min 50 s il
+                // rendait « 14 », alors que le reglage promet quinze.
+                minutes_left: minutes_arrondies(prochain - now).min(schedule.warn_minutes),
             };
         }
     }
 
     ScheduleAction::Nothing
+}
+
+/// Debut du creneau qui s'acheve a `prochain`.
+///
+/// Sert de borne basse aux deux marqueurs de preavis : tout envoi posterieur
+/// porte forcement sur ce creneau-ci, et pas sur le precedent. Comparer a
+/// `prochain - preavis` ne marchait pas, le job passant a la minute et
+/// franchissant donc la fenetre a un instant quelconque — souvent quelques
+/// secondes AVANT son ouverture theorique, ce qui rendait le marqueur invisible
+/// et faisait repartir une seconde annonce.
+fn debut_du_creneau(schedule: &AutoSchedule, prochain: DateTime<Utc>) -> DateTime<Utc> {
+    let heures = schedule.restart_interval_hours.unwrap_or(1).max(1) as i64;
+    prochain - chrono::Duration::hours(heures)
+}
+
+/// Duree en minutes, arrondie a la plus proche plutot que tronquee.
+///
+/// Un preavis annonce le temps qu'il reste a un joueur pour se mettre a l'abri :
+/// « 14 minutes » pour 14 min 50 s est exact au sens strict, mais faux au sens
+/// ou l'exploitant a regle quinze.
+fn minutes_arrondies(d: chrono::Duration) -> u16 {
+    let secondes = d.num_seconds().max(0);
+    ((secondes + 30) / 60) as u16
 }
 
 /// Minutes depuis minuit auxquelles tombent les redemarrages d'une journee.
@@ -743,6 +785,89 @@ mod tests {
         assert_eq!(
             decide(&p, true, false, utc(19, 12, 50)),
             ScheduleAction::Nothing
+        );
+    }
+
+    /// Comme `utc`, mais avec les secondes : le job tourne a la minute et
+    /// n'entre donc jamais dans la fenetre pile a la seconde zero.
+    fn utc_s(jour: u32, heure: u32, minute: u32, seconde: u32) -> DateTime<Utc> {
+        Utc.with_ymd_and_hms(2026, 8, jour, heure, minute, seconde)
+            .unwrap()
+    }
+
+    #[test]
+    fn un_seul_preavis_meme_si_la_fenetre_s_ouvre_entre_deux_minutes() {
+        // LE defaut signale : deux messages, « 15 minutes » puis « 14 minutes ».
+        //
+        // Le job passe a la minute. Il franchit donc la fenetre a un instant
+        // quelconque — ici a 15 min 30 s du creneau de 15h locales. Le preavis
+        // partait bien, mais son marqueur, pose 30 s AVANT le debut theorique
+        // de la fenetre, n'etait pas reconnu au tour suivant : un second
+        // preavis annoncait « 14 minutes ».
+        let mut p = permanence(3);
+
+        let premier = utc_s(19, 12, 44, 30); // 15 min 30 s avant 15h locales
+        assert_eq!(
+            decide(&p, true, false, premier),
+            ScheduleAction::RestartWarn { minutes_left: 15 },
+            "le preavis doit annoncer les quinze minutes reglees, pas quatorze"
+        );
+
+        // Le job enregistre l'envoi, puis repasse une minute plus tard.
+        p.last_warned_at = Some(premier);
+        assert_eq!(
+            decide(&p, true, false, utc_s(19, 12, 45, 30)),
+            ScheduleAction::Nothing,
+            "aucun second preavis ne doit suivre"
+        );
+        // ...et les suivants non plus, jusqu'a l'annonce finale.
+        assert_eq!(
+            decide(&p, true, false, utc_s(19, 12, 50, 30)),
+            ScheduleAction::Nothing
+        );
+    }
+
+    #[test]
+    fn l_annonce_finale_ne_part_qu_une_fois() {
+        // Meme piege que le preavis anticipe : le job passe a la minute, il
+        // entre donc dans la fenetre finale a 1 min 50 s du creneau, et le
+        // marqueur pose la n'etait pas reconnu au tour suivant. Les joueurs
+        // recevaient deux fois « Redemarrage dans 1 minute ».
+        let mut p = permanence(3);
+
+        let premier = utc_s(19, 12, 58, 10); // 1 min 50 s avant 15h locales
+        assert_eq!(
+            decide(&p, true, false, premier),
+            ScheduleAction::RestartFinalWarn
+        );
+
+        p.last_final_warned_at = Some(premier);
+        assert_eq!(
+            decide(&p, true, false, utc_s(19, 12, 59, 10)),
+            ScheduleAction::Nothing,
+            "l'annonce finale ne doit pas se repeter"
+        );
+    }
+
+    #[test]
+    fn le_preavis_arrondit_a_la_minute_la_plus_proche() {
+        // `num_minutes()` tronque : a 14 min 50 s il rendait « 14 », alors que
+        // le reglage promet quinze.
+        let p = permanence(3);
+        assert_eq!(
+            decide(&p, true, false, utc_s(19, 12, 45, 10)),
+            ScheduleAction::RestartWarn { minutes_left: 15 }
+        );
+    }
+
+    #[test]
+    fn le_preavis_n_annonce_jamais_plus_que_l_avance_reglee() {
+        // Si le job a pris du retard, mieux vaut un chiffre honnete que la
+        // promesse du reglage : le joueur n'a effectivement plus quinze minutes.
+        let p = permanence(3);
+        assert_eq!(
+            decide(&p, true, false, utc_s(19, 12, 52, 0)),
+            ScheduleAction::RestartWarn { minutes_left: 8 }
         );
     }
 

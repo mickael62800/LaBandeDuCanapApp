@@ -64,6 +64,43 @@ pub struct Releve {
     pub serveurs: i64,
 }
 
+/// Pourquoi un comptage de presence n'a pas pu se faire.
+///
+/// Un `Option::None` disait « pas de chiffre » sans dire pourquoi, et le seul
+/// message qui l'expliquait partait en `debug!` — invisible avec le
+/// `RUST_LOG=info` par defaut. Un compteur configure mais fige ne laissait donc
+/// AUCUNE trace exploitable : ni dans Discord, ni dans les logs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Indisponible {
+    /// `NEXUS_PRESENCE_INTENT` n'est pas actif : le bot n'a pas le droit de
+    /// lire les activites. C'est de loin la cause la plus frequente.
+    IntentEteint,
+    /// La guilde n'est pas encore dans le cache — normal juste apres la
+    /// connexion, anormal si cela dure.
+    GuildeAbsente,
+    /// Le cache des membres est vide alors que des presences existent. Le
+    /// filtre anti-bot rejetterait alors TOUT LE MONDE et le compteur
+    /// afficherait zero : mieux vaut ne rien ecrire que ce zero-la.
+    MembresNonCharges,
+}
+
+impl Indisponible {
+    /// Phrase destinee a l'exploitant, pas au developpeur.
+    pub fn explication(self) -> &'static str {
+        match self {
+            Self::IntentEteint => {
+                "NEXUS_PRESENCE_INTENT n'est pas actif : cocher « Presence Intent »                  dans le portail Discord Developer, PUIS poser la variable a true                  (dans cet ordre, sinon la passerelle refuse la connexion)"
+            }
+            Self::GuildeAbsente => {
+                "guilde absente du cache : normal pendant quelques secondes apres                  la connexion, anormal si cela persiste"
+            }
+            Self::MembresNonCharges => {
+                "cache des membres vide alors que des presences sont connues :                  verifier que « Server Members Intent » est coche dans le portail                  Discord Developer"
+            }
+        }
+    }
+}
+
 /// Compte les membres qui jouent ET sont en vocal sur ce serveur.
 ///
 /// Les autres compteurs disent combien de personnes jouent, ou combien de
@@ -71,13 +108,18 @@ pub struct Releve {
 /// jouent chacune dans leur coin comptent pour deux dans « en partie », et pour
 /// zero ici.
 ///
-/// Meme reserve que `membres_en_activite` : `None` quand l'information n'est
+/// Meme reserve que `membres_en_activite` : une CAUSE quand l'information n'est
 /// pas disponible, ce qui n'est pas zero.
-pub fn membres_en_jeu_et_en_vocal(ctx: &Context, guild_id: GuildId) -> Option<i64> {
+pub fn membres_en_jeu_et_en_vocal(ctx: &Context, guild_id: GuildId) -> Result<i64, Indisponible> {
     if !intent_presence_demande() {
-        return None;
+        return Err(Indisponible::IntentEteint);
     }
-    let guilde = ctx.cache.guild(guild_id)?;
+    let Some(guilde) = ctx.cache.guild(guild_id) else {
+        return Err(Indisponible::GuildeAbsente);
+    };
+    if guilde.members.is_empty() && !guilde.presences.is_empty() {
+        return Err(Indisponible::MembresNonCharges);
+    }
     let total = guilde
         .voice_states
         .iter()
@@ -102,7 +144,7 @@ pub fn membres_en_jeu_et_en_vocal(ctx: &Context, guild_id: GuildId) -> Option<i6
                     .unwrap_or(false)
         })
         .count();
-    Some(total as i64)
+    Ok(total as i64)
 }
 
 /// Compte les membres de la guilde qui jouent a QUELQUE CHOSE, serveurs Nexus
@@ -115,11 +157,16 @@ pub fn membres_en_jeu_et_en_vocal(ctx: &Context, guild_id: GuildId) -> Option<i6
 /// comprenne pourquoi.
 ///
 /// Les bots sont exclus : un bot musique « joue » en permanence.
-pub fn membres_en_activite(ctx: &Context, guild_id: GuildId) -> Option<i64> {
+pub fn membres_en_activite(ctx: &Context, guild_id: GuildId) -> Result<i64, Indisponible> {
     if !intent_presence_demande() {
-        return None;
+        return Err(Indisponible::IntentEteint);
     }
-    let guilde = ctx.cache.guild(guild_id)?;
+    let Some(guilde) = ctx.cache.guild(guild_id) else {
+        return Err(Indisponible::GuildeAbsente);
+    };
+    if guilde.members.is_empty() && !guilde.presences.is_empty() {
+        return Err(Indisponible::MembresNonCharges);
+    }
     let total = guilde
         .presences
         .iter()
@@ -138,7 +185,7 @@ pub fn membres_en_activite(ctx: &Context, guild_id: GuildId) -> Option<i64> {
                 )
         })
         .count();
-    Some(total as i64)
+    Ok(total as i64)
 }
 
 /// Compte ce qui tourne vraiment.
@@ -210,6 +257,38 @@ fn format_configure<'a>(cfg: &'a HashMap<String, String>, cle: &str, defaut: &'a
         .to_string()
 }
 
+/// Signale, UNE SEULE FOIS par cause, qu'un compteur configure ne peut pas etre
+/// calcule.
+///
+/// En `warn!` et non en `debug!` : avec le `RUST_LOG=info` par defaut, l'ancien
+/// message n'apparaissait nulle part. Un exploitant voyait un salon compteur
+/// configure rester fige, sans rien pour lui dire que l'intent de presence
+/// manquait — le reglage semblait simplement casse.
+///
+/// Une seule fois, car la boucle repasse toutes les cinq minutes : repeter
+/// noierait le journal pour une situation qui, elle, ne change pas toute seule.
+fn signaler_indisponible(compteur: &str, guild_id: GuildId, cause: Indisponible) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static INTENT: AtomicBool = AtomicBool::new(false);
+    static GUILDE: AtomicBool = AtomicBool::new(false);
+    static MEMBRES: AtomicBool = AtomicBool::new(false);
+
+    let deja_dit = match cause {
+        Indisponible::IntentEteint => &INTENT,
+        Indisponible::GuildeAbsente => &GUILDE,
+        Indisponible::MembresNonCharges => &MEMBRES,
+    };
+    if deja_dit.swap(true, Ordering::Relaxed) {
+        return;
+    }
+    tracing::warn!(
+        guild = %guild_id,
+        compteur,
+        "compteurs: salon configure mais non calculable — {}",
+        cause.explication()
+    );
+}
+
 /// Met a jour les deux compteurs d'une guilde.
 pub async fn rafraichir(ctx: &Context, api: &ApiClient, guild_id: GuildId) {
     let guild_key = guild_id.to_string();
@@ -235,7 +314,7 @@ pub async fn rafraichir(ctx: &Context, api: &ApiClient, guild_id: GuildId) {
 
     if let Some(salon) = salon_ensemble {
         match membres_en_jeu_et_en_vocal(ctx, guild_id) {
-            Some(total) => {
+            Ok(total) => {
                 if let Some(nom) = nom_du_salon(
                     &format_configure(&cfg, "ingame_voice_counter_format", "🎧 Ensemble : {count}"),
                     total,
@@ -243,10 +322,7 @@ pub async fn rafraichir(ctx: &Context, api: &ApiClient, guild_id: GuildId) {
                     appliquer(ctx, salon, &nom).await;
                 }
             }
-            None => tracing::debug!(
-                guild = %guild_id,
-                "compteurs: presence indisponible, compteur « en jeu et en vocal » laisse tel quel"
-            ),
+            Err(cause) => signaler_indisponible("en jeu et en vocal", guild_id, cause),
         }
     }
 
@@ -255,7 +331,7 @@ pub async fn rafraichir(ctx: &Context, api: &ApiClient, guild_id: GuildId) {
     // API muette ne l'empeche pas de vivre.
     if let Some(salon) = salon_activite {
         match membres_en_activite(ctx, guild_id) {
-            Some(total) => {
+            Ok(total) => {
                 if let Some(nom) = nom_du_salon(
                     &format_configure(&cfg, "activity_counter_format", "🕹️ En partie : {count}"),
                     total,
@@ -263,13 +339,10 @@ pub async fn rafraichir(ctx: &Context, api: &ApiClient, guild_id: GuildId) {
                     appliquer(ctx, salon, &nom).await;
                 }
             }
-            // Pas le droit de regarder, ou guilde pas encore en cache : on ne
+            // Pas le droit de regarder, ou caches pas encore prets : on ne
             // touche pas au salon. Ecrire zero ferait croire que personne ne
             // joue, alors qu'on ne sait simplement pas.
-            None => tracing::debug!(
-                guild = %guild_id,
-                "compteurs: activite des membres indisponible (intent de presence eteint ?)"
-            ),
+            Err(cause) => signaler_indisponible("en partie", guild_id, cause),
         }
     }
 
@@ -463,6 +536,62 @@ mod tests {
         }
 
         std::env::remove_var("NEXUS_PRESENCE_INTENT");
+    }
+
+    /// L'intent se lit dans une variable d'ENVIRONNEMENT, globale au processus.
+    /// Ces tests la posent donc, et le test dedie a sa lecture la remet a zero :
+    /// ils ne peuvent pas tourner en parallele sans se marcher dessus, d'ou un
+    /// unique test qui couvre les deux causes liees a l'intent.
+    #[test]
+    fn une_cause_est_donnee_quand_le_comptage_est_impossible() {
+        // Le defaut de fond : l'ancien `Option::None` ne disait pas POURQUOI,
+        // et le seul message qui l'expliquait partait en `debug!`, invisible
+        // avec le RUST_LOG=info par defaut. Un salon compteur configure restait
+        // fige sans laisser la moindre trace exploitable.
+        for cause in [
+            Indisponible::IntentEteint,
+            Indisponible::GuildeAbsente,
+            Indisponible::MembresNonCharges,
+        ] {
+            let texte = cause.explication();
+            assert!(
+                !texte.trim().is_empty(),
+                "chaque cause doit porter une explication"
+            );
+        }
+    }
+
+    #[test]
+    fn l_explication_de_l_intent_nomme_la_variable_et_l_ordre_des_operations() {
+        // Demander l'intent sans l'avoir coche dans le portail fait REFUSER la
+        // connexion du bot : l'ordre n'est pas un detail, il doit figurer dans
+        // le message que l'exploitant lira.
+        let texte = Indisponible::IntentEteint.explication();
+        assert!(texte.contains("NEXUS_PRESENCE_INTENT"));
+        assert!(texte.contains("Presence Intent"));
+        assert!(
+            texte.contains("PUIS"),
+            "l'ordre des operations doit etre explicite"
+        );
+    }
+
+    #[test]
+    fn l_explication_des_membres_renvoie_a_l_intent_correspondant() {
+        // Cache des membres vide = le filtre anti-bot rejette tout le monde et
+        // le compteur afficherait zero. La cause n'est pas la meme que
+        // l'intent de presence, et le message ne doit pas les confondre.
+        let texte = Indisponible::MembresNonCharges.explication();
+        assert!(texte.contains("Server Members Intent"));
+        assert!(!texte.contains("NEXUS_PRESENCE_INTENT"));
+    }
+
+    #[test]
+    fn les_causes_se_distinguent() {
+        // Elles pilotent chacune leur propre garde-fou « deja signale » : les
+        // confondre ferait taire un probleme parce qu'un autre a ete signale.
+        assert_ne!(Indisponible::IntentEteint, Indisponible::GuildeAbsente);
+        assert_ne!(Indisponible::GuildeAbsente, Indisponible::MembresNonCharges);
+        assert_ne!(Indisponible::IntentEteint, Indisponible::MembresNonCharges);
     }
 
     #[test]

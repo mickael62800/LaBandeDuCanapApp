@@ -479,3 +479,7 @@ fn skipped_result(
     }
 }
 
+
+#[cfg(test)]
+#[path = "tests/manage_levels_extended.rs"]
+mod tests;

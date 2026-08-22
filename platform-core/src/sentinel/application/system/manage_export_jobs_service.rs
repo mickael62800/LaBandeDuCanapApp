@@ -37,3 +37,7 @@ impl ManageExportJobsUseCase for ManageExportJobsService {
 #[cfg(test)]
 #[path = "tests/manage_export_jobs.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "tests/manage_export_jobs.rs"]
+mod tests;

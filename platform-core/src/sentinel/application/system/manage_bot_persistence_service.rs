@@ -47,3 +47,7 @@ impl ManageBotPersistenceUseCase for ManageBotPersistenceService {
 #[cfg(test)]
 #[path = "tests/manage_bot_persistence.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "tests/manage_bot_persistence.rs"]
+mod tests;

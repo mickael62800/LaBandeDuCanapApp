@@ -796,6 +796,8 @@ const CLES_REDEMARRAGE_AUTO: &[&str] = &[
 #[derive(Debug, serde::Serialize)]
 pub struct ScheduleRangesDto {
     pub enabled: bool,
+    /// `ranges` (plages d'ouverture) ou `restart` (permanence 24/24).
+    pub mode: String,
     pub timezone: String,
     pub ranges: Vec<platform_core::nexus::domain::entities::game::schedule::TimeRange>,
     pub warn_minutes: u16,
@@ -803,14 +805,30 @@ pub struct ScheduleRangesDto {
     pub next_opening: Option<String>,
     /// Reglages de redemarrage automatique neutralises par les plages.
     pub disabled_restart_keys: Vec<String>,
+    /// Mode permanence : heures entre deux redemarrages.
+    pub restart_interval_hours: Option<u8>,
+    pub restart_anchor_minute: u8,
+    /// Prochain redemarrage calcule, pour l'afficher.
+    pub next_restart: Option<String>,
+    /// Cadences proposees a l'ecran. Envoyees par le serveur pour que la liste
+    /// ne puisse pas diverger de ce que le domaine accepte.
+    pub restart_interval_choices: Vec<u8>,
 }
 
 #[derive(Debug, serde::Deserialize)]
 pub struct SaveScheduleRangesDto {
     pub enabled: bool,
+    /// Absent = `ranges` : c'est ce que faisaient tous les appels avant ce
+    /// champ, et le seul des deux modes qui ne redemarre rien tout seul.
+    #[serde(default)]
+    pub mode: Option<String>,
     pub timezone: String,
     pub ranges: Vec<platform_core::nexus::domain::entities::game::schedule::TimeRange>,
     pub warn_minutes: u16,
+    #[serde(default)]
+    pub restart_interval_hours: Option<u8>,
+    #[serde(default)]
+    pub restart_anchor_minute: u8,
 }
 
 /// GET /api/games/servers/{server_id}/schedule-ranges
@@ -818,7 +836,9 @@ pub async fn get_schedule_ranges(
     State(state): State<AppState>,
     Path(server_id): Path<Uuid>,
 ) -> Result<Json<ScheduleRangesDto>, ApiError> {
-    use platform_core::nexus::domain::entities::game::schedule::{next_opening, AutoSchedule};
+    use platform_core::nexus::domain::entities::game::schedule::{
+        next_opening, next_restart_at, AutoSchedule, ScheduleMode, RESTART_INTERVALS_HOURS,
+    };
 
     let stored = state.game_schedule_repo.find(server_id).await?;
     let closes_at = state
@@ -832,27 +852,44 @@ pub async fn get_schedule_ranges(
         Some(s) => {
             let schedule = AutoSchedule {
                 enabled: s.enabled,
+                mode: s.mode,
                 timezone: s.timezone.clone(),
                 ranges: s.ranges.clone(),
                 warn_minutes: s.warn_minutes,
                 closes_at,
+                restart_interval_hours: s.restart_interval_hours,
+                restart_anchor_minute: s.restart_anchor_minute,
+                last_restart_at: s.last_restart_at,
+                last_warned_at: s.last_warned_at,
+                last_final_warned_at: s.last_final_warned_at,
             };
+            let maintenant = chrono::Utc::now();
             ScheduleRangesDto {
-                next_opening: next_opening(&schedule, chrono::Utc::now()).map(|d| d.to_rfc3339()),
+                next_opening: next_opening(&schedule, maintenant).map(|d| d.to_rfc3339()),
+                next_restart: next_restart_at(&schedule, maintenant).map(|d| d.to_rfc3339()),
                 enabled: s.enabled,
+                mode: s.mode.as_str().to_string(),
                 timezone: s.timezone,
                 ranges: s.ranges,
                 warn_minutes: s.warn_minutes,
                 disabled_restart_keys: Vec::new(),
+                restart_interval_hours: s.restart_interval_hours,
+                restart_anchor_minute: s.restart_anchor_minute,
+                restart_interval_choices: RESTART_INTERVALS_HOURS.to_vec(),
             }
         }
         None => ScheduleRangesDto {
             enabled: false,
+            mode: ScheduleMode::Ranges.as_str().to_string(),
             timezone: "Europe/Paris".into(),
             ranges: Vec::new(),
             warn_minutes: 10,
             next_opening: None,
             disabled_restart_keys: Vec::new(),
+            restart_interval_hours: None,
+            restart_anchor_minute: 0,
+            next_restart: None,
+            restart_interval_choices: RESTART_INTERVALS_HOURS.to_vec(),
         },
     };
     Ok(Json(dto))
@@ -866,7 +903,11 @@ pub async fn save_schedule_ranges(
     Query(q): Query<ActorQuery>,
     Json(dto): Json<SaveScheduleRangesDto>,
 ) -> Result<Json<ScheduleRangesDto>, ApiError> {
+    use platform_core::nexus::domain::entities::game::schedule::{
+        ScheduleMode, RESTART_INTERVALS_HOURS,
+    };
     use platform_core::nexus::domain::errors::DomainError;
+    use platform_core::nexus::ports::outbound::game::schedule_repository::ScheduleSettings;
 
     let actor = acteur(&state, &headers, server_id, q.actor_id.as_deref()).await?;
 
@@ -878,6 +919,38 @@ pub async fn save_schedule_ranges(
             "fuseau horaire inconnu : {}",
             dto.timezone
         ))
+        .into());
+    }
+
+    let mode = dto
+        .mode
+        .as_deref()
+        .map(ScheduleMode::from_str)
+        .unwrap_or(ScheduleMode::Ranges);
+
+    if dto.restart_anchor_minute > 59 {
+        return Err(DomainError::ValidationError(
+            "la minute de redemarrage doit etre comprise entre 0 et 59".into(),
+        )
+        .into());
+    }
+
+    if let Some(intervalle) = dto.restart_interval_hours {
+        // Seuls les diviseurs de 24 gardent les creneaux a la meme heure d'un
+        // jour a l'autre. Refuser ici evite d'enregistrer une cadence qui
+        // rendrait fausse l'annonce du lendemain.
+        if !RESTART_INTERVALS_HOURS.contains(&intervalle) {
+            return Err(DomainError::ValidationError(format!(
+                "cadence de redemarrage non proposee : {intervalle} h"
+            ))
+            .into());
+        }
+    }
+
+    if mode == ScheduleMode::Restart && dto.enabled && dto.restart_interval_hours.is_none() {
+        return Err(DomainError::ValidationError(
+            "choisis une cadence de redemarrage avant d'activer la permanence".into(),
+        )
         .into());
     }
 
@@ -898,7 +971,9 @@ pub async fn save_schedule_ranges(
         }
     }
 
-    if dto.enabled && dto.ranges.is_empty() {
+    // L'exigence ne vaut que pour les plages : une permanence n'en a aucune,
+    // et lui en reclamer une empecherait purement et simplement de l'activer.
+    if mode == ScheduleMode::Ranges && dto.enabled && dto.ranges.is_empty() {
         return Err(DomainError::ValidationError(
             "ajoute au moins une plage avant d'activer les horaires".into(),
         )
@@ -909,10 +984,15 @@ pub async fn save_schedule_ranges(
         .game_schedule_repo
         .upsert(
             server_id,
-            dto.enabled,
-            &dto.timezone,
-            &dto.ranges,
-            dto.warn_minutes.min(120),
+            &ScheduleSettings {
+                enabled: dto.enabled,
+                mode,
+                timezone: dto.timezone.clone(),
+                ranges: dto.ranges.clone(),
+                warn_minutes: dto.warn_minutes.min(120),
+                restart_interval_hours: dto.restart_interval_hours,
+                restart_anchor_minute: dto.restart_anchor_minute,
+            },
             Some(&actor),
         )
         .await?;

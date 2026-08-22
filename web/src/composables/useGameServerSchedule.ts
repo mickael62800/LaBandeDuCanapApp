@@ -2,13 +2,25 @@ import { computed, ref } from "vue";
 import { useToast } from "./useToast";
 import {
   nexusGamesService,
+  type ScheduleMode,
   type ServerSchedule,
 } from "@/services/nexusGamesService";
 
 /**
- * Plages d'ouverture automatique d'un serveur de jeu.
+ * Pilotage d'un serveur de jeu dans le temps.
  *
- * Extraites de la page de détail pour rester testables seules : la logique
+ * Deux systèmes, et un seul à la fois :
+ *
+ *   - **plages d'ouverture** : le serveur ne tourne que sur les créneaux
+ *     déclarés (« 18h-20h ») ;
+ *   - **permanence** : il tourne en continu et redémarre à intervalle régulier,
+ *     parce qu'un jeu qui tourne des jours d'affilée ne rend pas la mémoire
+ *     qu'il prend.
+ *
+ * L'exclusion vit côté serveur (une seule colonne `mode`) : cet écran ne fait
+ * que la refléter. Il n'a aucune autorité sur elle — c'est l'API qui tranche.
+ *
+ * Extrait de la page de détail pour rester testable seul : la logique
  * (conversion minutes ↔ « HH:MM », garde d'état du formulaire, état de
  * sauvegarde) est indépendante de Vue, hormis les `ref` exposés.
  *
@@ -23,8 +35,9 @@ export function useGameServerSchedule(
   const { success, error: showError } = useToast();
 
   const enabled = ref(false);
+  const mode = ref<ScheduleMode>("ranges");
   const timezone = ref("Europe/Paris");
-  /// Préavis avant fermeture, en minutes.
+  /// Préavis avant fermeture ou redémarrage, en minutes.
   const warn = ref(10);
   /// Plages en « HH:MM », plus lisibles à l'écran que des minutes depuis minuit.
   const ranges = ref<{ start: string; end: string }[]>([]);
@@ -32,6 +45,12 @@ export function useGameServerSchedule(
   const nextOpening = ref<string | null>(null);
   /// Réglages de redémarrage automatique neutralisés par les plages.
   const disabledRestartKeys = ref<string[]>([]);
+  /// Mode permanence : heures entre deux redémarrages.
+  const restartIntervalHours = ref<number | null>(null);
+  const restartAnchorMinute = ref(0);
+  const nextRestart = ref<string | null>(null);
+  /// Cadences proposées, dictées par le serveur.
+  const restartIntervalChoices = ref<number[]>([]);
   const saving = ref(false);
 
   function minutesVersHeure(minutes: number): string {
@@ -51,19 +70,35 @@ export function useGameServerSchedule(
     if (!g || !s) return;
     try {
       const data: ServerSchedule = await nexusGamesService.getScheduleRanges(g, s);
-      enabled.value = data.enabled;
-      timezone.value = data.timezone;
-      warn.value = data.warn_minutes;
+      appliquer(data);
       ranges.value = data.ranges.map((r) => ({
         start: minutesVersHeure(r.start_minute),
         end: minutesVersHeure(r.end_minute),
       }));
-      nextOpening.value = data.next_opening;
-      disabledRestartKeys.value = data.disabled_restart_keys;
     } catch {
       // Horaires indisponibles : on garde le formulaire tel quel plutôt que de
       // le vider sous les yeux de l'administrateur.
     }
+  }
+
+  /**
+   * Recopie l'état renvoyé par le serveur.
+   *
+   * On le prend tel quel plutôt que de supposer que ce qu'on a envoyé est ce
+   * qu'il a retenu : il borne le préavis, refuse une cadence hors liste, et
+   * recalcule les prochaines échéances.
+   */
+  function appliquer(data: ServerSchedule) {
+    enabled.value = data.enabled;
+    mode.value = data.mode;
+    timezone.value = data.timezone;
+    warn.value = data.warn_minutes;
+    nextOpening.value = data.next_opening;
+    nextRestart.value = data.next_restart;
+    disabledRestartKeys.value = data.disabled_restart_keys;
+    restartIntervalHours.value = data.restart_interval_hours;
+    restartAnchorMinute.value = data.restart_anchor_minute;
+    restartIntervalChoices.value = data.restart_interval_choices;
   }
 
   function ajouterPlage() {
@@ -74,6 +109,23 @@ export function useGameServerSchedule(
     ranges.value.splice(index, 1);
   }
 
+  /**
+   * Bascule vers la permanence en proposant une cadence par défaut.
+   *
+   * Sans elle, activer la permanence serait refusé par l'API faute de cadence,
+   * et l'administrateur verrait une erreur là où il attend un réglage.
+   */
+  function choisirMode(nouveau: ScheduleMode) {
+    mode.value = nouveau;
+    if (nouveau === "restart" && restartIntervalHours.value === null) {
+      restartIntervalHours.value = 6;
+      // Un quart d'heure laisse le temps de finir ce qu'on fait ; c'est le
+      // préavis qui a du sens pour un redémarrage, pas les 10 min d'une
+      // fermeture de soirée.
+      warn.value = 15;
+    }
+  }
+
   async function save() {
     const g = guildId();
     const s = serverId();
@@ -82,18 +134,22 @@ export function useGameServerSchedule(
     try {
       const resultat = await nexusGamesService.saveScheduleRanges(g, s, {
         enabled: enabled.value,
+        mode: mode.value,
         timezone: timezone.value,
         warn_minutes: warn.value,
+        restart_interval_hours: restartIntervalHours.value,
+        restart_anchor_minute: restartAnchorMinute.value,
         ranges: ranges.value.map((r) => ({
           start_minute: heureVersMinutes(r.start),
           end_minute: heureVersMinutes(r.end),
         })),
       });
-      // Le serveur renvoie l'état recalculé : on le prend tel quel, au lieu de
-      // supposer que ce qu'on a envoyé est ce qu'il a retenu.
-      nextOpening.value = resultat.next_opening;
-      disabledRestartKeys.value = resultat.disabled_restart_keys;
-      success("Horaires enregistrés.");
+      appliquer(resultat);
+      success(
+        resultat.mode === "restart"
+          ? "Permanence enregistrée."
+          : "Horaires enregistrés.",
+      );
     } catch (e) {
       showError(e instanceof Error ? e.message : "Enregistrement impossible");
     } finally {
@@ -107,18 +163,34 @@ export function useGameServerSchedule(
       : null,
   );
 
+  const prochainRedemarrage = computed(() =>
+    nextRestart.value
+      ? new Date(nextRestart.value).toLocaleString("fr-FR")
+      : null,
+  );
+
+  const estPermanence = computed(() => mode.value === "restart");
+
   return {
     enabled,
+    mode,
     timezone,
     warn,
     ranges,
     nextOpening,
+    nextRestart,
     disabledRestartKeys,
+    restartIntervalHours,
+    restartAnchorMinute,
+    restartIntervalChoices,
     saving,
     prochaineOuverture,
+    prochainRedemarrage,
+    estPermanence,
     load,
     ajouterPlage,
     retirerPlage,
+    choisirMode,
     save,
   };
 }

@@ -125,12 +125,18 @@ const {
   warn: scheduleWarn,
   ranges: scheduleRanges,
   disabledRestartKeys: scheduleDisabledKeys,
+  restartIntervalHours,
+  restartAnchorMinute,
+  restartIntervalChoices,
+  estPermanence,
   saving: savingSchedule,
   save: saveSchedule,
   load: loadSchedule,
   prochaineOuverture,
+  prochainRedemarrage,
   ajouterPlage,
   retirerPlage,
+  choisirMode,
 } = useGameServerSchedule(
   () => selectedGuildId.value,
   () => serverId.value,
@@ -714,17 +720,52 @@ function fmtDuration(secs: number | null): string {
         </dl>
       </section>
 
-      <!-- Ouverture automatique -->
+      <!-- Pilotage dans le temps : plages OU permanence, jamais les deux -->
       <section v-if="onglet === 'apercu' && server" class="sd-pane sd-resources">
-        <h3>Ouverture automatique</h3>
+        <h3>Pilotage automatique</h3>
         <p class="sd-note">
-          Le serveur s'allume et s'éteint tout seul aux heures indiquées. Sans plage active,
-          rien ne change : c'est toi qui pilotes.
+          Deux façons de faire, au choix. Sans activation, rien ne change : c'est toi qui
+          pilotes.
         </p>
+
+        <div class="sd-modes">
+          <label class="sd-mode" :class="{ 'sd-mode-actif': !estPermanence }">
+            <input
+              type="radio"
+              name="schedule-mode"
+              :checked="!estPermanence"
+              @change="choisirMode('ranges')"
+            />
+            <span>
+              <strong>Plages d'ouverture</strong>
+              <small>
+                Le serveur s'allume et s'éteint aux heures indiquées. Pour un serveur de
+                soirée, qui n'a pas besoin de tourner la journée.
+              </small>
+            </span>
+          </label>
+
+          <label class="sd-mode" :class="{ 'sd-mode-actif': estPermanence }">
+            <input
+              type="radio"
+              name="schedule-mode"
+              :checked="estPermanence"
+              @change="choisirMode('restart')"
+            />
+            <span>
+              <strong>Permanence 24/24</strong>
+              <small>
+                Le serveur tourne en continu et redémarre à intervalle régulier : un jeu qui
+                tourne des jours d'affilée ne rend pas la mémoire qu'il prend, et finit par
+                ramer.
+              </small>
+            </span>
+          </label>
+        </div>
 
         <label class="sd-field sd-field-inline">
           <AppToggle v-model="scheduleEnabled" />
-          <span>Activer les plages horaires</span>
+          <span>{{ estPermanence ? "Activer la permanence" : "Activer les plages horaires" }}</span>
         </label>
 
         <template v-if="scheduleEnabled">
@@ -739,15 +780,50 @@ function fmtDuration(secs: number | null): string {
             </label>
 
             <label class="sd-field">
-              <span>Préavis avant fermeture (minutes)</span>
+              <span>
+                {{ estPermanence ? "Préavis avant redémarrage (minutes)" : "Préavis avant fermeture (minutes)" }}
+              </span>
               <input v-model.number="scheduleWarn" type="number" min="0" max="120" />
               <small class="sd-note">
-                Un message est envoyé dans le jeu. 0 = pas d'annonce.
+                <template v-if="estPermanence">
+                  Annoncé dans le jeu <em>et</em> sur Discord. Une dernière annonce part
+                  toujours dans le jeu une minute avant la coupure. 0 = pas de préavis
+                  anticipé.
+                </template>
+                <template v-else>
+                  Un message est envoyé dans le jeu. 0 = pas d'annonce.
+                </template>
               </small>
             </label>
           </div>
 
-          <div class="sd-ranges">
+          <!-- Permanence : cadence des redémarrages -->
+          <div v-if="estPermanence" class="sd-form">
+            <label class="sd-field">
+              <span>Redémarrer toutes les</span>
+              <select v-model.number="restartIntervalHours">
+                <option v-for="h in restartIntervalChoices" :key="h" :value="h">
+                  {{ h }} heure{{ h > 1 ? "s" : "" }}
+                </option>
+              </select>
+              <small class="sd-note">
+                Les redémarrages tombent à heure fixe, tous les jours : toutes les 6 h à
+                partir de minuit, c'est 0h, 6h, 12h et 18h.
+              </small>
+            </label>
+
+            <label class="sd-field">
+              <span>À la minute</span>
+              <input v-model.number="restartAnchorMinute" type="number" min="0" max="59" />
+              <small class="sd-note">
+                Pour décaler les créneaux de l'heure pile — utile quand plusieurs serveurs
+                redémarreraient sinon en même temps.
+              </small>
+            </label>
+          </div>
+
+          <!-- Plages horaires -->
+          <div v-else class="sd-ranges">
             <div v-for="(plage, index) in scheduleRanges" :key="index" class="sd-range-row">
               <input v-model="plage.start" type="time" />
               <span>→</span>
@@ -764,7 +840,10 @@ function fmtDuration(secs: number | null): string {
             </AppButton>
           </div>
 
-          <p v-if="prochaineOuverture" class="sd-hint">
+          <p v-if="estPermanence && prochainRedemarrage" class="sd-hint">
+            Prochain redémarrage : {{ prochainRedemarrage }}.
+          </p>
+          <p v-if="!estPermanence && prochaineOuverture" class="sd-hint">
             Prochaine ouverture : {{ prochaineOuverture }}.
           </p>
           <p v-if="plannedStopAt" class="sd-hint">
@@ -774,14 +853,13 @@ function fmtDuration(secs: number | null): string {
 
         <div class="sd-thresholds-row">
           <AppButton variant="secondary" size="sm" :disabled="savingSchedule" @click="saveSchedule">
-            {{ savingSchedule ? "Enregistrement…" : "Enregistrer les horaires" }}
+            {{ savingSchedule ? "Enregistrement…" : "Enregistrer" }}
           </AppButton>
         </div>
 
         <p v-if="scheduleDisabledKeys.length" class="sd-hint">
-          Redémarrage automatique du jeu désactivé ({{ scheduleDisabledKeys.join(", ") }}) : sur un
-          serveur qui ferme et rouvre chaque jour, il ferait double emploi — et pourrait rallumer
-          un conteneur qu'on vient d'éteindre.
+          Redémarrage automatique du jeu désactivé ({{ scheduleDisabledKeys.join(", ") }}) : il
+          ferait double emploi, et surtout il couperait sans prévenir personne.
         </p>
       </section>
 

@@ -262,10 +262,12 @@ pub async fn job_game_alerts(State(state): State<AppState>) -> Result<Json<JobRe
     .await
 }
 
-/// Ouverture et fermeture automatiques selon les plages horaires.
+/// Pilotage des serveurs dans le temps : plages d'ouverture pour les uns,
+/// redemarrages periodiques pour les autres.
 ///
-/// Passage court : une plage se termine a la minute pres, et un preavis de dix
-/// minutes annonce a la neuvieme n'a plus grand interet.
+/// Passage court : une plage se termine a la minute pres, et l'annonce
+/// « redemarrage dans 1 minute » ne veut plus rien dire avec deux minutes de
+/// retard.
 pub async fn job_game_schedules(
     State(state): State<AppState>,
 ) -> Result<Json<JobReport>, ApiError> {
@@ -273,12 +275,13 @@ pub async fn job_game_schedules(
         let rapport = crate::nexus::jobs::game_schedules::run(&state).await?;
         Ok(JobReport {
             job: "game_schedules",
-            processed: rapport.started + rapport.stopped + rapport.warned,
+            processed: rapport.started + rapport.stopped + rapport.warned + rapport.restarted,
             errors: rapport.errors,
             details: serde_json::json!({
                 "ouverts": rapport.started,
                 "fermes": rapport.stopped,
                 "preavis": rapport.warned,
+                "redemarres": rapport.restarted,
             }),
         })
     })

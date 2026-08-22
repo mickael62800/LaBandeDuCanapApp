@@ -60,9 +60,10 @@ pub fn start(config: DomainConfig) {
         // sante : c'est lui qui produit les mesures, alerter plus souvent
         // relirait les memes chiffres.
         ("game-alerts", env("GAME_ALERTS_INTERVAL_SECS", 60)),
-        // Plages d'ouverture. Passage a la minute : une plage se termine a la
-        // minute pres, et un preavis de dix minutes annonce a la neuvieme n'a
-        // plus grand interet.
+        // Plages d'ouverture et redemarrages periodiques. Passage a la minute,
+        // et il ne doit pas s'allonger : une plage se termine a la minute pres,
+        // et l'annonce « redemarrage dans 1 minute » ne veut plus rien dire si
+        // elle part avec deux minutes de retard.
         ("game-schedules", env("GAME_SCHEDULES_INTERVAL_SECS", 60)),
     ] {
         let client = config.client.clone();

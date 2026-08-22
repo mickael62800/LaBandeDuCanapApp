@@ -157,8 +157,15 @@ export interface TimeRange {
  * Les heures sont LOCALES, exprimées dans `timezone` : un décalage figé
  * ouvrirait le serveur avec une heure d'écart la moitié de l'année.
  */
+export type ScheduleMode = "ranges" | "restart";
+
 export interface ServerSchedule {
   enabled: boolean;
+  /**
+   * Lequel des deux systèmes pilote ce serveur. Ils s'excluent : des plages
+   * éteignent le serveur la nuit, une permanence le rallume.
+   */
+  mode: ScheduleMode;
   timezone: string;
   ranges: TimeRange[];
   warn_minutes: number;
@@ -166,6 +173,16 @@ export interface ServerSchedule {
   next_opening: string | null;
   /** Réglages de redémarrage automatique du jeu neutralisés par les plages. */
   disabled_restart_keys: string[];
+  /** Mode permanence : heures entre deux redémarrages. */
+  restart_interval_hours: number | null;
+  restart_anchor_minute: number;
+  /** Prochain redémarrage calculé par le serveur. */
+  next_restart: string | null;
+  /**
+   * Cadences proposées. Envoyées par le serveur pour que la liste affichée ne
+   * puisse pas diverger de ce que l'API accepte.
+   */
+  restart_interval_choices: number[];
 }
 
 export interface GameServerDetail {
@@ -423,9 +440,12 @@ export const nexusGamesService = {
     serverId: string,
     schedule: {
       enabled: boolean;
+      mode: ScheduleMode;
       timezone: string;
       ranges: TimeRange[];
       warn_minutes: number;
+      restart_interval_hours: number | null;
+      restart_anchor_minute: number;
     },
   ): Promise<ServerSchedule> {
     return nexusPut<ServerSchedule>(

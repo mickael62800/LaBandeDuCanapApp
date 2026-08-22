@@ -605,22 +605,18 @@ async fn on_reveal_ip_component(
         return;
     }
 
-    let (outcome, game_name) = match execute_reveal_ip_logic(api, server_id, &component.user.id.to_string()).await {
-        Ok(res) => res,
-        Err(err_msg) => {
-            edit_deferred(ctx, component, err_msg).await;
-            return;
-        }
-    };
+    let (outcome, game_name) =
+        match execute_reveal_ip_logic(api, server_id, &component.user.id.to_string()).await {
+            Ok(res) => res,
+            Err(err_msg) => {
+                edit_deferred(ctx, component, err_msg).await;
+                return;
+            }
+        };
 
     // Accuse ephemere au proprietaire.
     let minutes = outcome.delay_minutes;
-    edit_deferred(
-        ctx,
-        component,
-        format_reveal_ack(outcome.started, minutes),
-    )
-    .await;
+    edit_deferred(ctx, component, format_reveal_ack(outcome.started, minutes)).await;
 
     // Annonce publique dans le panneau d'inscription : tout le monde voit que la
     // session ouvre bientot. L'adresse, elle, ne parait qu'au salon prive a
@@ -791,10 +787,7 @@ pub fn build_private_reveal_card(
     host_port: Option<u16>,
     cover_url: Option<&str>,
 ) -> CreateEmbed {
-    let address = match (
-        public_host.filter(|h| !h.trim().is_empty()),
-        host_port,
-    ) {
+    let address = match (public_host.filter(|h| !h.trim().is_empty()), host_port) {
         (Some(host), Some(port)) => format!("`{host}:{port}`"),
         _ => "_Adresse indisponible, contacte le propriétaire._".to_string(),
     };
@@ -886,8 +879,36 @@ pub fn parse_portal_event(payload_json: &str) -> Option<(String, String, u64)> {
     let event = env.get("event").and_then(|v| v.as_str())?.to_string();
     let data = env.get("data")?;
     let server_id = data.get("server_id").and_then(|v| v.as_str())?.to_string();
-    let guild_id = data.get("guild_id").and_then(|v| v.as_str())?.parse::<u64>().ok()?;
+    let guild_id = data
+        .get("guild_id")
+        .and_then(|v| v.as_str())?
+        .parse::<u64>()
+        .ok()?;
     Some((event, server_id, guild_id))
+}
+
+/// Extrait le preavis d'un evenement de redemarrage.
+///
+/// Un preavis illisible retombe sur zero minute plutot que de faire disparaitre
+/// l'annonce : mieux vaut un message imprecis que pas de message du tout quand
+/// le serveur va couper.
+pub fn parse_restart_warning(payload_json: &str) -> (u16, Option<String>) {
+    let Ok(env) = serde_json::from_str::<serde_json::Value>(payload_json) else {
+        return (0, None);
+    };
+    let Some(data) = env.get("data") else {
+        return (0, None);
+    };
+    let minutes = data
+        .get("minutes_left")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0)
+        .min(u16::MAX as u64) as u16;
+    let restart_at = data
+        .get("restart_at")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    (minutes, restart_at)
 }
 
 pub fn match_portal_event_type(event: &str) -> &'static str {
@@ -899,8 +920,69 @@ pub fn match_portal_event_type(event: &str) -> &'static str {
         ev::SERVER_DELETED => "deleted",
         ev::IP_REVEAL => "ip_reveal",
         ev::DAILY_PING => "daily_ping",
+        ev::SERVER_RESTART_WARNING => "restart_warning",
+        ev::SERVER_RESTARTED => "restarted",
         _ => "unknown",
     }
+}
+
+/// Annonce Discord d'un redemarrage a venir.
+///
+/// Elle double le message envoye DANS le jeu, et ne le remplace pas : le
+/// message RCON touche ceux qui jouent, celui-ci touche ceux qui s'appretent a
+/// se connecter et trouveraient sinon porte close sans explication.
+pub fn build_restart_warning_content(
+    role_id: Option<RoleId>,
+    game_name: &str,
+    minutes_left: u16,
+    restart_at: Option<&str>,
+) -> String {
+    let mention = match role_id {
+        Some(id) => format!("<@&{id}> "),
+        None => String::new(),
+    };
+    // Horodatage Discord : chacun le lit dans son propre fuseau, ce qu'une
+    // heure ecrite en dur ne permet pas.
+    let quand = restart_at
+        .and_then(|iso| chrono::DateTime::parse_from_rfc3339(iso).ok())
+        .map(|t| format!(" (<t:{}:t>)", t.timestamp()))
+        .unwrap_or_default();
+    format!(
+        "🔄 {mention}**{game_name}** redemarre dans **{minutes_left} minutes**{quand}.\n\
+         Mettez-vous a l'abri et sauvegardez votre progression."
+    )
+}
+
+/// Annonce de fin de redemarrage. Sans elle, les joueurs prevenus du
+/// redemarrage n'ont aucun moyen de savoir quand revenir.
+pub fn build_restarted_content(role_id: Option<RoleId>, game_name: &str) -> String {
+    let mention = match role_id {
+        Some(id) => format!("<@&{id}> "),
+        None => String::new(),
+    };
+    format!("✅ {mention}**{game_name}** est de nouveau en ligne.")
+}
+
+/// Poste une annonce dans le salon de session du serveur.
+async fn annoncer_dans_la_session(
+    ctx: &Context,
+    api: &ApiClient,
+    server_id: &str,
+    contenu: impl FnOnce(Option<RoleId>, &str) -> String,
+) {
+    let Ok(detail) = api.get_game_server(server_id).await else {
+        return;
+    };
+    let Some(text_ch) = parse_channel(detail.server.text_channel_id.as_ref()) else {
+        return;
+    };
+    let (game_name, role_id) = game_name_and_role(api, &detail.server).await;
+    let _ = text_ch
+        .send_message(
+            &ctx.http,
+            CreateMessage::new().content(contenu(role_id, &game_name)),
+        )
+        .await;
 }
 
 async fn handle_event(ctx: &Context, api: &ApiClient, payload_json: &str) {
@@ -934,6 +1016,18 @@ async fn handle_event(ctx: &Context, api: &ApiClient, payload_json: &str) {
         ev::SERVER_DELETED => on_deleted(ctx, api, &server_id).await,
         ev::IP_REVEAL => on_ip_reveal(ctx, api, &server_id).await,
         ev::DAILY_PING => on_daily_ping(ctx, api, &server_id).await,
+        ev::SERVER_RESTART_WARNING => {
+            // Le preavis et l'heure viennent de l'API : le bot ne recalcule pas
+            // un creneau dont le fuseau vit ailleurs.
+            let (minutes_left, restart_at) = parse_restart_warning(payload_json);
+            annoncer_dans_la_session(ctx, api, &server_id, |role, nom| {
+                build_restart_warning_content(role, nom, minutes_left, restart_at.as_deref())
+            })
+            .await;
+        }
+        ev::SERVER_RESTARTED => {
+            annoncer_dans_la_session(ctx, api, &server_id, build_restarted_content).await;
+        }
         _ => {}
     }
 
@@ -946,10 +1040,7 @@ async fn handle_event(ctx: &Context, api: &ApiClient, payload_json: &str) {
     // ne deplace aucun chiffre ne consomme donc pas le quota Discord.
     if matches!(
         event.as_str(),
-        ev::SERVER_SCHEDULED
-            | ev::SERVER_STARTED
-            | ev::SERVER_STOPPED
-            | ev::SERVER_DELETED
+        ev::SERVER_SCHEDULED | ev::SERVER_STARTED | ev::SERVER_STOPPED | ev::SERVER_DELETED
     ) {
         crate::compteurs::rafraichir(ctx, api, GuildId::new(guild_id)).await;
     }
@@ -999,7 +1090,10 @@ pub(crate) async fn resolve_role(
 }
 
 /// Nom lisible du jeu + role a pinguer, depuis le template du serveur.
-pub(crate) async fn game_name_and_role(api: &ApiClient, server: &GameServer) -> (String, Option<RoleId>) {
+pub(crate) async fn game_name_and_role(
+    api: &ApiClient,
+    server: &GameServer,
+) -> (String, Option<RoleId>) {
     let template = api.get_game_template(&server.template_id).await.ok();
     let game_name = template
         .as_ref()
@@ -1021,7 +1115,9 @@ pub fn build_options_embeds_for_server(
     let game_name = template
         .map(|t| t.name.clone())
         .unwrap_or_else(|| "Jeu".into());
-    let schema = template.map(|t| t.config_schema.as_slice()).unwrap_or_default();
+    let schema = template
+        .map(|t| t.config_schema.as_slice())
+        .unwrap_or_default();
     let options = if is_private {
         public_game_options(config, schema)
     } else {
@@ -1838,6 +1934,73 @@ mod tests {
     }
 
     #[test]
+    fn les_evenements_de_redemarrage_sont_reconnus() {
+        use platform_core::nexus::ports::outbound::events::game_events as ev;
+        assert_eq!(
+            match_portal_event_type(ev::SERVER_RESTART_WARNING),
+            "restart_warning"
+        );
+        assert_eq!(match_portal_event_type(ev::SERVER_RESTARTED), "restarted");
+    }
+
+    #[test]
+    fn le_preavis_se_lit_dans_l_evenement() {
+        let payload = r#"{"event":"game_server_restart_warning","data":{
+            "server_id":"s1","guild_id":"1","minutes_left":15,
+            "restart_at":"2026-08-19T13:00:00Z"}}"#;
+        let (minutes, quand) = parse_restart_warning(payload);
+        assert_eq!(minutes, 15);
+        assert_eq!(quand.as_deref(), Some("2026-08-19T13:00:00Z"));
+    }
+
+    #[test]
+    fn un_preavis_illisible_ne_fait_pas_disparaitre_l_annonce() {
+        // Mieux vaut un message imprecis que pas de message quand le serveur
+        // va couper.
+        assert_eq!(parse_restart_warning("pas du json"), (0, None));
+        assert_eq!(parse_restart_warning(r#"{"event":"x"}"#), (0, None));
+        let (minutes, quand) = parse_restart_warning(r#"{"data":{"server_id":"s1"}}"#);
+        assert_eq!(minutes, 0);
+        assert!(quand.is_none());
+    }
+
+    #[test]
+    fn l_annonce_de_redemarrage_mentionne_le_role_et_l_heure() {
+        let avec = build_restart_warning_content(
+            Some(RoleId::new(42)),
+            "Valheim",
+            15,
+            Some("2026-08-19T13:00:00Z"),
+        );
+        assert!(avec.contains("<@&42>"));
+        assert!(avec.contains("Valheim"));
+        assert!(avec.contains("15 minutes"));
+        // Horodatage Discord : chacun le lit dans son fuseau.
+        assert!(avec.contains("<t:"));
+
+        // Sans role configure, l'annonce part quand meme — sans mention vide.
+        let sans = build_restart_warning_content(None, "Valheim", 15, None);
+        assert!(!sans.contains("<@&"));
+        assert!(!sans.contains("<t:"));
+        assert!(sans.contains("Valheim"));
+    }
+
+    #[test]
+    fn l_annonce_de_retour_dit_quand_revenir() {
+        let avec = build_restarted_content(Some(RoleId::new(7)), "Palworld");
+        assert!(avec.contains("<@&7>"));
+        assert!(avec.contains("Palworld"));
+        assert!(build_restarted_content(None, "Palworld").contains("Palworld"));
+    }
+
+    #[test]
+    fn une_heure_de_redemarrage_illisible_est_simplement_omise() {
+        let contenu = build_restart_warning_content(None, "Jeu", 5, Some("pas une date"));
+        assert!(!contenu.contains("<t:"));
+        assert!(contenu.contains("5 minutes"));
+    }
+
+    #[test]
     fn test_handles_component() {
         assert!(handles_component("gp_register:123"));
         assert!(handles_component("gp_unregister:123"));
@@ -1962,14 +2125,21 @@ mod tests {
         let ow_voice = build_overwrites(g, r, ChannelType::Voice);
         assert_eq!(ow_voice.len(), 2);
 
-        let req_text = build_create_channel_request("salon-test", ChannelType::Text, Some(ChannelId::new(111)), &ow_text, Some("topic test"));
+        let req_text = build_create_channel_request(
+            "salon-test",
+            ChannelType::Text,
+            Some(ChannelId::new(111)),
+            &ow_text,
+            Some("topic test"),
+        );
         let j_req_t = serde_json::to_value(&req_text).unwrap();
         assert_eq!(j_req_t["name"], "salon-test");
         assert_eq!(j_req_t["type"], 0); // Text
         assert_eq!(j_req_t["parent_id"], "111");
         assert_eq!(j_req_t["topic"], "topic test");
 
-        let req_voice = build_create_channel_request("vocal-test", ChannelType::Voice, None, &ow_voice, None);
+        let req_voice =
+            build_create_channel_request("vocal-test", ChannelType::Voice, None, &ow_voice, None);
         let j_req_v = serde_json::to_value(&req_voice).unwrap();
         assert_eq!(j_req_v["name"], "vocal-test");
         assert_eq!(j_req_v["type"], 2); // Voice
@@ -1978,11 +2148,20 @@ mod tests {
     #[test]
     fn test_session_helpers_and_names() {
         assert_eq!(session_suffix("srv-1234-5678-abc"), "srv12345");
-        assert_eq!(session_role_name("Valheim RPG", "srv-123"), "valheim-rpg_srv123");
-        assert_eq!(registration_channel_name("Valheim RPG"), "inscription-valheim-rpg");
+        assert_eq!(
+            session_role_name("Valheim RPG", "srv-123"),
+            "valheim-rpg_srv123"
+        );
+        assert_eq!(
+            registration_channel_name("Valheim RPG"),
+            "inscription-valheim-rpg"
+        );
         assert_eq!(private_text_name("Valheim RPG"), "salon-valheim-rpg");
         assert_eq!(legacy_private_text_name("srv-123"), "joueurs-srv123");
-        assert_eq!(private_text_topic("srv-123"), "Nexus Game Portal | session:srv-123 | private");
+        assert_eq!(
+            private_text_topic("srv-123"),
+            "Nexus Game Portal | session:srv-123 | private"
+        );
     }
 
     #[test]
@@ -1997,13 +2176,11 @@ mod tests {
 
     #[test]
     fn test_lignes_and_sections_reglages() {
-        let schema = [
-            TemplateField {
-                key: "PVP".into(),
-                label: "Combat PvP".into(),
-                group: Some("Gameplay".into()),
-            }
-        ];
+        let schema = [TemplateField {
+            key: "PVP".into(),
+            label: "Combat PvP".into(),
+            group: Some("Gameplay".into()),
+        }];
         assert_eq!(nom_du_reglage(&schema, "PVP"), "Combat PvP");
         assert_eq!(nom_du_reglage(&schema, "UNKNOWN"), "UNKNOWN");
         assert_eq!(section_du_reglage(&schema, "PVP"), "Gameplay");
@@ -2085,14 +2262,26 @@ mod tests {
 
     #[test]
     fn test_parse_portal_event() {
-        let valid_json = r#"{"event":"server.started","data":{"server_id":"srv_123","guild_id":"98765"}}"#;
+        let valid_json =
+            r#"{"event":"server.started","data":{"server_id":"srv_123","guild_id":"98765"}}"#;
         let parsed = parse_portal_event(valid_json);
-        assert_eq!(parsed, Some(("server.started".into(), "srv_123".into(), 98765)));
+        assert_eq!(
+            parsed,
+            Some(("server.started".into(), "srv_123".into(), 98765))
+        );
 
         assert_eq!(parse_portal_event("invalid json"), None);
         assert_eq!(parse_portal_event(r#"{"event":"server.started"}"#), None);
-        assert_eq!(parse_portal_event(r#"{"event":"server.started","data":{"server_id":"s1"}}"#), None);
-        assert_eq!(parse_portal_event(r#"{"event":"server.started","data":{"server_id":"s1","guild_id":"not_a_num"}}"#), None);
+        assert_eq!(
+            parse_portal_event(r#"{"event":"server.started","data":{"server_id":"s1"}}"#),
+            None
+        );
+        assert_eq!(
+            parse_portal_event(
+                r#"{"event":"server.started","data":{"server_id":"s1","guild_id":"not_a_num"}}"#
+            ),
+            None
+        );
 
         use platform_core::nexus::ports::outbound::events::game_events as ev;
         assert_eq!(match_portal_event_type(ev::SERVER_SCHEDULED), "scheduled");
@@ -2116,29 +2305,53 @@ mod tests {
         let embed_soon = build_opening_soon_embed("Minecraft", 10);
         let j_soon = serde_json::to_value(&embed_soon).unwrap();
         assert!(j_soon["title"].as_str().unwrap().contains("Minecraft"));
-        assert!(j_soon["description"].as_str().unwrap().contains("10 minute(s)"));
+        assert!(j_soon["description"]
+            .as_str()
+            .unwrap()
+            .contains("10 minute(s)"));
 
-        let card = build_private_reveal_card("Minecraft", "Serveur Canap", Some("play.net"), Some(25565), Some("https://example.com/mc.jpg"));
+        let card = build_private_reveal_card(
+            "Minecraft",
+            "Serveur Canap",
+            Some("play.net"),
+            Some(25565),
+            Some("https://example.com/mc.jpg"),
+        );
         let j_card = serde_json::to_value(&card).unwrap();
-        assert!(j_card["title"].as_str().unwrap().contains("Minecraft — Serveur Canap"));
-        assert!(j_card["description"].as_str().unwrap().contains("`play.net:25565`"));
+        assert!(j_card["title"]
+            .as_str()
+            .unwrap()
+            .contains("Minecraft — Serveur Canap"));
+        assert!(j_card["description"]
+            .as_str()
+            .unwrap()
+            .contains("`play.net:25565`"));
         assert_eq!(j_card["image"]["url"], "https://example.com/mc.jpg");
 
         let card_none = build_private_reveal_card("Minecraft", "Serveur Canap", None, None, None);
         let j_card_none = serde_json::to_value(&card_none).unwrap();
-        assert!(j_card_none["description"].as_str().unwrap().contains("Adresse indisponible"));
+        assert!(j_card_none["description"]
+            .as_str()
+            .unwrap()
+            .contains("Adresse indisponible"));
 
         let ping_msg = format_daily_ping_content(RoleId::new(1234), "Minecraft", "<t:100:R>");
-        assert_eq!(ping_msg, "<@&1234> Le serveur **Minecraft** ouvre <t:100:R> ! Inscris-toi sur le panneau.");
+        assert_eq!(
+            ping_msg,
+            "<@&1234> Le serveur **Minecraft** ouvre <t:100:R> ! Inscris-toi sur le panneau."
+        );
 
         assert_eq!(format_when_timestamp(None), "bientôt");
-        assert_eq!(format_when_timestamp(Some("2026-01-01T00:00:00Z")), "<t:1767225600:R>");
+        assert_eq!(
+            format_when_timestamp(Some("2026-01-01T00:00:00Z")),
+            "<t:1767225600:R>"
+        );
     }
 
     #[tokio::test]
     async fn test_resolve_role_and_options_embeds() {
-        use tokio::net::TcpListener;
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::TcpListener;
 
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
@@ -2199,13 +2412,11 @@ mod tests {
             name: "Minecraft".into(),
             slug: "minecraft".into(),
             cover_image_url: Some("https://example.com/mc.jpg".into()),
-            config_schema: vec![
-                crate::api_client::TemplateField {
-                    key: "pvp".into(),
-                    label: "PvP".into(),
-                    group: None,
-                }
-            ],
+            config_schema: vec![crate::api_client::TemplateField {
+                key: "pvp".into(),
+                label: "PvP".into(),
+                group: None,
+            }],
         };
         let mut cfg = std::collections::HashMap::new();
         cfg.insert("pvp".into(), "true".into());
@@ -2226,19 +2437,34 @@ mod tests {
 
     #[tokio::test]
     async fn test_portal_registration_and_reveal_logic() {
-        use tokio::net::TcpListener;
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::TcpListener;
 
         assert_eq!(strip_status_suffix("image_attente"), "image");
         assert_eq!(strip_status_suffix("image_waiting"), "image");
         assert_eq!(strip_status_suffix("image_offline"), "image");
         assert_eq!(strip_status_suffix("image_normal"), "image_normal");
 
-        assert_eq!(format_registration_error_content(true, "quota"), "❌ Inscription impossible : quota");
-        assert_eq!(format_registration_error_content(false, "introuvable"), "❌ Désinscription impossible : introuvable");
-        assert_eq!(format_registration_ack_content(true), "Inscription enregistrée");
-        assert_eq!(format_registration_ack_content(false), "Désinscription enregistrée");
-        assert_eq!(format_owner_only_reveal_error(), "⛔ Seul le propriétaire du serveur peut révéler son adresse.");
+        assert_eq!(
+            format_registration_error_content(true, "quota"),
+            "❌ Inscription impossible : quota"
+        );
+        assert_eq!(
+            format_registration_error_content(false, "introuvable"),
+            "❌ Désinscription impossible : introuvable"
+        );
+        assert_eq!(
+            format_registration_ack_content(true),
+            "Inscription enregistrée"
+        );
+        assert_eq!(
+            format_registration_ack_content(false),
+            "Désinscription enregistrée"
+        );
+        assert_eq!(
+            format_owner_only_reveal_error(),
+            "⛔ Seul le propriétaire du serveur peut révéler son adresse."
+        );
 
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();

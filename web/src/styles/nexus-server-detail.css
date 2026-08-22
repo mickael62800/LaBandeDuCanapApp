@@ -489,6 +489,47 @@
   flex-wrap: wrap;
 }
 
+/* Choix du mode de pilotage. Deux cartes cote a cote plutot qu'une liste
+   deroulante : les deux systemes s'excluent, et il faut pouvoir comparer ce
+   qu'ils font avant de trancher — un menu obligerait a les ouvrir l'un apres
+   l'autre pour lire leur description. */
+.sd-modes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-sm);
+  margin: var(--space-sm) 0 var(--space-md);
+}
+
+.sd-mode {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  padding: var(--space-sm);
+  border: 1px solid var(--bg-hover);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  cursor: pointer;
+}
+
+.sd-mode:hover {
+  border-color: var(--text-muted);
+}
+
+.sd-mode-actif {
+  border-color: var(--nexus-accent, var(--text-primary));
+}
+
+.sd-mode span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sd-mode small {
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
 /* Plages horaires : une ligne par creneau, pour qu'on lise « 19h -> 23h »
    d'un coup d'oeil plutot que deux champs sans rapport visible. */
 .sd-ranges {

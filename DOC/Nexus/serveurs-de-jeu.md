@@ -178,25 +178,58 @@ Les courbes de totaux ne font que monter, par construction : c'est leur **pente*
 
 L'historique n'est pas conservé : il se remplit à partir de l'ouverture de l'onglet, avec un premier point immédiat pour ne pas laisser les graphes vides une minute entière.
 
-## Ouverture et fermeture automatiques
+## Pilotage automatique : plages ou permanence
+
+Deux façons de faire vivre un serveur dans le temps, réglées **par serveur** depuis son aperçu. Elles s'excluent : l'écran demande de choisir, et le choix est enregistré comme tel. Sans activation, rien ne change — c'est l'administrateur qui pilote.
+
+### Plages d'ouverture
 
 Un serveur de soirée n'a pas besoin de tourner la journée : il consomme mémoire et processeur pour personne, et sur une machine qui héberge plusieurs jeux, c'est autant de pris aux autres.
 
-L'option se règle depuis l'aperçu du serveur : une ou plusieurs **plages quotidiennes** (« 12h-14h » et « 19h-minuit »), un fuseau horaire, et un préavis. Le serveur s'allume au début de chaque plage, prévient les joueurs *dans le jeu* quelques minutes avant la fin, puis s'arrête. Sans plage active, rien ne change — c'est l'administrateur qui pilote.
+Une ou plusieurs **plages quotidiennes** (« 12h-14h » et « 19h-minuit »), un fuseau horaire, et un préavis. Le serveur s'allume au début de chaque plage, prévient les joueurs *dans le jeu* quelques minutes avant la fin, puis s'arrête.
 
 Passé la **date de fin de session**, tout s'arrête et plus rien ne redémarre : sans cette porte, un serveur ressusciterait chaque soir à 19h indéfiniment.
 
-### Ce que les horaires excluent
+### Permanence 24/24 avec redémarrages
 
-Activer les plages **désactive le redémarrage automatique du jeu** (`AUTO_REBOOT_ENABLED`, `RESTART_CRON`). Les deux feraient double emploi : un serveur qui ferme et rouvre chaque jour redémarre déjà. Pire, le cron pourrait rallumer un conteneur qu'on vient d'éteindre, ou tomber en pleine plage fermée. Le redémarrage programmé garde tout son sens sur un serveur qui tourne 24h/24 — pas ici.
+Pour un serveur où l'on passe à n'importe quelle heure. Il tourne en continu — s'il est trouvé éteint, il est rallumé — et **redémarre à intervalle régulier**. Un jeu qui tourne des jours d'affilée ne rend pas la mémoire qu'il prend : il finit par ramer, puis par tomber au pire moment. Le redémarrage périodique est le remède, à condition d'être annoncé.
+
+La cadence se choisit parmi 1, 2, 3, 4, 6, 8, 12 ou 24 heures. Uniquement des **diviseurs de 24**, pour que les créneaux retombent à la même heure locale chaque jour : toutes les 6 h à partir de minuit, c'est 0h, 6h, 12h et 18h, aujourd'hui comme demain. Une cadence de 5 h dériverait d'un jour à l'autre, et l'annonce « redémarrage à 20h » cesserait d'être vraie dès le lendemain. Une **minute d'ancrage** permet de décaler les créneaux de l'heure pile, utile quand plusieurs serveurs redémarreraient sinon en même temps.
+
+#### Trois annonces, dans le jeu et sur Discord
+
+| Moment | Dans le jeu | Sur Discord |
+|---|---|---|
+| **Préavis** (15 min par défaut, réglable de 0 à 120) | « Redémarrage dans 15 minutes » | Message dans le salon de session, avec mention du rôle du jeu et l'heure dans le fuseau de chacun |
+| **Une minute avant** | « Redémarrage dans 1 minute. Déconnectez-vous maintenant. » | — |
+| **Au redémarrage** | « Redémarrage du serveur en cours… » | « Le serveur est de nouveau en ligne » |
+
+Les deux canaux ne se remplacent pas : le message dans le jeu touche ceux qui **jouent** — c'est le seul endroit où un joueur en pleine partie le lira — et l'annonce Discord touche ceux qui **s'apprêtent à se connecter**, et qui trouveraient sinon porte close sans explication.
+
+L'annonce passe par la commande d'annonce déclarée par le modèle de jeu (`Broadcast` pour Palworld, `say` pour Minecraft…), jamais par une commande écrite en dur : un jeu sans console ne bloque pas le redémarrage, il est simplement redémarré sans annonce en jeu.
+
+#### L'arrêt est propre
+
+Dans cet ordre, qui n'est pas négociable :
+
+1. **sauvegarde du monde** (commande `save` du modèle) — sauvegarder après avoir arrêté ne sauve rien, et arrêter sans sauvegarder perd tout ce qui n'avait pas encore été écrit, parfois plusieurs minutes de construction ;
+2. dernier message aux joueurs encore connectés ;
+3. **arrêt gracieux** : `docker stop` avec le délai de grâce configuré, le temps que le jeu se ferme de lui-même ;
+4. relance.
+
+### Ce que les deux modes excluent
+
+Activer l'un ou l'autre **désactive le redémarrage automatique du jeu** (`AUTO_REBOOT_ENABLED`, `RESTART_CRON`). Il ferait double emploi, et surtout il couperait **sans prévenir personne** — c'est précisément ce que ces deux modes apportent.
 
 ### Les pièges traités
 
 - **L'heure d'été.** Les heures sont locales, avec leur fuseau nommé. Un décalage figé ferait ouvrir le serveur à 18h ou 20h la moitié de l'année.
 - **Les plages qui passent minuit.** « 22h-02h » est traitée comme telle ; sans quoi elle ne serait jamais active.
 - **Deux plages qui se touchent.** La fin est exclue : à 14h00 pile, « 12h-14h » est finie et « 14h-16h » commence.
-- **Le préavis ne part qu'une fois** par plage, et se réarme à l'ouverture suivante.
+- **Le préavis ne part qu'une fois** par plage ou par créneau, et se réarme au suivant. Les deux annonces d'un redémarrage sont suivies séparément : sinon celle à 15 minutes ferait taire celle à une minute, et les joueurs seraient coupés sans un mot.
+- **Un créneau manqué est rattrapé** dans les dix minutes — API redémarrée, passage périodique en retard. Au-delà, il est abandonné : couper à une heure que personne n'a annoncée serait pire que de sauter un tour.
 - **Un fuseau inconnu ne déclenche rien** plutôt que de retomber sur UTC en silence, ce qui ferait tourner le serveur à contretemps.
+- **La fin de session prime sur la permanence** : passé la date de fin, le serveur s'arrête et n'est plus rallumé.
 
 ## Ajuster mémoire et processeur
 

@@ -26,6 +26,12 @@ pub mod game_events {
     /// vivants). Lui seul voit Discord : sans cette photographie, l'API ne peut
     /// constater aucune divergence.
     pub const GAMES_SYNC_REQUESTED: &str = "games_sync_requested";
+    /// Un redemarrage programme approche. Double annonce voulue : le message
+    /// RCON touche ceux qui JOUENT, celui-ci touche ceux qui vont se connecter.
+    /// Aucun des deux ne remplace l'autre.
+    pub const SERVER_RESTART_WARNING: &str = "game_server_restart_warning";
+    /// Le redemarrage programme est termine, le serveur est de nouveau la.
+    pub const SERVER_RESTARTED: &str = "game_server_restarted";
 }
 
 /// Coussin Piege.

@@ -1,5 +1,8 @@
-//! Rappel avant expulsion : previent en message prive les membres qui n'ont
-//! pas encore accepte le reglement et dont l'echeance approche.
+//! Rappel avant expulsion : previent en message prive les comptes SUSPECTS
+//! qui n'ont pas encore passe la verification et dont l'echeance approche.
+//!
+//! Ne concerne PAS l'acceptation du reglement par un membre ordinaire : la
+//! quarantaine n'est posee que sur suspicion (raid, compte trop jeune, alt).
 //!
 //! Le job ne parle pas a Discord — il publie `quarantine_rules_reminder`, que
 //! le bot consomme pour envoyer le message prive. Meme decoupage que

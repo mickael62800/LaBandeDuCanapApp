@@ -1,5 +1,15 @@
-//! Quarantaine de securite : un membre place en attente de verification
-//! (captcha) avec un kick automatique si le delai expire (traite par le worker).
+//! Quarantaine de securite : un compte juge SUSPECT a l'arrivee (pattern de
+//! raid, arrivees en rafale, compte trop recent, alt d'un banni) place en acces
+//! ultra-restreint le temps qu'il passe un captcha, avec expulsion automatique
+//! si le delai expire.
+//!
+//! A ne pas confondre avec l'acceptation du reglement, qui vit dans le module
+//! Accueil et concerne TOUS les arrivants. Ici, un membre qui arrive
+//! normalement n'entre jamais en quarantaine.
+//!
+//! Le delai protege surtout les faux positifs : un membre legitime dont le
+//! compte vient d'etre cree est classe suspect, et un delai trop court
+//! l'expulserait avant qu'il ait vu le message prive.
 
 use chrono::{DateTime, Duration, Utc};
 
@@ -21,8 +31,8 @@ pub const MIN_TIMEOUT_SECS: i64 = 60;
 /// deja, et plus honnetement.
 pub const MAX_TIMEOUT_SECS: i64 = 30 * 24 * 3600;
 
-/// Ce que la guilde a decide pour les membres qui n'ont pas encore accepte le
-/// reglement.
+/// Ce que la guilde a decide pour les comptes suspects en attente de
+/// verification.
 ///
 /// Ces valeurs vivaient dans une variable d'environnement globale a cinq
 /// minutes. Elles appartiennent au serveur : le rythme d'une petite communaute

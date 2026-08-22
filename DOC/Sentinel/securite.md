@@ -19,16 +19,20 @@ Le domaine de sécurité s'appuie sur le bot Sentinel (`automod-bot` et `securit
 - **Protection anti-raid :** activation de la quarantaine pour les nouveaux comptes suspects, mode lockdown (verrouillage complet).
 - **Action de révision (Review Mode) :** configurer le système pour qu'il propose une sanction sous forme de vote/carte à valider par les modérateurs, plutôt que de l'appliquer aveuglément.
 
-## Accepter le règlement, et le délai avant expulsion
+## Le sas de vérification des comptes suspects
+
+> **Ce n'est pas le délai d'acceptation du règlement.** Ce sas ne s'ouvre que pour les comptes jugés **suspects** à l'arrivée : pattern de raid, arrivées en rafale, compte Discord trop récent, ou compte alternatif d'un membre banni. Un membre qui arrive normalement n'y entre jamais. Pour le délai qui s'applique à **tous** les arrivants, voir « Le délai pour accepter le règlement » dans [communaute.md](communaute.md).
 
 Un nouveau membre jugé suspect reçoit le rôle de quarantaine — un accès très restreint — et un message privé lui demandant de se vérifier. S'il ne le fait pas, il est expulsé.
 
-Le délai laissé pour répondre était de **cinq minutes**, la même valeur pour tous les serveurs, fixée dans l'environnement du bot. C'est très peu pour quelqu'un qui rejoint depuis son téléphone, ou dont les messages privés sont fermés et qui doit d'abord les rouvrir : l'expulsion tombait avant que la personne ait vu le message. Quatre réglages, désormais propres à chaque serveur, vivent dans le module Sécurité du tableau de bord :
+Le délai laissé pour répondre était de **cinq minutes**, la même valeur pour tous les serveurs, fixée dans l'environnement du bot. C'est très peu pour quelqu'un qui rejoint depuis son téléphone, ou dont les messages privés sont fermés et qui doit d'abord les rouvrir : l'expulsion tombait avant que la personne ait vu le message.
 
-- **Délai pour accepter le règlement** — 24 heures par défaut. Le compte à rebours est figé à l'arrivée du membre : rallonger ou raccourcir le réglage ne change jamais le sursis de quelqu'un déjà en attente, seulement celui des arrivées suivantes.
-- **Expulser à l'expiration du délai** — désactivable. Le membre reste alors en attente d'une décision humaine, sans limite de temps.
+Ce délai protège surtout les **faux positifs** : un membre parfaitement légitime dont le compte Discord vient d'être créé est classé suspect, et cinq minutes ne lui laissaient aucune chance. Quatre réglages, désormais propres à chaque serveur, vivent dans le module Sécurité du tableau de bord :
+
+- **Délai de vérification laissé à un compte suspect** — 24 heures par défaut. Le compte à rebours est figé à l'arrivée du membre : rallonger ou raccourcir le réglage ne change jamais le sursis de quelqu'un déjà en attente, seulement celui des arrivées suivantes.
+- **Expulser un compte suspect non vérifié à l'expiration** — désactivable. Le membre reste alors en attente d'une décision humaine, sans limite de temps.
 - **Rappel avant expulsion** — un message privé part le nombre de secondes indiqué avant l'échéance (une heure par défaut). À zéro, aucun rappel.
-- **Salon du règlement** — cité dans le rappel pour indiquer où lire les règles.
+- **Salon à citer dans le rappel** — indiqué au compte suspect pour qu'il sache où aller.
 
 Le message d'arrivée annonce le délai réel du serveur : il affichait « 5 minutes » en dur, ce qui était exact tant que le délai était une constante, et deviendrait un mensonge dès le premier réglage. Quand l'expulsion automatique est désactivée, le message ne menace d'ailleurs plus d'une expulsion qui ne viendra pas.
 

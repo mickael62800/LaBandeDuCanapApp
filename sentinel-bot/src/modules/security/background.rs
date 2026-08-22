@@ -1,7 +1,9 @@
-//! Background tasks du module security : slowmode revert / lockdown
-//! revert. Phase 5F — la quarantine kick a ete deplacee dans
-//! sentinel-worker (`security::kick_expired_quarantine`) ; le bot la
-//! consume via `quarantine_expired_consumer.rs`.
+//! Background tasks du module security : slowmode revert / lockdown revert.
+//!
+//! L'expulsion des quarantaines expirees ne vit plus ici : elle est decidee par
+//! `platform-api` (`sentinel::jobs::security::kick_expired_quarantine`), qui
+//! publie un evenement, et le bot l'execute via `quarantine_expired_consumer`.
+//! Le crate `sentinel-worker` que mentionnait ce commentaire n'existe plus.
 
 use serenity::all::Context;
 use serenity::model::id::{GuildId, UserId};

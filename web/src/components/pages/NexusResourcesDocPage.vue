@@ -100,11 +100,13 @@ const onglets: { cle: Onglet; libelle: string }[] = [
       </article>
 
       <article class="rd-tip">
-        <h3>Fréquence plutôt que nombre de cœurs</h3>
+        <h3>Fréquence plutôt que vCPU alloués</h3>
         <p>
           Minecraft, Valheim, Factorio, Satisfactory, V Rising et Necesse font
-          tourner leur simulation sur très peu de threads. Un 4 cœurs à 4 GHz
-          y bat un 8 cœurs à 2,4 GHz.
+          tourner leur boucle principale sur un seul thread. Ce que les guides
+          d'hébergeurs appellent « 4 cœurs recommandés » encode en réalité une
+          exigence de <strong>fréquence</strong> : un hôte à 4 GHz y bat un hôte
+          à 2,4 GHz, quel que soit le quota accordé au conteneur.
         </p>
       </article>
 
@@ -112,10 +114,19 @@ const onglets: { cle: Onglet; libelle: string }[] = [
         <h3>Ce que Docker fait de ces valeurs</h3>
         <p>
           La mémoire allouée est une limite <strong>stricte</strong> : le
-          conteneur est tué s'il la dépasse. Le nombre de cœurs est un plafond
-          de temps processeur, pas une réservation.
+          conteneur est tué s'il la dépasse. Le réglage processeur, lui, part en
+          <code>--cpus</code> : un plafond de temps processeur, pas une
+          réservation, et compté en processeurs <strong>logiques</strong>.
         </p>
         <ul>
+          <li>
+            Ce sont des <strong>threads</strong>, pas des cœurs physiques : avec
+            Hyper-Threading, 4 vCPU valent environ 2 cœurs.
+          </li>
+          <li>
+            En allouer plus n'accélère pas un moteur mono-thread — cela prive
+            seulement les autres serveurs de l'hôte.
+          </li>
           <li>Laisser de la marge à la machine hôte : au moins 2 Go hors serveurs.</li>
           <li>
             Docker fige ces limites à la création du conteneur : les modifier

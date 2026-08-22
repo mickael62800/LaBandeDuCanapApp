@@ -1,11 +1,30 @@
-// Recommandations de dimensionnement des serveurs de jeu (RAM / coeurs).
+// Recommandations de dimensionnement des serveurs de jeu (RAM / vCPU).
 //
 // SOURCE UNIQUE, volontairement : le tableau de la page de creation et la page
 // de documentation lisent tous deux ce fichier. Les avoir dupliques ferait
 // diverger les deux ecrans a la premiere correction de chiffre, et personne ne
 // saurait lequel fait foi.
 //
-// Les valeurs viennent de la documentation des editeurs et des guides
+// UNITE DU CHAMP PROCESSEUR. Le reglage « Coeurs processeur » de la page de
+// creation part en `cpu_limit`, que docker-agent convertit en nano-CPUs
+// (`cpu_limit * 1e9`, soit le `--cpus` de Docker). C'est un QUOTA DE TEMPS
+// processeur compte en processeurs LOGIQUES — des threads, pas des coeurs
+// physiques. Sur un hote avec SMT/Hyper-Threading, 4 y vaut quatre threads,
+// soit environ deux coeurs physiques.
+//
+// C'est pourquoi `vcpu` ne recopie PAS les specs machine des guides
+// d'hebergeurs (« un i7 6 coeurs / 12 threads »), qui decrivent la machine
+// entiere, systeme et marge compris. La valeur ici est ce que le serveur
+// CONSOMME en pointe, plus un peu d'air : la plupart de ces jeux ne font
+// chauffer qu'un ou deux threads, et leur reserver six vCPU ne les accelere
+// pas — cela prive seulement les autres serveurs de l'hote.
+//
+// Ce qui se cache derriere les « 4 coeurs recommandes » des guides, c'est la
+// FREQUENCE : ces moteurs sont mono-thread sur leur boucle principale. Un
+// hote a 4 GHz sert mieux ces jeux qu'un hote a 2,4 GHz avec deux fois plus
+// de vCPU alloues.
+//
+// Les valeurs memoire viennent de la documentation des editeurs et des guides
 // d'hebergeurs (2024-2025). Elles sont INDICATIVES : la consommation reelle
 // tient surtout a la taille du monde et aux mods. C'est pour cela que chaque
 // jeu porte aussi ses `facteurs` — un exploitant qui les lit dimensionne mieux
@@ -16,8 +35,9 @@ export interface Recommandation {
   players: number;
   /// Memoire, en Go. Chaine car souvent une fourchette (« 6-8 »).
   ram_gb: string;
-  /// Coeurs alloues. Chaine pour la meme raison.
-  cpu_cores: string;
+  /// Quota Docker `--cpus`, en processeurs LOGIQUES (threads), pas en coeurs
+  /// physiques. Voir l'entete du fichier. Chaine pour la meme raison.
+  vcpu: string;
   /// Le contexte qui justifie la ligne : c'est la vraie information.
   notes: string;
 }
@@ -44,9 +64,9 @@ export const gameResources: GameResources[] = [
       "Joueurs disperses : chacun charge ses propres chunks",
     ],
     recommendations: [
-      { players: 4, ram_gb: "4", cpu_cores: "2", notes: "Vanilla, peu d'exploration" },
-      { players: 10, ram_gb: "6-8", cpu_cores: "4", notes: "Vanilla ou quelques plugins" },
-      { players: 20, ram_gb: "8-12", cpu_cores: "4", notes: "Plugins nombreux ou modpack" },
+      { players: 4, ram_gb: "4", vcpu: "2", notes: "Vanilla, peu d'exploration" },
+      { players: 10, ram_gb: "6-8", vcpu: "3", notes: "Vanilla ou quelques plugins" },
+      { players: 20, ram_gb: "8-12", vcpu: "4", notes: "Plugins nombreux ou modpack" },
     ],
   },
   {
@@ -59,8 +79,8 @@ export const gameResources: GameResources[] = [
       "Generation de terrain mono-thread : la frequence prime",
     ],
     recommendations: [
-      { players: 5, ram_gb: "4", cpu_cores: "2", notes: "Monde peu explore" },
-      { players: 10, ram_gb: "6-8", cpu_cores: "4", notes: "Plafond du jeu : 10 joueurs" },
+      { players: 5, ram_gb: "4", vcpu: "2", notes: "Monde peu explore" },
+      { players: 10, ram_gb: "6-8", vcpu: "3", notes: "Plafond du jeu : 10 joueurs" },
     ],
   },
   {
@@ -73,9 +93,9 @@ export const gameResources: GameResources[] = [
       "Simulation mono-thread : viser 60 UPS, pas un nombre de joueurs",
     ],
     recommendations: [
-      { players: 4, ram_gb: "3-4", cpu_cores: "2", notes: "Usine de debut de partie" },
-      { players: 8, ram_gb: "4-6", cpu_cores: "4", notes: "Usine etablie" },
-      { players: 10, ram_gb: "6-8", cpu_cores: "4", notes: "Grosse usine, mods ou Space Age" },
+      { players: 4, ram_gb: "3-4", vcpu: "2", notes: "Usine de debut de partie" },
+      { players: 8, ram_gb: "4-6", vcpu: "2", notes: "Usine etablie" },
+      { players: 10, ram_gb: "6-8", vcpu: "3", notes: "Grosse usine, mods ou Space Age" },
     ],
   },
   {
@@ -88,9 +108,9 @@ export const gameResources: GameResources[] = [
       "Deux coeurs reellement utilises : la frequence prime",
     ],
     recommendations: [
-      { players: 8, ram_gb: "8", cpu_cores: "4", notes: "Petites bases, redemarrage quotidien" },
-      { players: 16, ram_gb: "16", cpu_cores: "4", notes: "Recommandation de l'editeur" },
-      { players: 32, ram_gb: "24+", cpu_cores: "4", notes: "Bases nombreuses et actives" },
+      { players: 8, ram_gb: "8", vcpu: "3", notes: "Petites bases, redemarrage quotidien" },
+      { players: 16, ram_gb: "16", vcpu: "4", notes: "Recommandation de l'editeur" },
+      { players: 32, ram_gb: "24+", vcpu: "4", notes: "Bases nombreuses et actives" },
     ],
   },
   {
@@ -103,9 +123,9 @@ export const gameResources: GameResources[] = [
       "Creatures apprivoisees et structures accumulees",
     ],
     recommendations: [
-      { players: 10, ram_gb: "8", cpu_cores: "2", notes: "Vanilla, sans mods" },
-      { players: 15, ram_gb: "12-16", cpu_cores: "4", notes: "Vanilla, carte standard" },
-      { players: 20, ram_gb: "16-20", cpu_cores: "4", notes: "Mods, structures et apprivoisements" },
+      { players: 10, ram_gb: "8", vcpu: "2", notes: "Vanilla, sans mods" },
+      { players: 15, ram_gb: "12-16", vcpu: "3", notes: "Vanilla, carte standard" },
+      { players: 20, ram_gb: "16-20", vcpu: "4", notes: "Mods, structures et apprivoisements" },
     ],
   },
   {
@@ -118,9 +138,9 @@ export const gameResources: GameResources[] = [
       "Derive memoire : redemarrer toutes les 12 a 24 h",
     ],
     recommendations: [
-      { players: 4, ram_gb: "4-6", cpu_cores: "4", notes: "Vanilla, carte par defaut" },
-      { players: 8, ram_gb: "8-12", cpu_cores: "6", notes: "Mods legers" },
-      { players: 16, ram_gb: "12-16", cpu_cores: "6", notes: "Mods complets, CPU 4 GHz+" },
+      { players: 4, ram_gb: "4-6", vcpu: "2", notes: "Vanilla, carte par defaut" },
+      { players: 8, ram_gb: "8-12", vcpu: "3", notes: "Mods legers" },
+      { players: 16, ram_gb: "12-16", vcpu: "4", notes: "Mods complets, CPU 4 GHz+" },
     ],
   },
   {
@@ -133,9 +153,9 @@ export const gameResources: GameResources[] = [
       "Combats de boss : pics de charge processeur",
     ],
     recommendations: [
-      { players: 3, ram_gb: "0,5-1", cpu_cores: "1", notes: "Petit monde, vanilla" },
-      { players: 10, ram_gb: "1-2", cpu_cores: "2", notes: "Grand monde" },
-      { players: 16, ram_gb: "2-4", cpu_cores: "4", notes: "tModLoader, pics pendant les boss" },
+      { players: 3, ram_gb: "0,5-1", vcpu: "1", notes: "Petit monde, vanilla" },
+      { players: 10, ram_gb: "1-2", vcpu: "2", notes: "Grand monde" },
+      { players: 16, ram_gb: "2-4", vcpu: "2", notes: "tModLoader, pics pendant les boss" },
     ],
   },
   {
@@ -148,8 +168,8 @@ export const gameResources: GameResources[] = [
       "Deformation du terrain et physique : charge processeur",
     ],
     recommendations: [
-      { players: 6, ram_gb: "8-12", cpu_cores: "6", notes: "Serveur au repos : deja ~4,4 Go" },
-      { players: 16, ram_gb: "16", cpu_cores: "8", notes: "Plafond du jeu : 16 joueurs" },
+      { players: 6, ram_gb: "8-12", vcpu: "4", notes: "Serveur au repos : deja ~4,4 Go" },
+      { players: 16, ram_gb: "16", vcpu: "6", notes: "Plafond du jeu : 16 joueurs" },
     ],
   },
   {
@@ -162,8 +182,8 @@ export const gameResources: GameResources[] = [
       "Boucle de jeu mono-thread : la frequence est le goulot",
     ],
     recommendations: [
-      { players: 4, ram_gb: "8-12", cpu_cores: "4", notes: "Debut / milieu de partie" },
-      { players: 8, ram_gb: "16", cpu_cores: "4", notes: "Grosse usine de fin de partie" },
+      { players: 4, ram_gb: "8-12", vcpu: "2", notes: "Debut / milieu de partie" },
+      { players: 8, ram_gb: "16", vcpu: "3", notes: "Grosse usine de fin de partie" },
     ],
   },
   {
@@ -176,9 +196,9 @@ export const gameResources: GameResources[] = [
       "Mods : tres couteux, meme peu nombreux",
     ],
     recommendations: [
-      { players: 4, ram_gb: "6-8", cpu_cores: "2", notes: "Build 42 : ~6 Go de base" },
-      { players: 8, ram_gb: "10", cpu_cores: "4", notes: "Compter +0,5 Go par joueur" },
-      { players: 20, ram_gb: "12-16", cpu_cores: "4", notes: "Mods : ajouter largement" },
+      { players: 4, ram_gb: "6-8", vcpu: "2", notes: "Build 42 : ~6 Go de base" },
+      { players: 8, ram_gb: "10", vcpu: "3", notes: "Compter +0,5 Go par joueur" },
+      { players: 20, ram_gb: "12-16", vcpu: "4", notes: "Mods : ajouter largement" },
     ],
   },
   {
@@ -191,9 +211,9 @@ export const gameResources: GameResources[] = [
       "Plugins BepInEx",
     ],
     recommendations: [
-      { players: 10, ram_gb: "8", cpu_cores: "2", notes: "CPU 3 GHz+ minimum" },
-      { players: 20, ram_gb: "10-12", cpu_cores: "4", notes: "Les chateaux hors ligne comptent aussi" },
-      { players: 40, ram_gb: "12-16", cpu_cores: "4", notes: "CPU 3,6 GHz+" },
+      { players: 10, ram_gb: "8", vcpu: "2", notes: "CPU 3 GHz+ minimum" },
+      { players: 20, ram_gb: "10-12", vcpu: "3", notes: "Les chateaux hors ligne comptent aussi" },
+      { players: 40, ram_gb: "12-16", vcpu: "4", notes: "CPU 3,6 GHz+" },
     ],
   },
   {
@@ -206,8 +226,8 @@ export const gameResources: GameResources[] = [
       "Au-dela de 8 a 10 joueurs, le processeur limite autant que la memoire",
     ],
     recommendations: [
-      { players: 4, ram_gb: "4", cpu_cores: "2", notes: "Monde neuf" },
-      { players: 8, ram_gb: "6-8", cpu_cores: "4", notes: "Plafond confortable : 8 joueurs" },
+      { players: 4, ram_gb: "4", vcpu: "2", notes: "Monde neuf" },
+      { players: 8, ram_gb: "6-8", vcpu: "2", notes: "Plafond confortable : 8 joueurs" },
     ],
   },
   {
@@ -220,8 +240,8 @@ export const gameResources: GameResources[] = [
       "Taille du monde et multiplicateurs de configuration",
     ],
     recommendations: [
-      { players: 4, ram_gb: "4", cpu_cores: "2", notes: "Monde par defaut, sans mods" },
-      { players: 10, ram_gb: "6-8", cpu_cores: "4", notes: "Les colonies pesent plus que les joueurs" },
+      { players: 4, ram_gb: "4", vcpu: "2", notes: "Monde par defaut, sans mods" },
+      { players: 10, ram_gb: "6-8", vcpu: "2", notes: "Les colonies pesent plus que les joueurs" },
     ],
   },
   {
@@ -234,9 +254,9 @@ export const gameResources: GameResources[] = [
       "Mods, tres repandus sur ce jeu",
     ],
     recommendations: [
-      { players: 5, ram_gb: "4-8", cpu_cores: "4", notes: "Base 1 Go + ~300 Mo par joueur" },
-      { players: 10, ram_gb: "12-16", cpu_cores: "4", notes: "Monde travaille sur la duree" },
-      { players: 20, ram_gb: "24+", cpu_cores: "4", notes: "Serveur modde" },
+      { players: 5, ram_gb: "4-8", vcpu: "2", notes: "Base 1 Go + ~300 Mo par joueur" },
+      { players: 10, ram_gb: "12-16", vcpu: "3", notes: "Monde travaille sur la duree" },
+      { players: 20, ram_gb: "24+", vcpu: "4", notes: "Serveur modde" },
     ],
   },
 ];

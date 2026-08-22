@@ -42,9 +42,16 @@ const modeFiche = computed(() => Boolean(jeuChoisi.value));
         💾 Recommandations de ressources<template v-if="jeuChoisi"> — {{ jeuChoisi.name }}</template>
       </h3>
       <p class="rg-intro">
-        Valeurs <strong>indicatives</strong> pour dimensionner la mémoire et les cœurs.
-        La consommation réelle dépend surtout de la taille du monde et des mods :
-        commence bas, puis ajuste avec l'onglet « Surveillance ».
+        Valeurs <strong>indicatives</strong>. La consommation réelle dépend surtout
+        de la taille du monde et des mods : commence bas, puis ajuste avec l'onglet
+        « Surveillance ».
+      </p>
+      <p class="rg-unit">
+        <strong>vCPU</strong> = le champ « Cœurs processeur » ci-dessous, c'est-à-dire
+        un quota de temps processeur compté en <strong>threads</strong>, pas en cœurs
+        physiques : sur une machine avec Hyper-Threading, 4 vCPU ≈ 2 cœurs. Ces jeux
+        ne font chauffer qu'un ou deux threads — en allouer davantage ne les accélère
+        pas, c'est la <strong>fréquence</strong> de l'hôte qui compte.
       </p>
       <p v-if="slugInconnu" class="rg-warn">
         Ce jeu n'a pas encore de fiche dédiée : voici le catalogue complet à titre de repère.
@@ -74,7 +81,7 @@ const modeFiche = computed(() => Boolean(jeuChoisi.value));
               <tr>
                 <th scope="col">Joueurs</th>
                 <th scope="col">RAM</th>
-                <th scope="col">Cœurs</th>
+                <th scope="col">vCPU</th>
                 <th scope="col">Notes</th>
               </tr>
             </thead>
@@ -82,7 +89,7 @@ const modeFiche = computed(() => Boolean(jeuChoisi.value));
               <tr v-for="rec in game.recommendations" :key="rec.players">
                 <td class="rg-num">{{ rec.players }}</td>
                 <td class="rg-num">{{ rec.ram_gb }} Go</td>
-                <td class="rg-num">{{ rec.cpu_cores }}</td>
+                <td class="rg-num">{{ rec.vcpu }}</td>
                 <td class="rg-notes">{{ rec.notes }}</td>
               </tr>
             </tbody>
@@ -93,8 +100,9 @@ const modeFiche = computed(() => Boolean(jeuChoisi.value));
 
     <ul class="rg-foot">
       <li>
-        <strong>Fréquence &gt; nombre de cœurs.</strong>
-        Un 4 cœurs à 4 GHz bat un 8 cœurs à 2,4 GHz sur presque tous ces jeux.
+        <strong>Fréquence &gt; vCPU alloués.</strong>
+        Un hôte à 4 GHz sert ces jeux mieux qu'un hôte à 2,4 GHz, quel que soit
+        le quota accordé au conteneur.
       </li>
       <li>
         <strong>Redémarrages.</strong>
@@ -133,6 +141,21 @@ const modeFiche = computed(() => Boolean(jeuChoisi.value));
   color: var(--text-secondary);
   font-size: 0.9rem;
   line-height: 1.5;
+}
+
+.rg-unit {
+  margin: var(--space-sm) 0 0;
+  padding: var(--space-sm) var(--space-md);
+  border-left: 2px solid var(--accent);
+  background: var(--muted-bg);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  line-height: 1.55;
+}
+
+.rg-unit strong {
+  color: var(--text-primary);
 }
 
 .rg-warn {

@@ -274,7 +274,7 @@ watch(selectedGuildId, loadTemplates, { immediate: true });
           </label>
 
           <label class="nc-field">
-            <span>Cœurs processeur</span>
+            <span>Processeur (vCPU)</span>
             <span class="nc-slider">
               <input
                 v-model.number="cpuLimit"
@@ -294,8 +294,10 @@ watch(selectedGuildId, loadTemplates, { immediate: true });
               />
             </span>
             <small class="nc-note">
-              Plafond (0.5 à 6 cœurs). Minecraft n'exploite quasiment qu'un
-              cœur : 2 suffisent. Palworld est multithreadé : 4 sont utiles.
+              Plafond de temps processeur, compté en <strong>threads</strong> et non
+              en cœurs physiques : sur une machine avec Hyper-Threading, 4 vCPU
+              valent environ 2 cœurs. Minecraft n'exploite quasiment qu'un thread :
+              2 suffisent. Palworld est multithreadé : 4 sont utiles.
             </small>
           </label>
 

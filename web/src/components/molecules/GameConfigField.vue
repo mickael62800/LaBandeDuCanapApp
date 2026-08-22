@@ -9,6 +9,19 @@
 //
 // La valeur reste une chaîne de bout en bout : c'est ce que la base stocke
 // dans `game_server_config`. La conversion est locale au contrôle.
+//
+// NOMMAGE DES CLASSES. La racine porte `gcf--<type>`, avec DEUX tirets : c'est
+// un modificateur, pas une classe utilitaire. Avec un seul tiret, le type
+// `number` produisait `gcf-number` — le nom exact d'une classe utilitaire
+// posée sur le petit champ de saisie, dont la règle `width: 6.5rem` bridait
+// alors la CELLULE entière. Le curseur débordait, et description comme
+// avertissement se retrouvaient compressés sur une centaine de pixels, un mot
+// par ligne. Ne jamais faire porter à la racine un nom qu'une classe
+// utilitaire pourrait déjà employer.
+//
+// Le template ne doit par ailleurs comporter QU'UNE racine : un commentaire
+// place à ce niveau compte comme un nœud, le composant devient un fragment, et
+// chacun de ses nœuds devient une cellule de grille indépendante.
 
 import { computed } from "vue";
 import AppToggle from "../atoms/AppToggle.vue";
@@ -71,7 +84,7 @@ function update(value: string | number | boolean): void {
 </script>
 
 <template>
-  <label class="gcf" :class="`gcf-${field.type}`">
+  <label class="gcf" :class="`gcf--${field.type}`">
     <span class="gcf-label">{{ field.label || field.key }}</span>
 
     <select
@@ -106,7 +119,7 @@ function update(value: string | number | boolean): void {
       />
       <input
         type="number"
-        class="gcf-input gcf-number"
+        class="gcf-input"
         :min="field.min"
         :max="field.max"
         :step="step"
@@ -208,15 +221,20 @@ function update(value: string | number | boolean): void {
   cursor: pointer;
 }
 
-/* La valeur chiffrée reste lisible sans manger la largeur du curseur. */
-.gcf-number {
+/* La valeur chiffrée reste lisible sans manger la largeur du curseur.
+   Ciblée PAR SA PLACE (dans `.gcf-slider`) et non par une classe `.gcf-number`.
+   Cette classe-là entrait en collision avec `gcf-${field.type}`, pose sur la
+   RACINE : tout réglage de type `number` voyait donc sa cellule entière bridée
+   à 6.5rem. Le curseur débordait, et les descriptions comme les avertissements
+   se retrouvaient compressés sur une centaine de pixels, un mot par ligne. */
+.gcf-slider .gcf-input {
   width: 6.5rem;
   flex-shrink: 0;
 }
 
 /* Un interrupteur tient sur une ligne : le laisser occuper une colonne pleine
    gaspillait la moitié de la largeur et étirait les sections. */
-.gcf.gcf-boolean {
+.gcf.gcf--boolean {
   flex-direction: row;
   align-items: center;
   justify-content: space-between;
@@ -228,13 +246,13 @@ function update(value: string | number | boolean): void {
 }
 
 /* Description et avertissement d'un interrupteur passent sous la ligne. */
-.gcf.gcf-boolean small {
+.gcf.gcf--boolean small {
   flex-basis: 100%;
 }
 
 /* Un texte libre — liste de mods, URL de modpack — se saisit mal dans une
    colonne étroite. Il prend toute la largeur de la grille. */
-.gcf.gcf-text {
+.gcf.gcf--text {
   grid-column: 1 / -1;
 }
 

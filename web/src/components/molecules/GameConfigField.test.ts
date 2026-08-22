@@ -34,12 +34,49 @@ describe("structure de la cellule", () => {
   });
 
   it("porte une classe derivee du type, dont depend la mise en page", () => {
-    // `.gcf-text` s'etale sur toute la largeur, `.gcf-boolean` se compacte en
-    // ligne : perdre la classe casse la grille sans rien signaler.
-    expect(monter(champ({ type: "text" })).classes()).toContain("gcf-text");
-    expect(monter(champ({ type: "boolean" })).classes()).toContain("gcf-boolean");
+    // `.gcf--text` s'etale sur toute la largeur, `.gcf--boolean` se compacte
+    // en ligne : perdre la classe casse la grille sans rien signaler.
+    expect(monter(champ({ type: "text" })).classes()).toContain("gcf--text");
+    expect(monter(champ({ type: "boolean" })).classes()).toContain("gcf--boolean");
   });
 
+});
+
+describe("collision entre le modificateur de type et les classes utilitaires", () => {
+  /// Les classes utilitaires du composant, celles qui portent une regle de
+  /// mise en page. Le modificateur de type ne doit JAMAIS en produire une.
+  const UTILITAIRES = [
+    "gcf-label",
+    "gcf-input",
+    "gcf-note",
+    "gcf-warning",
+    "gcf-slider",
+    "gcf-range",
+  ];
+
+  it("le modificateur de type ne peut heurter aucune classe utilitaire", () => {
+    // LE defaut : `gcf-${field.type}` donnait `gcf-number` pour un reglage
+    // chiffre — le nom exact d'une classe utilitaire posee sur le petit champ
+    // de saisie. Sa regle `width: 6.5rem` bridait donc la CELLULE entiere : le
+    // curseur debordait, et description comme avertissement se retrouvaient
+    // compresses sur une centaine de pixels, un mot par ligne.
+    for (const type of ["text", "number", "boolean", "enum", "input", "note", "slider"]) {
+      const classes = monter(champ({ type: type as TemplateField["type"] })).classes();
+      for (const utilitaire of UTILITAIRES) {
+        expect(classes, `type « ${type} »`).not.toContain(utilitaire);
+      }
+    }
+  });
+
+  it("la largeur reduite ne vise que la saisie a cote du curseur", () => {
+    // Ciblee par sa PLACE (`.gcf-slider .gcf-input`) et non par une classe que
+    // le modificateur pourrait reproduire.
+    const wrapper = monter(champ({ type: "number", min: 1, max: 200 }), "20");
+    const dansCurseur = wrapper.find(".gcf-slider .gcf-input");
+    expect(dansCurseur.exists()).toBe(true);
+    // La racine n'est pas, elle, un `.gcf-input`.
+    expect(wrapper.classes()).not.toContain("gcf-input");
+  });
 });
 
 describe("controle rendu selon le type", () => {

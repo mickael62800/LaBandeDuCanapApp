@@ -21,6 +21,7 @@ import { nexusGamesService, type GameTemplate } from "@/services/nexusGamesServi
 import { useTemplateFieldGroups } from "@/composables/useTemplateFieldGroups";
 import { communityAdminService } from "@/services/communityAdminService";
 import AdminPageShell from "../layouts/AdminPageShell.vue";
+import GameResourcesGuide from "../organisms/GameResourcesGuide.vue";
 
 const router = useRouter();
 const { selectedGuildId, selectedGuild } = useGuildSelector();
@@ -234,6 +235,8 @@ watch(selectedGuildId, loadTemplates, { immediate: true });
       <!-- Étape 2 : les réglages -->
       <template v-if="chosen">
         <p v-if="chosen.description" class="nc-desc">{{ chosen.description }}</p>
+
+        <GameResourcesGuide />
 
         <h2 class="nc-step">2. Règle le serveur</h2>
 

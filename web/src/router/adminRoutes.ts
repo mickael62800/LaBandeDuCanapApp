@@ -82,6 +82,7 @@ export const adminRoutes: RouteRecordRaw[] = [
     { path: "/nexus/servers", name: "nexus-servers", component: () => import("@/components/pages/NexusServersPage.vue") },
     { path: "/nexus/servers/nouveau", name: "nexus-server-create", component: () => import("@/components/pages/NexusServerCreatePage.vue") },
     { path: "/nexus/servers/:id", name: "nexus-server-detail", component: () => import("@/components/pages/NexusServerDetailPage.vue") },
+    { path: "/nexus/ressources", name: "nexus-resources", component: () => import("@/components/pages/NexusResourcesDocPage.vue") },
     { path: "/nexus/economie", name: "nexus-economy", component: () => import("@/components/pages/NexusEconomyPage.vue") },
     { path: "/nexus/grand-salon", name: "nexus-grand-salon", component: () => import("@/components/pages/NexusGrandSalonPage.vue") },
     { path: "/nexus/roue", name: "nexus-roue", component: () => import("@/components/pages/NexusWheelPage.vue") },

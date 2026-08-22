@@ -11,13 +11,35 @@ vi.mock("@/services/discordRolesService", () => ({
   discordRolesService: { getAll: vi.fn() },
 }));
 
+import type { DiscordChannelInfo, DiscordRole } from "@/types";
 import IdMultiplierMapField from "./IdMultiplierMapField.vue";
+
+/// Role Discord complet : les fixtures n'en remplissaient qu'un quart, ecart
+/// que le `as any` sur le service masquait. Chaque test ne precise que ce
+/// qu'il observe (nom, couleur, position).
+function role(partial: Partial<DiscordRole> = {}): DiscordRole {
+  return {
+    id: "r1",
+    guild_id: "g1",
+    name: "Membre",
+    color: 0,
+    position: 1,
+    permissions: "0",
+    mentionable: false,
+    managed: false,
+    icon: null,
+    member_count: 0,
+    synced_at: "2026-01-01T00:00:00Z",
+    ...partial,
+  };
+}
+
 import { guildChannelsService } from "@/services/guildChannelsService";
 import { discordRolesService } from "@/services/discordRolesService";
 
-const listText = (guildChannelsService as any).listTextChannels;
-const listAll = (guildChannelsService as any).listAllChannels;
-const getAll = (discordRolesService as any).getAll;
+const listText = vi.mocked(guildChannelsService.listTextChannels);
+const listAll = vi.mocked(guildChannelsService.listAllChannels);
+const getAll = vi.mocked(discordRolesService.getAll);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -51,13 +73,13 @@ describe("chargement des options par type de champ", () => {
   });
 
   it("appelle listAllChannels en mode channel-all et getAll pour les roles (tries par position)", async () => {
-    const w1 = mountField({ kind: "channel-all" });
+    mountField({ kind: "channel-all" });
     await flushPromises();
     expect(listAll).toHaveBeenCalledWith("g1");
 
     getAll.mockResolvedValue([
-      { id: "r2", name: "Modo", color: 0x57f287, position: 3 },
-      { id: "r1", name: "Membre", color: undefined, position: 1 },
+      role({ id: "r2", name: "Modo", color: 0x57f287, position: 3 }),
+      role({ id: "r1", name: "Membre", color: 0, position: 1 }),
     ]);
     const w2 = mountField({ kind: "role" });
     await flushPromises();
@@ -148,9 +170,9 @@ describe("ajout / retrait / mise a jour des entrees", () => {
     // Valeur par defaut pre-remplie.
     expect((wrapper.find(".value-input").element as HTMLInputElement).placeholder).toBe("2");
 
-    (await wrapper.find(".picker-select") as any).setValue("c1");
-    const valueInput = wrapper.find(".value-input") as any;
-    valueInput.element.value = "3";
+    await wrapper.find(".picker-select").setValue("c1");
+    const valueInput = wrapper.find(".value-input");
+    (valueInput.element as HTMLInputElement).value = "3";
     await valueInput.trigger("input");
 
     expect((wrapper.find(".btn-add").element as HTMLButtonElement).disabled).toBe(false);
@@ -183,13 +205,13 @@ describe("ajout / retrait / mise a jour des entrees", () => {
     const wrapper = mountField({ modelValue: "c1:1\nc2:4" });
     await flushPromises();
 
-    const entryInput = wrapper.findAll(".entry-value")[0] as any;
-    entryInput.element.value = "9.5";
+    const entryInput = wrapper.findAll(".entry-value")[0]!;
+    (entryInput.element as HTMLInputElement).value = "9.5";
     await entryInput.trigger("change");
     expect(wrapper.emitted("update:modelValue")).toEqual([["c1:9.5\nc2:4"]]);
 
     // Valeur non numerique : happy-dom vide le champ -> Number("") === 0 (fini) donc emis.
-    entryInput.element.value = "abc";
+    (entryInput.element as HTMLInputElement).value = "abc";
     await entryInput.trigger("change");
     expect(wrapper.emitted("update:modelValue")).toEqual([["c1:9.5\nc2:4"], ["c1:0\nc2:4"]]);
   });
@@ -234,7 +256,9 @@ describe("reponse inexploitable du service", () => {
     // `computed` des options parcourait aussitot : le rendu echouait et le
     // selecteur disparaissait de l'ecran sans message. Une liste vide, elle,
     // se voit et se comprend.
-    listAll.mockResolvedValue(undefined);
+    // Hors contrat : le service promet un tableau. On simule justement la
+    // reponse malformee contre laquelle le composant doit tenir.
+    listAll.mockResolvedValue(undefined as unknown as DiscordChannelInfo[]);
     const { wrapper, erreurs } = monterEnCaptantLesErreurs({ kind: "channel-all" });
     await flushPromises();
 
@@ -244,7 +268,7 @@ describe("reponse inexploitable du service", () => {
   });
 
   it("fait de meme pour les roles", async () => {
-    getAll.mockResolvedValue(undefined);
+    getAll.mockResolvedValue(undefined as unknown as DiscordRole[]);
     const { wrapper, erreurs } = monterEnCaptantLesErreurs({ kind: "role" });
     await flushPromises();
 

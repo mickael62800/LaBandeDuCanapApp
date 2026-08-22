@@ -11,13 +11,35 @@ vi.mock("@/services/discordRolesService", () => ({
   discordRolesService: { getAll: vi.fn() },
 }));
 
+import type { DiscordRole } from "@/types";
 import IdsListPickerField from "./IdsListPickerField.vue";
+
+/// Role Discord complet : les fixtures n'en remplissaient qu'un quart, ecart
+/// que le `as any` sur le service masquait. Chaque test ne precise que ce
+/// qu'il observe (nom, couleur, position).
+function role(partial: Partial<DiscordRole> = {}): DiscordRole {
+  return {
+    id: "r1",
+    guild_id: "g1",
+    name: "Membre",
+    color: 0,
+    position: 1,
+    permissions: "0",
+    mentionable: false,
+    managed: false,
+    icon: null,
+    member_count: 0,
+    synced_at: "2026-01-01T00:00:00Z",
+    ...partial,
+  };
+}
+
 import { guildChannelsService } from "@/services/guildChannelsService";
 import { discordRolesService } from "@/services/discordRolesService";
 
-const listText = (guildChannelsService as any).listTextChannels;
-const listAll = (guildChannelsService as any).listAllChannels;
-const getAll = (discordRolesService as any).getAll;
+const listText = vi.mocked(guildChannelsService.listTextChannels);
+const listAll = vi.mocked(guildChannelsService.listAllChannels);
+const getAll = vi.mocked(discordRolesService.getAll);
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -54,8 +76,8 @@ describe("chargement des options par type de champ", () => {
 
   it("liste les roles tries par position avec couleur paddee", async () => {
     getAll.mockResolvedValue([
-      { id: "r2", name: "Modo", color: 0x57f287, position: 3 },
-      { id: "r1", name: "Membre", color: undefined, position: 1 },
+      role({ id: "r2", name: "Modo", color: 0x57f287, position: 3 }),
+      role({ id: "r1", name: "Membre", color: 0, position: 1 }),
     ]);
     const wrapper = mountField({ kind: "role" });
     await flushPromises();
@@ -123,7 +145,7 @@ describe("selection (chips)", () => {
     // id inconnu : fallback ID <id>.
     expect(chips[1].find(".chip-label").text()).toBe("ID zzz");
 
-    getAll.mockResolvedValue([{ id: "r1", name: "Modo", color: 0x57f287, position: 1 }]);
+    getAll.mockResolvedValue([role({ id: "r1", name: "Modo", color: 0x57f287, position: 1 })]);
     const roles = mountField({ kind: "role", modelValue: "r1" });
     await flushPromises();
     expect(roles.find(".chip").attributes("style")).toContain("#57f287");
@@ -143,7 +165,7 @@ describe("selection (chips)", () => {
     const wrapper = mountField({ modelValue: "c1" });
     await flushPromises();
 
-    (await wrapper.find(".picker-select") as any).setValue("c2");
+    await wrapper.find(".picker-select").setValue("c2");
     expect(wrapper.emitted("update:modelValue")).toEqual([["c1,c2"]]);
   });
 

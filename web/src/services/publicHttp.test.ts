@@ -38,8 +38,10 @@ describe("anonymousJsonGet (GET JSON sans credential)", () => {
 });
 
 describe("publicGet", () => {
-  it("prefixe le chemin par /api/public et propage les options", async () => {
-    const signal = new AbortController().signal;
+  it("prefixe le chemin par /api/public", async () => {
+    // `publicGet` ne prend qu'un chemin : l'ancien intitule promettait une
+    // propagation d'options que la signature n'offre pas, et le test
+    // construisait un AbortSignal qui ne partait nulle part.
     mocks.requestJson.mockResolvedValue({ data: [1, 2] });
 
     await expect(publicGet("/events/g1")).resolves.toEqual([1, 2]);

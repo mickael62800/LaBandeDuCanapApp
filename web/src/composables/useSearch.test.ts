@@ -67,7 +67,7 @@ describe("useSearch", () => {
       // `role` volontairement absent : le champ doit être traité comme vide.
       { id: "b", username: "Yves" },
     ]);
-    const { search, filtered } = useSearch(avecUndefined, ["username"]);
+    const { filtered } = useSearch(avecUndefined, ["username"]);
     expect(filtered.value).toHaveLength(2); // pas de crash sur l'entrée b
   });
 });

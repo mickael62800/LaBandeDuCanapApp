@@ -16,14 +16,14 @@ describe("IdeasPage", () => {
     await wrapper.findComponent(IdeasListPanel).vm.$emit("select", "idea-1");
     expect(wrapper.findComponent(IdeasListPanel).exists()).toBe(false);
     // Le detail recoit bien l'id choisi.
-    expect((wrapper.findComponent(IdeaDetailPanel) as any).props().ideaId).toBe("idea-1");
+    expect(wrapper.findComponent(IdeaDetailPanel).props().ideaId).toBe("idea-1");
   });
 
   it("retourne a la liste quand on demande le retour depuis le detail", async () => {
     const wrapper = shallowMount(IdeasPage);
     await wrapper.findComponent(IdeasListPanel).vm.$emit("select", "idea-1");
     expect(wrapper.findComponent(IdeaDetailPanel).exists()).toBe(true);
-    await (wrapper.findComponent(IdeaDetailPanel) as any).vm.$emit("back");
+    await wrapper.findComponent(IdeaDetailPanel).vm.$emit("back");
     expect(wrapper.findComponent(IdeasListPanel).exists()).toBe(true);
   });
 });

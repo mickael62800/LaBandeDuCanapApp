@@ -17,7 +17,7 @@ describe("AppBadge", () => {
   });
 
   it("ne casse pas sans variante (prop optionnelle)", () => {
-    const wrapper = mount(AppBadge, {} as any);
+    const wrapper = mount(AppBadge);
     expect(wrapper.find(".badge").exists()).toBe(true);
   });
 });

@@ -104,27 +104,27 @@ describe("NumberInputWithUnit — mode duree (unit en secondes)", () => {
     const wrapper = mount(NumberInputWithUnit, { props: { modelValue: "1800", unit: "s", min: 60, max: 3600 } });
     // Affiche en minutes (1800 s / 60). Saisir 99 -> 5940 s > max 3600.
     expect(wrapper.find(".num-input").attributes("value")).toBe("30");
-    const input = wrapper.find(".num-input") as any;
-    input.element.value = "99";
+    const input = wrapper.find(".num-input");
+    (input.element as HTMLInputElement).value = "99";
     await input.trigger("input");
     expect(wrapper.emitted("update:modelValue")).toEqual([["3600"]]);
 
     // Saisir 0 -> sous le min : bornee au minimum.
     const low = mount(NumberInputWithUnit, { props: { modelValue: "60", unit: "s", min: 50 } });
     expect(low.find(".num-input").attributes("value")).toBe("1"); // 60 s en minutes
-    (low.find(".num-input") as any).element.value = "0";
+    (low.find(".num-input").element as HTMLInputElement).value = "0";
     await low.find(".num-input").trigger("input");
     expect(low.emitted("update:modelValue")).toEqual([["50"]]);
 
     // Saisie vide -> valeur vide.
     const empty = mount(NumberInputWithUnit, { props: { modelValue: "60", unit: "s" } });
-    (empty.find(".num-input") as any).element.value = "";
+    (empty.find(".num-input").element as HTMLInputElement).value = "";
     await empty.find(".num-input").trigger("input");
     expect(empty.emitted("update:modelValue")).toEqual([[""]]);
 
     // Saisie non numerique : le navigateur (et happy-dom) la vide sur un input type=number.
     const bad = mount(NumberInputWithUnit, { props: { modelValue: "60", unit: "s" } });
-    (bad.find(".num-input") as any).element.value = "abc";
+    (bad.find(".num-input").element as HTMLInputElement).value = "abc";
     await bad.find(".num-input").trigger("input");
     expect(bad.emitted("update:modelValue")).toEqual([[""]]);
   });
@@ -132,7 +132,7 @@ describe("NumberInputWithUnit — mode duree (unit en secondes)", () => {
   it("garde l'unite choisie par l'utilisateur quand la valeur change", async () => {
     const wrapper = mount(NumberInputWithUnit, { props: { modelValue: "3600", unit: "s" } });
     // L'utilisateur force "jour".
-    await (wrapper.find("select.num-unit-select") as any).setValue("jour");
+    await wrapper.find("select.num-unit-select").setValue("jour");
     expect((wrapper.find("select.num-unit-select").element as HTMLSelectElement).value).toBe("jour");
 
     // La valeur change : l'auto-pick ne doit PAS repasser en heure.
@@ -153,7 +153,7 @@ describe("NumberInputWithUnit — mode duree (unit en secondes)", () => {
   it("re-exprime la duree quand on change d'unite sans changer le stock", async () => {
     const wrapper = mount(NumberInputWithUnit, { props: { modelValue: "3600", unit: "s" } });
     expect(wrapper.find(".num-input").attributes("value")).toBe("1"); // 1 heure
-    await (wrapper.find("select.num-unit-select") as any).setValue("semaine");
+    await wrapper.find("select.num-unit-select").setValue("semaine");
     // Meme duree stockee, re-exprimee en semaines : 3600 / 604800.
     expect(wrapper.find(".num-input").attributes("value")).toBe(String(Number((3600 / 604800).toFixed(4))));
   });

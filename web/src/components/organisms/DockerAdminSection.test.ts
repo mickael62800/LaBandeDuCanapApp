@@ -27,31 +27,124 @@ vi.mock("@/services/dockerService", () => ({
 const successToast = vi.fn();
 const errorToast = vi.fn();
 vi.mock("@/composables/useToast", () => ({
-  useToast: () => ({ success: (...a) => successToast(...a), error: (...a) => errorToast(...a) }),
+  useToast: () => ({ success: (...a: unknown[]) => successToast(...a), error: (...a: unknown[]) => errorToast(...a) }),
 }));
 
 const confirmMock = vi.fn().mockResolvedValue(true);
 vi.mock("@/composables/useConfirm", () => ({
-  useConfirm: () => ({ confirm: (...a) => confirmMock(...a) }),
+  useConfirm: () => ({ confirm: (...a: unknown[]) => confirmMock(...a) }),
 }));
 
 import DockerAdminSection from "./DockerAdminSection.vue";
-import { dockerService } from "@/services/dockerService";
+import {
+  dockerService,
+  type DockerContainer,
+  type DockerImage,
+  type DockerNetwork,
+  type DockerOverview,
+  type DockerVolume,
+  type PruneSystemResult,
+} from "@/services/dockerService";
 
-const svc = dockerService as any;
+const svc = vi.mocked(dockerService);
 
-function ct(partial: Record<string, unknown> = {}) {
-  return { id: "sha256:" + "a1".repeat(32), names: ["/web"], image: "nginx", state: "running", status: "Up 2h", ports: ["80/tcp->80"], size_rw_bytes: 2048, ...partial };
+/// Fabriques de reponses Docker.
+///
+/// Elles remplissent TOUS les champs obligatoires du type, chaque test ne
+/// precisant que ce qu'il observe. Les versions precedentes en omettaient la
+/// moitie : le `as any` pose sur le service masquait l'ecart, si bien que les
+/// mocks ne ressemblaient plus a ce que l'API renvoie reellement — un test
+/// pouvait passer sur une forme que la production ne produit jamais.
+function ct(partial: Partial<DockerContainer> = {}): DockerContainer {
+  return {
+    id: "sha256:" + "a1".repeat(32),
+    names: ["/web"],
+    image: "nginx",
+    state: "running",
+    status: "Up 2h",
+    created: 1700000000,
+    ports: ["80/tcp->80"],
+    size_rw_bytes: 2048,
+    size_root_fs_bytes: 4096,
+    labels: {},
+    ...partial,
+  };
 }
-function img(partial: Record<string, unknown> = {}) {
-  return { id: "sha256:" + "b2".repeat(32), repo_tags: ["app:latest"], dangling: false, created: 1700000000, size_bytes: 4 * 1024 ** 3, containers: 1, ...partial };
+function img(partial: Partial<DockerImage> = {}): DockerImage {
+  return {
+    id: "sha256:" + "b2".repeat(32),
+    repo_tags: ["app:latest"],
+    repo_digests: [],
+    dangling: false,
+    created: 1700000000,
+    size_bytes: 4 * 1024 ** 3,
+    shared_size_bytes: 0,
+    virtual_size_bytes: 4 * 1024 ** 3,
+    containers: 1,
+    ...partial,
+  };
 }
-function vol(partial: Record<string, unknown> = {}) {
-  return { name: "data", driver: "local", mountpoint: "/var/lib/docker/volumes/data/_data", size_bytes: 512, in_use: true, ref_count: 3, ...partial };
+function vol(partial: Partial<DockerVolume> = {}): DockerVolume {
+  return {
+    name: "data",
+    driver: "local",
+    mountpoint: "/var/lib/docker/volumes/data/_data",
+    created_at: "2026-01-01T00:00:00Z",
+    size_bytes: 512,
+    in_use: true,
+    ref_count: 3,
+    ...partial,
+  };
 }
-function net(partial: Record<string, unknown> = {}) {
-  return { id: "n1", name: "bridge", driver: "bridge", scope: "local", containers_count: 2, internal: false, ...partial };
+function net(partial: Partial<DockerNetwork> = {}): DockerNetwork {
+  return {
+    id: "n1",
+    name: "bridge",
+    driver: "bridge",
+    scope: "local",
+    containers_count: 2,
+    internal: false,
+    ...partial,
+  };
 }
+/// Seuls les quatre champs « recuperable » sont lus par la section ; le reste
+/// est rempli de valeurs neutres pour rester une reponse valide.
+function overview(partial: Partial<DockerOverview> = {}): DockerOverview {
+  return {
+    version: "26.0.0",
+    api_version: "1.45",
+    os: "linux",
+    arch: "x86_64",
+    kernel: "6.8.0",
+    containers_running: 0,
+    containers_paused: 0,
+    containers_stopped: 0,
+    images_count: 0,
+    volumes_count: 0,
+    networks_count: 0,
+    layers_size_bytes: 0,
+    images_size_bytes: 0,
+    containers_size_bytes: 0,
+    volumes_size_bytes: 0,
+    build_cache_size_bytes: 0,
+    reclaimable_images_bytes: 0,
+    reclaimable_containers_bytes: 0,
+    reclaimable_volumes_bytes: 0,
+    reclaimable_build_cache_bytes: 0,
+    ...partial,
+  };
+}
+function pruneSysteme(total: number): PruneSystemResult {
+  const vide = { deleted: [], space_reclaimed_bytes: 0 };
+  return {
+    containers: vide,
+    images: vide,
+    volumes: vide,
+    networks: vide,
+    total_space_reclaimed_bytes: total,
+  };
+}
+
 
 let wrapper!: VueWrapper;
 async function mountSection() {
@@ -73,7 +166,7 @@ beforeEach(() => {
 
 describe("chargement des onglets", () => {
   it("charge la vue d'ensemble au montage", async () => {
-    svc.getOverview.mockResolvedValue({ reclaimable_containers_bytes: 10, reclaimable_images_bytes: 20 });
+    svc.getOverview.mockResolvedValue(overview({ reclaimable_containers_bytes: 10, reclaimable_images_bytes: 20 }));
     await mountSection();
     expect(svc.getOverview).toHaveBeenCalledTimes(1);
     expect(wrapper.find(".overview-grid").exists()).toBe(true);
@@ -116,7 +209,7 @@ describe("chargement des onglets", () => {
   });
 
   it("recharge l'overview sur l'onglet Nettoyage", async () => {
-    svc.getOverview.mockResolvedValue({ reclaimable_containers_bytes: 0, reclaimable_images_bytes: 0, reclaimable_volumes_bytes: 0, reclaimable_build_cache_bytes: 8 });
+    svc.getOverview.mockResolvedValue(overview({ reclaimable_containers_bytes: 0, reclaimable_images_bytes: 0, reclaimable_volumes_bytes: 0, reclaimable_build_cache_bytes: 8 }));
     await mountSection();
     const before = svc.getOverview.mock.calls.length;
     await clickTab("Nettoyage");
@@ -139,7 +232,7 @@ describe("filtres de conteneurs", () => {
     await clickTab("Conteneurs");
     await flushPromises();
 
-    const select = wrapper.find(".filters select") as any;
+    const select = wrapper.find(".filters select");
     expect(wrapper.findAll(".docker-table tbody tr").length).toBe(2);
     await select.setValue("running");
     await flushPromises();
@@ -256,8 +349,8 @@ describe("images", () => {
     await flushPromises();
 
     expect(wrapper.findAll(".docker-table tbody tr").length).toBe(2);
-    const checkbox = wrapper.find('.filters input[type="checkbox"]') as any;
-    await checkbox.setChecked(true); // setChecked est async : attendre le re-rendu reactif
+    const checkbox = wrapper.find('.filters input[type="checkbox"]');
+    await checkbox.setValue(true); // asynchrone : attendre le re-rendu reactif
     await flushPromises();
     // i1 (utilisee) est exclue, i2 (dangling) reste.
     expect(wrapper.findAll(".docker-table tbody tr").length).toBe(1);
@@ -280,7 +373,7 @@ describe("images", () => {
     await clickTab("Images");
     await flushPromises();
 
-    const btn = wrapper.find(".docker-table tbody tr").find("button") as any;
+    const btn = wrapper.find(".docker-table tbody tr").find("button");
     await btn.trigger("click");
     await flushPromises();
     expect(svc.removeImage).toHaveBeenCalledWith("i1", false);
@@ -293,7 +386,7 @@ describe("images", () => {
     await clickTab("Images");
     await flushPromises();
 
-    const btn = wrapper.find(".docker-table tbody tr").find("button") as any;
+    const btn = wrapper.find(".docker-table tbody tr").find("button");
     await btn.trigger("click");
     await flushPromises();
     expect(svc.removeImage).not.toHaveBeenCalled();
@@ -308,8 +401,8 @@ describe("volumes", () => {
     await flushPromises();
 
     expect(wrapper.findAll(".docker-table tbody tr").length).toBe(2);
-    const checkbox = wrapper.find('.filters input[type="checkbox"]') as any;
-    await checkbox.setChecked(true); // setChecked est async : attendre le re-rendu reactif
+    const checkbox = wrapper.find('.filters input[type="checkbox"]');
+    await checkbox.setValue(true); // asynchrone : attendre le re-rendu reactif
     await flushPromises();
     expect(wrapper.findAll(".docker-table tbody tr").length).toBe(1); // seul l'orphelin reste
   });
@@ -322,7 +415,7 @@ describe("volumes", () => {
     await flushPromises();
 
     expect(wrapper.find(".orphan-badge").exists()).toBe(true);
-    const btn = wrapper.find(".docker-table tbody tr").find("button") as any;
+    const btn = wrapper.find(".docker-table tbody tr").find("button");
     await btn.trigger("click");
     await flushPromises();
     expect(svc.removeVolume).toHaveBeenCalledWith("orphan", false);
@@ -335,7 +428,7 @@ describe("volumes", () => {
     await clickTab("Volumes");
     await flushPromises();
 
-    const btn = wrapper.find(".docker-table tbody tr").find("button") as any;
+    const btn = wrapper.find(".docker-table tbody tr").find("button");
     await btn.trigger("click");
     await flushPromises();
     expect(errorToast).toHaveBeenCalledWith(expect.stringContaining("Erreur : verrouille"));
@@ -356,7 +449,7 @@ describe("reseaux", () => {
 
 describe("nettoyage (prune)", () => {
   async function goPrune() {
-    svc.getOverview.mockResolvedValue({ reclaimable_containers_bytes: 1, reclaimable_images_bytes: 2, reclaimable_volumes_bytes: 3, reclaimable_build_cache_bytes: 4 });
+    svc.getOverview.mockResolvedValue(overview({ reclaimable_containers_bytes: 1, reclaimable_images_bytes: 2, reclaimable_volumes_bytes: 3, reclaimable_build_cache_bytes: 4 }));
     await mountSection();
     await clickTab("Nettoyage");
     await flushPromises();
@@ -449,7 +542,7 @@ describe("nettoyage (prune)", () => {
   });
 
   it("nettoyage complet standard / +images / +volumes", async () => {
-    svc.pruneSystem.mockResolvedValue({ total_space_reclaimed_bytes: 0 });
+    svc.pruneSystem.mockResolvedValue(pruneSysteme(0));
     await goPrune();
 
     await cliquerNettoyage("Nettoyage complet", "Nettoyage standard");
@@ -480,7 +573,19 @@ describe("nettoyage (prune)", () => {
   });
 
   it("affiche les tailles recuperables de l'overview sur chaque carte", async () => {
-    svc.getOverview.mockResolvedValue({ reclaimable_containers_bytes: 1024, reclaimable_images_bytes: 2 * 1024 ** 3, reclaimable_volumes_bytes: null, reclaimable_build_cache_bytes: undefined });
+    // `null` / `undefined` sont HORS CONTRAT : l'API declare ces champs en
+    // `i64` non nullable (ops/handlers/docker/overview.rs). Le composant les
+    // ramene malgre tout a zero (`?? 0`), et ce test fige cette defense en
+    // profondeur — d'ou le cast, qui dit explicitement qu'on simule une
+    // reponse que le backend actuel ne produit pas.
+    svc.getOverview.mockResolvedValue(
+      overview({
+        reclaimable_containers_bytes: 1024,
+        reclaimable_images_bytes: 2 * 1024 ** 3,
+        reclaimable_volumes_bytes: null,
+        reclaimable_build_cache_bytes: undefined,
+      } as unknown as Partial<DockerOverview>),
+    );
     await mountSection();
     await clickTab("Nettoyage");
     await flushPromises();

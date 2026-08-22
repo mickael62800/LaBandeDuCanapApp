@@ -111,6 +111,50 @@ describe("controle rendu selon le type", () => {
   });
 });
 
+describe("correspondance avec les types acceptes par l'API", () => {
+  /// `ConfigFieldType` cote Rust
+  /// (platform-core/src/nexus/domain/entities/game/template.rs) n'accepte que
+  /// ces quatre-la, et rejette le reste a la deserialisation — un type inconnu
+  /// fait repondre 500 a TOUT l'endpoint des modeles, il ne peut donc pas
+  /// arriver ici en silence.
+  ///
+  /// Le risque restant est l'inverse : un type AJOUTE cote Rust sans controle
+  /// correspondant ici tomberait dans le `v-else` et s'afficherait en champ
+  /// texte libre. L'admin taperait alors « true » a la main la ou un
+  /// interrupteur etait attendu — c'est exactement ce que faisait la page de
+  /// detail avant que ce composant n'existe.
+  const TYPES_DE_L_API = ["text", "number", "enum", "boolean"] as const;
+
+  it("rend un controle dedie pour chacun des quatre types", () => {
+    const controle: Record<string, (w: ReturnType<typeof monter>) => boolean> = {
+      text: (w) => w.find('input[type="text"]').exists(),
+      number: (w) => w.find('input[type="number"]').exists(),
+      enum: (w) => w.find("select").exists(),
+      boolean: (w) => w.findComponent({ name: "AppToggle" }).exists(),
+    };
+    for (const type of TYPES_DE_L_API) {
+      const f = champ({
+        type: type as TemplateField["type"],
+        ...(type === "enum" ? { options: ["a", "b"] } : {}),
+      });
+      expect(controle[type]!(monter(f)), `type « ${type} »`).toBe(true);
+    }
+  });
+
+  it("ne rend un champ texte libre QUE pour le type texte", () => {
+    // Le `v-else` est le filet de securite : qu'il attrape autre chose que
+    // `text` signifie qu'un type n'a pas de controle.
+    for (const type of TYPES_DE_L_API) {
+      const f = champ({
+        type: type as TemplateField["type"],
+        ...(type === "enum" ? { options: ["a", "b"] } : {}),
+      });
+      const texteLibre = monter(f).find('input[type="text"]').exists();
+      expect(texteLibre, `type « ${type} »`).toBe(type === "text");
+    }
+  });
+});
+
 describe("valeur", () => {
   it("lit un booleen quelle que soit la casse", () => {
     // L'EULA de Minecraft vaut « TRUE » en majuscules dans les schemas d'origine.

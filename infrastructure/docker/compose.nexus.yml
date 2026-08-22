@@ -178,6 +178,16 @@ services:
       # NEXUS_REDIS_URL pour choisir son bus parmi plusieurs Redis, mais ce bot
       # ne consomme que Nexus et doit donc fournir le nom standard du bus.
       REDIS_URL: redis://:${NEXUS_REDIS_PASSWORD:?NEXUS_REDIS_PASSWORD est requis}@nexus-redis:6379
+      # Lecture de l'activite de jeu des membres, pour les salons compteurs
+      # « membres en partie » et « en jeu ET en vocal ». Sans cette ligne, la
+      # variable pouvait bien valoir `true` dans le .env : le service declare
+      # ses variables une a une, sans `env_file`, donc le conteneur ne la
+      # recevait pas et les deux compteurs restaient eteints quoi qu'on regle.
+      #
+      # ORDRE A RESPECTER : cocher « Presence Intent » dans le portail Discord
+      # Developer, PUIS passer ceci a true. L'inverse fait REFUSER la connexion
+      # du bot, qui ne demarre plus du tout.
+      NEXUS_PRESENCE_INTENT: ${NEXUS_PRESENCE_INTENT:-false}
       RUST_LOG: ${RUST_LOG:-info}
     depends_on:
       api:

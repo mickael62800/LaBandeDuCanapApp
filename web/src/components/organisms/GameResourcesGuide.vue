@@ -76,8 +76,6 @@ const games: GameResourcesData[] = [
     ],
   },
 ];
-
-const selectedGame = computed(() => games[0]?.name);
 </script>
 
 <template>

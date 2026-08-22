@@ -420,7 +420,9 @@ async fn update_definition_vide_est_refuse() {
     let id = def.id;
     let service = AchievementsService::new(Arc::new(FakeRepo::with_definition(def)));
 
-    let result = service.update_definition(id, AchievementUpdate::default()).await;
+    let result = service
+        .update_definition(id, AchievementUpdate::default())
+        .await;
     assert!(matches!(result, Err(DomainError::ValidationError(_))));
 }
 
@@ -639,9 +641,7 @@ async fn grant_manually_refuse_un_haut_fait_desactive() {
     let repo = Arc::new(FakeRepo::with_definition(def));
     let service = AchievementsService::new(repo);
 
-    let result = service
-        .grant_manually("guild", "user", id, "admin")
-        .await;
+    let result = service.grant_manually("guild", "user", id, "admin").await;
     assert!(matches!(result, Err(DomainError::Conflict(_))));
 }
 
@@ -659,7 +659,10 @@ async fn grant_manually_trace_l_identite_quand_elle_est_verifiee() {
         .unwrap();
     match outcome {
         UnlockOutcome::Unlocked(unlocked) => {
-            assert_eq!(unlocked.game_player_id.as_deref(), Some("76561198000000000"));
+            assert_eq!(
+                unlocked.game_player_id.as_deref(),
+                Some("76561198000000000")
+            );
         }
         _ => panic!("attendu Unlocked"),
     }

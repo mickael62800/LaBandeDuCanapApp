@@ -362,10 +362,16 @@ mod tests {
         ];
 
         let found_unicode = find_game_for_reaction(&games, "⛏️");
-        assert_eq!(found_unicode.map(|g| g.game_name.as_str()), Some("Minecraft"));
+        assert_eq!(
+            found_unicode.map(|g| g.game_name.as_str()),
+            Some("Minecraft")
+        );
 
         let found_custom = find_game_for_reaction(&games, "333333");
-        assert_eq!(found_custom.map(|g| g.game_name.as_str()), Some("CustomGame"));
+        assert_eq!(
+            found_custom.map(|g| g.game_name.as_str()),
+            Some("CustomGame")
+        );
 
         let not_found = find_game_for_reaction(&games, "🎮");
         assert!(not_found.is_none());

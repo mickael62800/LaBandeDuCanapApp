@@ -77,7 +77,11 @@ mod economy_commands;
 /// `PUBLIC_GUILD_ID` absente = aucun verrou. C'est le seul defaut sur :
 /// refuser par defaut ferait quitter tous ses serveurs au bot au premier
 /// demarrage mal configure, et un depart ne se rattrape pas d'un clic.
-pub fn is_guild_allowed(guild_id: serenity::model::id::GuildId, public_guild_id: Option<&str>, guild_id_env: Option<&str>) -> bool {
+pub fn is_guild_allowed(
+    guild_id: serenity::model::id::GuildId,
+    public_guild_id: Option<&str>,
+    guild_id_env: Option<&str>,
+) -> bool {
     let attendu = public_guild_id.or(guild_id_env).unwrap_or_default().trim();
     attendu.is_empty() || attendu == guild_id.to_string()
 }
@@ -366,14 +370,10 @@ pub fn build_all_slash_commands() -> Vec<CreateCommand> {
         CreateCommand::new("train")
             .description("Depense un point : plus d'impact ou plus de moelleux")
             .add_option(
-                CreateCommandOption::new(
-                    CommandOptionType::String,
-                    "stat",
-                    "Ce que tu ameliores",
-                )
-                .required(true)
-                .add_string_choice("Impact", "atk")
-                .add_string_choice("Moelleux", "def"),
+                CreateCommandOption::new(CommandOptionType::String, "stat", "Ce que tu ameliores")
+                    .required(true)
+                    .add_string_choice("Impact", "atk")
+                    .add_string_choice("Moelleux", "def"),
             ),
         CreateCommand::new("shop")
             .description("Le coffre a coussins")
@@ -393,14 +393,12 @@ pub fn build_all_slash_commands() -> Vec<CreateCommand> {
         CreateCommand::new("chiper")
             .description("Fouille sous les coussins d'un membre")
             .add_option(
-                CreateCommandOption::new(CommandOptionType::User, "membre", "Cible")
-                    .required(true),
+                CreateCommandOption::new(CommandOptionType::User, "membre", "Cible").required(true),
             ),
         CreateCommand::new("contrat")
             .description("Promets une recompense a qui fera lever quelqu'un")
             .add_option(
-                CreateCommandOption::new(CommandOptionType::User, "membre", "Cible")
-                    .required(true),
+                CreateCommandOption::new(CommandOptionType::User, "membre", "Cible").required(true),
             )
             .add_option(
                 CreateCommandOption::new(CommandOptionType::Integer, "montant", "Montant")
@@ -411,12 +409,8 @@ pub fn build_all_slash_commands() -> Vec<CreateCommand> {
         CreateCommand::new("pari")
             .description("Parie sur une bagarre en cours")
             .add_option(
-                CreateCommandOption::new(
-                    CommandOptionType::String,
-                    "combat",
-                    "ID de la bagarre",
-                )
-                .required(true),
+                CreateCommandOption::new(CommandOptionType::String, "combat", "ID de la bagarre")
+                    .required(true),
             )
             .add_option(
                 CreateCommandOption::new(

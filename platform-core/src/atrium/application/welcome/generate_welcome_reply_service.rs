@@ -378,7 +378,10 @@ mod tests {
         bad.member_message = "x".repeat(1_501);
         assert!(matches!(
             service.reply(bad).await,
-            Err(WelcomeError::TooLong { field: "member_message", .. })
+            Err(WelcomeError::TooLong {
+                field: "member_message",
+                ..
+            })
         ));
     }
 
@@ -389,7 +392,10 @@ mod tests {
         bad.server_context = "x".repeat(12_001);
         assert!(matches!(
             service.reply(bad).await,
-            Err(WelcomeError::TooLong { field: "server_context", .. })
+            Err(WelcomeError::TooLong {
+                field: "server_context",
+                ..
+            })
         ));
     }
 
@@ -400,7 +406,10 @@ mod tests {
         bad.conversation_history = "x".repeat(4_001);
         assert!(matches!(
             service.reply(bad).await,
-            Err(WelcomeError::TooLong { field: "conversation_history", .. })
+            Err(WelcomeError::TooLong {
+                field: "conversation_history",
+                ..
+            })
         ));
     }
 
@@ -411,7 +420,10 @@ mod tests {
         bad.admin_context = "x".repeat(2_001);
         assert!(matches!(
             service.reply(bad).await,
-            Err(WelcomeError::TooLong { field: "admin_context", .. })
+            Err(WelcomeError::TooLong {
+                field: "admin_context",
+                ..
+            })
         ));
     }
 

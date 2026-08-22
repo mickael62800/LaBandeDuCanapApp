@@ -52,7 +52,10 @@ mod tests {
             Ok(vec![])
         }
 
-        async fn list_recent_logins(&self, _limit: i64) -> Result<Vec<SuccessfulLogin>, DomainError> {
+        async fn list_recent_logins(
+            &self,
+            _limit: i64,
+        ) -> Result<Vec<SuccessfulLogin>, DomainError> {
             Ok(vec![])
         }
 

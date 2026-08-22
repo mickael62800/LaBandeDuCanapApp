@@ -389,14 +389,23 @@ mod tests {
 
     #[test]
     fn test_panel_helpers() {
-        assert_eq!(format_panel_deployed_message(5), "Panneau deploye (5 jeux).");
-        assert_eq!(format_panel_refresh_message(3), "Panneau rafraichi (3 jeux).");
+        assert_eq!(
+            format_panel_deployed_message(5),
+            "Panneau deploye (5 jeux)."
+        );
+        assert_eq!(
+            format_panel_refresh_message(3),
+            "Panneau rafraichi (3 jeux)."
+        );
 
         assert!(is_stored_role_valid(None, Some(RoleId::new(1))));
         assert!(!is_stored_role_valid(None, None));
 
         let roles_map = std::collections::HashMap::new();
-        assert!(!is_stored_role_valid(Some(&roles_map), Some(RoleId::new(1))));
+        assert!(!is_stored_role_valid(
+            Some(&roles_map),
+            Some(RoleId::new(1))
+        ));
         assert!(!is_stored_role_valid(Some(&roles_map), None));
     }
 }

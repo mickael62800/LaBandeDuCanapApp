@@ -228,7 +228,10 @@ mod tests {
         assert_eq!(process_steal_event_payload("not json"), None);
 
         // Non-steal event
-        assert_eq!(process_steal_event_payload(r#"{"event":"other.event"}"#), None);
+        assert_eq!(
+            process_steal_event_payload(r#"{"event":"other.event"}"#),
+            None
+        );
 
         // Valid steal event
         let val_json = r#"{

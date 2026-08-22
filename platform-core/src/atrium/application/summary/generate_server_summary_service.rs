@@ -115,8 +115,7 @@ mod tests {
 
     #[tokio::test]
     async fn uses_empty_activity_default_when_sample_is_blank() {
-        let service =
-            ServerSummaryService::new(Arc::new(FakeAi(Ok("Bonne journée!".into()))));
+        let service = ServerSummaryService::new(Arc::new(FakeAi(Ok("Bonne journée!".into()))));
         let res = service
             .generate_summary(ServerSummaryRequest {
                 guild_id: "123".into(),

@@ -1,5 +1,5 @@
 use super::*;
-use serenity::all::{CreateEmbed, ChannelId, UserId};
+use serenity::all::{ChannelId, CreateEmbed, UserId};
 
 impl Handler {
     pub(super) async fn handle_coussin(&self, ctx: &Context, cmd: &CommandInteraction) {
@@ -71,7 +71,8 @@ impl Handler {
             tracing::error!("defer /profil impossible: {e}");
             return;
         }
-        let embed = execute_coussin_profile(&self.api, &guild_id, &user_id.to_string(), &username).await;
+        let embed =
+            execute_coussin_profile(&self.api, &guild_id, &user_id.to_string(), &username).await;
         let _ = cmd
             .create_followup(&ctx.http, build_ephemeral_embed_followup(embed))
             .await;
@@ -139,7 +140,8 @@ impl Handler {
             tracing::error!("defer /shop impossible: {e}");
             return;
         }
-        let embed = execute_coussin_shop(&self.api, &guild_id, &cmd.user.id.to_string(), &item).await;
+        let embed =
+            execute_coussin_shop(&self.api, &guild_id, &cmd.user.id.to_string(), &item).await;
         let _ = cmd
             .create_followup(&ctx.http, build_ephemeral_embed_followup(embed))
             .await;
@@ -241,7 +243,8 @@ impl Handler {
         ctx: &Context,
         component: &serenity::all::ComponentInteraction,
     ) {
-        let Some((attempt_id, victim_id)) = parse_coussin_steal_button(&component.data.custom_id) else {
+        let Some((attempt_id, victim_id)) = parse_coussin_steal_button(&component.data.custom_id)
+        else {
             return;
         };
 
@@ -302,7 +305,15 @@ impl Handler {
             placer_name: cmd.user.display_name().into(),
             amount,
         };
-        let text = execute_coussin_prime(&self.api, &guild, &cmd.user.id.to_string(), target, amount, &req).await;
+        let text = execute_coussin_prime(
+            &self.api,
+            &guild,
+            &cmd.user.id.to_string(),
+            target,
+            amount,
+            &req,
+        )
+        .await;
         let _ = cmd
             .create_followup(&ctx.http, build_content_followup(text))
             .await;
@@ -341,7 +352,15 @@ impl Handler {
             backed_id: target.to_string(),
             amount,
         };
-        let text = execute_coussin_bet(&self.api, &guild, &cmd.user.id.to_string(), target, amount, &req).await;
+        let text = execute_coussin_bet(
+            &self.api,
+            &guild,
+            &cmd.user.id.to_string(),
+            target,
+            amount,
+            &req,
+        )
+        .await;
         let _ = cmd
             .create_followup(&ctx.http, build_content_followup(text))
             .await;
@@ -566,7 +585,9 @@ pub async fn execute_coussin_class(
     username: &str,
     class: &str,
 ) -> CreateEmbed {
-    let res = api.choose_coussin_class(guild_id, user_id, username, class).await;
+    let res = api
+        .choose_coussin_class(guild_id, user_id, username, class)
+        .await;
     build_coussin_profile_response(&res)
 }
 
@@ -633,7 +654,11 @@ pub async fn execute_coussin_bet(
     build_coussin_bet_response(target_id, amount, &res)
 }
 
-pub fn build_coussin_challenge_buttons(combat_id: &str, defender_id: UserId, attacker_id: UserId) -> CreateActionRow {
+pub fn build_coussin_challenge_buttons(
+    combat_id: &str,
+    defender_id: UserId,
+    attacker_id: UserId,
+) -> CreateActionRow {
     CreateActionRow::Buttons(vec![
         CreateButton::new(format!("c:a:{combat_id}:{defender_id}:{attacker_id}"))
             .label("Accepter")
@@ -651,22 +676,18 @@ pub fn build_coussin_challenge_followup(
     mise: i64,
 ) -> serenity::all::CreateInteractionResponseFollowup {
     let buttons = build_coussin_challenge_buttons(combat_id, defender_id, attacker_id);
-    let embed = embeds::build_coussin_challenge_embed(
-        attacker_id.get(),
-        defender_id.get(),
-        mise,
-    );
+    let embed = embeds::build_coussin_challenge_embed(attacker_id.get(), defender_id.get(), mise);
     serenity::all::CreateInteractionResponseFollowup::new()
         .embed(embed)
         .components(vec![buttons])
 }
 
 pub fn build_coussin_steal_buttons(attempt_id: &str, target_id: UserId) -> CreateActionRow {
-    CreateActionRow::Buttons(vec![
-        CreateButton::new(format!("cs:d:{attempt_id}:{target_id}"))
-            .label("Serrer les coussins")
-            .style(ButtonStyle::Primary),
-    ])
+    CreateActionRow::Buttons(vec![CreateButton::new(format!(
+        "cs:d:{attempt_id}:{target_id}"
+    ))
+    .label("Serrer les coussins")
+    .style(ButtonStyle::Primary)])
 }
 
 pub fn build_coussin_steal_followup(
@@ -682,7 +703,9 @@ pub fn build_coussin_steal_followup(
         .components(vec![bouton])
 }
 
-pub fn build_coussin_profile_response(res: &Result<api_client::CoussinProfileResponse, String>) -> CreateEmbed {
+pub fn build_coussin_profile_response(
+    res: &Result<api_client::CoussinProfileResponse, String>,
+) -> CreateEmbed {
     match res {
         Ok(profile) => embeds::build_coussin_profile_embed(profile),
         Err(message) => embeds::build_error_embed(message),
@@ -703,28 +726,40 @@ pub fn build_coussin_insurance_response(res: &Result<(bool, String), String>) ->
     }
 }
 
-pub fn build_coussin_inventory_response(res: &Result<Vec<api_client::CoussinInventoryItem>, String>) -> CreateEmbed {
+pub fn build_coussin_inventory_response(
+    res: &Result<Vec<api_client::CoussinInventoryItem>, String>,
+) -> CreateEmbed {
     match res {
         Ok(items) => embeds::build_coussin_inventory_embed(items),
         Err(e) => embeds::build_error_embed(e),
     }
 }
 
-pub fn build_coussin_prime_response(target_id: UserId, amount: i64, res: &Result<(), String>) -> String {
+pub fn build_coussin_prime_response(
+    target_id: UserId,
+    amount: i64,
+    res: &Result<(), String>,
+) -> String {
     match res {
         Ok(()) => format_prime_announcement(target_id, amount),
         Err(e) => e.clone(),
     }
 }
 
-pub fn build_coussin_bet_response(target_id: UserId, amount: i64, res: &Result<(), String>) -> String {
+pub fn build_coussin_bet_response(
+    target_id: UserId,
+    amount: i64,
+    res: &Result<(), String>,
+) -> String {
     match res {
         Ok(()) => format_bet_announcement(target_id, amount),
         Err(e) => e.clone(),
     }
 }
 
-pub fn build_ephemeral_embed_followup(embed: CreateEmbed) -> serenity::all::CreateInteractionResponseFollowup {
+pub fn build_ephemeral_embed_followup(
+    embed: CreateEmbed,
+) -> serenity::all::CreateInteractionResponseFollowup {
     serenity::all::CreateInteractionResponseFollowup::new()
         .embed(embed)
         .ephemeral(true)
@@ -825,7 +860,8 @@ mod tests {
 
     #[test]
     fn test_coussin_response_helpers() {
-        let btn_challenge = build_coussin_challenge_buttons("combat1", UserId::new(10), UserId::new(20));
+        let btn_challenge =
+            build_coussin_challenge_buttons("combat1", UserId::new(10), UserId::new(20));
         let j_btn = serde_json::to_value(&btn_challenge).unwrap();
         assert_eq!(j_btn["components"].as_array().unwrap().len(), 2);
 
@@ -876,15 +912,16 @@ mod tests {
         let j_ins_err = serde_json::to_value(&emb_ins_err).unwrap();
         assert_eq!(j_ins_err["description"], "Ins err");
 
-        let items = vec![
-            api_client::CoussinInventoryItem {
-                item_key: "shield".into(),
-                quantity: 1,
-            }
-        ];
+        let items = vec![api_client::CoussinInventoryItem {
+            item_key: "shield".into(),
+            quantity: 1,
+        }];
         let emb_inv_ok = build_coussin_inventory_response(&Ok(items));
         let j_inv = serde_json::to_value(&emb_inv_ok).unwrap();
-        assert!(j_inv["title"].as_str().unwrap().contains("Sous ton coussin"));
+        assert!(j_inv["title"]
+            .as_str()
+            .unwrap()
+            .contains("Sous ton coussin"));
 
         let emb_inv_err = build_coussin_inventory_response(&Err("Inv err".into()));
         let j_inv_err = serde_json::to_value(&emb_inv_err).unwrap();
@@ -900,12 +937,14 @@ mod tests {
         let bet_err = build_coussin_bet_response(UserId::new(6), 50, &Err("Bet err".into()));
         assert_eq!(bet_err, "Bet err");
 
-        let challenge_fup = build_coussin_challenge_followup(UserId::new(1), UserId::new(2), "combat_123", 100);
+        let challenge_fup =
+            build_coussin_challenge_followup(UserId::new(1), UserId::new(2), "combat_123", 100);
         let j_cfup = serde_json::to_value(&challenge_fup).unwrap();
         assert!(j_cfup["embeds"].as_array().is_some());
         assert!(j_cfup["components"].as_array().is_some());
 
-        let steal_fup = build_coussin_steal_followup(UserId::new(1), UserId::new(2), "attempt_456", 30);
+        let steal_fup =
+            build_coussin_steal_followup(UserId::new(1), UserId::new(2), "attempt_456", 30);
         let j_sfup = serde_json::to_value(&steal_fup).unwrap();
         assert!(j_sfup["content"].as_str().unwrap().contains("30 secondes"));
         assert!(j_sfup["components"].as_array().is_some());
@@ -949,8 +988,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_coussin_actions() {
-        use tokio::net::TcpListener;
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::TcpListener;
 
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
@@ -1034,12 +1073,16 @@ mod tests {
             placer_name: "Alice".into(),
             amount: 100,
         };
-        let prime_txt = execute_coussin_prime(&client, "g1", "u1", UserId::new(2), 100, &p_req).await;
+        let prime_txt =
+            execute_coussin_prime(&client, "g1", "u1", UserId::new(2), 100, &p_req).await;
         assert!(prime_txt.contains("100 coins"));
 
         let inv = execute_coussin_inventory(&client, "g1", "u1").await;
         let j_inv = serde_json::to_value(&inv).unwrap();
-        assert!(j_inv["title"].as_str().unwrap().contains("Sous ton coussin"));
+        assert!(j_inv["title"]
+            .as_str()
+            .unwrap()
+            .contains("Sous ton coussin"));
 
         let b_req = api_client::CoussinBetRequest {
             combat_id: "comb1".into(),
@@ -1056,7 +1099,8 @@ mod tests {
         assert_eq!(j_err_p["description"], "prof err");
 
         let err_shop: Result<i64, String> = Err("shop err".into());
-        let j_err_s = serde_json::to_value(&build_coussin_shop_response("chapeau", &err_shop)).unwrap();
+        let j_err_s =
+            serde_json::to_value(&build_coussin_shop_response("chapeau", &err_shop)).unwrap();
         assert_eq!(j_err_s["description"], "shop err");
 
         let err_ins: Result<(bool, String), String> = Err("ins err".into());
@@ -1068,9 +1112,15 @@ mod tests {
         assert_eq!(j_err_inv["description"], "inv err");
 
         let err_prime: Result<(), String> = Err("prime err".into());
-        assert_eq!(build_coussin_prime_response(UserId::new(2), 100, &err_prime), "prime err");
+        assert_eq!(
+            build_coussin_prime_response(UserId::new(2), 100, &err_prime),
+            "prime err"
+        );
 
         let err_bet: Result<(), String> = Err("bet err".into());
-        assert_eq!(build_coussin_bet_response(UserId::new(2), 50, &err_bet), "bet err");
+        assert_eq!(
+            build_coussin_bet_response(UserId::new(2), 50, &err_bet),
+            "bet err"
+        );
     }
 }

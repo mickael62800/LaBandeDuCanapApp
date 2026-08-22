@@ -35,16 +35,19 @@ mod tests {
     #[async_trait]
     impl GeoIpLookup for FakeGeoIpLookup {
         async fn lookup(&self, ips: Vec<String>) -> Result<Vec<GeoIpEntry>, DomainError> {
-            Ok(ips.into_iter().map(|ip| GeoIpEntry {
-                query: ip,
-                status: "success".into(),
-                country: Some("FR".into()),
-                country_code: Some("FR".into()),
-                region_name: None,
-                city: Some("Paris".into()),
-                isp: None,
-                asn: None,
-            }).collect())
+            Ok(ips
+                .into_iter()
+                .map(|ip| GeoIpEntry {
+                    query: ip,
+                    status: "success".into(),
+                    country: Some("FR".into()),
+                    country_code: Some("FR".into()),
+                    region_name: None,
+                    city: Some("Paris".into()),
+                    isp: None,
+                    asn: None,
+                })
+                .collect())
         }
     }
 

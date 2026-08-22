@@ -365,19 +365,20 @@ mod tests {
     fn test_build_leaderboard_embed_empty() {
         let embed = build_leaderboard_embed(&[]);
         let json = serde_json::to_value(&embed).unwrap();
-        assert!(json["description"].as_str().unwrap().contains("Aucun joueur"));
+        assert!(json["description"]
+            .as_str()
+            .unwrap()
+            .contains("Aucun joueur"));
     }
 
     #[test]
     fn test_build_leaderboard_embed_with_entries() {
-        let entries = vec![
-            crate::api_client::WalletResponse {
-                user_id: "u1".into(),
-                coins: 1000,
-                total_earned: 2000,
-                total_spent: 1000,
-            }
-        ];
+        let entries = vec![crate::api_client::WalletResponse {
+            user_id: "u1".into(),
+            coins: 1000,
+            total_earned: 2000,
+            total_spent: 1000,
+        }];
         let embed = build_leaderboard_embed(&entries);
         let json = serde_json::to_value(&embed).unwrap();
         assert_eq!(json["color"], 0xE67E22);
@@ -451,12 +452,10 @@ mod tests {
 
     #[test]
     fn test_build_coussin_inventory_embed_with_items() {
-        let items = vec![
-            crate::api_client::CoussinInventoryItem {
-                item_key: "plume".into(),
-                quantity: 2,
-            }
-        ];
+        let items = vec![crate::api_client::CoussinInventoryItem {
+            item_key: "plume".into(),
+            quantity: 2,
+        }];
         let embed = build_coussin_inventory_embed(&items);
         let json = serde_json::to_value(&embed).unwrap();
         assert!(json["title"].as_str().unwrap().contains("coussin"));

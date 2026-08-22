@@ -244,8 +244,14 @@ mod tests {
     fn as_action_pour_tous_les_types() {
         assert_eq!(ContainerChangeKind::Added.as_action(), "docker.added");
         assert_eq!(ContainerChangeKind::Removed.as_action(), "docker.removed");
-        assert_eq!(ContainerChangeKind::ImageChanged.as_action(), "docker.image_changed");
-        assert_eq!(ContainerChangeKind::StateChanged.as_action(), "docker.state_changed");
+        assert_eq!(
+            ContainerChangeKind::ImageChanged.as_action(),
+            "docker.image_changed"
+        );
+        assert_eq!(
+            ContainerChangeKind::StateChanged.as_action(),
+            "docker.state_changed"
+        );
     }
 
     #[test]

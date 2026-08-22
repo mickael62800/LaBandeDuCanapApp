@@ -31,7 +31,14 @@ pub async fn handle_command(api: &Arc<ApiClient>, ctx: &Context, cmd: &CommandIn
     let Some(guild) = cmd.guild_id else { return };
     let action = extract_salon_action(cmd.data.options.first().map(|o| o.name.as_str()));
     let display_name = cmd.user.global_name.as_deref().unwrap_or(&cmd.user.name);
-    let content = execute_salon_action(api, &guild.to_string(), &cmd.user.id.to_string(), display_name, action).await;
+    let content = execute_salon_action(
+        api,
+        &guild.to_string(),
+        &cmd.user.id.to_string(),
+        display_name,
+        action,
+    )
+    .await;
     let _ = cmd
         .create_response(&ctx.http, build_salon_message(&content))
         .await;
@@ -53,16 +60,16 @@ pub async fn execute_salon_action(
 }
 
 pub fn build_salon_message(content: &str) -> CreateInteractionResponse {
-    CreateInteractionResponse::Message(
-        CreateInteractionResponseMessage::new().content(content),
-    )
+    CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().content(content))
 }
 
 pub fn extract_salon_action(first_option_name: Option<&str>) -> &str {
     first_option_name.unwrap_or("profil")
 }
 
-pub fn build_salon_response(result: Result<crate::api_client::GrandSalonProfileResponse, String>) -> String {
+pub fn build_salon_response(
+    result: Result<crate::api_client::GrandSalonProfileResponse, String>,
+) -> String {
     match result {
         Ok(p) => format_profile(&p),
         Err(e) => format_salon_error(&e),
@@ -112,13 +119,16 @@ mod tests {
 
         let msg = build_salon_message("Bonjour Salon");
         let j_msg = serde_json::to_value(&msg).unwrap();
-        assert!(j_msg["data"]["content"].as_str().unwrap().contains("Bonjour Salon"));
+        assert!(j_msg["data"]["content"]
+            .as_str()
+            .unwrap()
+            .contains("Bonjour Salon"));
     }
 
     #[tokio::test]
     async fn test_execute_salon_action() {
-        use tokio::net::TcpListener;
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::TcpListener;
 
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();

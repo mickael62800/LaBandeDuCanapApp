@@ -89,7 +89,14 @@ mod tests {
     async fn record_delegates_to_repo() {
         let service = ManageServerEventsService::new(Arc::new(FakeServerEventRepo));
         let result = service
-            .record("admin", Some("Admin"), "delete", Some("user"), "warning", serde_json::json!({}))
+            .record(
+                "admin",
+                Some("Admin"),
+                "delete",
+                Some("user"),
+                "warning",
+                serde_json::json!({}),
+            )
             .await;
         assert!(result.is_ok());
     }

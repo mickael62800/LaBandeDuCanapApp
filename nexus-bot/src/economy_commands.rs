@@ -45,16 +45,16 @@ impl Handler {
         };
 
         let target_id = option_user(cmd, "membre").unwrap_or(cmd.user.id);
-        let display_name = if target_id == cmd.user.id {
-            cmd.user.display_name().to_string()
-        } else {
+        let display_name = format_target_name(
+            target_id,
+            cmd.user.id,
+            cmd.user.display_name(),
             cmd.data
                 .resolved
                 .users
                 .get(&target_id)
-                .map(|u| u.display_name().to_string())
-                .unwrap_or_else(|| format!("<@{target_id}>"))
-        };
+                .map(|u| u.display_name()),
+        );
 
         if let Err(e) = cmd.defer(&ctx.http).await {
             tracing::error!("defer /solde impossible: {e}");
@@ -101,14 +101,14 @@ impl Handler {
             return;
         }
 
-        let req = api_client::TransferRequest {
-            from_user_id: cmd.user.id.to_string(),
-            from_username: cmd.user.display_name().to_string(),
-            to_user_id: target_id.to_string(),
-            to_username: target_username,
+        let req = build_transfer_request_payload(
+            cmd.user.id,
+            cmd.user.display_name(),
+            target_id,
+            &target_username,
             amount,
-            reason: reason.clone(),
-        };
+            reason.clone(),
+        );
 
         let embed = execute_donner(
             &self.api,

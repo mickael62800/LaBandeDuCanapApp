@@ -95,10 +95,9 @@ pub async fn repost_panel(ctx: &Context, channel_id: ChannelId) {
         Ok(messages) => messages
             .into_iter()
             .filter(|m| {
-                m.author.id == bot_id
-                    && m.embeds
-                        .iter()
-                        .any(|e| e.title.as_deref() == Some(PANEL_TITLE))
+                let titres: Vec<Option<&str>> =
+                    m.embeds.iter().map(|e| e.title.as_deref()).collect();
+                is_old_wheel_panel(m.author.id, bot_id, &titres)
             })
             .map(|m| m.id)
             .collect(),
@@ -178,13 +177,13 @@ pub async fn handle_spin(api: &ApiClient, ctx: &Context, component: &ComponentIn
         return;
     }
 
-    let response = match api
-        .spin_wheel(
-            &guild_id.to_string(),
-            &component.user.id.to_string(),
-            &username,
-        )
-        .await
+    let response = match execute_spin(
+        api,
+        &guild_id.to_string(),
+        &component.user.id.to_string(),
+        &username,
+    )
+    .await
     {
         Ok(r) => r,
         Err(message) => {
@@ -257,22 +256,6 @@ pub fn is_old_wheel_panel(
     author_id == bot_id && titles.contains(&Some(PANEL_TITLE))
 }
 
-pub fn filter_old_wheel_panel_ids(
-    messages: &[(MessageId, serenity::all::UserId, Vec<Option<String>>)],
-    bot_id: serenity::all::UserId,
-) -> Vec<MessageId> {
-    messages
-        .iter()
-        .filter_map(|(id, author, titles)| {
-            if *author == bot_id && titles.iter().any(|t| t.as_deref() == Some(PANEL_TITLE)) {
-                Some(*id)
-            } else {
-                None
-            }
-        })
-        .collect()
-}
-
 pub fn format_spin_result_response(case_label: &str) -> String {
     format!("\u{1f300} Ton tirage : {}", case_label)
 }
@@ -341,19 +324,6 @@ mod tests {
         assert!(is_old_wheel_panel(bot, bot, &[Some(PANEL_TITLE)]));
         assert!(!is_old_wheel_panel(other, bot, &[Some(PANEL_TITLE)]));
         assert!(!is_old_wheel_panel(bot, bot, &[Some("Autre titre")]));
-
-        let msgs = vec![
-            (MessageId::new(1), bot, vec![Some(PANEL_TITLE.to_string())]),
-            (
-                MessageId::new(2),
-                other,
-                vec![Some(PANEL_TITLE.to_string())],
-            ),
-            (MessageId::new(3), bot, vec![Some("Autre".to_string())]),
-            (MessageId::new(4), bot, vec![None]),
-        ];
-        let old_ids = filter_old_wheel_panel_ids(&msgs, bot);
-        assert_eq!(old_ids, vec![MessageId::new(1)]);
 
         let res = format_spin_result_response("Jackpot 1000");
         assert!(res.contains("Jackpot 1000"));
@@ -484,60 +454,6 @@ mod tests {
 
         // None titles
         assert!(!is_old_wheel_panel(bot, bot, &[None, None]));
-    }
-
-    #[test]
-    fn test_filter_old_wheel_panel_ids_comprehensive() {
-        let bot = UserId::new(100);
-        let other = UserId::new(200);
-
-        let msgs = vec![
-            (MessageId::new(1), bot, vec![Some(PANEL_TITLE.to_string())]),
-            (MessageId::new(2), bot, vec![Some("Wrong".to_string())]),
-            (
-                MessageId::new(3),
-                other,
-                vec![Some(PANEL_TITLE.to_string())],
-            ),
-            (MessageId::new(4), bot, vec![]),
-            (MessageId::new(5), bot, vec![None]),
-            (
-                MessageId::new(6),
-                bot,
-                vec![Some("X".to_string()), Some(PANEL_TITLE.to_string())],
-            ),
-        ];
-
-        let filtered = filter_old_wheel_panel_ids(&msgs, bot);
-        assert_eq!(filtered.len(), 2);
-        assert!(filtered.contains(&MessageId::new(1)));
-        assert!(filtered.contains(&MessageId::new(6)));
-    }
-
-    #[test]
-    fn test_filter_old_wheel_panel_empty() {
-        let bot = UserId::new(100);
-        let msgs = vec![];
-        let filtered = filter_old_wheel_panel_ids(&msgs, bot);
-        assert!(filtered.is_empty());
-    }
-
-    #[test]
-    fn test_filter_old_wheel_panel_no_matches() {
-        let bot = UserId::new(100);
-        let other = UserId::new(200);
-
-        let msgs = vec![
-            (
-                MessageId::new(1),
-                other,
-                vec![Some(PANEL_TITLE.to_string())],
-            ),
-            (MessageId::new(2), bot, vec![Some("Wrong".to_string())]),
-        ];
-
-        let filtered = filter_old_wheel_panel_ids(&msgs, bot);
-        assert!(filtered.is_empty());
     }
 
     #[test]

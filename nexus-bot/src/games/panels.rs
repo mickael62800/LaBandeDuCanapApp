@@ -108,12 +108,7 @@ pub(super) async fn handle_panel(
         return;
     }
 
-    edit_deferred_reply(
-        ctx,
-        cmd,
-        &format!("Panneau deploye ({} jeux).", games_slice.len()),
-    )
-    .await;
+    edit_deferred_reply(ctx, cmd, &format_panel_deployed_message(games_slice.len())).await;
 }
 
 pub(super) async fn handle_refresh(
@@ -210,12 +205,7 @@ pub(super) async fn handle_refresh(
         return;
     }
 
-    edit_deferred_reply(
-        ctx,
-        cmd,
-        &format!("Panneau rafraichi ({} jeux).", games_slice.len()),
-    )
-    .await;
+    edit_deferred_reply(ctx, cmd, &format_panel_refresh_message(games_slice.len())).await;
 }
 
 /// Convertit/actualise un panneau en sélecteur par réactions natives.

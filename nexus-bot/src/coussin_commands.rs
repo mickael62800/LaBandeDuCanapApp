@@ -25,16 +25,17 @@ impl Handler {
             tracing::error!("defer /coussin impossible: {e}");
             return;
         }
-        let req = api_client::CoussinChallengeRequest {
-            channel_id: cmd.channel_id.to_string(),
-            attacker_id: cmd.user.id.to_string(),
-            attacker_name: cmd.user.display_name().to_string(),
-            defender_id: defender_id.to_string(),
-            defender_name: defender
-                .map(|u| u.display_name().to_string())
-                .unwrap_or_else(|| format!("<@{defender_id}>")),
+        let defender_name = defender
+            .map(|u| u.display_name().to_string())
+            .unwrap_or_else(|| format!("<@{defender_id}>"));
+        let req = build_challenge_request_payload(
+            cmd.channel_id,
+            cmd.user.id,
+            cmd.user.display_name(),
+            defender_id,
+            &defender_name,
             mise,
-        };
+        );
         let response = execute_coussin_challenge(&self.api, &guild_id, &req).await;
         match response {
             Ok(combat) => {
@@ -1005,23 +1006,21 @@ mod tests {
 
                 let body = if req.contains("/api/coussin/") && req.contains("/combats") {
                     r#"{"id":"comb1","mise":50,"attacker_id":"u1","defender_id":"u2","status":"pending"}"#
-                } else if req.contains("/api/coussin/") && req.contains("/class") {
-                    profile_json
-                } else if req.contains("/api/coussin/") && req.contains("/train") {
+                } else if req.contains("/api/coussin/")
+                    && ["/class", "/train", "/profile"]
+                        .iter()
+                        .any(|route| req.contains(route))
+                {
+                    // Ces trois routes rendent toutes le profil a jour.
                     profile_json
                 } else if req.contains("/api/coussin/") && req.contains("/shop") {
                     r#"{"balance_after":90}"#
                 } else if req.contains("/api/coussin/") && req.contains("/insurance") {
                     r#"{"is_scam":false,"expires_at":"demain"}"#
-                } else if req.contains("/api/coussin/") && req.contains("/prime") {
-                    r#"{"ok":true}"#
                 } else if req.contains("/api/coussin/") && req.contains("/inventory") {
                     r#"[{"item_key":"plume","quantity":2}]"#
-                } else if req.contains("/api/coussin/") && req.contains("/bet") {
-                    r#"{"ok":true}"#
-                } else if req.contains("/api/coussin/") && req.contains("/profile") {
-                    profile_json
                 } else {
+                    // `/prime` et `/bet` retombent ici : un simple accuse.
                     r#"{"ok":true}"#
                 };
 
@@ -1095,20 +1094,20 @@ mod tests {
 
         // Error branches
         let err_prof: Result<api_client::CoussinProfileResponse, String> = Err("prof err".into());
-        let j_err_p = serde_json::to_value(&build_coussin_profile_response(&err_prof)).unwrap();
+        let j_err_p = serde_json::to_value(build_coussin_profile_response(&err_prof)).unwrap();
         assert_eq!(j_err_p["description"], "prof err");
 
         let err_shop: Result<i64, String> = Err("shop err".into());
         let j_err_s =
-            serde_json::to_value(&build_coussin_shop_response("chapeau", &err_shop)).unwrap();
+            serde_json::to_value(build_coussin_shop_response("chapeau", &err_shop)).unwrap();
         assert_eq!(j_err_s["description"], "shop err");
 
         let err_ins: Result<(bool, String), String> = Err("ins err".into());
-        let j_err_i = serde_json::to_value(&build_coussin_insurance_response(&err_ins)).unwrap();
+        let j_err_i = serde_json::to_value(build_coussin_insurance_response(&err_ins)).unwrap();
         assert_eq!(j_err_i["description"], "ins err");
 
         let err_inv: Result<Vec<api_client::CoussinInventoryItem>, String> = Err("inv err".into());
-        let j_err_inv = serde_json::to_value(&build_coussin_inventory_response(&err_inv)).unwrap();
+        let j_err_inv = serde_json::to_value(build_coussin_inventory_response(&err_inv)).unwrap();
         assert_eq!(j_err_inv["description"], "inv err");
 
         let err_prime: Result<(), String> = Err("prime err".into());

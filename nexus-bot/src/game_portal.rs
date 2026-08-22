@@ -148,11 +148,7 @@ pub async fn on_component(api: &ApiClient, ctx: &Context, component: &ComponentI
     }
 
     // Fallback : simple accuse ephemere.
-    let action_msg = if is_register {
-        "Inscription enregistrée"
-    } else {
-        "Désinscription enregistrée"
-    };
+    let action_msg = format_registration_ack_content(is_register);
     let _ = component
         .create_followup(
             &ctx.http,
@@ -393,20 +389,11 @@ pub async fn params_embeds_for_channel(
         .await
         .map_err(|_| "Serveur introuvable.")?;
     let template = api.get_game_template(&detail.server.template_id).await.ok();
-    let game_name = template
-        .as_ref()
-        .map(|t| t.name.clone())
-        .unwrap_or_else(|| "Jeu".into());
-    let schema = template.map(|t| t.config_schema).unwrap_or_default();
-    let options = if is_private {
-        public_game_options(&detail.config, &schema)
-    } else {
-        registration_options(&detail.config, &schema)
-    };
-    Ok(build_options_embeds(
-        &game_name,
-        &detail.server.name,
-        &options,
+    Ok(build_options_embeds_for_server(
+        &detail.server,
+        template.as_ref(),
+        &detail.config,
+        is_private,
     ))
 }
 
@@ -909,21 +896,6 @@ pub fn parse_restart_warning(payload_json: &str) -> (u16, Option<String>) {
         .and_then(|v| v.as_str())
         .map(str::to_string);
     (minutes, restart_at)
-}
-
-pub fn match_portal_event_type(event: &str) -> &'static str {
-    use platform_core::nexus::ports::outbound::events::game_events as ev;
-    match event {
-        ev::SERVER_SCHEDULED => "scheduled",
-        ev::SERVER_STARTED => "started",
-        ev::SERVER_STOPPED => "stopped",
-        ev::SERVER_DELETED => "deleted",
-        ev::IP_REVEAL => "ip_reveal",
-        ev::DAILY_PING => "daily_ping",
-        ev::SERVER_RESTART_WARNING => "restart_warning",
-        ev::SERVER_RESTARTED => "restarted",
-        _ => "unknown",
-    }
 }
 
 /// Annonce Discord d'un redemarrage a venir.
@@ -1934,16 +1906,6 @@ mod tests {
     }
 
     #[test]
-    fn les_evenements_de_redemarrage_sont_reconnus() {
-        use platform_core::nexus::ports::outbound::events::game_events as ev;
-        assert_eq!(
-            match_portal_event_type(ev::SERVER_RESTART_WARNING),
-            "restart_warning"
-        );
-        assert_eq!(match_portal_event_type(ev::SERVER_RESTARTED), "restarted");
-    }
-
-    #[test]
     fn le_preavis_se_lit_dans_l_evenement() {
         let payload = r#"{"event":"game_server_restart_warning","data":{
             "server_id":"s1","guild_id":"1","minutes_left":15,
@@ -2282,15 +2244,6 @@ mod tests {
             ),
             None
         );
-
-        use platform_core::nexus::ports::outbound::events::game_events as ev;
-        assert_eq!(match_portal_event_type(ev::SERVER_SCHEDULED), "scheduled");
-        assert_eq!(match_portal_event_type(ev::SERVER_STARTED), "started");
-        assert_eq!(match_portal_event_type(ev::SERVER_STOPPED), "stopped");
-        assert_eq!(match_portal_event_type(ev::SERVER_DELETED), "deleted");
-        assert_eq!(match_portal_event_type(ev::IP_REVEAL), "ip_reveal");
-        assert_eq!(match_portal_event_type(ev::DAILY_PING), "daily_ping");
-        assert_eq!(match_portal_event_type("unknown"), "unknown");
     }
 
     #[test]

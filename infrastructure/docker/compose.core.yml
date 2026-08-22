@@ -478,6 +478,9 @@ services:
       LOGS_RETENTION_DAYS: ${LOGS_RETENTION_DAYS:-30}
       CLOSED_TICKETS_RETENTION_DAYS: ${CLOSED_TICKETS_RETENTION_DAYS:-180}
       GAME_PERF_HISTORY_RETENTION_DAYS: ${GAME_PERF_HISTORY_RETENTION_DAYS:-7}
+      # Jobs planifies simultanes. Voir .env.example : `2 x cette valeur` doit
+      # rester sous le pool applicatif, verrous et handlers puisant au meme.
+      JOB_MAX_CONCURRENT: ${JOB_MAX_CONCURRENT:-8}
       WATCHED_USERS_QUERY_LIMIT: ${WATCHED_USERS_QUERY_LIMIT:-10000}
       SENTINEL_API_URL: http://127.0.0.1:3000
       GRPC_API_URL: http://127.0.0.1:50051

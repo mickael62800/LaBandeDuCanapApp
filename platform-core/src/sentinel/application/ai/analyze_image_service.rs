@@ -450,3 +450,7 @@ fn preprocess_image(bytes: &[u8]) -> Result<ndarray::Array4<f32>, String> {
 #[cfg(test)]
 #[path = "tests/analyze_image_service.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "tests/analyze_image.rs"]
+mod tests;

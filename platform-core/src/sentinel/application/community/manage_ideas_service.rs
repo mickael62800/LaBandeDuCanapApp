@@ -207,3 +207,7 @@ impl ManageIdeasUseCase for ManageIdeasService {
         self.repo.count_open_by_author(guild_id, author_id).await
     }
 }
+
+#[cfg(test)]
+#[path = "tests/manage_ideas_extended.rs"]
+mod tests_extended;

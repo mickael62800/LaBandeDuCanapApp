@@ -148,3 +148,7 @@ impl AnalyzeMessageUseCase for AnalyzeMessageService {
 #[cfg(test)]
 #[path = "tests/analyze_message_service.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "tests/analyze_message_pipeline.rs"]
+mod tests_pipeline;

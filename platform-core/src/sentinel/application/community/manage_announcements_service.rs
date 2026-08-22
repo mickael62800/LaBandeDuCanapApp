@@ -553,3 +553,7 @@ impl ManageAnnouncementsUseCase for ManageAnnouncementsService {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "tests/manage_announcements_extended.rs"]
+mod tests_extended;

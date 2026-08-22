@@ -149,3 +149,7 @@ impl AnalyzeMessageService {
         Ok(CapsDecision { score })
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/analyze_message_heuristics.rs"]
+mod tests;

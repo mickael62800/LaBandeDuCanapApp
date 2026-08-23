@@ -503,6 +503,7 @@ bash infrastructure/scripts/dev.sh              # Lance API + bot + web
 bash infrastructure/scripts/start-all.sh        # Démarre la stack complète
 bash infrastructure/scripts/health-check.sh     # Vérifie que tous les services répondent
 bash infrastructure/scripts/seed-rules.sh       # Seed de règles de dev
+sudo bash infrastructure/scripts/backup.sh      # Sauvegarde bases + mondes de jeu
 bash infrastructure/scripts/setup-host-security.sh
 bash infrastructure/scripts/tls-issue.sh        # Émission des certificats
 

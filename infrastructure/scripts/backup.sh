@@ -184,23 +184,67 @@ sauvegarder_mondes() {
 }
 
 # ── Retention ──────────────────────────────────────────────────────────────
+
+# Toutes les archives de mondes presentes, quel que soit leur suffixe.
+#
+# `*.tar` ET `*.tar.*` : les archives prises A FROID par le redemarrage
+# programme ne sont pas compressees (les sauvegardes de jeu le sont deja), donc
+# elles n'ont pas de second suffixe. Le motif `*.tar.*` seul les ignorait — 5 Go
+# par jour qui s'accumulaient sans jamais etre purges, pendant que leurs lignes
+# en base disparaissaient a 14 jours.
+toutes_les_archives() {
+    find "$DEST/mondes" -type f \( -name '*.tar' -o -name '*.tar.*' \) "$@" 2>/dev/null
+}
+
+# La plus recente archive de CHAQUE serveur, a conserver quoi qu'il arrive.
+#
+# Sans cette protection, un serveur qui ne redemarre pas pendant quinze jours
+# verrait sa seule copie supprimee par l'age : on se retrouverait avec zero
+# sauvegarde pour le serveur le plus tranquille, ce qui est exactement l'inverse
+# du but.
+archives_a_conserver() {
+    toutes_les_archives -printf '%T@ %p
+'         | sort -rn         | awk '{
+              chemin = $2
+              for (i = 3; i <= NF; i++) chemin = chemin " " $i
+              serveur = chemin
+              sub(/-[0-9]{8}-[0-9]{6}(-a-chaud)?\.tar(\.[a-z0-9]+)?$/, "", serveur)
+              if (!(serveur in vu)) { vu[serveur] = 1; print chemin }
+          }'
+}
+
 purger() {
-  if $DRY_RUN; then
-    log "[simulation] purge au-dela de ${RETENTION_JOURS} j"
-    return
-  fi
+    if $DRY_RUN; then
+        log "[simulation] purge au-dela de ${RETENTION_JOURS} j"
+        return
+    fi
 
-  local supprimes
-  supprimes=$(find "$DEST/postgres" "$DEST/mondes" -type f \
-    \( -name '*.dump' -o -name '*.tar.*' \) \
-    -mtime "+$RETENTION_JOURS" -print -delete 2>/dev/null | wc -l)
-  [ "$supprimes" -gt 0 ] && log "purge : $supprimes archive(s) supprimee(s)"
+    # Dumps de bases : purge simple par age. Ils pesent quelques centaines de
+    # kilo-octets, en perdre un vieux n'a aucune consequence.
+    local dumps
+    dumps=$(find "$DEST/postgres" -type f -name '*.dump'         -mtime "+$RETENTION_JOURS" -print -delete 2>/dev/null | wc -l)
 
-  # Les lignes de `game_backups` doivent suivre les fichiers : sans cela, la
-  # table designerait des archives effacees, et l'interface proposerait de
-  # restaurer ce qui n'existe plus.
-  psql_nexus -q -c "DELETE FROM game_backups WHERE backup_type = 'auto' AND created_at < NOW() - INTERVAL '$RETENTION_JOURS days'" \
-    || erreur "purge des lignes game_backups impossible"
+    # Mondes : purge par age, sauf la plus recente de chaque serveur.
+    local proteges supprimes=0 fichier
+    proteges=$(archives_a_conserver)
+    while IFS= read -r fichier; do
+        [ -z "$fichier" ] && continue
+        if printf '%s
+' "$proteges" | grep -qxF "$fichier"; then
+            log "  conserve $(basename "$fichier") — seule archive de ce serveur"
+            continue
+        fi
+        rm -f "$fichier" && supprimes=$((supprimes + 1))
+    done <<< "$(toutes_les_archives -mtime "+$RETENTION_JOURS")"
+
+    local total=$((dumps + supprimes))
+    [ "$total" -gt 0 ] && log "purge : $total archive(s) supprimee(s)"
+
+    # Les lignes de `game_backups` suivent les fichiers. Meme protection : on ne
+    # supprime une ligne que s'il en existe une PLUS RECENTE pour ce serveur,
+    # sinon la table cesserait de designer la sauvegarde qu'on vient justement
+    # de conserver.
+    psql_nexus -q -c "DELETE FROM game_backups gb WHERE gb.backup_type = 'auto' AND gb.created_at < NOW() - INTERVAL '$RETENTION_JOURS days' AND EXISTS (SELECT 1 FROM game_backups plus_recent WHERE plus_recent.server_id = gb.server_id AND plus_recent.created_at > gb.created_at)"         || erreur "purge des lignes game_backups impossible"
 }
 
 # ── Deroulement ────────────────────────────────────────────────────────────

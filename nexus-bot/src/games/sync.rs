@@ -247,7 +247,10 @@ mod tests {
 
     #[test]
     fn test_build_inventory_with_all_populated() {
-        let roles = vec![role_json(1, "Role1", 0, true), role_json(2, "Role2", 0, false)];
+        let roles = vec![
+            role_json(1, "Role1", 0, true),
+            role_json(2, "Role2", 0, false),
+        ];
         let live = vec!["msg1".to_string(), "msg2".to_string()];
         let unreadable = vec!["ch1".to_string()];
 
@@ -436,7 +439,10 @@ mod tests {
 
     #[test]
     fn test_build_inventory_mixed_sizes() {
-        let roles = vec![role_json(1, "R", 0, true), role_json(2, "R2", 0xFF0000, false)];
+        let roles = vec![
+            role_json(1, "R", 0, true),
+            role_json(2, "R2", 0xFF0000, false),
+        ];
         let live = vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let unreadable = vec!["x".to_string()];
 
@@ -645,7 +651,6 @@ mod tests {
         assert!(j_true["mentionable"].as_bool().unwrap());
         assert!(!j_false["mentionable"].as_bool().unwrap());
     }
-
 
     #[test]
     fn test_build_inventory_role_field_structure() {

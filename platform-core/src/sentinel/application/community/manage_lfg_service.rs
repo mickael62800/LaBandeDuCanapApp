@@ -173,4 +173,3 @@ impl ManageLfgUseCase for ManageLfgService {
         self.reload(id).await
     }
 }
-

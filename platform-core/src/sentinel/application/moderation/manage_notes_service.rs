@@ -60,4 +60,3 @@ impl ManageNotesUseCase for ManageNotesService {
         self.repo.delete(note_id).await
     }
 }
-

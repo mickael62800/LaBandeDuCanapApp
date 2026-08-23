@@ -102,4 +102,3 @@ impl ManageRulesUseCase for ManageRulesService {
         Ok(())
     }
 }
-

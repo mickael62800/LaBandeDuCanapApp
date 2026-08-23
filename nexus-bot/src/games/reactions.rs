@@ -539,7 +539,6 @@ mod tests {
         assert!(result.is_some());
     }
 
-
     #[test]
     fn test_find_game_for_reaction_with_custom_emoji() {
         let games = vec![Game {
@@ -686,7 +685,11 @@ mod tests {
     fn test_parse_reaction_type_animated_name_parsing() {
         let animated = parse_reaction_type("<a:anim_name:555>").unwrap();
         match animated {
-            ReactionType::Custom { animated: is_anim, id, name } => {
+            ReactionType::Custom {
+                animated: is_anim,
+                id,
+                name,
+            } => {
                 assert!(is_anim);
                 assert_eq!(id.get(), 555);
                 assert_eq!(name.as_deref(), Some("anim_name"));

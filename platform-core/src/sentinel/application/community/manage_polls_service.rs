@@ -176,4 +176,3 @@ impl ManagePollsUseCase for ManagePollsService {
         self.load(poll_id).await
     }
 }
-

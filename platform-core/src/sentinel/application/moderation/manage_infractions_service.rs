@@ -82,4 +82,3 @@ impl ManageInfractionsUseCase for ManageInfractionsService {
             .await
     }
 }
-

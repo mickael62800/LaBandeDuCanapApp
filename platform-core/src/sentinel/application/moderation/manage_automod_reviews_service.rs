@@ -438,4 +438,3 @@ impl ManageAutomodReviewsUseCase for ManageAutomodReviewsService {
         self.repo.list_discussion_messages(review_id).await
     }
 }
-

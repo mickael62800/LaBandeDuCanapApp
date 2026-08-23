@@ -109,4 +109,3 @@ impl ManageSpotlightUseCase for ManageSpotlightService {
         }
     }
 }
-

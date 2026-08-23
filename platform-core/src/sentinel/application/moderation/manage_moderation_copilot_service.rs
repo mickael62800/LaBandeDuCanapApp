@@ -122,4 +122,3 @@ impl ModerationCopilotUseCase for ManageModerationCopilotService {
         })
     }
 }
-

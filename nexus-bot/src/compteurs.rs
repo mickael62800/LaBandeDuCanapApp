@@ -795,9 +795,11 @@ mod tests {
         assert_eq!(nom_du_salon("{count}", 1), Some("1".into()));
 
         // Very large number
-        assert_eq!(nom_du_salon("Players: {count}", 99999), Some("Players: 99999".into()));
+        assert_eq!(
+            nom_du_salon("Players: {count}", 99999),
+            Some("Players: 99999".into())
+        );
     }
-
 
     #[test]
     fn test_le_format_place_le_chiffre_variations() {

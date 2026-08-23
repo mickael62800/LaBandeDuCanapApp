@@ -296,4 +296,3 @@ impl ManageTicketsUseCase for ManageTicketsService {
         Ok(deleted)
     }
 }
-

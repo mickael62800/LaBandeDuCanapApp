@@ -69,4 +69,3 @@ impl ManageAuditLogsUseCase for ManageAuditLogsService {
         self.repo.delete_older_than_days(guild_id, days).await
     }
 }
-

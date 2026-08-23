@@ -553,5 +553,3 @@ impl ManageAnnouncementsUseCase for ManageAnnouncementsService {
         })
     }
 }
-
-

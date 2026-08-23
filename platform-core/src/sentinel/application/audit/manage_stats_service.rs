@@ -227,4 +227,3 @@ impl ManageStatsUseCase for ManageStatsService {
         .await
     }
 }
-

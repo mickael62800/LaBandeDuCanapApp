@@ -37,5 +37,3 @@ impl ManageLockdownUseCase for ManageLockdownService {
         self.repo.delete(guild_id).await
     }
 }
-
-

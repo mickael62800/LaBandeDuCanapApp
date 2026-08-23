@@ -48,4 +48,3 @@ impl ManageDiscordActionMessagesUseCase for ManageDiscordActionMessagesService {
         self.repo.list_for_action(action_id).await
     }
 }
-

@@ -589,7 +589,10 @@ mod tests {
     #[test]
     fn test_is_stored_role_valid_with_empty_map() {
         let empty_map = std::collections::HashMap::new();
-        assert!(!is_stored_role_valid(Some(&empty_map), Some(RoleId::new(999))));
+        assert!(!is_stored_role_valid(
+            Some(&empty_map),
+            Some(RoleId::new(999))
+        ));
         assert!(!is_stored_role_valid(Some(&empty_map), None));
     }
 
@@ -694,7 +697,10 @@ mod tests {
     fn test_is_stored_role_valid_empty_string_role_id() {
         let empty_map = std::collections::HashMap::new();
         // Empty map with Some(role) should return false
-        assert!(!is_stored_role_valid(Some(&empty_map), Some(RoleId::new(1))));
+        assert!(!is_stored_role_valid(
+            Some(&empty_map),
+            Some(RoleId::new(1))
+        ));
     }
 
     #[test]
@@ -773,7 +779,10 @@ mod tests {
         let role = serenity::model::guild::Role::default();
 
         roles.insert(RoleId::new(u64::MAX), role);
-        assert!(is_stored_role_valid(Some(&roles), Some(RoleId::new(u64::MAX))));
+        assert!(is_stored_role_valid(
+            Some(&roles),
+            Some(RoleId::new(u64::MAX))
+        ));
     }
 
     #[test]

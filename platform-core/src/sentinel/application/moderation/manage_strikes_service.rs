@@ -126,4 +126,3 @@ impl ManageStrikesUseCase for ManageStrikesService {
         Ok(config)
     }
 }
-

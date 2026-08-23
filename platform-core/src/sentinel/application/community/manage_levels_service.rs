@@ -478,5 +478,3 @@ fn skipped_result(
         streak_current: 0,
     }
 }
-
-

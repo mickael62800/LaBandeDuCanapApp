@@ -40,4 +40,3 @@ impl ManageSlowmodeUseCase for ManageSlowmodeService {
         self.repo.delete(guild_id).await
     }
 }
-

@@ -144,4 +144,3 @@ impl ManageEventsUseCase for ManageEventsService {
         Ok(())
     }
 }
-

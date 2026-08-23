@@ -57,4 +57,3 @@ impl ManageSursisUseCase for ManageSursisService {
         self.repo.list_due(Utc::now()).await
     }
 }
-

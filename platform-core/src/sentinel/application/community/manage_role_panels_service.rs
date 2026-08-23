@@ -118,4 +118,3 @@ impl ManageRolePanelsUseCase for ManageRolePanelsService {
         self.repo.delete_auto_role(guild_id, role_id).await
     }
 }
-

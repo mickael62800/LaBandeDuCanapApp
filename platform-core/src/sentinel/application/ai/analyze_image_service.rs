@@ -446,6 +446,3 @@ fn preprocess_image(bytes: &[u8]) -> Result<ndarray::Array4<f32>, String> {
 
     Ok(tensor)
 }
-
-
-

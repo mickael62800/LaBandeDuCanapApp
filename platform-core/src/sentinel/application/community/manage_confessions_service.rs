@@ -364,5 +364,3 @@ impl ManageConfessionsUseCase for ManageConfessionsService {
         Ok(cfg)
     }
 }
-
-

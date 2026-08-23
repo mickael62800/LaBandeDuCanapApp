@@ -104,4 +104,3 @@ impl CancelModerationActionUseCase for CancelModerationActionService {
         }
     }
 }
-

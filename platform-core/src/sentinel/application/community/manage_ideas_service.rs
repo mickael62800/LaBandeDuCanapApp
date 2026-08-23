@@ -207,5 +207,3 @@ impl ManageIdeasUseCase for ManageIdeasService {
         self.repo.count_open_by_author(guild_id, author_id).await
     }
 }
-
-

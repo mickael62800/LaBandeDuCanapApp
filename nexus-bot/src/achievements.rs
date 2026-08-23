@@ -854,7 +854,8 @@ mod tests {
                 "game": "TestGame",
                 "icon_url": "https://example.com/icon.png"
             }
-        }).to_string();
+        })
+        .to_string();
 
         let fait = parse_haut_fait(&payload).unwrap();
         assert_eq!(fait.guild_id, "123");
@@ -863,7 +864,10 @@ mod tests {
         assert_eq!(fait.nom, "TestAchieve");
         assert_eq!(fait.description, "Test Desc");
         assert_eq!(fait.jeu, Some("TestGame".to_string()));
-        assert_eq!(fait.icon_url, Some("https://example.com/icon.png".to_string()));
+        assert_eq!(
+            fait.icon_url,
+            Some("https://example.com/icon.png".to_string())
+        );
     }
 
     #[test]
@@ -876,7 +880,8 @@ mod tests {
         let payload = serde_json::json!({
             "event": "some_other_event",
             "data": { "guild_id": "123", "discord_user_id": "456" }
-        }).to_string();
+        })
+        .to_string();
 
         assert!(parse_haut_fait(&payload).is_none());
     }
@@ -886,7 +891,8 @@ mod tests {
         let payload = serde_json::json!({
             "event": ACHIEVEMENT_UNLOCKED,
             "data": { "discord_user_id": "456" }
-        }).to_string();
+        })
+        .to_string();
 
         assert!(parse_haut_fait(&payload).is_none());
     }
@@ -896,7 +902,8 @@ mod tests {
         let payload = serde_json::json!({
             "event": ACHIEVEMENT_UNLOCKED,
             "data": { "guild_id": "123" }
-        }).to_string();
+        })
+        .to_string();
 
         assert!(parse_haut_fait(&payload).is_none());
     }
@@ -909,7 +916,8 @@ mod tests {
                 "guild_id": "not_a_number",
                 "discord_user_id": "456"
             }
-        }).to_string();
+        })
+        .to_string();
 
         assert!(parse_haut_fait(&payload).is_none());
     }
@@ -928,10 +936,7 @@ mod tests {
 
     #[test]
     fn test_salon_d_annonce_disabled() {
-        let cfg = config(&[
-            ("announce_channel_id", "123"),
-            ("enabled", "false"),
-        ]);
+        let cfg = config(&[("announce_channel_id", "123"), ("enabled", "false")]);
         assert_eq!(salon_d_annonce(&cfg), None);
     }
 
@@ -1054,7 +1059,8 @@ mod tests {
                 "achievement_description": null,
                 "game": null
             }
-        }).to_string();
+        })
+        .to_string();
 
         let fait = parse_haut_fait(&payload).unwrap();
         assert_eq!(fait.nom, "Haut fait");
@@ -1076,7 +1082,6 @@ mod tests {
         assert!(res.contains("Test"));
     }
 
-
     #[test]
     fn test_parse_haut_fait_minimal_fields_only() {
         // Test with just guild_id and discord_user_id
@@ -1086,7 +1091,8 @@ mod tests {
                 "guild_id": "999",
                 "discord_user_id": "888"
             }
-        }).to_string();
+        })
+        .to_string();
 
         let fait = parse_haut_fait(&payload).unwrap();
         assert_eq!(fait.guild_id, "999");
@@ -1167,7 +1173,8 @@ mod tests {
                 "game": "Epic Game",
                 "icon_url": "https://example.com/icon.png"
             }
-        }).to_string();
+        })
+        .to_string();
 
         let fait = parse_haut_fait(&full_payload).unwrap();
         assert_eq!(fait.guild_id, "1001");
@@ -1176,7 +1183,10 @@ mod tests {
         assert_eq!(fait.nom, "Full Achievement");
         assert_eq!(fait.description, "Complete description here");
         assert_eq!(fait.jeu, Some("Epic Game".to_string()));
-        assert_eq!(fait.icon_url, Some("https://example.com/icon.png".to_string()));
+        assert_eq!(
+            fait.icon_url,
+            Some("https://example.com/icon.png".to_string())
+        );
     }
 
     #[test]
@@ -1212,7 +1222,8 @@ mod tests {
                 "guild_id": "999999999999",
                 "discord_user_id": "123"
             }
-        }).to_string();
+        })
+        .to_string();
 
         let fait = parse_haut_fait(&payload).unwrap();
         assert_eq!(fait.guild_id, "999999999999");
@@ -1256,7 +1267,8 @@ mod tests {
                 "guild_id": "  123  ",
                 "discord_user_id": "456"
             }
-        }).to_string();
+        })
+        .to_string();
 
         // Should fail because guild_id with spaces can't be parsed as u64
         assert!(parse_haut_fait(&payload).is_none());
@@ -1347,7 +1359,8 @@ mod tests {
         let wrong_event = serde_json::json!({
             "event": "achievement.other",
             "data": { "guild_id": "1", "discord_user_id": "2" }
-        }).to_string();
+        })
+        .to_string();
 
         assert!(parse_haut_fait(&wrong_event).is_none());
     }
@@ -1385,7 +1398,8 @@ mod tests {
                 "discord_user_id": "2",
                 "achievement_description": ""
             }
-        }).to_string();
+        })
+        .to_string();
 
         let fait = parse_haut_fait(&payload).unwrap();
         assert_eq!(fait.description, "");
@@ -1434,7 +1448,8 @@ mod tests {
                 "game": "",
                 "icon_url": ""
             }
-        }).to_string();
+        })
+        .to_string();
 
         let fait = parse_haut_fait(&payload).unwrap();
         assert_eq!(fait.nom, "");
@@ -1521,13 +1536,15 @@ mod tests {
         let exact = serde_json::json!({
             "event": ACHIEVEMENT_UNLOCKED,
             "data": { "guild_id": "1", "discord_user_id": "2" }
-        }).to_string();
+        })
+        .to_string();
         assert!(parse_haut_fait(&exact).is_some());
 
         let wrong = serde_json::json!({
             "event": "achievement.unlocked_wrong",
             "data": { "guild_id": "1", "discord_user_id": "2" }
-        }).to_string();
+        })
+        .to_string();
         assert!(parse_haut_fait(&wrong).is_none());
     }
 
@@ -1573,7 +1590,8 @@ mod tests {
         let payload = serde_json::json!({
             "event": ACHIEVEMENT_UNLOCKED,
             "data": {}
-        }).to_string();
+        })
+        .to_string();
 
         assert!(parse_haut_fait(&payload).is_none());
     }
@@ -1656,7 +1674,8 @@ mod tests {
         let payload = serde_json::json!({
             "event": ACHIEVEMENT_UNLOCKED,
             "data": { "guild_id": "777" }
-        }).to_string();
+        })
+        .to_string();
 
         assert!(parse_haut_fait(&payload).is_none());
     }

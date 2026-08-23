@@ -196,7 +196,14 @@
 /* ── Serveurs de jeu ── */
 .mb-games {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(16.5rem, 1fr));
+  /* DEUX colonnes au plus. `auto-fill` a 16,5 rem en posait trois ou quatre sur
+     un ecran large, et les jaquettes tombaient a la taille de vignettes. Ces
+     cartes sont la vitrine des serveurs : elles gagnent a etre grandes.
+
+     `minmax(0, 1fr)` et non `1fr` : sans borne basse a zero, une colonne ne peut
+     pas descendre sous la largeur intrinseque de son contenu, et une adresse de
+     serveur un peu longue la ferait deborder. */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1.1rem;
   list-style: none;
   margin: 0;
@@ -975,6 +982,12 @@
 @media (max-width: 760px) {
   .mb-ann {
     grid-template-columns: 1fr;
+  }
+
+  /* Deux cartes cote a cote sur un telephone seraient plus petites qu'avant :
+     on repasse a une seule, pleine largeur. */
+  .mb-games {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .mb-nav {

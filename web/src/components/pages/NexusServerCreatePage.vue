@@ -210,6 +210,9 @@ async function submit() {
         starts_at: openDate.toISOString(),
         ends_at: closeDate.toISOString(),
         is_public: true,
+        // Rattache la soiree au serveur : c'est ce qui permettra de la retirer
+        // du calendrier quand le serveur sera supprime.
+        source_server_id: created.id,
       });
     } catch {
       // Si la création d'événement échoue (ex: permissions), le serveur est quand même créé

@@ -213,4 +213,13 @@ export interface CreateEventInput {
   ends_at: string;
   all_day?: boolean;
   is_public?: boolean;
+  /**
+   * Serveur de jeu Nexus a l'origine de cet evenement.
+   *
+   * Sans lui, supprimer un serveur laissait sa soiree au calendrier : rien ne
+   * reliait les deux, et une session disparue restait annoncee des semaines sur
+   * le site public. Pas de cle etrangere possible — les deux tables vivent dans
+   * des bases logiques differentes.
+   */
+  source_server_id?: string | null;
 }

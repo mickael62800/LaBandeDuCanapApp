@@ -54,6 +54,14 @@ pub struct CommunityEvent {
     pub all_day: bool,
     pub is_public: bool,
     pub status: EventStatus,
+    /// Serveur de jeu Nexus a l'origine de cet evenement, s'il y en a un.
+    ///
+    /// Sans contrainte d'integrite : `game_servers` vit dans la base `nexus`,
+    /// cette table dans `discord_sentinel`. Le lien est declaratif — il permet
+    /// de retrouver l'evenement d'un serveur pour le supprimer avec lui, ce qui
+    /// n'etait pas possible avant : une session dont le serveur avait disparu
+    /// restait annoncee des semaines sur le site public.
+    pub source_server_id: Option<Uuid>,
     pub created_by: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -100,6 +108,14 @@ pub struct UpsertEventCommand {
     pub is_public: bool,
     pub status: EventStatus,
     pub created_by: String,
+    /// Serveur de jeu Nexus a l'origine de cet evenement, s'il y en a un.
+    ///
+    /// Sans contrainte d'integrite : `game_servers` vit dans la base `nexus`,
+    /// cette table dans `discord_sentinel`. Le lien est declaratif — il permet
+    /// de retrouver l'evenement d'un serveur pour le supprimer avec lui, ce qui
+    /// n'etait pas possible avant : une session dont le serveur avait disparu
+    /// restait annoncee des semaines sur le site public.
+    pub source_server_id: Option<Uuid>,
 }
 
 /// Reponse d'un participant.

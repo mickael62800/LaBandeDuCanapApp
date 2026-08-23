@@ -15,6 +15,8 @@ export interface PublicEvent {
   all_day: boolean;
   /// Nombre de jours couverts : sert à distinguer une soirée d'une campagne.
   span_days: number;
+  /// Serveur de jeu Nexus à l'origine de cet événement, s'il y en a un.
+  source_server_id?: string | null;
 }
 
 import { publicGet } from "./publicHttp";

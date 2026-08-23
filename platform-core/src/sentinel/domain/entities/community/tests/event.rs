@@ -21,6 +21,7 @@ fn event(start: DateTime<Utc>, end: DateTime<Utc>) -> CommunityEvent {
         created_by: "u".into(),
         created_at: start,
         updated_at: start,
+        source_server_id: None,
     }
 }
 

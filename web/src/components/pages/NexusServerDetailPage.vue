@@ -266,12 +266,43 @@ async function act(action: "start" | "stop" | "restart") {
 async function remove() {
   if (!selectedGuildId.value || !server.value) return;
   if (!confirm(`Supprimer définitivement « ${server.value.name} » et ses données ?`)) return;
+  const guildId = selectedGuildId.value;
+  const serverId = server.value.id;
   try {
-    await nexusGamesService.remove(selectedGuildId.value, server.value.id);
+    await nexusGamesService.remove(guildId, serverId);
+    await retirerLaSoireeDuCalendrier(guildId, serverId);
     success("Serveur supprimé.");
     router.push("/nexus/servers");
   } catch (e) {
     showError(e instanceof Error ? e.message : "Suppression impossible");
+  }
+}
+
+/**
+ * Retire du calendrier communautaire la soirée créée avec ce serveur.
+ *
+ * Créer un serveur inscrit une soirée au planning. Sans ce nettoyage, elle y
+ * restait après la suppression : une session Terraria effacée le 21 août
+ * s'annonçait encore « jusqu'au 21 septembre » sur le site public, et rien ne
+ * permettait de repérer l'orphelin autrement qu'en lisant les titres.
+ *
+ * Le rapprochement se fait sur `source_server_id`, posé à la création. Aucune
+ * clé étrangère n'est possible : `community_events` vit dans la base Sentinel,
+ * `game_servers` dans celle de Nexus.
+ *
+ * N'interrompt jamais la suppression : le serveur est déjà parti à ce stade, et
+ * échouer ici laisserait l'utilisateur croire que rien n'a eu lieu. Une soirée
+ * qui survit se retire à la main ; un serveur à moitié supprimé, non.
+ */
+async function retirerLaSoireeDuCalendrier(guildId: string, serverId: string) {
+  try {
+    const evenements = await communityAdminService.listEvents(guildId);
+    const lies = evenements.filter((e) => e.source_server_id === serverId);
+    for (const evenement of lies) {
+      await communityAdminService.deleteEvent(evenement.id);
+    }
+  } catch {
+    // Volontairement muet vis-à-vis de l'utilisateur : voir ci-dessus.
   }
 }
 

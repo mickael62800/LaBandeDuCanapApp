@@ -12,7 +12,7 @@ use platform_core::sentinel::ports::outbound::community::event_repository::{
 };
 
 const COLS: &str = "id, guild_id, title, description, game, color, starts_at, ends_at, \
-                    all_day, is_public, status, created_by, created_at, updated_at";
+                    all_day, is_public, status, created_by, created_at, updated_at,                     source_server_id";
 
 pub struct PgEventRepository {
     pool: PgPool,
@@ -40,6 +40,7 @@ struct EventRow {
     created_by: String,
     created_at: chrono::DateTime<chrono::Utc>,
     updated_at: chrono::DateTime<chrono::Utc>,
+    source_server_id: Option<Uuid>,
 }
 
 impl From<EventRow> for CommunityEvent {
@@ -59,6 +60,7 @@ impl From<EventRow> for CommunityEvent {
             created_by: r.created_by,
             created_at: r.created_at,
             updated_at: r.updated_at,
+            source_server_id: r.source_server_id,
         }
     }
 }
@@ -129,6 +131,7 @@ impl EventRepository for PgEventRepository {
         .bind(cmd.is_public)
         .bind(cmd.status.as_str())
         .bind(&cmd.created_by)
+        .bind(cmd.source_server_id)
         .fetch_one(&self.pool)
         .await
         .map_err(pg_err)?;

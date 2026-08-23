@@ -77,6 +77,7 @@ pub struct EventDto {
     /// Nombre de jours couverts : le calendrier dimensionne sa barre avec.
     pub span_days: i64,
     pub created_by: String,
+    pub source_server_id: Option<Uuid>,
 }
 
 impl From<CommunityEvent> for EventDto {
@@ -96,6 +97,7 @@ impl From<CommunityEvent> for EventDto {
             status: e.status.as_str().to_string(),
             span_days,
             created_by: e.created_by,
+            source_server_id: e.source_server_id,
         }
     }
 }
@@ -127,6 +129,11 @@ pub struct UpsertEventDto {
     pub is_public: bool,
     #[serde(default)]
     pub status: Option<String>,
+    /// Serveur de jeu Nexus a l'origine de cet evenement, s'il y en a un.
+    /// Renseigne par la page de creation d'un serveur ; c'est ce qui permet de
+    /// retrouver l'evenement pour le supprimer avec le serveur.
+    #[serde(default)]
+    pub source_server_id: Option<uuid::Uuid>,
 }
 
 fn default_true() -> bool {
@@ -209,6 +216,7 @@ pub async fn create_event(
             .map(EventStatus::parse)
             .unwrap_or(EventStatus::Published),
         created_by: author,
+        source_server_id: dto.source_server_id,
     };
     Ok(Json(state.events_uc.create(cmd).await?.into()))
 }
@@ -238,6 +246,11 @@ pub async fn update_event(
             .map(EventStatus::parse)
             .unwrap_or(EventStatus::Published),
         created_by: existing.event.created_by,
+        // Conserve tel quel : le rattachement est pose a la creation par la
+        // page de creation d'un serveur. Le laisser modifier depuis une edition
+        // d'evenement permettrait de faire disparaitre un serveur du calendrier
+        // en detachant sa soiree, ou d'en accrocher une a un serveur tiers.
+        source_server_id: existing.event.source_server_id,
     };
     Ok(Json(state.events_uc.update(id, cmd).await?.into()))
 }

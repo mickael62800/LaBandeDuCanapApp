@@ -17,6 +17,8 @@
 //! en pleine partie le lira. L'annonce Discord touche ceux qui s'appretent a se
 //! connecter. Aucune des deux ne remplace l'autre.
 
+use chrono::Utc;
+use platform_core::nexus::application::game::config_loader::load_game_portal_config;
 use platform_core::nexus::domain::entities::game::schedule::{
     decide, next_restart_at, AutoSchedule, ScheduleAction, ScheduleMode, StopReason,
 };
@@ -235,8 +237,123 @@ async fn redemarrer(state: &AppState, server: &GameServer) -> Result<(), DomainE
     //    jeu le delai de grace configure avant de le tuer.
     state.game_servers_uc.stop(server.id, ACTEUR).await?;
 
-    // 4. Relance.
+    // 4. Archive du monde, conteneur arrete.
+    //
+    // C'est ICI, et nulle part ailleurs, que le monde est complet sur le disque
+    // sans ecriture en cours : le jeu vient de sauvegarder, le conteneur ne
+    // tourne plus, la relance n'a pas eu lieu. Aucune tache periodique ne peut
+    // reproduire cette fenetre — une copie prise a chaud peut contenir un
+    // fichier a moitie ecrit, ce qui ne se decouvre qu'au moment de restaurer.
+    //
+    // L'appel est ATTENDU, pas differe : demarrer pendant que tar lit donnerait
+    // exactement l'incoherence qu'on cherche a eviter. Le cout est mesure —
+    // une vingtaine de secondes pour 5 Go — et c'est du temps d'indisponibilite
+    // assume, une fois par jour au plus.
+    archiver_le_monde(state, server).await;
+
+    // 5. Relance.
     state.game_servers_uc.start(server.id, ACTEUR).await
+}
+
+/// Nom de l'archive d'un monde : nom du serveur assaini, puis horodatage.
+///
+/// Le nom d'un serveur peut contenir des espaces (`chk_game_servers_name`), et
+/// l'agent REFUSE tout nom de fichier contenant un separateur ou une remontee.
+/// Sans assainissement, un serveur nomme « ../x » ferait echouer chaque archive
+/// en silence, et un nom a espaces donnerait des fichiers penibles a manipuler.
+///
+/// L'horodatage n'est pas decoratif : c'est lui qui rend les archives
+/// distinctes, donc conservables cote a cote sur la duree de retention.
+fn nom_archive(nom_serveur: &str, maintenant: chrono::DateTime<Utc>) -> String {
+    let assaini: String = nom_serveur
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    format!("{}-{}.tar", assaini, maintenant.format("%Y%m%d-%H%M%S"))
+}
+
+/// Archive le monde si la configuration le demande et que le delai est ecoule.
+///
+/// Ne remonte JAMAIS d'erreur : un serveur qui resterait eteint parce que sa
+/// sauvegarde a echoue serait un remede pire que le mal. Tout echec est
+/// journalise et la relance suit son cours.
+async fn archiver_le_monde(state: &AppState, server: &GameServer) {
+    let config = match load_game_portal_config(&state.bot_config_repo, &server.guild_id).await {
+        Ok(config) => config,
+        Err(error) => {
+            tracing::warn!(%error, server_id = %server.id, "archive : configuration illisible");
+            return;
+        }
+    };
+    if !config.backup_on_restart {
+        return;
+    }
+
+    // Un serveur jamais demarre n'a pas de volume, donc pas de monde.
+    let Some(volume) = server.volume_name.as_deref() else {
+        return;
+    };
+
+    match state.game_backup_repo.last_auto_backup_at(server.id).await {
+        Ok(Some(derniere)) => {
+            let ecoulees = (Utc::now() - derniere).num_hours();
+            if ecoulees < config.backup_min_interval_hours {
+                tracing::debug!(
+                    server_id = %server.id,
+                    ecoulees,
+                    minimum = config.backup_min_interval_hours,
+                    "archive : delai non ecoule, on passe"
+                );
+                return;
+            }
+        }
+        Ok(None) => {}
+        Err(error) => {
+            // Si la base ne repond pas, l'enregistrement echouerait aussi :
+            // on produirait une archive que rien ne referencerait, et qu'aucune
+            // purge ne supprimerait jamais.
+            tracing::warn!(%error, server_id = %server.id, "archive : dernier passage illisible");
+            return;
+        }
+    }
+
+    let nom_fichier = nom_archive(&server.name, Utc::now());
+
+    let debut = std::time::Instant::now();
+    match state
+        .game_container_runtime
+        .archive_volume(volume, &nom_fichier)
+        .await
+    {
+        Ok(archive) => {
+            tracing::info!(
+                server_id = %server.id,
+                nom = %server.name,
+                chemin = %archive.path,
+                taille = archive.size_bytes,
+                duree_ms = debut.elapsed().as_millis(),
+                "archive : monde sauvegarde a froid"
+            );
+            if let Err(error) = state
+                .game_backup_repo
+                .record(server.id, &archive.path, archive.size_bytes as i64, "auto")
+                .await
+            {
+                // L'archive existe mais rien ne la designe : la purge ne la
+                // supprimera pas, et l'interface ne la listera pas.
+                tracing::warn!(%error, server_id = %server.id, chemin = %archive.path, "archive : ecrite mais non enregistree");
+            }
+        }
+        Err(error) => {
+            tracing::warn!(%error, server_id = %server.id, "archive : sauvegarde du monde impossible");
+        }
+    }
 }
 
 /// Annonce dans le jeu, via la commande du catalogue propre au modele.
@@ -286,4 +403,52 @@ async fn annoncer_sur_discord(
 /// affichent le prochain redemarrage sans rejouer la decision.
 pub fn est_permanence(mode: ScheduleMode) -> bool {
     mode == ScheduleMode::Restart
+}
+
+#[cfg(test)]
+mod tests_archive {
+    use super::nom_archive;
+    use chrono::{TimeZone, Utc};
+
+    fn instant() -> chrono::DateTime<Utc> {
+        Utc.with_ymd_and_hms(2026, 8, 23, 3, 0, 0).unwrap()
+    }
+
+    #[test]
+    fn le_nom_porte_le_serveur_et_l_horodatage() {
+        assert_eq!(
+            nom_archive("palworld", instant()),
+            "palworld-20260823-030000.tar"
+        );
+    }
+
+    #[test]
+    fn les_espaces_deviennent_des_soulignes() {
+        // `chk_game_servers_name` autorise les espaces : « Le Canap sur
+        // Palworld » est un nom valide en base.
+        assert_eq!(
+            nom_archive("Le Canap sur Palworld", instant()),
+            "Le_Canap_sur_Palworld-20260823-030000.tar"
+        );
+    }
+
+    #[test]
+    fn un_nom_qui_ressemble_a_un_chemin_est_neutralise() {
+        // L'agent refuse tout nom contenant un separateur ou une remontee :
+        // sans cet assainissement, un tel serveur verrait CHACUNE de ses
+        // archives echouer, et le journal seul le dirait.
+        let obtenu = nom_archive("../../etc/passwd", instant());
+        assert!(!obtenu.contains('/'), "{obtenu}");
+        assert!(!obtenu.contains(".."), "{obtenu}");
+        assert!(!obtenu.starts_with('.'), "{obtenu}");
+    }
+
+    #[test]
+    fn deux_archives_du_meme_serveur_ne_se_recouvrent_pas() {
+        // A la seconde pres : deux redemarrages du meme jour doivent donner
+        // deux fichiers, pas un seul ecrase par l'autre.
+        let a = nom_archive("x", Utc.with_ymd_and_hms(2026, 8, 23, 3, 0, 0).unwrap());
+        let b = nom_archive("x", Utc.with_ymd_and_hms(2026, 8, 23, 3, 0, 1).unwrap());
+        assert_ne!(a, b);
+    }
 }

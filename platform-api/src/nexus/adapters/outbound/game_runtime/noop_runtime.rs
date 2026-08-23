@@ -8,6 +8,7 @@ use async_trait::async_trait;
 use platform_core::nexus::domain::errors::DomainError;
 use platform_core::nexus::ports::outbound::game::container_runtime::{
     ContainerRuntime, ContainerSpec, ContainerStats, ContainerStatus, ManagedContainer,
+    VolumeArchive,
 };
 
 pub struct NoopContainerRuntime;
@@ -56,6 +57,9 @@ impl ContainerRuntime for NoopContainerRuntime {
         Err(err())
     }
     async fn remove_volume(&self, _: &str) -> Result<(), DomainError> {
+        Err(err())
+    }
+    async fn archive_volume(&self, _: &str, _: &str) -> Result<VolumeArchive, DomainError> {
         Err(err())
     }
     async fn remove_image(&self, _: &str, _: bool) -> Result<bool, DomainError> {

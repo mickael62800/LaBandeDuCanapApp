@@ -24,6 +24,7 @@ use serde::de::DeserializeOwned;
 use platform_core::nexus::domain::errors::DomainError;
 use platform_core::nexus::ports::outbound::game::container_runtime::{
     ContainerRuntime, ContainerSpec, ContainerStats, ContainerStatus, ManagedContainer,
+    VolumeArchive,
 };
 
 pub struct HttpGameRuntime {
@@ -185,6 +186,19 @@ impl ContainerRuntime for HttpGameRuntime {
     async fn remove_volume(&self, name: &str) -> Result<(), DomainError> {
         self.send_unit(self.agent.post(&format!("/game/volumes/{name}/remove")))
             .await
+    }
+
+    async fn archive_volume(
+        &self,
+        volume: &str,
+        nom_fichier: &str,
+    ) -> Result<VolumeArchive, DomainError> {
+        self.send(
+            self.agent
+                .post(&format!("/game/volumes/{volume}/archive"))
+                .json(&serde_json::json!({ "filename": nom_fichier })),
+        )
+        .await
     }
 
     async fn remove_image(&self, image: &str, force: bool) -> Result<bool, DomainError> {

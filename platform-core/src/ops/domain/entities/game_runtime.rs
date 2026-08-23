@@ -125,3 +125,15 @@ pub struct ManagedContainer {
     pub state: ContainerState,
     pub labels: HashMap<String, String>,
 }
+
+/// Archive d'un volume de jeu, telle que l'agent la rend une fois ecrite.
+///
+/// Le chemin est celui vu par l'AGENT, pas par l'appelant : c'est lui qui monte
+/// le repertoire de sauvegarde, et lui seul sait ou l'archive a atterri. Nexus
+/// se contente de le consigner dans `game_backups`, pour que l'on retrouve le
+/// fichier plus tard.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VolumeArchive {
+    pub path: String,
+    pub size_bytes: u64,
+}

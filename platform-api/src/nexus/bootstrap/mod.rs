@@ -36,6 +36,7 @@ use platform_core::nexus::ports::outbound::coussin_prime_repository::CoussinPrim
 use platform_core::nexus::ports::outbound::coussin_repository::CoussinRepository;
 use platform_core::nexus::ports::outbound::coussin_steal_repository::CoussinStealRepository;
 use platform_core::nexus::ports::outbound::events::EventPublisher;
+use platform_core::nexus::ports::outbound::game::backup_repository::GameBackupRepository;
 use platform_core::nexus::ports::outbound::game::container_runtime::ContainerRuntime;
 use platform_core::nexus::ports::outbound::game::game_audit_repository::GameAuditRepository;
 use platform_core::nexus::ports::outbound::game::game_server_repository::GameServerRepository;
@@ -64,6 +65,7 @@ use crate::nexus::adapters::outbound::postgres::coussin_prime_repository::PgCous
 use crate::nexus::adapters::outbound::postgres::coussin_repository::PgCoussinRepository;
 use crate::nexus::adapters::outbound::postgres::coussin_steal_repository::PgCoussinStealRepository;
 use crate::nexus::adapters::outbound::postgres::game::audit_repository::PgGameAuditRepository;
+use crate::nexus::adapters::outbound::postgres::game::backup_repository::PgGameBackupRepository;
 use crate::nexus::adapters::outbound::postgres::game::config_repository::PgGameServerConfigRepository;
 use crate::nexus::adapters::outbound::postgres::game::player_session_repository::PgPlayerSessionRepository;
 use crate::nexus::adapters::outbound::postgres::game::server_repository::PgGameServerRepository;
@@ -121,6 +123,8 @@ pub struct AppState {
     pub game_audit_repo: Arc<dyn GameAuditRepository>,
     pub game_session_repo: Arc<dyn PlayerSessionRepository>,
     pub game_container_runtime: Arc<dyn ContainerRuntime>,
+    /// Archives des mondes, alimentees par le redemarrage programme.
+    pub game_backup_repo: Arc<dyn GameBackupRepository>,
     pub game_rcon_client: Arc<dyn RconClient>,
     pub game_port_allocator: Arc<dyn PortAllocator>,
     pub bot_config_repo: Arc<dyn BotConfigRepository>,
@@ -446,6 +450,7 @@ pub async fn build_state() -> Result<AppState, Box<dyn std::error::Error>> {
         game_audit_repo,
         game_session_repo,
         game_container_runtime: container_runtime,
+        game_backup_repo: Arc::new(PgGameBackupRepository::new(pool.clone())),
         game_rcon_client: rcon_client,
         game_port_allocator: port_allocator,
         bot_config_repo,

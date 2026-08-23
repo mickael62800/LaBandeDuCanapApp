@@ -15,7 +15,7 @@
 use async_trait::async_trait;
 
 use crate::ops::domain::entities::game_runtime::{
-    ContainerSpec, ContainerStats, ContainerStatus, ManagedContainer,
+    ContainerSpec, ContainerStats, ContainerStatus, ManagedContainer, VolumeArchive,
 };
 use crate::ops::domain::errors::DomainError;
 
@@ -81,6 +81,23 @@ pub trait GameContainerRuntime: Send + Sync {
     /// Supprime un volume nomme (ne casse rien si en cours d'utilisation,
     /// retourne une erreur dans ce cas).
     async fn remove_volume(&self, name: &str) -> Result<(), DomainError>;
+
+    /// Archive le contenu d'un volume de jeu vers le repertoire de sauvegarde
+    /// de l'agent, sous le nom de fichier demande.
+    ///
+    /// A n'appeler que conteneur ARRETE : une archive prise pendant que le jeu
+    /// ecrit peut contenir un fichier a moitie sauvegarde, ce qui ne se voit
+    /// qu'au moment de restaurer. Le seul moment ou cette condition est
+    /// naturellement remplie est le redemarrage programme, entre l'arret et la
+    /// relance — c'est de la que l'appel est fait.
+    ///
+    /// `nom_fichier` ne doit designer qu'un nom, sans separateur de chemin :
+    /// l'agent choisit le repertoire, l'appelant ne peut pas ecrire ailleurs.
+    async fn archive_volume(
+        &self,
+        volume: &str,
+        nom_fichier: &str,
+    ) -> Result<VolumeArchive, DomainError>;
 
     /// Supprime une image Docker. Retourne true si supprimee, false si
     /// l'image n'existait pas / etait encore utilisee. force=true tente

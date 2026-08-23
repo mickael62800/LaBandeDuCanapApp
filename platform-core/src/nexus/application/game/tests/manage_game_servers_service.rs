@@ -7,7 +7,7 @@ use crate::nexus::domain::entities::game::template::{
 use crate::nexus::domain::entities::system::bot_config::{BotDefinition, BotGuildConfig};
 use crate::nexus::ports::outbound::game::container_runtime::{
     ContainerRuntime, ContainerSpec, ContainerState, ContainerStats, ContainerStatus,
-    ManagedContainer,
+    ManagedContainer, VolumeArchive,
 };
 use crate::nexus::ports::outbound::game::game_audit_repository::GameAuditRepository;
 use crate::nexus::ports::outbound::game::game_server_config_repository::GameServerConfigRepository;
@@ -136,6 +136,8 @@ fn sample_config() -> GamePortalConfig {
         docker_network_name: "sentinel-games".to_string(),
         container_user: "1000:1000".to_string(),
         host_data_dir: "/var/lib/sentinel/games".to_string(),
+        backup_on_restart: true,
+        backup_min_interval_hours: 24,
         auto_create_world_volume: true,
         default_idle_shutdown_days: 7,
         auto_remove_unused_images: true,
@@ -547,6 +549,13 @@ impl PortAllocator for DummyPortAllocator {
 struct DummyContainerRuntime;
 #[async_trait::async_trait]
 impl ContainerRuntime for DummyContainerRuntime {
+    async fn archive_volume(
+        &self,
+        _volume: &str,
+        _nom_fichier: &str,
+    ) -> Result<VolumeArchive, DomainError> {
+        unimplemented!("archivage non couvert par ce double de test")
+    }
     async fn pull_image_if_missing(&self, _: &str) -> Result<(), DomainError> {
         Ok(())
     }
@@ -722,6 +731,13 @@ impl GameTemplateRepository for MockTemplateRepoWithTemplate {
 struct NonOperationalRuntime;
 #[async_trait::async_trait]
 impl ContainerRuntime for NonOperationalRuntime {
+    async fn archive_volume(
+        &self,
+        _volume: &str,
+        _nom_fichier: &str,
+    ) -> Result<VolumeArchive, DomainError> {
+        unimplemented!("archivage non couvert par ce double de test")
+    }
     fn is_operational(&self) -> bool {
         false
     }
@@ -1459,6 +1475,13 @@ async fn test_upload_init_files_failure() {
     struct FailingUploadRuntime;
     #[async_trait::async_trait]
     impl ContainerRuntime for FailingUploadRuntime {
+        async fn archive_volume(
+            &self,
+            _volume: &str,
+            _nom_fichier: &str,
+        ) -> Result<VolumeArchive, DomainError> {
+            unimplemented!("archivage non couvert par ce double de test")
+        }
         fn is_operational(&self) -> bool {
             true
         }

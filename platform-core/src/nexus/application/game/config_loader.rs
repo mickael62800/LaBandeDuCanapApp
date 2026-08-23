@@ -30,6 +30,19 @@ pub struct GamePortalConfig {
     pub container_user: String,
     pub host_data_dir: String,
     pub auto_create_world_volume: bool,
+    /// Archiver le monde a chaque redemarrage programme.
+    ///
+    /// Le redemarrage est le SEUL moment ou le monde est sur le disque, complet
+    /// et sans ecriture en cours : le jeu vient de sauvegarder et le conteneur
+    /// est arrete. Aucune tache periodique ne peut reproduire cette fenetre.
+    pub backup_on_restart: bool,
+    /// Heures minimales entre deux archives d'un meme serveur.
+    ///
+    /// Une permanence redemarre toutes les trois heures ; archiver a chaque
+    /// fois donnerait huit copies quasi identiques par jour, soit une
+    /// quarantaine de gigaoctets pour rien. A 24 h, on garde une archive par
+    /// jour, prise a froid.
+    pub backup_min_interval_hours: i64,
     pub rcon_enabled: bool,
     pub log_channel_id: Option<String>,
     /// Active la suppression auto des images Docker non utilisees.
@@ -191,6 +204,12 @@ pub async fn load_game_portal_config(
         container_user: parse_string(find(&entries, "container_user"), "1000:1000"),
         host_data_dir: parse_string(find(&entries, "host_data_dir"), "/var/lib/sentinel/games"),
         auto_create_world_volume: parse_bool(find(&entries, "auto_create_world_volume"), true),
+        // Actif par defaut : l'absence de sauvegarde est un risque plus grave
+        // que la vingtaine de secondes d'indisponibilite qu'elle coute. Le
+        // fail-closed de la charte vise les privileges, pas les filets de
+        // securite — un reglage oublie ne doit pas laisser un monde sans copie.
+        backup_on_restart: parse_bool(find(&entries, "backup_on_restart"), true),
+        backup_min_interval_hours: parse_i32(find(&entries, "backup_min_interval_hours"), 24) as i64,
         rcon_enabled: parse_bool(find(&entries, "rcon_enabled"), true),
         log_channel_id: find(&entries, "log_channel_id").map(String::from),
         auto_remove_unused_images: parse_bool(find(&entries, "auto_remove_unused_images"), true),

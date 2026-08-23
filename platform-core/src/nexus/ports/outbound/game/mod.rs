@@ -5,6 +5,7 @@
 //! sous adapters/outbound/.
 
 pub mod alert_repository;
+pub mod backup_repository;
 pub mod container_runtime;
 pub mod game_audit_repository;
 pub mod game_server_config_repository;

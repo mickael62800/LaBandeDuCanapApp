@@ -491,6 +491,8 @@ services:
       # Acces au daemon Docker : plus de socket ici, on passe par l'agent.
       DOCKER_AGENT_URL: http://docker-agent:8095
       DOCKER_AGENT_TOKEN: ${DOCKER_AGENT_TOKEN:?DOCKER_AGENT_TOKEN est requis}
+      # Chemin INTERNE des archives : fixe, et jamais choisi par l'appelant.
+      GAME_BACKUP_DIR: /backup
       # Serveur Discord unique servi par cette installation.
       # Les API refusent tout autre guild_id ; les bots quittent toute
       # autre guilde. Vide = verrou desactive.
@@ -683,6 +685,20 @@ services:
       - no-new-privileges:true
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      # Racine des volumes Docker, en LECTURE SEULE : l'agent y lit le monde
+      # d'un serveur pour l'archiver. Monte au MEME chemin que sur l'hote, car
+      # `inspect_volume` rend un chemin hote que l'agent ouvre tel quel.
+      #
+      # Ce montage n'accroit pas ses privileges de facon significative : il
+      # detient deja le socket Docker, qui vaut root sur la machine. La seule
+      # alternative — lancer un conteneur jetable avec le volume dedans —
+      # imposerait une image de plus dans la liste blanche et plusieurs secondes
+      # supplementaires, or cet archivage se fait pendant une interruption.
+      - ${DOCKER_VOLUMES_DIR:-/var/lib/docker/volumes}:${DOCKER_VOLUMES_DIR:-/var/lib/docker/volumes}:ro
+      # Destination des archives. Le chemin INTERNE est fixe (`/backup`) : c'est
+      # l'agent qui decide ou ecrire, l'appelant ne fournissant qu'un nom de
+      # fichier, refuse s'il contient un separateur.
+      - ${GAME_BACKUP_HOST_DIR:-/mnt/backup/mondes}:/backup
     # PAS de `ports:` — l'agent ne doit jamais etre joignable depuis l'hote
     # ni depuis l'exterieur, uniquement par les autres conteneurs.
     #

@@ -49,7 +49,7 @@ use platform_core::ops::domain::entities::docker_host::{
     VolumeSummary,
 };
 use platform_core::ops::domain::entities::game_runtime::{
-    ContainerSpec, ContainerStats, ContainerStatus, ManagedContainer,
+    ContainerSpec, ContainerStats, ContainerStatus, ManagedContainer, VolumeArchive,
 };
 use platform_core::ops::ports::outbound::docker_host::DockerHost;
 use platform_core::ops::ports::outbound::game_runtime::GameContainerRuntime;
@@ -175,6 +175,7 @@ fn router(state: Arc<AgentState>) -> Router {
         .route("/game/networks/{name}/ensure", post(game_ensure_network))
         .route("/game/volumes/{name}/ensure", post(game_ensure_volume))
         .route("/game/volumes/{name}/remove", post(game_remove_volume))
+        .route("/game/volumes/{name}/archive", post(game_archive_volume))
         .route("/game/images/pull", post(game_pull_image))
         .route("/game/images/remove", post(game_remove_image))
         .route("/game/containers", post(game_create_container))
@@ -514,6 +515,13 @@ struct GameLinesQuery {
     lines: u32,
 }
 
+/// Nom de FICHIER, pas chemin : l'agent choisit le repertoire, et
+/// `archiver_volume` refuse tout separateur ou remontee.
+#[derive(Deserialize)]
+struct ArchiveRequest {
+    filename: String,
+}
+
 #[derive(Deserialize)]
 struct ImageRequest {
     image: String,
@@ -584,6 +592,22 @@ async fn game_remove_volume(
 
 /// Image en corps JSON et pas en segment d'URL : un tag Docker contient des
 /// `/` et des `:` (`ghcr.io/owner/img:1.2`) qu'un `Path` decouperait.
+/// Archive un volume de jeu vers le repertoire de sauvegarde de l'agent.
+///
+/// Reponse JSON plutot que 204 : l'appelant a besoin du chemin et de la taille
+/// pour les consigner dans `game_backups`, et lui seul tient cette table.
+async fn game_archive_volume(
+    Extension(state): Extension<Arc<AgentState>>,
+    headers: HeaderMap,
+    Path(name): Path<String>,
+    Json(body): Json<ArchiveRequest>,
+) -> Result<Json<VolumeArchive>, AgentError> {
+    guarded_game!(state, headers);
+    Ok(Json(
+        game(&state)?.archive_volume(&name, &body.filename).await?,
+    ))
+}
+
 async fn game_pull_image(
     Extension(state): Extension<Arc<AgentState>>,
     headers: HeaderMap,

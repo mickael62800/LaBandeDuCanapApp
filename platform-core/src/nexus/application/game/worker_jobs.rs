@@ -15,7 +15,9 @@ use crate::nexus::application::game::config_loader::{
 use crate::nexus::domain::entities::game::audit::GameAuditAction;
 use crate::nexus::domain::entities::game::server::{should_auto_restart, GameServerStatus};
 use crate::nexus::domain::errors::DomainError;
-use crate::nexus::ports::outbound::game::container_runtime::{ContainerRuntime, ContainerState};
+use crate::nexus::ports::outbound::game::container_runtime::{
+    ContainerRuntime, ContainerState, VolumeArchive,
+};
 use crate::nexus::ports::outbound::game::game_audit_repository::GameAuditRepository;
 use crate::nexus::ports::outbound::game::game_server_repository::{
     GameServerRepository, GameServerRuntimeUpdate,
@@ -363,6 +365,13 @@ mod tests {
     struct DummyRuntime;
     #[async_trait::async_trait]
     impl ContainerRuntime for DummyRuntime {
+        async fn archive_volume(
+            &self,
+            _volume: &str,
+            _nom_fichier: &str,
+        ) -> Result<VolumeArchive, DomainError> {
+            unimplemented!("archivage non couvert par ce double de test")
+        }
         async fn ensure_network(&self, _: &str) -> Result<(), DomainError> {
             Ok(())
         }
@@ -1996,6 +2005,14 @@ mod tests {
     }
     #[async_trait::async_trait]
     impl ContainerRuntime for RecRuntime {
+        async fn archive_volume(
+            &self,
+            _volume: &str,
+            _nom_fichier: &str,
+        ) -> Result<VolumeArchive, DomainError> {
+            unimplemented!("archivage non couvert par ce double de test")
+        }
+
         async fn ensure_network(&self, _: &str) -> Result<(), DomainError> {
             Ok(())
         }

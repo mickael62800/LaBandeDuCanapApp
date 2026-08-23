@@ -23,7 +23,7 @@ use std::collections::HashMap;
 
 pub use crate::ops::domain::entities::game_runtime::{
     ContainerSpec, ContainerState, ContainerStats, ContainerStatus, ManagedContainer, PortMapping,
-    PortProtocol, RestartPolicy, VolumeMount,
+    PortProtocol, RestartPolicy, VolumeArchive, VolumeMount,
 };
 pub use crate::ops::ports::outbound::game_runtime::GameContainerRuntime as ContainerRuntime;
 
@@ -54,6 +54,17 @@ impl ContainerRuntime for MockContainerRuntime {
 
     async fn ensure_volume(&self, _name: &str) -> Result<(), DomainError> {
         Ok(())
+    }
+
+    async fn archive_volume(
+        &self,
+        _volume: &str,
+        nom_fichier: &str,
+    ) -> Result<VolumeArchive, DomainError> {
+        Ok(VolumeArchive {
+            path: format!("/backup/{nom_fichier}"),
+            size_bytes: 0,
+        })
     }
 
     async fn pull_image_if_missing(&self, _image: &str) -> Result<(), DomainError> {

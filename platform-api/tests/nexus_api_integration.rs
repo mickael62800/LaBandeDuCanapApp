@@ -1134,6 +1134,13 @@ fn create_test_app_state(api_key: impl Into<String>) -> AppState {
         game_audit_repo: Arc::new(DummyAuditRepo),
         game_session_repo: Arc::new(DummyPlayerSessionRepo),
         game_container_runtime: Arc::new(MockContainerRuntime::new()),
+        game_backup_repo: Arc::new(
+            platform_api::nexus::adapters::outbound::postgres::game::backup_repository::PgGameBackupRepository::new(
+                sqlx::postgres::PgPoolOptions::new()
+                    .connect_lazy("postgres://localhost/nexus_test")
+                    .unwrap(),
+            ),
+        ),
         game_rcon_client: Arc::new(DummyRconClient),
         game_port_allocator: Arc::new(DummyPortAllocator),
         bot_config_repo: Arc::new(DummyBotConfigRepo),

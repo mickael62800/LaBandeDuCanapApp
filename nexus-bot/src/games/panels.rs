@@ -1036,7 +1036,7 @@ mod tests {
     #[test]
     fn test_is_stored_role_valid_never_creates() {
         // This function never creates anything, just validates
-        let mut roles = std::collections::HashMap::new();
+        let roles = std::collections::HashMap::new();
         let initial_size = roles.len();
 
         let _ = is_stored_role_valid(Some(&roles), Some(RoleId::new(1)));

@@ -29,6 +29,26 @@ async fn delete_old_logs(pool: &PgPool, days: i32) -> Result<u64, sqlx::Error> {
         .map(|result| result.rows_affected())
 }
 
+/// `voice_sessions` n'a PAS de colonne `created_at` : la table porte
+/// `started_at` et `ended_at` (voir `idx_voice_sessions_started`). Le DELETE
+/// visait `created_at` et echouait donc a chaque passage du job, avale par le
+/// `warn!` qui l'entoure : aucune session vocale n'a jamais ete purgee, et la
+/// retention configuree dans le module `cleanup` n'avait aucun effet.
+///
+/// La retention se compte depuis le DEBUT de la session : c'est la colonne
+/// indexee, et une session commencee il y a quatre-vingt-dix jours est ancienne
+/// quelle que soit sa duree.
+const DELETE_OLD_VOICE_SESSIONS_SQL: &str =
+    "DELETE FROM voice_sessions WHERE started_at < NOW() - make_interval(days => $1::int)";
+
+async fn delete_old_voice_sessions(pool: &PgPool, days: i32) -> Result<u64, sqlx::Error> {
+    sqlx::query(DELETE_OLD_VOICE_SESSIONS_SQL)
+        .bind(days)
+        .execute(pool)
+        .await
+        .map(|result| result.rows_affected())
+}
+
 /// Garde ANTI-PURGE-TOTALE : une retention <= 0 rend `NOW() - interval '0 day'`
 /// egal a `NOW()` -> `WHERE created_at < NOW()` supprimerait TOUTE la table (et
 /// une valeur negative supprimerait meme les lignes futures). On refuse alors
@@ -63,31 +83,22 @@ pub async fn run(pool: &PgPool, config: &CleanupConfig) -> Result<(), String> {
     let mut errors = Vec::new();
 
     // ── Voice sessions ──
-    let voice_deleted = match valid_retention(
-        config.voice_sessions_retention_days,
-        "voice_sessions",
-    ) {
-        Some(days) => match sqlx::query(
-            "DELETE FROM voice_sessions WHERE created_at < NOW() - make_interval(days => $1::int)",
-        )
-        .bind(days)
-        .execute(pool)
-        .await
-        {
-            Ok(r) => {
-                let rows = r.rows_affected();
-                record_cleanup_success("voice_sessions", rows);
-                rows
-            }
-            Err(e) => {
-                record_cleanup_error("voice_sessions");
-                warn!(error = %e, "Erreur suppression voice_sessions");
-                errors.push(format!("voice_sessions: {e}"));
-                0
-            }
-        },
-        None => 0,
-    };
+    let voice_deleted =
+        match valid_retention(config.voice_sessions_retention_days, "voice_sessions") {
+            Some(days) => match delete_old_voice_sessions(pool, days).await {
+                Ok(rows) => {
+                    record_cleanup_success("voice_sessions", rows);
+                    rows
+                }
+                Err(e) => {
+                    record_cleanup_error("voice_sessions");
+                    warn!(error = %e, "Erreur suppression voice_sessions");
+                    errors.push(format!("voice_sessions: {e}"));
+                    0
+                }
+            },
+            None => 0,
+        };
 
     // ── Logs / audit_logs / user_activity_log (meme retention) ──
     let logs_days = valid_retention(config.logs_retention_days, "logs/audit/user_activity");
@@ -228,6 +239,32 @@ mod tests {
 
         assert_eq!(deleted, 1);
         assert_eq!(remaining, vec!["recent cleanup test"]);
+        Ok(())
+    }
+
+    /// Regression : le DELETE visait `created_at`, colonne inexistante sur
+    /// `voice_sessions`. L'erreur etait avalee par le `warn!` du job, donc rien
+    /// n'etait jamais purge sans que rien ne le signale. Ce test echoue si la
+    /// colonne redevient fausse, puisque sqlx remonte alors l'erreur.
+    #[sqlx::test(migrations = "./migrations/sentinel")]
+    async fn deletes_only_voice_sessions_older_than_retention(pool: PgPool) -> sqlx::Result<()> {
+        sqlx::query(
+            "INSERT INTO voice_sessions \
+             (guild_id, user_id, username, channel_id, started_at, ended_at) VALUES \
+             ('1', '1', 'ancienne', '1', NOW() - INTERVAL '91 days', NOW() - INTERVAL '91 days'), \
+             ('1', '2', 'recente', '1', NOW() - INTERVAL '89 days', NOW() - INTERVAL '89 days')",
+        )
+        .execute(&pool)
+        .await?;
+
+        let deleted = delete_old_voice_sessions(&pool, 90).await?;
+        let remaining: Vec<String> =
+            sqlx::query_scalar("SELECT username FROM voice_sessions ORDER BY username")
+                .fetch_all(&pool)
+                .await?;
+
+        assert_eq!(deleted, 1);
+        assert_eq!(remaining, vec!["recente"]);
         Ok(())
     }
 }

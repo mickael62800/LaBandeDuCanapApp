@@ -15,9 +15,7 @@ use crate::nexus::application::game::config_loader::{
 use crate::nexus::domain::entities::game::audit::GameAuditAction;
 use crate::nexus::domain::entities::game::server::{should_auto_restart, GameServerStatus};
 use crate::nexus::domain::errors::DomainError;
-use crate::nexus::ports::outbound::game::container_runtime::{
-    ContainerRuntime, ContainerState, VolumeArchive,
-};
+use crate::nexus::ports::outbound::game::container_runtime::{ContainerRuntime, ContainerState};
 use crate::nexus::ports::outbound::game::game_audit_repository::GameAuditRepository;
 use crate::nexus::ports::outbound::game::game_server_repository::{
     GameServerRepository, GameServerRuntimeUpdate,
@@ -77,10 +75,12 @@ pub use reveal_ip::run_reveal_ip;
 #[cfg(test)]
 mod tests {
     use super::*;
+    // `VolumeArchive` ne sert qu'aux doubles de test qui implementent ContainerRuntime.
     use crate::nexus::domain::entities::game::audit::{GameAuditAction, GameAuditEntry};
     use crate::nexus::domain::entities::game::player_session::PlayerSession;
     use crate::nexus::domain::entities::game::server::{GameServer, GameServerStatus};
     use crate::nexus::domain::entities::system::bot_config::{BotDefinition, BotGuildConfig};
+    use crate::nexus::ports::outbound::game::container_runtime::VolumeArchive;
     use crate::nexus::ports::outbound::game::container_runtime::{
         ContainerSpec, ContainerStats, ContainerStatus, ManagedContainer,
     };

@@ -80,7 +80,7 @@ async fn compute_voice_stats(
                 SUM(duration_secs)::bigint AS total_seconds, \
                 AVG(duration_secs)::float8 AS avg_seconds \
          FROM voice_sessions \
-         WHERE guild_id = $1 AND created_at >= NOW() - INTERVAL '30 days' \
+         WHERE guild_id = $1 AND started_at >= NOW() - INTERVAL '30 days' \
          GROUP BY channel_id, channel_name \
          ORDER BY total_seconds DESC \
          LIMIT $2",

@@ -45,19 +45,43 @@ ERREURS=0
 log()    { echo "[$(date +%H:%M:%S)] $*"; }
 erreur() { echo "[$(date +%H:%M:%S)] ERREUR : $*" >&2; ERREURS=$((ERREURS + 1)); }
 
-# ── Garde-fou : la destination doit etre un POINT DE MONTAGE ───────────────
+# ── Garde-fou : ne jamais ecrire sur la partition racine par accident ──────
 #
-# LA verification qui compte. Si le disque n'est pas monte, /mnt/backup est un
-# simple dossier de la partition racine : le script y ecrirait des dizaines de
-# gigaoctets sans rien signaler, jusqu'a saturer le systeme. C'est exactement
-# ainsi que Docker a rempli la racine pendant deux mois, apres qu'une entree
-# fstab devenue invalide eut fait disparaitre son disque en silence.
+# CE QUE L'ON EMPECHE. Si le disque de sauvegarde n'est pas monte, sa
+# destination redevient un dossier ordinaire de la racine : le script y
+# deverserait des gigaoctets sans rien signaler, jusqu'a saturer le systeme.
+# C'est exactement ainsi que Docker a rempli la racine pendant deux mois, apres
+# qu'une entree fstab devenue invalide eut fait disparaitre son disque.
 #
-# On refuse donc de travailler tant que `findmnt` ne confirme pas un montage.
-if ! findmnt -M "$DEST" >/dev/null 2>&1; then
-  erreur "$DEST n'est pas un point de montage — disque absent ?"
-  echo "       Verifie : findmnt $DEST  &&  grep backup /etc/fstab" >&2
-  exit 1
+# LE CONTROLE. La premiere version exigeait que la destination soit un POINT DE
+# MONTAGE. C'etait trop rigide : un sous-repertoire choisi expres sur un autre
+# disque — `/home/sauvegardes` quand /home est sur un second disque — se voyait
+# refuse alors qu'il remplit parfaitement le but. On compare donc le SYSTEME DE
+# FICHIERS de la destination a celui de la racine : different, c'est un autre
+# disque, on accepte.
+#
+# `BACKUP_ALLOW_ROOTFS=1` leve le refus, pour le cas ou l'on veuille malgre tout
+# sauvegarder sur la racine — depannage, machine a disque unique. Explicite, donc
+# jamais subi.
+# Numero de PERIPHERIQUE, pas le nom rendu par `df`. Celui-ci se decoupe sur
+# les espaces, et une source reseau en contient volontiers —
+# `//192.168.1.50/My Cloud` serait tronque a `//192.168.1.50/My`, faussant la
+# comparaison sans que rien ne le signale.
+fs_de() {
+    stat -c %d "$1" 2>/dev/null
+}
+
+if [ ! -d "$DEST" ]; then
+    erreur "$DEST n'existe pas"
+    echo "       Cree-le, ou pointe BACKUP_DEST ailleurs." >&2
+    exit 1
+fi
+
+if [ "$(fs_de "$DEST")" = "$(fs_de /)" ] && [ "${BACKUP_ALLOW_ROOTFS:-0}" != "1" ]; then
+    erreur "$DEST est sur la partition racine — disque de sauvegarde absent ?"
+    echo "       findmnt $DEST ; lsblk ; grep backup /etc/fstab" >&2
+    echo "       Si c'est voulu : BACKUP_ALLOW_ROOTFS=1 $0" >&2
+    exit 1
 fi
 
 # ── Verrou : deux sauvegardes simultanees se marcheraient dessus ───────────

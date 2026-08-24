@@ -158,7 +158,20 @@ sauvegarder_mondes() {
   fi
 
   local id nom statut volume point suffixe sortie taille nom_fichier
-  while IFS='|' read -r id nom statut volume; do
+
+  # LECTURE SUR LE DESCRIPTEUR 3, ET NON SUR L'ENTREE STANDARD.
+  #
+  # `psql_nexus` appelle `docker exec -i` : le `-i` attache l'entree standard,
+  # et psql la vide jusqu'au bout. L'INSERT dans `game_backups`, en fin
+  # d'iteration, avalait donc les lignes restantes du here-string. Resultat :
+  # le premier serveur etait sauvegarde, les suivants disparaissaient sans la
+  # moindre erreur — pour bash, l'entree etait simplement terminee. Un serveur
+  # Palworld actif est reste sans sauvegarde pendant que le journal affichait
+  # « sauvegarde terminee ».
+  #
+  # Le descripteur 3 n'est attache a aucune commande fille : ce que la boucle
+  # lit reste a la boucle, quoi que fasse son corps.
+  while IFS='|' read -r id nom statut volume <&3; do
     [ -z "$id" ] && continue
 
     # La base autorise les espaces dans le nom d'un serveur
@@ -204,7 +217,7 @@ sauvegarder_mondes() {
       rm -f "$sortie.tmp"
       erreur "archivage du monde $nom a echoue"
     fi
-  done <<< "$lignes"
+  done 3<<< "$lignes"
 }
 
 # ── Retention ──────────────────────────────────────────────────────────────
@@ -251,7 +264,7 @@ purger() {
     # Mondes : purge par age, sauf la plus recente de chaque serveur.
     local proteges supprimes=0 fichier
     proteges=$(archives_a_conserver)
-    while IFS= read -r fichier; do
+    while IFS= read -r fichier <&3; do
         [ -z "$fichier" ] && continue
         if printf '%s
 ' "$proteges" | grep -qxF "$fichier"; then
@@ -259,7 +272,7 @@ purger() {
             continue
         fi
         rm -f "$fichier" && supprimes=$((supprimes + 1))
-    done <<< "$(toutes_les_archives -mtime "+$RETENTION_JOURS")"
+    done 3<<< "$(toutes_les_archives -mtime "+$RETENTION_JOURS")"
 
     local total=$((dumps + supprimes))
     [ "$total" -gt 0 ] && log "purge : $total archive(s) supprimee(s)"

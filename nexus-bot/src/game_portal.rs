@@ -27,8 +27,8 @@ use serenity::all::{
     ButtonStyle, ChannelId, ChannelType, Colour, ComponentInteraction, Context, CreateActionRow,
     CreateButton, CreateChannel, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse,
     CreateInteractionResponseFollowup, CreateInteractionResponseMessage, CreateMessage,
-    EditInteractionResponse, EditMessage, EditRole, GuildId, PermissionOverwrite,
-    PermissionOverwriteType, Permissions, RoleId,
+    EditInteractionResponse, EditMessage, EditRole, GetMessages, GuildId, MessageId,
+    PermissionOverwrite, PermissionOverwriteType, Permissions, RoleId,
 };
 
 use crate::api_client::{ApiClient, GameServer};
@@ -935,6 +935,51 @@ pub fn build_restarted_content(role_id: Option<RoleId>, game_name: &str) -> Stri
     format!("✅ {mention}**{game_name}** est de nouveau en ligne.")
 }
 
+/// Reconnait une annonce de redemarrage deja postee par le bot.
+///
+/// Le prefixe seul ne suffit pas : d'autres messages du portail commencent par
+/// une coche. On exige donc le prefixe ET la tournure propre a ces deux
+/// annonces, pour ne jamais emporter un message voisin.
+pub fn est_annonce_de_redemarrage(contenu: &str) -> bool {
+    (contenu.starts_with("🔄 ") && contenu.contains("redemarre dans"))
+        || (contenu.starts_with("✅ ") && contenu.contains("est de nouveau en ligne"))
+}
+
+/// Efface les annonces de redemarrage precedentes du salon.
+///
+/// Un serveur qui redemarre toutes les six heures laissait deux messages par
+/// cycle — « redemarre dans quinze minutes », puis « de nouveau en ligne ».
+/// Au bout de quelques jours le salon de session ne contenait plus que cela,
+/// et la conversation des joueurs disparaissait dessous.
+///
+/// On ne garde donc que la derniere annonce : les precedentes sont supprimees
+/// juste AVANT de poster la nouvelle. Dans l'autre ordre on effacerait le
+/// message qu'on vient d'envoyer.
+///
+/// Best-effort : un echec de suppression (message trop vieux, permission
+/// retiree) ne doit jamais empecher l'annonce elle-meme de partir. Prevenir
+/// d'un redemarrage compte plus que la proprete du salon.
+async fn purger_annonces_de_redemarrage(ctx: &Context, salon: ChannelId) {
+    let bot_id = ctx.cache.current_user().id;
+    let anciennes: Vec<MessageId> = match salon
+        .messages(&ctx.http, GetMessages::new().limit(50))
+        .await
+    {
+        Ok(messages) => messages
+            .into_iter()
+            .filter(|m| m.author.id == bot_id && est_annonce_de_redemarrage(&m.content))
+            .map(|m| m.id)
+            .collect(),
+        Err(e) => {
+            tracing::warn!(error = %e, "game-portal: lecture du salon pour purge impossible");
+            return;
+        }
+    };
+    for id in anciennes {
+        let _ = salon.delete_message(&ctx.http, id).await;
+    }
+}
+
 /// Poste une annonce dans le salon de session du serveur.
 async fn annoncer_dans_la_session(
     ctx: &Context,
@@ -948,6 +993,7 @@ async fn annoncer_dans_la_session(
     let Some(text_ch) = parse_channel(detail.server.text_channel_id.as_ref()) else {
         return;
     };
+    purger_annonces_de_redemarrage(ctx, text_ch).await;
     let (game_name, role_id) = game_name_and_role(api, &detail.server).await;
     let _ = text_ch
         .send_message(
@@ -2582,5 +2628,65 @@ mod tests_suppression {
     fn une_charge_utile_illisible_ne_panique_pas() {
         assert!(parse_deleted_payload("pas du json").is_none());
         assert!(parse_deleted_payload("{}").is_none());
+    }
+}
+
+/// Ce que la purge du salon a le droit d'effacer.
+///
+/// Un predicat trop large emporterait des messages voisins ; trop etroit, il
+/// laisserait le salon se remplir. Ces tests fixent la frontiere sur le
+/// contenu REELLEMENT produit par les deux constructeurs.
+#[cfg(test)]
+mod tests_purge_redemarrage {
+    use super::{
+        build_restart_warning_content, build_restarted_content, est_annonce_de_redemarrage,
+    };
+    use serenity::all::RoleId;
+
+    #[test]
+    fn les_deux_annonces_sont_reconnues() {
+        let preavis = build_restart_warning_content(None, "Palworld", 15, None);
+        let retour = build_restarted_content(None, "Palworld");
+
+        assert!(est_annonce_de_redemarrage(&preavis));
+        assert!(est_annonce_de_redemarrage(&retour));
+    }
+
+    /// Avec mention de role, le contenu change apres l'emoji : le predicat ne
+    /// doit pas dependre de ce qui suit immediatement le prefixe.
+    #[test]
+    fn la_mention_de_role_ne_gene_pas() {
+        let role = Some(RoleId::new(123456789012345678));
+        assert!(est_annonce_de_redemarrage(&build_restart_warning_content(
+            role,
+            "Minecraft",
+            15,
+            None
+        )));
+        assert!(est_annonce_de_redemarrage(&build_restarted_content(
+            role,
+            "Minecraft"
+        )));
+    }
+
+    /// La coche ouvre d'autres messages du portail. Les emporter ferait
+    /// disparaitre des informations que personne n'a demande a effacer.
+    #[test]
+    fn un_autre_message_a_coche_est_epargne() {
+        assert!(!est_annonce_de_redemarrage(
+            "✅ **Palworld** : inscription enregistree."
+        ));
+        assert!(!est_annonce_de_redemarrage("✅ Adresse revelee."));
+        assert!(!est_annonce_de_redemarrage(
+            "🔄 Synchronisation des roles terminee."
+        ));
+    }
+
+    #[test]
+    fn un_message_de_joueur_est_epargne() {
+        assert!(!est_annonce_de_redemarrage(
+            "il redemarre dans combien de temps ?"
+        ));
+        assert!(!est_annonce_de_redemarrage(""));
     }
 }

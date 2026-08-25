@@ -2690,3 +2690,193 @@ mod tests_purge_redemarrage {
         assert!(!est_annonce_de_redemarrage(""));
     }
 }
+
+// ── Reconciliation : salons orphelins ──────────────────────────────────────
+
+/// Ce role appartient-il a la session `server_id` ?
+///
+/// Le nom d'un role de session est `{slug_du_jeu}_{suffixe}`, ou le suffixe est
+/// fait des huit premiers caracteres alphanumeriques du `server_id`. On ne peut
+/// donc pas reconstruire le nom complet sans connaitre le jeu — dont la fiche a
+/// justement disparu — mais le suffixe, lui, se deduit du seul identifiant.
+///
+/// LE GARDE-FOU SUR LA LONGUEUR N'EST PAS DECORATIF. Un identifiant sans huit
+/// caracteres alphanumeriques donnerait un suffixe court, voire vide : la
+/// comparaison se reduirait a « le nom finit par `_` » et emporterait des roles
+/// de la guilde qui n'ont rien a voir. En dessous de huit, on ne reconnait
+/// rien, et le role orphelin survit — ce qui se repare a la main, contrairement
+/// a un role supprime par erreur.
+pub fn role_de_session(nom_du_role: &str, server_id: &str) -> bool {
+    let suffixe = session_suffix(server_id);
+    if suffixe.len() < 8 {
+        return false;
+    }
+    nom_du_role.ends_with(&format!("_{suffixe}"))
+}
+
+/// Supprime les salons et le role d'une session dont le serveur n'existe plus.
+///
+/// Le salon vocal n'a pas de sujet — Discord n'en accepte pas sur un vocal —
+/// et son nom reprend celui du serveur, que l'on ne connait plus. Il se
+/// retrouve donc par son role : les trois salons d'une session partagent une
+/// permission pour le meme role, dont le nom porte le suffixe de
+/// l'identifiant. Le role est supprime en dernier, apres avoir servi de fil.
+async fn supprimer_session_orpheline(ctx: &Context, guild_id: GuildId, server_id: &str) {
+    let Ok(salons) = guild_id.channels(&ctx.http).await else {
+        return;
+    };
+
+    for (id, salon) in salons.iter() {
+        let vise = salon
+            .topic
+            .as_deref()
+            .and_then(server_id_from_topic)
+            .is_some_and(|vu| vu == server_id);
+        if vise {
+            let _ = id.delete(&ctx.http).await;
+        }
+    }
+
+    let Ok(roles) = guild_id.roles(&ctx.http).await else {
+        return;
+    };
+    for role in roles
+        .values()
+        .filter(|r| role_de_session(&r.name, server_id))
+    {
+        for (id, salon) in salons.iter() {
+            let porte_le_role = salon
+                .permission_overwrites
+                .iter()
+                .any(|ow| matches!(ow.kind, PermissionOverwriteType::Role(rid) if rid == role.id));
+            if porte_le_role {
+                let _ = id.delete(&ctx.http).await;
+            }
+        }
+        let _ = guild_id.delete_role(&ctx.http, role.id).await;
+    }
+
+    tracing::info!(server_id, "game-portal: session orpheline nettoyee");
+}
+
+/// Supprime les salons des sessions dont le serveur n'existe plus en base.
+///
+/// POURQUOI CE NETTOYAGE EXISTE. Jusqu'ici, la suppression d'un jeu laissait
+/// ses salons en place (le bot interrogeait une fiche deja effacee et
+/// renoncait). Le correctif empeche d'en creer de nouveaux, mais ne fait rien
+/// des salons deja abandonnes. Celui-ci les rattrape, et rattrapera aussi ceux
+/// qu'un incident laisserait derriere lui.
+///
+/// CE QU'IL NE TOUCHE PAS. Un serveur ARRETE conserve ses salons : c'est le
+/// comportement voulu, un serveur de soiree passe l'essentiel de sa vie
+/// eteint. Le seul critere de suppression est l'absence de fiche vivante.
+///
+/// FERME EN CAS DE DOUTE. Si l'API ne repond pas, ou repond autre chose qu'un
+/// 404 franc, la session est laissee intacte. Un salon orphelin de trop se
+/// supprime a la main ; un salon vivant supprime par erreur emporte une
+/// conversation.
+pub async fn reconcilier_salons_orphelins(ctx: &Context, api: &ApiClient, guild_id: &str) {
+    let Ok(numerique) = guild_id.parse::<u64>() else {
+        return;
+    };
+    let guild = GuildId::new(numerique);
+    let Ok(salons) = guild.channels(&ctx.http).await else {
+        tracing::warn!(guild_id, "game-portal: inventaire des salons impossible");
+        return;
+    };
+
+    let mut sessions: Vec<String> = salons
+        .values()
+        .filter_map(|c| c.topic.as_deref().and_then(server_id_from_topic))
+        .map(str::to_string)
+        .collect();
+    sessions.sort();
+    sessions.dedup();
+
+    for server_id in sessions {
+        match api.game_server_existe(&server_id).await {
+            Ok(true) => {}
+            Ok(false) => supprimer_session_orpheline(ctx, guild, &server_id).await,
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    server_id,
+                    "game-portal: existence indeterminee, salons conserves"
+                );
+            }
+        }
+    }
+}
+
+/// Reconnaissance d'un role de session, sur laquelle repose la suppression du
+/// salon vocal orphelin — le seul des trois que Discord ne laisse pas marquer.
+#[cfg(test)]
+mod tests_reconciliation {
+    use super::{role_de_session, server_id_from_topic, session_role_name};
+
+    #[test]
+    fn le_role_de_sa_propre_session_est_reconnu() {
+        let id = "3f2a91bc-4d5e-4a7b-9c1d-2e3f4a5b6c7d";
+        assert!(role_de_session(&session_role_name("Palworld", id), id));
+        assert!(role_de_session(
+            &session_role_name("Project Zomboid", id),
+            id
+        ));
+    }
+
+    #[test]
+    fn le_role_d_une_autre_session_est_epargne() {
+        let mien = "3f2a91bc-4d5e-4a7b-9c1d-2e3f4a5b6c7d";
+        let autre = "99887766-4d5e-4a7b-9c1d-2e3f4a5b6c7d";
+        assert!(!role_de_session(
+            &session_role_name("Palworld", autre),
+            mien
+        ));
+    }
+
+    /// Le vrai danger : un identifiant sans huit caracteres alphanumeriques
+    /// donne un suffixe court, et la comparaison degenere en « finit par `_` ».
+    /// Elle emporterait alors des roles de la guilde qui n'ont aucun rapport.
+    #[test]
+    fn un_identifiant_trop_court_ne_reconnait_rien() {
+        // Chaque paire est un role de la guilde que le suffixe court FERAIT
+        // correspondre si le garde-fou tombait : c'est la que se joue le
+        // risque, pas sur des noms qui ne correspondent de toute facon pas.
+        for (role, court) in [
+            ("moderateur_abc", "abc"),
+            ("staff_a1", "a1"),
+            ("vip_2e3f4a5", "2e3f4a5"),
+            ("quelquechose_", ""),
+            ("autre_", "---"),
+        ] {
+            assert!(
+                !role_de_session(role, court),
+                "role {role:?} emporte par l'identifiant trop court {court:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn les_roles_ordinaires_sont_epargnes() {
+        let id = "3f2a91bc-4d5e-4a7b-9c1d-2e3f4a5b6c7d";
+        for nom in ["Moderateur", "@everyone", "admin_3f2a91b", "3f2a91bc"] {
+            assert!(!role_de_session(nom, id), "role {nom:?} emporte a tort");
+        }
+    }
+
+    /// Le recensement des sessions part du sujet des salons : c'est lui qui
+    /// decide quels identifiants seront verifies aupres de l'API.
+    #[test]
+    fn le_sujet_livre_l_identifiant_de_session() {
+        let id = "3f2a91bc-4d5e-4a7b-9c1d-2e3f4a5b6c7d";
+        assert_eq!(
+            server_id_from_topic(&format!("Nexus Game Portal | session:{id} | registration")),
+            Some(id)
+        );
+        assert_eq!(
+            server_id_from_topic(&format!("Nexus Game Portal | session:{id} | private")),
+            Some(id)
+        );
+        assert_eq!(server_id_from_topic("Salon de discussion general"), None);
+    }
+}

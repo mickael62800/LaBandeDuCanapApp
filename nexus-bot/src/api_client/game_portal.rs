@@ -22,6 +22,41 @@ impl ApiClient {
         self.send(self.http.get(&url)).await
     }
 
+    /// Le serveur existe-t-il encore ?
+    ///
+    /// DISTINGUE L'ABSENCE DE LA PANNE, et c'est tout l'interet de la methode.
+    /// `get_game_server` aplatit les deux en `Err(String)` : un 404 et une API
+    /// injoignable y sont indiscernables. Utilise pour decider d'une
+    /// suppression de salon Discord, cet amalgame effacerait les salons de
+    /// TOUTES les sessions vivantes des que l'API tousse.
+    ///
+    /// Seul un 404 franc repond `Ok(false)`. Tout le reste remonte en `Err` :
+    /// l'appelant s'abstient alors, ce qui est la bonne facon d'echouer quand
+    /// l'action est irreversible.
+    pub async fn game_server_existe(&self, server_id: &str) -> Result<bool, String> {
+        let url = format!(
+            "{}/api/games/servers/{}",
+            self.base_url,
+            encode_segment(server_id)
+        );
+        let mut req = self.http.get(&url);
+        if let Some(key) = &self.api_key {
+            req = req.bearer_auth(key);
+        }
+        let resp = req
+            .send()
+            .await
+            .map_err(|e| format!("nexus-api injoignable: {e}"))?;
+        let status = resp.status();
+        if status.is_success() {
+            return Ok(true);
+        }
+        if status == reqwest::StatusCode::NOT_FOUND {
+            return Ok(false);
+        }
+        Err(format!("erreur nexus-api ({status})"))
+    }
+
     /// GET /api/games/templates/{template_id}.
     pub async fn get_game_template(&self, template_id: &str) -> Result<GameTemplate, String> {
         let url = format!(

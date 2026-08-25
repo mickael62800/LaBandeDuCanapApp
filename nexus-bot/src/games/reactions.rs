@@ -113,6 +113,15 @@ pub fn spawn_listener(ctx: Context, api: std::sync::Arc<ApiClient>) {
                                             &ctx_clone, &api_clone, guild_id,
                                         )
                                         .await;
+                                        // Meme evenement, deux moitiés : le
+                                        // rapport dit a l'API ce que le bot
+                                        // voit, ce nettoyage supprime ce que
+                                        // le bot voit et que la base ne
+                                        // connait plus.
+                                        crate::game_portal::reconcilier_salons_orphelins(
+                                            &ctx_clone, &api_clone, guild_id,
+                                        )
+                                        .await;
                                     }
                                 }
                                 game_events::GAME_ROLE_DELETE => {

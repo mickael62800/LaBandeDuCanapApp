@@ -7,6 +7,32 @@ import {
 } from "@/services/nexusGamesService";
 
 /**
+ * Les sept jours, dans l'ordre du masque envoyé par l'API : lundi porte le
+ * bit 0, dimanche le bit 6.
+ *
+ * L'ordre suit celui du domaine Rust (`num_days_from_monday`). Le changer ici
+ * décalerait tous les horaires d'un jour sans qu'aucun test d'affichage ne
+ * s'en aperçoive — c'est pourquoi il n'est pas dérivé d'une locale.
+ */
+export const JOURS = [
+  { bit: 1, court: "Lun", long: "lundi" },
+  { bit: 2, court: "Mar", long: "mardi" },
+  { bit: 4, court: "Mer", long: "mercredi" },
+  { bit: 8, court: "Jeu", long: "jeudi" },
+  { bit: 16, court: "Ven", long: "vendredi" },
+  { bit: 32, court: "Sam", long: "samedi" },
+  { bit: 64, court: "Dim", long: "dimanche" },
+] as const;
+
+/** Les sept bits réunis. */
+export const TOUS_LES_JOURS = 0b111_1111;
+
+/** Ce jour est-il coché dans ce masque ? */
+export function jourActif(masque: number, bit: number): boolean {
+  return (masque & bit) !== 0;
+}
+
+/**
  * Pilotage d'un serveur de jeu dans le temps.
  *
  * Deux systèmes, et un seul à la fois :
@@ -40,7 +66,7 @@ export function useGameServerSchedule(
   /// Préavis avant fermeture ou redémarrage, en minutes.
   const warn = ref(10);
   /// Plages en « HH:MM », plus lisibles à l'écran que des minutes depuis minuit.
-  const ranges = ref<{ start: string; end: string }[]>([]);
+  const ranges = ref<{ start: string; end: string; days: number }[]>([]);
   /// Prochaine ouverture, calculée par le serveur.
   const nextOpening = ref<string | null>(null);
   /// Réglages de redémarrage automatique neutralisés par les plages.
@@ -74,6 +100,7 @@ export function useGameServerSchedule(
       ranges.value = data.ranges.map((r) => ({
         start: minutesVersHeure(r.start_minute),
         end: minutesVersHeure(r.end_minute),
+        days: r.days ?? TOUS_LES_JOURS,
       }));
     } catch {
       // Horaires indisponibles : on garde le formulaire tel quel plutôt que de
@@ -102,11 +129,32 @@ export function useGameServerSchedule(
   }
 
   function ajouterPlage() {
-    ranges.value.push({ start: "19:00", end: "23:00" });
+    ranges.value.push({ start: "19:00", end: "23:00", days: TOUS_LES_JOURS });
   }
 
   function retirerPlage(index: number) {
     ranges.value.splice(index, 1);
+  }
+
+  /** Coche ou décoche un jour pour une plage donnée. */
+  function basculerJour(index: number, bit: number) {
+    const plage = ranges.value[index];
+    if (!plage) return;
+    plage.days = jourActif(plage.days, bit) ? plage.days & ~bit : plage.days | bit;
+  }
+
+  /**
+   * Étend une plage à toute la semaine.
+   *
+   * Le cas courant est « les mêmes horaires tous les jours » : cocher sept
+   * cases à la main pour chaque plage est fastidieux et se prête aux oublis —
+   * un jour manquant ne se voit pas, le serveur reste simplement éteint ce
+   * jour-là sans que rien ne l'explique.
+   */
+  function appliquerATousLesJours(index: number) {
+    const plage = ranges.value[index];
+    if (!plage) return;
+    plage.days = TOUS_LES_JOURS;
   }
 
   /**
@@ -142,6 +190,7 @@ export function useGameServerSchedule(
         ranges: ranges.value.map((r) => ({
           start_minute: heureVersMinutes(r.start),
           end_minute: heureVersMinutes(r.end),
+          days: r.days,
         })),
       });
       appliquer(resultat);
@@ -190,6 +239,8 @@ export function useGameServerSchedule(
     load,
     ajouterPlage,
     retirerPlage,
+    basculerJour,
+    appliquerATousLesJours,
     choisirMode,
     save,
   };

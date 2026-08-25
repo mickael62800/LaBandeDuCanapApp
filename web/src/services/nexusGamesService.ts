@@ -145,10 +145,18 @@ export interface AlertSettings {
   latency_threshold_ms: number;
 }
 
-/** Une plage d'ouverture quotidienne, en minutes depuis minuit. */
+/** Une plage d'ouverture, en minutes depuis minuit, valable certains jours. */
 export interface TimeRange {
   start_minute: number;
   end_minute: number;
+  /**
+   * Jours d'application, en bits : lundi = 1, mardi = 2, … dimanche = 64.
+   *
+   * Facultatif à la lecture : les plages enregistrées avant l'existence des
+   * jours n'ont pas le champ, et valent alors toute la semaine. Le composable
+   * comble ce trou plutôt que de laisser `undefined` circuler.
+   */
+  days?: number;
 }
 
 /**

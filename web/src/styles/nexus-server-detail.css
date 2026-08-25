@@ -564,11 +564,6 @@
   align-items: flex-start;
 }
 
-.sd-range-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-}
 
 .sd-range-row input {
   background: var(--bg-card);
@@ -576,6 +571,56 @@
   border-radius: var(--radius-sm);
   color: var(--text-primary);
   padding: 6px 10px;
+}
+
+/* Une plage occupe maintenant deux lignes : les heures, puis les jours. */
+.sd-range-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-xs);
+  padding: var(--space-sm);
+  border: 1px solid var(--bg-hover);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+}
+
+.sd-range-hours {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.sd-range-days {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+}
+
+/* Pastille de jour. L'état coché doit se lire sans couleur seule : le fond
+   plein ET le contraste du texte changent, pour rester distinguable en
+   daltonisme comme en niveaux de gris. */
+.sd-day {
+  min-width: 2.6rem;
+  padding: 5px 8px;
+  border: 1px solid var(--bg-hover);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+  cursor: pointer;
+}
+
+.sd-day:hover {
+  border-color: var(--accent);
+}
+
+.sd-day--on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg-card);
+  font-weight: 600;
 }
 
 .sd-field-inline {

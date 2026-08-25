@@ -28,7 +28,12 @@ import {
 } from "@/services/nexusGamesService";
 import { useTemplateFieldGroups } from "@/composables/useTemplateFieldGroups";
 import { useGameServerMonitoring, volume, debit } from "@/composables/useGameServerMonitoring";
-import { useGameServerSchedule, useGameServerAlerts } from "@/composables/useGameServerSchedule";
+import {
+  useGameServerSchedule,
+  useGameServerAlerts,
+  JOURS,
+  jourActif,
+} from "@/composables/useGameServerSchedule";
 import GameConfigField from "../molecules/GameConfigField.vue";
 import PaginationBar from "../molecules/PaginationBar.vue";
 import AdminPageShell from "../layouts/AdminPageShell.vue";
@@ -136,6 +141,8 @@ const {
   prochainRedemarrage,
   ajouterPlage,
   retirerPlage,
+  basculerJour,
+  appliquerATousLesJours,
   choisirMode,
 } = useGameServerSchedule(
   () => selectedGuildId.value,
@@ -856,12 +863,42 @@ function fmtDuration(secs: number | null): string {
           <!-- Plages horaires -->
           <div v-else class="sd-ranges">
             <div v-for="(plage, index) in scheduleRanges" :key="index" class="sd-range-row">
-              <input v-model="plage.start" type="time" />
-              <span>→</span>
-              <input v-model="plage.end" type="time" />
-              <AppButton variant="secondary" size="xs" @click="retirerPlage(index)">
-                Retirer
-              </AppButton>
+              <div class="sd-range-hours">
+                <input v-model="plage.start" type="time" />
+                <span>→</span>
+                <input v-model="plage.end" type="time" />
+                <AppButton variant="secondary" size="xs" @click="retirerPlage(index)">
+                  Retirer
+                </AppButton>
+              </div>
+              <div class="sd-range-days">
+                <button
+                  v-for="jour in JOURS"
+                  :key="jour.bit"
+                  type="button"
+                  class="sd-day"
+                  :class="{ 'sd-day--on': jourActif(plage.days, jour.bit) }"
+                  :aria-pressed="jourActif(plage.days, jour.bit)"
+                  :title="jour.long"
+                  @click="basculerJour(index, jour.bit)"
+                >
+                  {{ jour.court }}
+                </button>
+                <AppButton
+                  variant="secondary"
+                  size="xs"
+                  @click="appliquerATousLesJours(index)"
+                >
+                  Tous les jours
+                </AppButton>
+              </div>
+              <small v-if="plage.days === 0" class="sd-note">
+                Aucun jour coché : cette plage n'ouvrira jamais.
+              </small>
+              <small v-else-if="plage.end <= plage.start" class="sd-note">
+                Cette plage franchit minuit : elle se termine le lendemain matin,
+                sans qu'il soit besoin de cocher le jour suivant.
+              </small>
             </div>
             <p v-if="scheduleRanges.length === 0" class="sd-note">
               Aucune plage : ajoute-en une avant d'activer.

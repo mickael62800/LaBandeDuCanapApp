@@ -18,16 +18,45 @@
 //!     redemarre — sans quoi un serveur ressusciterait chaque jour a 19h
 //!     jusqu'a la fin des temps.
 
-use chrono::{DateTime, NaiveTime, TimeZone, Timelike, Utc};
+use chrono::{DateTime, Datelike, NaiveTime, TimeZone, Timelike, Utc};
 use chrono_tz::Tz;
 use serde::{Deserialize, Serialize};
 
-/// Une plage d'ouverture quotidienne, en heure locale.
+/// Les sept jours, en bits. Lundi est le bit 0, dimanche le bit 6.
+///
+/// L'ordre suit `chrono::Weekday::num_days_from_monday()`, pour qu'aucune
+/// conversion ne s'intercale entre l'horloge et le masque.
+pub const TOUS_LES_JOURS: u8 = 0b111_1111;
+
+/// Masque du jour de la semaine donne par chrono.
+pub fn bit_du_jour(jour: chrono::Weekday) -> u8 {
+    1 << jour.num_days_from_monday()
+}
+
+/// Masque de la veille d'un jour donne.
+fn bit_de_la_veille(jour: chrono::Weekday) -> u8 {
+    bit_du_jour(jour.pred())
+}
+
+fn tous_les_jours() -> u8 {
+    TOUS_LES_JOURS
+}
+
+/// Une plage d'ouverture, en heure locale, valable sur certains jours.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TimeRange {
     /// Minutes depuis minuit (0..1440). `19:00` vaut 1140.
     pub start_minute: u16,
     pub end_minute: u16,
+    /// Jours ou la plage s'applique, en bits (lundi = bit 0).
+    ///
+    /// ABSENT DES ANCIENNES FICHES. Les plages enregistrees avant que les
+    /// jours n'existent valaient tous les jours ; c'est donc ce que vaut le
+    /// defaut. Sans lui, une mise a jour aurait rendu muettes toutes les
+    /// plages deja configurees — un serveur qui ne s'allume plus, sans que
+    /// personne n'ait rien change.
+    #[serde(default = "tous_les_jours")]
+    pub days: u8,
 }
 
 impl TimeRange {
@@ -36,21 +65,39 @@ impl TimeRange {
         self.end_minute <= self.start_minute
     }
 
-    /// La minute donnee tombe-t-elle dans la plage ?
+    /// La plage s'applique-t-elle ce jour-la ?
+    pub fn applies_on(&self, jour: chrono::Weekday) -> bool {
+        self.days & bit_du_jour(jour) != 0
+    }
+
+    /// L'instant donne tombe-t-il dans la plage ?
     ///
-    /// La fin est EXCLUE : deux plages qui se touchent (`12:00-14:00` puis
-    /// `14:00-16:00`) ne doivent pas se chevaucher a 14h00 pile.
-    pub fn contains(&self, minute_of_day: u16) -> bool {
+    /// LE JOUR COMPTE DEUX FOIS POUR UNE PLAGE QUI FRANCHIT MINUIT. « Samedi
+    /// 22h-02h » est active samedi a partir de 22h, mais AUSSI dimanche avant
+    /// 2h — et ce dimanche-la n'a pas a etre coche. Ne regarder que le jour
+    /// courant couperait le serveur a minuit pile, au milieu de la soiree.
+    pub fn contains_at(&self, jour: chrono::Weekday, minute_of_day: u16) -> bool {
         if self.crosses_midnight() {
-            minute_of_day >= self.start_minute || minute_of_day < self.end_minute
+            (self.applies_on(jour) && minute_of_day >= self.start_minute)
+                || (self.days & bit_de_la_veille(jour) != 0 && minute_of_day < self.end_minute)
         } else {
-            minute_of_day >= self.start_minute && minute_of_day < self.end_minute
+            self.applies_on(jour)
+                && minute_of_day >= self.start_minute
+                && minute_of_day < self.end_minute
         }
     }
 
     /// Minutes restantes avant la fin de la plage, si l'on est dedans.
+    ///
+    /// La fin est EXCLUE : deux plages qui se touchent (`12:00-14:00` puis
+    /// `14:00-16:00`) ne se chevauchent pas a 14h00 pile.
     pub fn minutes_until_end(&self, minute_of_day: u16) -> Option<u16> {
-        if !self.contains(minute_of_day) {
+        let dedans = if self.crosses_midnight() {
+            minute_of_day >= self.start_minute || minute_of_day < self.end_minute
+        } else {
+            minute_of_day >= self.start_minute && minute_of_day < self.end_minute
+        };
+        if !dedans {
             return None;
         }
         Some(if self.end_minute > minute_of_day {
@@ -213,11 +260,12 @@ pub fn decide(
 
     let locale = now.with_timezone(&tz);
     let minute_of_day = (locale.hour() * 60 + locale.minute()) as u16;
+    let jour = locale.weekday();
 
     let plage_active = schedule
         .ranges
         .iter()
-        .find(|plage| plage.contains(minute_of_day));
+        .find(|plage| plage.contains_at(jour, minute_of_day));
 
     match plage_active {
         Some(plage) => {
@@ -438,7 +486,7 @@ pub fn previous_restart_at(schedule: &AutoSchedule, now: DateTime<Utc>) -> Optio
 
 /// Prochaine ouverture, pour l'annoncer aux joueurs.
 ///
-/// Cherche sur 48 h : au-dela, une configuration sans plage exploitable ne
+/// Cherche sur huit jours : au-dela, une configuration sans plage exploitable
 /// donnerait de toute facon jamais de reponse.
 pub fn next_opening(schedule: &AutoSchedule, now: DateTime<Utc>) -> Option<DateTime<Utc>> {
     if !schedule.enabled || schedule.ranges.is_empty() {
@@ -447,13 +495,26 @@ pub fn next_opening(schedule: &AutoSchedule, now: DateTime<Utc>) -> Option<DateT
     let tz = schedule.timezone.parse::<Tz>().ok()?;
     let locale = now.with_timezone(&tz);
 
-    let mut debuts: Vec<u16> = schedule.ranges.iter().map(|r| r.start_minute).collect();
-    debuts.sort_unstable();
+    // HUIT JOURS, ET NON QUARANTE-HUIT HEURES. Depuis que les plages portent
+    // des jours, un serveur ouvert le seul dimanche n'a rien a annoncer avant
+    // six jours. Chercher sur deux jours aurait repondu « aucune ouverture
+    // prevue » le reste de la semaine. Le huitieme tour couvre le cas d'une
+    // plage du jour meme deja passee.
+    for offset in 0..8 {
+        let date = (locale + chrono::Duration::days(offset)).date_naive();
+        let jour = date.weekday();
 
-    for jour in 0..2 {
-        let date = (locale + chrono::Duration::days(jour)).date_naive();
-        for debut in &debuts {
-            let heure = NaiveTime::from_hms_opt((*debut / 60) as u32, (*debut % 60) as u32, 0)?;
+        let mut debuts: Vec<u16> = schedule
+            .ranges
+            .iter()
+            .filter(|plage| plage.applies_on(jour))
+            .map(|plage| plage.start_minute)
+            .collect();
+        debuts.sort_unstable();
+        debuts.dedup();
+
+        for debut in debuts {
+            let heure = NaiveTime::from_hms_opt((debut / 60) as u32, (debut % 60) as u32, 0)?;
             let naive = date.and_time(heure);
             // Heure locale inexistante (passage a l'heure d'ete) : on passe au
             // creneau suivant plutot que d'annoncer une heure qui n'existe pas.
@@ -482,6 +543,7 @@ mod tests {
         TimeRange {
             start_minute: hm(h1, m1),
             end_minute: hm(h2, m2),
+            days: TOUS_LES_JOURS,
         }
     }
 
@@ -570,10 +632,10 @@ mod tests {
         // franchissement, ces plages ne seraient jamais actives.
         let p = plage(22, 0, 2, 0);
         assert!(p.crosses_midnight());
-        assert!(p.contains(hm(23, 30)));
-        assert!(p.contains(hm(1, 0)));
-        assert!(!p.contains(hm(3, 0)));
-        assert!(!p.contains(hm(21, 0)));
+        assert!(p.contains_at(chrono::Weekday::Wed, hm(23, 30)));
+        assert!(p.contains_at(chrono::Weekday::Wed, hm(1, 0)));
+        assert!(!p.contains_at(chrono::Weekday::Wed, hm(3, 0)));
+        assert!(!p.contains_at(chrono::Weekday::Wed, hm(21, 0)));
     }
 
     #[test]
@@ -582,8 +644,8 @@ mod tests {
         // est exclue, sinon un serveur serait « dans deux plages » a la fois.
         let midi = plage(12, 0, 14, 0);
         let apres = plage(14, 0, 16, 0);
-        assert!(!midi.contains(hm(14, 0)));
-        assert!(apres.contains(hm(14, 0)));
+        assert!(!midi.contains_at(chrono::Weekday::Wed, hm(14, 0)));
+        assert!(apres.contains_at(chrono::Weekday::Wed, hm(14, 0)));
     }
 
     #[test]
@@ -1088,5 +1150,111 @@ mod tests {
             decide(&p, true, false, utc(19, 13, 0)),
             ScheduleAction::Restart
         );
+    }
+
+    // ── Plages par jour de la semaine ──────────────────────────────────
+
+    fn plage_les_jours(h1: u16, m1: u16, h2: u16, m2: u16, jours: u8) -> TimeRange {
+        TimeRange {
+            start_minute: hm(h1, m1),
+            end_minute: hm(h2, m2),
+            days: jours,
+        }
+    }
+
+    fn jours(liste: &[chrono::Weekday]) -> u8 {
+        liste.iter().fold(0, |acc, j| acc | bit_du_jour(*j))
+    }
+
+    #[test]
+    fn une_plage_ne_vaut_que_les_jours_coches() {
+        use chrono::Weekday::*;
+        let p = plage_les_jours(19, 0, 23, 0, jours(&[Sat, Sun]));
+
+        assert!(p.contains_at(Sat, hm(20, 0)));
+        assert!(p.contains_at(Sun, hm(20, 0)));
+        assert!(!p.contains_at(Mon, hm(20, 0)));
+        assert!(!p.contains_at(Fri, hm(20, 0)));
+    }
+
+    /// LE CAS QUI COMPTE. « Samedi 22h - 02h » doit rester active dimanche a
+    /// 1h du matin, alors que dimanche n'est PAS coche : la soiree du samedi
+    /// deborde sur le lendemain. Ne regarder que le jour courant couperait le
+    /// serveur a minuit pile, au milieu de la partie.
+    #[test]
+    fn une_soiree_qui_franchit_minuit_deborde_sur_le_lendemain() {
+        use chrono::Weekday::*;
+        let p = plage_les_jours(22, 0, 2, 0, jours(&[Sat]));
+
+        assert!(p.contains_at(Sat, hm(23, 30)), "samedi soir");
+        assert!(p.contains_at(Sun, hm(1, 0)), "dimanche 1h, debordement");
+        assert!(!p.contains_at(Sun, hm(23, 30)), "dimanche soir non coche");
+        assert!(!p.contains_at(Sat, hm(1, 0)), "samedi 1h vient du vendredi");
+        assert!(!p.contains_at(Mon, hm(1, 0)), "lundi 1h ne vient de rien");
+    }
+
+    /// Un dimanche 22h-02h deborde sur le LUNDI : le calcul de la veille doit
+    /// repasser de dimanche a lundi sans sortir de la semaine.
+    #[test]
+    fn le_debordement_passe_de_dimanche_a_lundi() {
+        use chrono::Weekday::*;
+        let p = plage_les_jours(22, 0, 2, 0, jours(&[Sun]));
+
+        assert!(p.contains_at(Sun, hm(23, 0)));
+        assert!(p.contains_at(Mon, hm(1, 0)));
+        assert!(!p.contains_at(Sat, hm(1, 0)));
+    }
+
+    /// Une fiche enregistree avant l'existence des jours n'a pas le champ.
+    /// Elle doit continuer a valoir tous les jours : sans ce defaut, la mise
+    /// a jour rendrait muettes toutes les plages deja configurees.
+    #[test]
+    fn une_ancienne_plage_sans_jours_vaut_toute_la_semaine() {
+        let ancienne: TimeRange =
+            serde_json::from_str(r#"{"start_minute":1140,"end_minute":1440}"#).unwrap();
+
+        assert_eq!(ancienne.days, TOUS_LES_JOURS);
+        for jour in [
+            chrono::Weekday::Mon,
+            chrono::Weekday::Wed,
+            chrono::Weekday::Sun,
+        ] {
+            assert!(ancienne.contains_at(jour, hm(20, 0)), "{jour:?}");
+        }
+    }
+
+    #[test]
+    fn une_plage_sans_aucun_jour_n_ouvre_jamais() {
+        let p = plage_les_jours(19, 0, 23, 0, 0);
+        for jour in [
+            chrono::Weekday::Mon,
+            chrono::Weekday::Sat,
+            chrono::Weekday::Sun,
+        ] {
+            assert!(!p.contains_at(jour, hm(20, 0)), "{jour:?}");
+        }
+    }
+
+    /// La prochaine ouverture doit franchir la semaine : un serveur ouvert le
+    /// seul dimanche n'annoncait plus rien du lundi au vendredi, quand la
+    /// recherche s'arretait a quarante-huit heures.
+    #[test]
+    fn la_prochaine_ouverture_traverse_la_semaine() {
+        let mut h = horaire(vec![plage_les_jours(
+            19,
+            0,
+            23,
+            0,
+            jours(&[chrono::Weekday::Sun]),
+        )]);
+        h.enabled = true;
+
+        // Lundi 4 aout 2025, 10h UTC.
+        let lundi = chrono::TimeZone::with_ymd_and_hms(&Utc, 2025, 8, 4, 10, 0, 0).unwrap();
+        let suivante = next_opening(&h, lundi).expect("ouverture trouvee dans la semaine");
+
+        let locale = suivante.with_timezone(&"Europe/Paris".parse::<Tz>().unwrap());
+        assert_eq!(locale.weekday(), chrono::Weekday::Sun);
+        assert_eq!(locale.hour(), 19);
     }
 }

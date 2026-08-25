@@ -927,7 +927,7 @@ pub async fn save_schedule_ranges(
     Json(dto): Json<SaveScheduleRangesDto>,
 ) -> Result<Json<ScheduleRangesDto>, ApiError> {
     use platform_core::nexus::domain::entities::game::schedule::{
-        ScheduleMode, RESTART_INTERVALS_HOURS,
+        ScheduleMode, RESTART_INTERVALS_HOURS, TOUS_LES_JOURS,
     };
     use platform_core::nexus::domain::errors::DomainError;
     use platform_core::nexus::ports::outbound::game::schedule_repository::ScheduleSettings;
@@ -978,6 +978,14 @@ pub async fn save_schedule_ranges(
     }
 
     for plage in &dto.ranges {
+        // Bits au-dela de dimanche : la charge utile ne vient pas de notre
+        // formulaire. On refuse plutot que de les ignorer en silence, sans
+        // quoi une plage « lundi » pourrait en realite en cacher d'autres.
+        if plage.days > TOUS_LES_JOURS {
+            return Err(
+                DomainError::ValidationError("jours de la semaine invalides".into()).into(),
+            );
+        }
         if plage.start_minute >= 1440 || plage.end_minute >= 1440 {
             return Err(DomainError::ValidationError(
                 "une heure doit tenir dans la journee".into(),
@@ -999,6 +1007,19 @@ pub async fn save_schedule_ranges(
     if mode == ScheduleMode::Ranges && dto.enabled && dto.ranges.is_empty() {
         return Err(DomainError::ValidationError(
             "ajoute au moins une plage avant d'activer les horaires".into(),
+        )
+        .into());
+    }
+    // Toutes les plages sans aucun jour coche : le serveur n'ouvrirait jamais,
+    // alors que l'interface annonce des horaires actifs. Le refus est plus
+    // honnete qu'un serveur muet dont personne ne comprend le silence.
+    if mode == ScheduleMode::Ranges
+        && dto.enabled
+        && !dto.ranges.is_empty()
+        && dto.ranges.iter().all(|plage| plage.days == 0)
+    {
+        return Err(DomainError::ValidationError(
+            "coche au moins un jour de la semaine pour tes plages".into(),
         )
         .into());
     }

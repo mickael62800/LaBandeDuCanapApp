@@ -985,7 +985,7 @@ async fn handle_event(ctx: &Context, api: &ApiClient, payload_json: &str) {
             }
         }
         ev::SERVER_STOPPED => on_stopped(ctx, api, &server_id).await,
-        ev::SERVER_DELETED => on_deleted(ctx, api, &server_id).await,
+        ev::SERVER_DELETED => on_deleted(ctx, api, &server_id, payload_json).await,
         ev::IP_REVEAL => on_ip_reveal(ctx, api, &server_id).await,
         ev::DAILY_PING => on_daily_ping(ctx, api, &server_id).await,
         ev::SERVER_RESTART_WARNING => {
@@ -1625,13 +1625,59 @@ pub(crate) async fn on_stopped(_ctx: &Context, _api: &ApiClient, server_id: &str
 
 // ── Suppression du jeu -> suppression des salons ──
 
-async fn on_deleted(ctx: &Context, api: &ApiClient, server_id: &str) {
-    let Ok(detail) = api.get_game_server(server_id).await else {
-        return;
-    };
+/// Salons et role a nettoyer, tels que l'evenement de suppression les porte.
+///
+/// `None` pour un message ancien, emis avant que l'API n'enrichisse la charge
+/// utile — encore possible pendant un deploiement, le temps que le stream se
+/// vide.
+fn parse_deleted_payload(payload_json: &str) -> Option<(Option<String>, Option<String>, String)> {
+    let env = serde_json::from_str::<serde_json::Value>(payload_json).ok()?;
+    let data = env.get("data")?;
+    let template_id = data.get("template_id")?.as_str()?.to_string();
+    let lire = |cle: &str| data.get(cle).and_then(|v| v.as_str()).map(str::to_string);
+    Some((
+        lire("text_channel_id"),
+        lire("voice_channel_id"),
+        template_id,
+    ))
+}
+
+async fn on_deleted(ctx: &Context, api: &ApiClient, server_id: &str, payload_json: &str) {
+    // LES IDENTIFIANTS VIENNENT DU MESSAGE, PAS D'UNE RELECTURE.
+    //
+    // Cette fonction commencait par redemander le serveur a l'API. Or la fiche
+    // est deja soft-deleted quand l'evenement arrive, et `find_by_id` filtre
+    // `deleted_at IS NULL` : la reponse etait un 404, la fonction sortait a sa
+    // premiere ligne sans un mot, et les salons du jeu supprime restaient en
+    // place pour toujours.
+    let (text_channel_id, voice_channel_id, template_id, guild_id) =
+        match parse_deleted_payload(payload_json) {
+            Some((text, voice, template)) => {
+                let guild = crate::game_portal::parse_portal_event(payload_json).map(|(_, _, g)| g);
+                (text, voice, template, guild)
+            }
+            // Message d'avant l'enrichissement : on tente la relecture, qui ne
+            // reussira que si la suppression n'est pas encore allee au bout.
+            None => match api.get_game_server(server_id).await {
+                Ok(detail) => (
+                    detail.server.text_channel_id,
+                    detail.server.voice_channel_id,
+                    detail.server.template_id,
+                    detail.server.guild_id.parse::<u64>().ok(),
+                ),
+                Err(_) => {
+                    tracing::warn!(
+                        server_id,
+                        "game-portal: suppression sans salons connus, rien a nettoyer"
+                    );
+                    return;
+                }
+            },
+        };
+
     for ch in [
-        parse_channel(detail.server.text_channel_id.as_ref()),
-        parse_channel(detail.server.voice_channel_id.as_ref()),
+        parse_channel(text_channel_id.as_ref()),
+        parse_channel(voice_channel_id.as_ref()),
     ]
     .into_iter()
     .flatten()
@@ -1639,10 +1685,10 @@ async fn on_deleted(ctx: &Context, api: &ApiClient, server_id: &str) {
         let _ = ch.delete(&ctx.http).await;
     }
 
-    if let Ok(guild_num) = detail.server.guild_id.parse::<u64>() {
+    if let Some(guild_num) = guild_id {
         let guild_id = GuildId::new(guild_num);
         let game_name = api
-            .get_game_template(&detail.server.template_id)
+            .get_game_template(&template_id)
             .await
             .map(|t| t.name)
             .unwrap_or_else(|_| "jeu".into());
@@ -2461,5 +2507,80 @@ mod tests {
         let err_res = execute_reveal_ip_logic(&client, "s1", "u2").await;
         assert!(err_res.is_err());
         assert_eq!(err_res.unwrap_err(), format_owner_only_reveal_error());
+    }
+}
+
+/// Suppression d'un jeu : ce que l'evenement doit transporter.
+///
+/// Ces tests verrouillent le contrat entre l'API, qui construit la charge utile
+/// via `payload_serveur_supprime`, et le bot, qui la relit. C'est exactement le
+/// joint qui avait lache : le bot allait rechercher les salons aupres d'une
+/// fiche deja supprimee, recevait un 404, et laissait les salons Discord en
+/// place sans que rien ne le signale.
+#[cfg(test)]
+mod tests_suppression {
+    use super::parse_deleted_payload;
+    use platform_core::nexus::ports::outbound::events::game_events;
+
+    /// Reconstitue l'enveloppe telle que le publieur la met sur le stream.
+    fn enveloppe(data: serde_json::Value) -> String {
+        serde_json::json!({ "event": game_events::SERVER_DELETED, "data": data }).to_string()
+    }
+
+    #[test]
+    fn les_salons_traversent_l_evenement() {
+        let payload = game_events::payload_serveur_supprime(
+            "11111111-1111-1111-1111-111111111111",
+            "123456789012345678",
+            Some("222222222222222222"),
+            Some("333333333333333333"),
+            "44444444-4444-4444-4444-444444444444",
+        );
+
+        let (texte, vocal, template) =
+            parse_deleted_payload(&enveloppe(payload)).expect("charge utile lisible");
+
+        assert_eq!(texte.as_deref(), Some("222222222222222222"));
+        assert_eq!(vocal.as_deref(), Some("333333333333333333"));
+        assert_eq!(template, "44444444-4444-4444-4444-444444444444");
+    }
+
+    /// Un serveur cree sans salons Discord — le bouton « sans salon » existe —
+    /// doit rester lisible : il n'y a rien a supprimer, ce n'est pas une erreur.
+    #[test]
+    fn un_serveur_sans_salons_reste_lisible() {
+        let payload = game_events::payload_serveur_supprime(
+            "11111111-1111-1111-1111-111111111111",
+            "123456789012345678",
+            None,
+            None,
+            "44444444-4444-4444-4444-444444444444",
+        );
+
+        let (texte, vocal, _) =
+            parse_deleted_payload(&enveloppe(payload)).expect("charge utile lisible");
+
+        assert!(texte.is_none());
+        assert!(vocal.is_none());
+    }
+
+    /// Message emis par une version anterieure, encore en vol dans le stream
+    /// pendant un deploiement : il n'a pas les nouveaux champs. Le bot doit le
+    /// reconnaitre comme tel pour retomber sur la relecture, et non l'accepter
+    /// avec des salons vides — ce qui ne supprimerait rien du tout.
+    #[test]
+    fn un_message_d_avant_l_enrichissement_est_refuse() {
+        let ancien = enveloppe(serde_json::json!({
+            "server_id": "11111111-1111-1111-1111-111111111111",
+            "guild_id": "123456789012345678",
+        }));
+
+        assert!(parse_deleted_payload(&ancien).is_none());
+    }
+
+    #[test]
+    fn une_charge_utile_illisible_ne_panique_pas() {
+        assert!(parse_deleted_payload("pas du json").is_none());
+        assert!(parse_deleted_payload("{}").is_none());
     }
 }

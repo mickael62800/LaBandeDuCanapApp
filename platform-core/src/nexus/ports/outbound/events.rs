@@ -32,6 +32,34 @@ pub mod game_events {
     pub const SERVER_RESTART_WARNING: &str = "game_server_restart_warning";
     /// Le redemarrage programme est termine, le serveur est de nouveau la.
     pub const SERVER_RESTARTED: &str = "game_server_restarted";
+
+    /// Charge utile de `SERVER_DELETED`, construite ici pour que publieur et
+    /// consommateur ne puissent pas diverger.
+    ///
+    /// POURQUOI L'EVENEMENT PORTE LES SALONS. Le bot les relisait via l'API.
+    /// Mais la fiche est deja soft-deleted quand l'evenement arrive, et la
+    /// lecture filtre `deleted_at IS NULL` : le bot recevait un 404 et
+    /// renoncait en silence. Les salons Discord d'un jeu supprime survivaient
+    /// donc au jeu. Les identifiants sont lus avant la suppression et voyagent
+    /// avec le message : il n'y a plus rien a relire, donc plus de course.
+    ///
+    /// A ne pas confondre avec l'arret : arreter un serveur CONSERVE ses
+    /// salons, seule la suppression les emporte.
+    pub fn payload_serveur_supprime(
+        server_id: &str,
+        guild_id: &str,
+        text_channel_id: Option<&str>,
+        voice_channel_id: Option<&str>,
+        template_id: &str,
+    ) -> serde_json::Value {
+        serde_json::json!({
+            "server_id": server_id,
+            "guild_id": guild_id,
+            "text_channel_id": text_channel_id,
+            "voice_channel_id": voice_channel_id,
+            "template_id": template_id,
+        })
+    }
 }
 
 /// Coussin Piege.

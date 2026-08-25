@@ -20,7 +20,7 @@ use crate::nexus::adapters::inbound::http::dto::game::servers::{
 };
 use crate::nexus::adapters::inbound::http::handlers::ApiError;
 use crate::nexus::bootstrap::AppState;
-use platform_core::nexus::domain::entities::game::server::CreateGameServerCommand;
+use platform_core::nexus::domain::entities::game::server::{CreateGameServerCommand, GameServer};
 use platform_core::nexus::ports::outbound::events::game_events::{
     IP_REVEAL, SERVER_DELETED, SERVER_SCHEDULED, SERVER_STARTED, SERVER_STOPPED,
 };
@@ -246,6 +246,29 @@ async fn publish_lifecycle(state: &AppState, event: &str, server_id: Uuid, guild
         .await;
 }
 
+/// L'evenement de suppression EMPORTE ce que le bot doit nettoyer.
+///
+/// `on_deleted`, cote nexus-bot, redemandait le serveur a l'API pour lire les
+/// identifiants de ses salons. Mais `find_by_id` filtre `deleted_at IS NULL` :
+/// juste apres la suppression la fiche n'existe plus, le bot recevait un 404 et
+/// abandonnait des sa premiere ligne, sans un mot. Les salons Discord d'un jeu
+/// supprime survivaient donc indefiniment.
+///
+/// Les identifiants sont lus AVANT la suppression et voyagent dans le message.
+/// Le bot n'a plus rien a relire, donc plus rien a rater : la course est
+/// supprimee, pas contournee.
+async fn publish_server_deleted(state: &AppState, server_id: Uuid, server: &GameServer) {
+    let payload =
+        platform_core::nexus::ports::outbound::events::game_events::payload_serveur_supprime(
+            &server_id.to_string(),
+            &server.guild_id,
+            server.text_channel_id.as_deref(),
+            server.voice_channel_id.as_deref(),
+            &server.template_id.to_string(),
+        );
+    state.events.publish(SERVER_DELETED, payload).await;
+}
+
 /// POST /api/games/servers/{server_id}/start
 ///
 /// Démarrage en TÂCHE DE FOND : le pull d'image (jusqu'à ~8 Go) + create + start
@@ -459,7 +482,7 @@ pub async fn delete_server(
     let detail = state.game_servers_uc.get(server_id).await?;
     let actor = acteur(&state, &headers, server_id, q.actor_id.as_deref()).await?;
     state.game_servers_uc.delete(server_id, &actor).await?;
-    publish_lifecycle(&state, SERVER_DELETED, server_id, &detail.server.guild_id).await;
+    publish_server_deleted(&state, server_id, &detail.server).await;
     Ok(StatusCode::NO_CONTENT)
 }
 

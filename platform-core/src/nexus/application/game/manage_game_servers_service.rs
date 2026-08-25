@@ -1068,6 +1068,61 @@ impl ManageGameServersUseCase for ManageGameServersService {
         Ok(())
     }
 
+    async fn update_channel_names(
+        &self,
+        id: Uuid,
+        registration: Option<String>,
+        private: Option<String>,
+        voice: Option<String>,
+        actor_user_id: &str,
+    ) -> Result<(), DomainError> {
+        let server = self
+            .server_repo
+            .find_by_id(id)
+            .await?
+            .ok_or_else(|| DomainError::NotFound(format!("game_server {id} introuvable")))?;
+
+        // UN CHAMP VIDE VEUT DIRE « REVIENS AU MODELE », PAS « SALON SANS NOM ».
+        //
+        // Le formulaire envoie une chaine vide quand l'administrateur efface le
+        // champ. La garder telle quelle enregistrerait un nom vide, que Discord
+        // refuse : le salon ne serait pas renomme et l'echec passerait inapercu.
+        // On la ramene donc a l'absence de choix, seule lecture qui corresponde
+        // au geste.
+        let nettoyer = |valeur: Option<String>| {
+            valeur
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty())
+        };
+        let registration = nettoyer(registration);
+        let private = nettoyer(private);
+        let voice = nettoyer(voice);
+
+        self.server_repo
+            .set_channel_names(
+                id,
+                registration.as_deref(),
+                private.as_deref(),
+                voice.as_deref(),
+            )
+            .await?;
+
+        self.audit(
+            &server.guild_id,
+            Some(id),
+            Some(actor_user_id),
+            GameAuditAction::ConfigUpdate,
+            serde_json::json!({
+                "champ": "noms_de_salons",
+                "inscription": registration,
+                "prive": private,
+                "vocal": voice,
+            }),
+        )
+        .await;
+        Ok(())
+    }
+
     async fn update_config(
         &self,
         id: Uuid,

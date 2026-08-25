@@ -33,6 +33,10 @@ export interface GameServer {
   created_at: string;
   started_at: string | null;
   stopped_at: string | null;
+  /** Noms libres des salons. `null` = suivre le modèle de la guilde. */
+  channel_name_registration: string | null;
+  channel_name_private: string | null;
+  channel_name_voice: string | null;
   text_channel_id: string | null;
   voice_channel_id: string | null;
   ip_reveal_at: string | null;
@@ -431,6 +435,29 @@ export const nexusGamesService = {
       `/api/games/servers/${encodeURIComponent(serverId)}/resources`,
       guildId,
       { memory_mb: memoryMb, cpu_limit: cpuLimit },
+    );
+  },
+
+  /**
+   * PUT /api/games/servers/{id}/channel-names — noms libres des salons.
+   *
+   * Les trois voyagent ensemble : un champ vidé signifie « reviens au modèle
+   * de la guilde », pas « ne change rien ». L'API renomme aussi les salons
+   * déjà créés.
+   */
+  updateChannelNames(
+    guildId: string,
+    serverId: string,
+    noms: {
+      channel_name_registration: string | null;
+      channel_name_private: string | null;
+      channel_name_voice: string | null;
+    },
+  ): Promise<void> {
+    return nexusPut<void>(
+      `/api/games/servers/${encodeURIComponent(serverId)}/channel-names`,
+      guildId,
+      noms,
     );
   },
 

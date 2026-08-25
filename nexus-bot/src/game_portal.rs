@@ -27,7 +27,7 @@ use serenity::all::{
     ButtonStyle, ChannelId, ChannelType, Colour, ComponentInteraction, Context, CreateActionRow,
     CreateButton, CreateChannel, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse,
     CreateInteractionResponseFollowup, CreateInteractionResponseMessage, CreateMessage,
-    EditInteractionResponse, EditMessage, EditRole, GetMessages, GuildId, MessageId,
+    EditChannel, EditInteractionResponse, EditMessage, EditRole, GetMessages, GuildId, MessageId,
     PermissionOverwrite, PermissionOverwriteType, Permissions, RoleId,
 };
 
@@ -171,12 +171,44 @@ fn session_role_name(game_name: &str, server_id: &str) -> String {
     format!("{}_{}", slugify(game_name), session_suffix(server_id))
 }
 
-fn registration_channel_name(game_name: &str) -> String {
-    format!("inscription-{}", slugify(game_name))
-}
+/// Resout les trois noms de salons d'une session.
+///
+/// Le calcul vit dans `platform-core` : il doit donner exactement le meme
+/// resultat a la creation d'une session et lors d'un renommage ulterieur. Deux
+/// implementations auraient fini par diverger, et un salon aurait porte un nom
+/// que plus aucun nettoyage ne reconnaitrait.
+fn noms_des_salons(
+    server: &GameServer,
+    game_name: &str,
+    cfg: &std::collections::HashMap<String, String>,
+) -> (String, String, String) {
+    use platform_core::nexus::domain::entities::game::channel_names as noms;
 
-fn private_text_name(game_name: &str) -> String {
-    format!("salon-{}", slugify(game_name))
+    let modele = |cle: &str| cfg.get(cle).map(String::as_str);
+    let resoudre = |libre: Option<&str>, cle: &str, defaut: &str, genre| {
+        noms::nom_de_salon(libre, modele(cle), defaut, game_name, &server.name, genre)
+    };
+
+    (
+        resoudre(
+            server.channel_name_registration.as_deref(),
+            "channel_name_registration_template",
+            noms::MODELE_INSCRIPTION_PAR_DEFAUT,
+            noms::TypeDeSalon::Ecrit,
+        ),
+        resoudre(
+            server.channel_name_private.as_deref(),
+            "channel_name_private_template",
+            noms::MODELE_PRIVE_PAR_DEFAUT,
+            noms::TypeDeSalon::Ecrit,
+        ),
+        resoudre(
+            server.channel_name_voice.as_deref(),
+            "channel_name_voice_template",
+            noms::MODELE_VOCAL_PAR_DEFAUT,
+            noms::TypeDeSalon::Vocal,
+        ),
+    )
 }
 
 fn legacy_private_text_name(server_id: &str) -> String {
@@ -1032,6 +1064,7 @@ async fn handle_event(ctx: &Context, api: &ApiClient, payload_json: &str) {
         }
         ev::SERVER_STOPPED => on_stopped(ctx, api, &server_id).await,
         ev::SERVER_DELETED => on_deleted(ctx, api, &server_id, payload_json).await,
+        ev::SESSION_CHANNELS_RENAMED => renommer_les_salons(ctx, api, &server_id).await,
         ev::IP_REVEAL => on_ip_reveal(ctx, api, &server_id).await,
         ev::DAILY_PING => on_daily_ping(ctx, api, &server_id).await,
         ev::SERVER_RESTART_WARNING => {
@@ -1511,6 +1544,7 @@ async fn on_started(ctx: &Context, api: &ApiClient, guild_id: GuildId, server_id
         .await
         .unwrap_or_default();
     let category = ensure_session_category(ctx, api, guild_id, &cfg).await;
+    let (nom_inscription, nom_prive, nom_vocal) = noms_des_salons(&server, &game_name, &cfg);
 
     let session_role = match guild_id
         .create_role(
@@ -1533,7 +1567,7 @@ async fn on_started(ctx: &Context, api: &ApiClient, guild_id: GuildId, server_id
     let text_ch = create_channel(
         ctx,
         guild_id,
-        &registration_channel_name(&game_name),
+        &nom_inscription,
         ChannelType::Text,
         category,
         &build_overwrites(guild_id, role_id, ChannelType::Text),
@@ -1545,7 +1579,7 @@ async fn on_started(ctx: &Context, api: &ApiClient, guild_id: GuildId, server_id
     let private_text_ch = create_channel(
         ctx,
         guild_id,
-        &private_text_name(&game_name),
+        &nom_prive,
         ChannelType::Text,
         category,
         &build_overwrites(guild_id, Some(session_role.id), ChannelType::Text),
@@ -1555,7 +1589,7 @@ async fn on_started(ctx: &Context, api: &ApiClient, guild_id: GuildId, server_id
     let voice_ch = create_channel(
         ctx,
         guild_id,
-        &format!("Vocal {}", server.name),
+        &nom_vocal,
         ChannelType::Voice,
         category,
         &build_overwrites(guild_id, Some(session_role.id), ChannelType::Voice),
@@ -1669,6 +1703,84 @@ pub(crate) async fn on_stopped(_ctx: &Context, _api: &ApiClient, server_id: &str
     tracing::info!(server_id, "game-portal: session arretee (salons conserves)");
 }
 
+/// Renomme les salons DEJA CREES d'une session.
+///
+/// Sans cela, changer un modele ou un nom libre n'aurait rien fait aux salons
+/// existants : le nouveau nom ne serait apparu qu'a la session suivante, et
+/// l'administrateur aurait cru le reglage sans effet.
+///
+/// LE SALON PRIVE SE RETROUVE PAR SON SUJET. Son identifiant n'est pas
+/// enregistre — seuls l'inscription et le vocal le sont — et son nom vient
+/// justement de changer : le comparer au modele courant serait circulaire.
+///
+/// Best-effort salon par salon : Discord limite fortement les renommages (deux
+/// par salon et par dix minutes). Un refus sur l'un ne doit pas empecher les
+/// autres, et l'echec est journalise plutot qu'avale.
+async fn renommer_les_salons(ctx: &Context, api: &ApiClient, server_id: &str) {
+    let Ok(detail) = api.get_game_server(server_id).await else {
+        tracing::warn!(
+            server_id,
+            "game-portal: serveur introuvable, renommage abandonne"
+        );
+        return;
+    };
+    let server = detail.server;
+    let (game_name, _) = game_name_and_role(api, &server).await;
+    let cfg = api
+        .get_guild_config(&server.guild_id, MODULE_BOT_NAME)
+        .await
+        .unwrap_or_default();
+
+    let (nom_inscription, nom_prive, nom_vocal) = noms_des_salons(&server, &game_name, &cfg);
+
+    let mut cibles: Vec<(ChannelId, String)> = Vec::new();
+    if let Some(ch) = parse_channel(server.text_channel_id.as_ref()) {
+        cibles.push((ch, nom_inscription));
+    }
+    if let Some(ch) = parse_channel(server.voice_channel_id.as_ref()) {
+        cibles.push((ch, nom_vocal));
+    }
+    if let Ok(guild_num) = server.guild_id.parse::<u64>() {
+        let sujet = private_text_topic(server_id);
+        if let Ok(salons) = GuildId::new(guild_num).channels(&ctx.http).await {
+            if let Some(id) = salons
+                .iter()
+                .find(|(_, c)| c.topic.as_deref() == Some(sujet.as_str()))
+                .map(|(id, _)| *id)
+            {
+                cibles.push((id, nom_prive));
+            }
+        }
+    }
+
+    for (salon, nom) in cibles {
+        // Ne rien demander quand le nom ne bouge pas : chaque appel consomme le
+        // quota de renommage de Discord, et l'epuiser bloquerait les salons qui
+        // ont vraiment change.
+        let inchange = salons_deja_nomme(ctx, salon, &nom).await;
+        if inchange {
+            continue;
+        }
+        if let Err(e) = salon
+            .edit(&ctx.http, EditChannel::new().name(nom.clone()))
+            .await
+        {
+            tracing::warn!(error = %e, %salon, nom, "game-portal: renommage refuse");
+        }
+    }
+    tracing::info!(server_id, "game-portal: salons renommes");
+}
+
+/// Le salon porte-t-il deja ce nom ? Une lecture ratee repond « non » : mieux
+/// vaut une tentative de renommage inutile qu'un renommage jamais fait.
+async fn salons_deja_nomme(ctx: &Context, salon: ChannelId, nom: &str) -> bool {
+    salon
+        .to_channel(&ctx)
+        .await
+        .ok()
+        .and_then(|c| c.guild().map(|g| g.name == nom))
+        .unwrap_or(false)
+}
 // ── Suppression du jeu -> suppression des salons ──
 
 /// Salons et role a nettoyer, tels que l'evenement de suppression les porte.
@@ -1738,13 +1850,18 @@ async fn on_deleted(ctx: &Context, api: &ApiClient, server_id: &str, payload_jso
             .await
             .map(|t| t.name)
             .unwrap_or_else(|_| "jeu".into());
-        let private_name = private_text_name(&game_name);
+        // REPERAGE PAR LE SUJET, ET NON PAR LE NOM.
+        //
+        // La condition exigeait que le nom du salon corresponde AUSSI au
+        // modele courant. Depuis que les noms sont personnalisables, un salon
+        // cree sous un ancien modele — ou renomme a la main — ne
+        // correspondait plus, et survivait a la suppression du jeu. Le sujet,
+        // lui, porte `session:{id}` depuis la creation et ne change jamais.
         let legacy_private_name = legacy_private_text_name(server_id);
         let private_topic = private_text_topic(server_id);
         if let Ok(channels) = guild_id.channels(&ctx.http).await {
             for channel in channels.values().filter(|c| {
-                (c.name == private_name && c.topic.as_deref() == Some(private_topic.as_str()))
-                    || c.name == legacy_private_name
+                c.topic.as_deref() == Some(private_topic.as_str()) || c.name == legacy_private_name
             }) {
                 let _ = channel.delete(&ctx.http).await;
             }
@@ -1789,13 +1906,13 @@ async fn on_ip_reveal(ctx: &Context, api: &ApiClient, server_id: &str) {
     // Publie l'adresse uniquement dans le salon textuel prive des inscrits.
     if let Ok(guild_num) = server.guild_id.parse::<u64>() {
         let guild_id = GuildId::new(guild_num);
-        let private_name = private_text_name(&game_name);
+        // Meme raison qu'a la suppression : le sujet identifie le salon, le
+        // nom ne le peut plus depuis qu'il est personnalisable.
         let legacy_private_name = legacy_private_text_name(server_id);
         let private_topic = private_text_topic(server_id);
         if let Ok(channels) = guild_id.channels(&ctx.http).await {
             if let Some(private_ch) = channels.values().find(|c| {
-                (c.name == private_name && c.topic.as_deref() == Some(private_topic.as_str()))
-                    || c.name == legacy_private_name
+                c.topic.as_deref() == Some(private_topic.as_str()) || c.name == legacy_private_name
             }) {
                 let card = build_private_reveal_card(
                     &game_name,
@@ -1901,16 +2018,16 @@ fn schedule_opening_soon(
                 .unwrap_or(std::time::Duration::from_secs(0));
             tokio::time::sleep(sleep_dur).await;
 
-            let private_name = private_text_name(&game_name);
+            // Le sujet suffit et reste vrai quel que soit le nom : voir la
+            // meme correction dans `on_deleted`.
             let channels = guild_id.channels(&ctx.http).await.unwrap_or_default();
             let mut private_ch_id = None;
             for (id, ch) in channels {
-                if ch.name == private_name
-                    && ch
-                        .topic
-                        .as_deref()
-                        .unwrap_or("")
-                        .contains(&format!("session:{server_id}"))
+                if ch
+                    .topic
+                    .as_deref()
+                    .unwrap_or("")
+                    .contains(&format!("session:{server_id}"))
                 {
                     private_ch_id = Some(id);
                     break;
@@ -1988,13 +2105,34 @@ mod tests {
         assert!(!inscription.iter().any(|l| l.contains("secret")));
     }
 
+    /// Sans rien de configure, les salons gardent les noms historiques : c'est
+    /// ce que voient les guildes qui n'ont touche a aucun modele.
     #[test]
     fn session_channels_use_the_game_name() {
+        use platform_core::nexus::domain::entities::game::channel_names as noms;
+
         assert_eq!(
-            registration_channel_name("7 Days to Die"),
+            noms::nom_de_salon(
+                None,
+                None,
+                noms::MODELE_INSCRIPTION_PAR_DEFAUT,
+                "7 Days to Die",
+                "Le Canap",
+                noms::TypeDeSalon::Ecrit
+            ),
             "inscription-7-days-to-die"
         );
-        assert_eq!(private_text_name("7 Days to Die"), "salon-7-days-to-die");
+        assert_eq!(
+            noms::nom_de_salon(
+                None,
+                None,
+                noms::MODELE_PRIVE_PAR_DEFAUT,
+                "7 Days to Die",
+                "Le Canap",
+                noms::TypeDeSalon::Ecrit
+            ),
+            "salon-7-days-to-die"
+        );
     }
 
     #[test]
@@ -2206,11 +2344,8 @@ mod tests {
             session_role_name("Valheim RPG", "srv-123"),
             "valheim-rpg_srv123"
         );
-        assert_eq!(
-            registration_channel_name("Valheim RPG"),
-            "inscription-valheim-rpg"
-        );
-        assert_eq!(private_text_name("Valheim RPG"), "salon-valheim-rpg");
+        assert_eq!(slugify("Valheim RPG"), "valheim-rpg");
+
         assert_eq!(legacy_private_text_name("srv-123"), "joueurs-srv123");
         assert_eq!(
             private_text_topic("srv-123"),
@@ -2298,6 +2433,9 @@ mod tests {
             ip_reveal_at: None,
             ip_revealed: true,
             display_state: Some("open".into()),
+            channel_name_registration: None,
+            channel_name_private: None,
+            channel_name_voice: None,
             text_channel_id: None,
             voice_channel_id: None,
             last_player_count: 0,
@@ -2444,6 +2582,9 @@ mod tests {
             ip_reveal_at: None,
             ip_revealed: true,
             display_state: Some("open".into()),
+            channel_name_registration: None,
+            channel_name_private: None,
+            channel_name_voice: None,
             text_channel_id: None,
             voice_channel_id: None,
             last_player_count: 0,

@@ -675,3 +675,29 @@
   color: rgba(255, 255, 255, 0.45);
   margin-left: 0.3rem;
 }
+
+/* Noms des salons : trois champs empilés, larges — un nom de salon peut être
+   long, et le tronquer à l'écran obligerait à deviner ce qu'on a saisi. */
+.sd-channel-names {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  margin: var(--space-sm) 0;
+}
+
+.sd-channel-names label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+.sd-channel-names input {
+  background: var(--bg-card);
+  border: 1px solid var(--bg-hover);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  padding: 8px 10px;
+  max-width: 32rem;
+}

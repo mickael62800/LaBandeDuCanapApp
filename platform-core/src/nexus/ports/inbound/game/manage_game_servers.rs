@@ -118,6 +118,21 @@ pub trait ManageGameServersUseCase: Send + Sync {
         actor_user_id: &str,
     ) -> Result<(), DomainError>;
 
+    /// Noms libres des salons Discord de ce serveur.
+    ///
+    /// `None` efface le nom libre et rend la main au modele de la guilde ;
+    /// c'est une valeur voulue, pas une absence de changement. Les trois sont
+    /// donc toujours transmis ensemble, et l'appelant envoie l'etat complet du
+    /// formulaire.
+    async fn update_channel_names(
+        &self,
+        id: Uuid,
+        registration: Option<String>,
+        private: Option<String>,
+        voice: Option<String>,
+        actor_user_id: &str,
+    ) -> Result<(), DomainError>;
+
     // ── Console RCON ──────────────────────────────────────────────────
     /// Execute une commande RCON (Owner uniquement). Retourne la reponse brute.
     async fn execute_rcon(

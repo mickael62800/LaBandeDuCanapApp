@@ -584,10 +584,73 @@ async function saveResources() {
   }
 }
 
+// ── Noms des salons Discord ──
+//
+// Trois niveaux : le nom libre saisi ici, sinon le modèle de la guilde, sinon
+// le nom historique. Un champ vidé remonte donc d'un cran — il ne crée pas un
+// salon sans nom, ce que Discord refuserait.
+//
+// Les aperçus servent de `placeholder` : ils montrent ce que le serveur
+// s'appellera si l'on ne saisit rien, ce qu'un champ vide seul ne dit pas.
+
+const nomInscription = ref("");
+const nomPrive = ref("");
+const nomVocal = ref("");
+const savingNoms = ref(false);
+
+const nomsChanges = computed(
+  () =>
+    !!server.value
+    && (nomInscription.value !== (server.value.channel_name_registration ?? "")
+      || nomPrive.value !== (server.value.channel_name_private ?? "")
+      || nomVocal.value !== (server.value.channel_name_voice ?? "")),
+);
+
+const apercuInscription = computed(() => `inscription-${slugAperçu.value}`);
+const apercuPrive = computed(() => `salon-${slugAperçu.value}`);
+const apercuVocal = computed(() => `Vocal ${server.value?.name ?? ""}`);
+
+/** Slug approximatif du nom du jeu, pour l'aperçu seul : l'API fait foi. */
+const slugAperçu = computed(() =>
+  (template.value?.name ?? "jeu")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, ""),
+);
+
+function resetNoms() {
+  if (!server.value) return;
+  nomInscription.value = server.value.channel_name_registration ?? "";
+  nomPrive.value = server.value.channel_name_private ?? "";
+  nomVocal.value = server.value.channel_name_voice ?? "";
+}
+
+async function saveNomsDeSalons() {
+  if (!selectedGuildId.value || !server.value || savingNoms.value) return;
+  savingNoms.value = true;
+  try {
+    await nexusGamesService.updateChannelNames(selectedGuildId.value, server.value.id, {
+      channel_name_registration: nomInscription.value.trim() || null,
+      channel_name_private: nomPrive.value.trim() || null,
+      channel_name_voice: nomVocal.value.trim() || null,
+    });
+    success("Noms enregistrés. Les salons existants sont renommés.");
+    await load();
+    resetNoms();
+  } catch (e) {
+    showError(e instanceof Error ? e.message : "Enregistrement impossible");
+  } finally {
+    savingNoms.value = false;
+  }
+}
+
 watch(
   [selectedGuildId, serverId],
   () => {
-    void load().then(resetResourceInputs);
+    void load().then(() => {
+      resetResourceInputs();
+      resetNoms();
+    });
     // Les seuils vivent cote serveur : on les relit avec la fiche.
     void loadAlerts();
     void loadSchedule();
@@ -1007,6 +1070,47 @@ function fmtDuration(secs: number | null): string {
             size="xs"
             @click="resetResourceInputs"
           >
+            Annuler
+          </AppButton>
+        </div>
+      </section>
+
+      <!-- Noms des salons Discord -->
+      <section v-if="onglet === 'apercu' && server" class="sd-pane sd-resources">
+        <h3>Salons Discord</h3>
+        <p class="sd-note">
+          Laisse un champ vide pour suivre le modèle de la guilde, défini dans la
+          configuration du module Game Portal. Les salons déjà créés sont renommés
+          à l'enregistrement.
+        </p>
+        <div class="sd-channel-names">
+          <label>
+            Salon d'inscription
+            <input v-model="nomInscription" type="text" :placeholder="apercuInscription" />
+          </label>
+          <label>
+            Salon privé des inscrits
+            <input v-model="nomPrive" type="text" :placeholder="apercuPrive" />
+          </label>
+          <label>
+            Salon vocal
+            <input v-model="nomVocal" type="text" :placeholder="apercuVocal" />
+          </label>
+        </div>
+        <small class="sd-note">
+          Discord met les salons écrits en minuscules et remplace les espaces par
+          des tirets. Le vocal accepte majuscules, espaces et emoji.
+        </small>
+        <div class="sd-thresholds-row">
+          <AppButton
+            variant="secondary"
+            size="sm"
+            :disabled="!nomsChanges || savingNoms"
+            @click="saveNomsDeSalons"
+          >
+            {{ savingNoms ? "Enregistrement…" : "Enregistrer les noms" }}
+          </AppButton>
+          <AppButton v-if="nomsChanges" variant="secondary" size="xs" @click="resetNoms">
             Annuler
           </AppButton>
         </div>

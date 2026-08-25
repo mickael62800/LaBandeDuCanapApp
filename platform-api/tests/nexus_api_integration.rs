@@ -366,6 +366,16 @@ impl ManageGameServersUseCase for DummyManageGameServers {
     ) -> Result<(), DomainError> {
         Ok(())
     }
+    async fn update_channel_names(
+        &self,
+        _: uuid::Uuid,
+        _: Option<String>,
+        _: Option<String>,
+        _: Option<String>,
+        _: &str,
+    ) -> Result<(), DomainError> {
+        Ok(())
+    }
     async fn update_resources(
         &self,
         _: Uuid,
@@ -481,6 +491,15 @@ impl GameServerRepository for DummyGameServerRepo {
         _: &[Uuid],
     ) -> Result<std::collections::HashMap<Uuid, TemplateUsage>, DomainError> {
         Ok(std::collections::HashMap::new())
+    }
+    async fn set_channel_names(
+        &self,
+        _: uuid::Uuid,
+        _: Option<&str>,
+        _: Option<&str>,
+        _: Option<&str>,
+    ) -> Result<(), DomainError> {
+        Ok(())
     }
     async fn set_session_channels(
         &self,

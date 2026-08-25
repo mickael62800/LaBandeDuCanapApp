@@ -250,6 +250,15 @@ pub struct GameServer {
     /// Absent d'une reponse ancienne : on retombe alors sur le statut brut.
     #[serde(default)]
     pub display_state: Option<String>,
+    /// Noms libres des salons, propres a ce serveur. Absents d'une reponse
+    /// ancienne : le defaut est alors « rien de choisi », donc le modele de la
+    /// guilde s'applique — exactement ce qu'on veut.
+    #[serde(default)]
+    pub channel_name_registration: Option<String>,
+    #[serde(default)]
+    pub channel_name_private: Option<String>,
+    #[serde(default)]
+    pub channel_name_voice: Option<String>,
     pub text_channel_id: Option<String>,
     pub voice_channel_id: Option<String>,
     /// Derniers joueurs vus par la console du jeu. Zero quand cette console

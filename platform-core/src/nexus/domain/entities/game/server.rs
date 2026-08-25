@@ -126,6 +126,15 @@ pub struct GameServer {
     pub text_channel_id: Option<String>,
     /// Salon vocal prive cree pour cette session.
     pub voice_channel_id: Option<String>,
+    // ── Noms personnalises des salons ──
+    /// Nom libre du salon d'inscription. `None` = suivre le modele de la
+    /// guilde. La distinction entre `None` et chaine vide porte tout le repli :
+    /// une chaine vide voudrait dire « ce salon s'appelle rien du tout ».
+    pub channel_name_registration: Option<String>,
+    /// Nom libre du salon prive des inscrits.
+    pub channel_name_private: Option<String>,
+    /// Nom libre du salon vocal.
+    pub channel_name_voice: Option<String>,
     /// Date de revelation de l'IP (None = pas de revelation programmee).
     pub ip_reveal_at: Option<DateTime<Utc>>,
     /// True une fois l'IP revelee dans le salon.

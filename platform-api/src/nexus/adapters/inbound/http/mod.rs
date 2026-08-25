@@ -435,6 +435,10 @@ pub fn build_router_with(state: AppState, config: HttpConfig) -> Router {
             put(handlers::game::servers::update_resources),
         )
         .route(
+            "/api/games/servers/{server_id}/channel-names",
+            put(handlers::game::servers::update_channel_names),
+        )
+        .route(
             "/api/games/servers/{server_id}/schedule-ranges",
             get(handlers::game::servers::get_schedule_ranges)
                 .put(handlers::game::servers::save_schedule_ranges),

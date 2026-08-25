@@ -33,6 +33,14 @@ pub mod game_events {
     /// Le redemarrage programme est termine, le serveur est de nouveau la.
     pub const SERVER_RESTARTED: &str = "game_server_restarted";
 
+    /// Les noms des salons d'une session ont change : le bot doit renommer les
+    /// salons DEJA CREES.
+    ///
+    /// Sans cet evenement, un changement de nom n'aurait pris effet qu'a la
+    /// prochaine session — les salons existants auraient garde l'ancien nom
+    /// sans que rien ne l'explique.
+    pub const SESSION_CHANNELS_RENAMED: &str = "game_session_channels_renamed";
+
     /// Charge utile de `SERVER_DELETED`, construite ici pour que publieur et
     /// consommateur ne puissent pas diverger.
     ///

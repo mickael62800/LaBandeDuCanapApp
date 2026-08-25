@@ -50,6 +50,9 @@ struct ServerRow {
     restart_attempts: i32,
     last_restart_at: Option<DateTime<Utc>>,
     text_channel_id: Option<String>,
+    channel_name_registration: Option<String>,
+    channel_name_private: Option<String>,
+    channel_name_voice: Option<String>,
     voice_channel_id: Option<String>,
     ip_reveal_at: Option<DateTime<Utc>>,
     closes_at: Option<DateTime<Utc>>,
@@ -93,6 +96,9 @@ impl TryFrom<ServerRow> for GameServer {
             stopped_at: r.stopped_at,
             restart_attempts: r.restart_attempts,
             last_restart_at: r.last_restart_at,
+            channel_name_registration: r.channel_name_registration,
+            channel_name_private: r.channel_name_private,
+            channel_name_voice: r.channel_name_voice,
             text_channel_id: r.text_channel_id,
             voice_channel_id: r.voice_channel_id,
             ip_reveal_at: r.ip_reveal_at,
@@ -112,7 +118,9 @@ const SELECT_COLS: &str = "id, guild_id, template_id, name, status, container_id
      owner_user_id, idle_shutdown_days, last_active_at, last_player_count, \
      last_error, created_at, updated_at, started_at, stopped_at, \
      restart_attempts, last_restart_at, \
-     text_channel_id, voice_channel_id, ip_reveal_at, ip_revealed, closes_at, config_dirty,      rcon_latency_ms, net_rx_bytes, net_tx_bytes, net_sampled_at";
+     text_channel_id, voice_channel_id, ip_reveal_at, ip_revealed, closes_at, config_dirty, \
+     rcon_latency_ms, net_rx_bytes, net_tx_bytes, net_sampled_at, \
+     channel_name_registration, channel_name_private, channel_name_voice";
 
 /// Une tranche d'historique telle que la base la resume.
 #[derive(FromRow)]
@@ -494,6 +502,28 @@ impl GameServerRepository for PgGameServerRepository {
         .await
         .map_err(pg_ctx("set_session_channels"))?;
         Ok(res.rows_affected() == 1)
+    }
+
+    async fn set_channel_names(
+        &self,
+        id: Uuid,
+        registration: Option<&str>,
+        private: Option<&str>,
+        voice: Option<&str>,
+    ) -> Result<(), DomainError> {
+        sqlx::query(
+            "UPDATE game_servers SET channel_name_registration = $2, \
+             channel_name_private = $3, channel_name_voice = $4, updated_at = NOW() \
+             WHERE id = $1 AND deleted_at IS NULL",
+        )
+        .bind(id)
+        .bind(registration)
+        .bind(private)
+        .bind(voice)
+        .execute(&self.pool)
+        .await
+        .map_err(pg_ctx("set_channel_names"))?;
+        Ok(())
     }
 
     async fn mark_ip_revealed(&self, id: Uuid) -> Result<(), DomainError> {

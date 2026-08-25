@@ -5,6 +5,7 @@
 
 pub mod alert;
 pub mod audit;
+pub mod channel_names;
 pub mod command;
 pub mod config;
 pub mod player_session;

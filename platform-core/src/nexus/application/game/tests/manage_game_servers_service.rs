@@ -107,6 +107,9 @@ fn sample_server(host_port: Option<u16>) -> GameServer {
         updated_at: Utc::now(),
         started_at: None,
         stopped_at: None,
+        channel_name_registration: None,
+        channel_name_private: None,
+        channel_name_voice: None,
         text_channel_id: None,
         voice_channel_id: None,
         ip_reveal_at: None,
@@ -392,6 +395,15 @@ impl GameServerRepository for DummyServerRepo {
         _: &[Uuid],
     ) -> Result<std::collections::HashMap<Uuid, TemplateUsage>, DomainError> {
         Ok(std::collections::HashMap::new())
+    }
+    async fn set_channel_names(
+        &self,
+        _: uuid::Uuid,
+        _: Option<&str>,
+        _: Option<&str>,
+        _: Option<&str>,
+    ) -> Result<(), DomainError> {
+        Ok(())
     }
     async fn set_session_channels(
         &self,
@@ -852,6 +864,15 @@ impl GameServerRepository for QuotaExceededServerRepo {
     ) -> Result<std::collections::HashMap<Uuid, TemplateUsage>, DomainError> {
         Ok(std::collections::HashMap::new())
     }
+    async fn set_channel_names(
+        &self,
+        _: uuid::Uuid,
+        _: Option<&str>,
+        _: Option<&str>,
+        _: Option<&str>,
+    ) -> Result<(), DomainError> {
+        Ok(())
+    }
     async fn set_session_channels(
         &self,
         _: Uuid,
@@ -1250,6 +1271,15 @@ async fn test_manage_game_servers_lifecycle_methods() {
             _: &[Uuid],
         ) -> Result<HashMap<Uuid, TemplateUsage>, DomainError> {
             Ok(HashMap::new())
+        }
+        async fn set_channel_names(
+            &self,
+            _: uuid::Uuid,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&str>,
+        ) -> Result<(), DomainError> {
+            Ok(())
         }
         async fn set_session_channels(
             &self,

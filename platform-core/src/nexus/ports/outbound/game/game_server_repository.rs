@@ -106,6 +106,17 @@ pub trait GameServerRepository: Send + Sync {
         voice_channel_id: Option<&str>,
     ) -> Result<bool, DomainError>;
 
+    /// Enregistre les noms libres des salons. Les trois sont ecrits ensemble :
+    /// `None` signifie « pas de nom libre », et doit donc effacer la valeur
+    /// precedente plutot que la laisser en place.
+    async fn set_channel_names(
+        &self,
+        id: uuid::Uuid,
+        registration: Option<&str>,
+        private: Option<&str>,
+        voice: Option<&str>,
+    ) -> Result<(), DomainError>;
+
     /// Marque l'IP comme revelee (le job de revelation l'a publiee).
     async fn mark_ip_revealed(&self, id: Uuid) -> Result<(), DomainError>;
 

@@ -165,6 +165,15 @@ mod tests {
         ) -> Result<HashMap<Uuid, TemplateUsage>, DomainError> {
             Ok(HashMap::new())
         }
+        async fn set_channel_names(
+            &self,
+            _: uuid::Uuid,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&str>,
+        ) -> Result<(), DomainError> {
+            Ok(())
+        }
         async fn set_session_channels(
             &self,
             _: Uuid,
@@ -553,6 +562,15 @@ mod tests {
             ) -> Result<HashMap<Uuid, TemplateUsage>, DomainError> {
                 Ok(HashMap::new())
             }
+            async fn set_channel_names(
+                &self,
+                _: uuid::Uuid,
+                _: Option<&str>,
+                _: Option<&str>,
+                _: Option<&str>,
+            ) -> Result<(), DomainError> {
+                Ok(())
+            }
             async fn set_session_channels(
                 &self,
                 _: Uuid,
@@ -844,6 +862,15 @@ mod tests {
                 );
                 Ok(m)
             }
+            async fn set_channel_names(
+                &self,
+                _: uuid::Uuid,
+                _: Option<&str>,
+                _: Option<&str>,
+                _: Option<&str>,
+            ) -> Result<(), DomainError> {
+                Ok(())
+            }
             async fn set_session_channels(
                 &self,
                 _: Uuid,
@@ -1015,6 +1042,15 @@ mod tests {
             ) -> Result<HashMap<Uuid, TemplateUsage>, DomainError> {
                 Ok(HashMap::new())
             }
+            async fn set_channel_names(
+                &self,
+                _: uuid::Uuid,
+                _: Option<&str>,
+                _: Option<&str>,
+                _: Option<&str>,
+            ) -> Result<(), DomainError> {
+                Ok(())
+            }
             async fn set_session_channels(
                 &self,
                 _: Uuid,
@@ -1128,6 +1164,9 @@ mod tests {
             updated_at: chrono::Utc::now(),
             started_at: None,
             stopped_at: None,
+            channel_name_registration: None,
+            channel_name_private: None,
+            channel_name_voice: None,
             text_channel_id: None,
             voice_channel_id: None,
             ip_reveal_at: None,
@@ -1239,6 +1278,15 @@ mod tests {
                 _: &[Uuid],
             ) -> Result<HashMap<Uuid, TemplateUsage>, DomainError> {
                 Ok(HashMap::new())
+            }
+            async fn set_channel_names(
+                &self,
+                _: uuid::Uuid,
+                _: Option<&str>,
+                _: Option<&str>,
+                _: Option<&str>,
+            ) -> Result<(), DomainError> {
+                Ok(())
             }
             async fn set_session_channels(
                 &self,
@@ -1353,6 +1401,9 @@ mod tests {
             updated_at: chrono::Utc::now(),
             started_at: None,
             stopped_at: None,
+            channel_name_registration: None,
+            channel_name_private: None,
+            channel_name_voice: None,
             text_channel_id: None,
             voice_channel_id: None,
             ip_reveal_at: None,
@@ -1449,6 +1500,15 @@ mod tests {
                 _: &[Uuid],
             ) -> Result<HashMap<Uuid, TemplateUsage>, DomainError> {
                 Ok(HashMap::new())
+            }
+            async fn set_channel_names(
+                &self,
+                _: uuid::Uuid,
+                _: Option<&str>,
+                _: Option<&str>,
+                _: Option<&str>,
+            ) -> Result<(), DomainError> {
+                Ok(())
             }
             async fn set_session_channels(
                 &self,
@@ -1658,6 +1718,15 @@ mod tests {
                 _: &[Uuid],
             ) -> Result<HashMap<Uuid, TemplateUsage>, DomainError> {
                 Ok(HashMap::new())
+            }
+            async fn set_channel_names(
+                &self,
+                _: uuid::Uuid,
+                _: Option<&str>,
+                _: Option<&str>,
+                _: Option<&str>,
+            ) -> Result<(), DomainError> {
+                Ok(())
             }
             async fn set_session_channels(
                 &self,
@@ -1893,6 +1962,15 @@ mod tests {
                 _: &[Uuid],
             ) -> Result<HashMap<Uuid, TemplateUsage>, DomainError> {
                 Ok(HashMap::new())
+            }
+            async fn set_channel_names(
+                &self,
+                _: uuid::Uuid,
+                _: Option<&str>,
+                _: Option<&str>,
+                _: Option<&str>,
+            ) -> Result<(), DomainError> {
+                Ok(())
             }
             async fn set_session_channels(
                 &self,
@@ -2143,6 +2221,15 @@ mod tests {
             ) -> Result<HashMap<Uuid, TemplateUsage>, DomainError> {
                 Ok(HashMap::new())
             }
+            async fn set_channel_names(
+                &self,
+                _: uuid::Uuid,
+                _: Option<&str>,
+                _: Option<&str>,
+                _: Option<&str>,
+            ) -> Result<(), DomainError> {
+                Ok(())
+            }
             async fn set_session_channels(
                 &self,
                 _: Uuid,
@@ -2344,6 +2431,15 @@ mod tests {
                 _: &[Uuid],
             ) -> Result<HashMap<Uuid, TemplateUsage>, DomainError> {
                 Ok(HashMap::new())
+            }
+            async fn set_channel_names(
+                &self,
+                _: uuid::Uuid,
+                _: Option<&str>,
+                _: Option<&str>,
+                _: Option<&str>,
+            ) -> Result<(), DomainError> {
+                Ok(())
             }
             async fn set_session_channels(
                 &self,
@@ -2575,6 +2671,15 @@ mod tests {
             ) -> Result<HashMap<Uuid, TemplateUsage>, DomainError> {
                 Ok(HashMap::new())
             }
+            async fn set_channel_names(
+                &self,
+                _: uuid::Uuid,
+                _: Option<&str>,
+                _: Option<&str>,
+                _: Option<&str>,
+            ) -> Result<(), DomainError> {
+                Ok(())
+            }
             async fn set_session_channels(
                 &self,
                 _: Uuid,
@@ -2713,6 +2818,9 @@ mod tests {
             updated_at: chrono::Utc::now(),
             started_at: None,
             stopped_at: None,
+            channel_name_registration: None,
+            channel_name_private: None,
+            channel_name_voice: None,
             text_channel_id: None,
             voice_channel_id: None,
             ip_reveal_at: None,

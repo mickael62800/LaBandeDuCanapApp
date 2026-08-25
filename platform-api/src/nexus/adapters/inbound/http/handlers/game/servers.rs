@@ -23,6 +23,7 @@ use crate::nexus::bootstrap::AppState;
 use platform_core::nexus::domain::entities::game::server::{CreateGameServerCommand, GameServer};
 use platform_core::nexus::ports::outbound::events::game_events::{
     IP_REVEAL, SERVER_DELETED, SERVER_SCHEDULED, SERVER_STARTED, SERVER_STOPPED,
+    SESSION_CHANNELS_RENAMED,
 };
 
 /// POST /api/games/{guild_id}/servers
@@ -686,6 +687,52 @@ pub async fn update_resources(
         .game_servers_uc
         .update_resources(server_id, dto.memory_mb, dto.cpu_limit, &actor)
         .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Noms libres des salons de ce serveur. Les trois voyagent ensemble : un
+/// champ absent vaut « pas de nom libre », pas « ne change rien ».
+#[derive(Debug, serde::Deserialize)]
+pub struct UpdateChannelNamesDto {
+    #[serde(default)]
+    pub channel_name_registration: Option<String>,
+    #[serde(default)]
+    pub channel_name_private: Option<String>,
+    #[serde(default)]
+    pub channel_name_voice: Option<String>,
+}
+
+/// PUT /api/games/servers/{server_id}/channel-names
+pub async fn update_channel_names(
+    State(state): State<AppState>,
+    Path(server_id): Path<Uuid>,
+    headers: HeaderMap,
+    Query(q): Query<ActorQuery>,
+    Json(dto): Json<UpdateChannelNamesDto>,
+) -> Result<StatusCode, ApiError> {
+    let actor = acteur(&state, &headers, server_id, q.actor_id.as_deref()).await?;
+    state
+        .game_servers_uc
+        .update_channel_names(
+            server_id,
+            dto.channel_name_registration,
+            dto.channel_name_private,
+            dto.channel_name_voice,
+            &actor,
+        )
+        .await?;
+
+    // Le bot renomme les salons DEJA CREES. Publie apres l'ecriture, jamais
+    // avant : il relit la fiche pour calculer les noms, et la lirait sinon dans
+    // son etat precedent.
+    let detail = state.game_servers_uc.get(server_id).await?;
+    publish_lifecycle(
+        &state,
+        SESSION_CHANNELS_RENAMED,
+        server_id,
+        &detail.server.guild_id,
+    )
+    .await;
     Ok(StatusCode::NO_CONTENT)
 }
 

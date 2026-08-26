@@ -287,3 +287,19 @@ pub async fn job_game_schedules(
     })
     .await
 }
+
+/// POST /api/games/internal/jobs/session-announcements
+pub async fn job_session_announcements(
+    State(state): State<AppState>,
+) -> Result<Json<JobReport>, ApiError> {
+    locked(&state, "session-announcements", || async {
+        let rapport = crate::nexus::jobs::session_announcements::run(&state).await?;
+        Ok(JobReport {
+            job: "session_announcements",
+            processed: rapport.relancees,
+            errors: rapport.errors,
+            details: serde_json::json!({ "relancees": rapport.relancees }),
+        })
+    })
+    .await
+}

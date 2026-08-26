@@ -41,6 +41,10 @@ pub mod game_events {
     /// sans que rien ne l'explique.
     pub const SESSION_CHANNELS_RENAMED: &str = "game_session_channels_renamed";
 
+    /// Une session attend toujours son annonce : le bot doit reprendre la
+    /// sequence. Emis par la reprise periodique, jamais a l'ouverture.
+    pub const SESSION_ANNOUNCEMENT_RETRY: &str = "game_session_announcement_retry";
+
     /// Charge utile de `SERVER_DELETED`, construite ici pour que publieur et
     /// consommateur ne puissent pas diverger.
     ///

@@ -107,6 +107,8 @@ fn sample_server(host_port: Option<u16>) -> GameServer {
         updated_at: Utc::now(),
         started_at: None,
         stopped_at: None,
+        announcement_posted_at: None,
+        announcement_attempts: 0,
         channel_name_registration: None,
         channel_name_private: None,
         channel_name_voice: None,
@@ -395,6 +397,15 @@ impl GameServerRepository for DummyServerRepo {
         _: &[Uuid],
     ) -> Result<std::collections::HashMap<Uuid, TemplateUsage>, DomainError> {
         Ok(std::collections::HashMap::new())
+    }
+    async fn compter_tentative_annonce(&self, _: uuid::Uuid) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn marquer_annonce_publiee(&self, _: uuid::Uuid) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn annonces_en_attente(&self, _: i32) -> Result<Vec<GameServer>, DomainError> {
+        Ok(vec![])
     }
     async fn set_channel_names(
         &self,
@@ -864,6 +875,15 @@ impl GameServerRepository for QuotaExceededServerRepo {
     ) -> Result<std::collections::HashMap<Uuid, TemplateUsage>, DomainError> {
         Ok(std::collections::HashMap::new())
     }
+    async fn compter_tentative_annonce(&self, _: uuid::Uuid) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn marquer_annonce_publiee(&self, _: uuid::Uuid) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn annonces_en_attente(&self, _: i32) -> Result<Vec<GameServer>, DomainError> {
+        Ok(vec![])
+    }
     async fn set_channel_names(
         &self,
         _: uuid::Uuid,
@@ -1271,6 +1291,15 @@ async fn test_manage_game_servers_lifecycle_methods() {
             _: &[Uuid],
         ) -> Result<HashMap<Uuid, TemplateUsage>, DomainError> {
             Ok(HashMap::new())
+        }
+        async fn compter_tentative_annonce(&self, _: uuid::Uuid) -> Result<(), DomainError> {
+            Ok(())
+        }
+        async fn marquer_annonce_publiee(&self, _: uuid::Uuid) -> Result<(), DomainError> {
+            Ok(())
+        }
+        async fn annonces_en_attente(&self, _: i32) -> Result<Vec<GameServer>, DomainError> {
+            Ok(vec![])
         }
         async fn set_channel_names(
             &self,

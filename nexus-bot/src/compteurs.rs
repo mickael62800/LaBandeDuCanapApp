@@ -425,6 +425,7 @@ mod tests {
             ip_reveal_at: None,
             ip_revealed: false,
             display_state: None,
+            announcement_posted_at: None,
             channel_name_registration: None,
             channel_name_private: None,
             channel_name_voice: None,

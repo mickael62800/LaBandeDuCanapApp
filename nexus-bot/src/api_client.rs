@@ -250,9 +250,10 @@ pub struct GameServer {
     /// Absent d'une reponse ancienne : on retombe alors sur le statut brut.
     #[serde(default)]
     pub display_state: Option<String>,
-    /// Noms libres des salons, propres a ce serveur. Absents d'une reponse
-    /// ancienne : le defaut est alors « rien de choisi », donc le modele de la
-    /// guilde s'applique — exactement ce qu'on veut.
+    /// Instant de publication de l'annonce Atrium. `None` = pas encore
+    /// publiee : le bot doit la demander avant de poser le panneau.
+    #[serde(default)]
+    pub announcement_posted_at: Option<String>,
     #[serde(default)]
     pub channel_name_registration: Option<String>,
     #[serde(default)]

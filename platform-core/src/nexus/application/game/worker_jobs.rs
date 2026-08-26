@@ -165,6 +165,15 @@ mod tests {
         ) -> Result<HashMap<Uuid, TemplateUsage>, DomainError> {
             Ok(HashMap::new())
         }
+        async fn compter_tentative_annonce(&self, _: uuid::Uuid) -> Result<(), DomainError> {
+            Ok(())
+        }
+        async fn marquer_annonce_publiee(&self, _: uuid::Uuid) -> Result<(), DomainError> {
+            Ok(())
+        }
+        async fn annonces_en_attente(&self, _: i32) -> Result<Vec<GameServer>, DomainError> {
+            Ok(vec![])
+        }
         async fn set_channel_names(
             &self,
             _: uuid::Uuid,
@@ -562,6 +571,15 @@ mod tests {
             ) -> Result<HashMap<Uuid, TemplateUsage>, DomainError> {
                 Ok(HashMap::new())
             }
+            async fn compter_tentative_annonce(&self, _: uuid::Uuid) -> Result<(), DomainError> {
+                Ok(())
+            }
+            async fn marquer_annonce_publiee(&self, _: uuid::Uuid) -> Result<(), DomainError> {
+                Ok(())
+            }
+            async fn annonces_en_attente(&self, _: i32) -> Result<Vec<GameServer>, DomainError> {
+                Ok(vec![])
+            }
             async fn set_channel_names(
                 &self,
                 _: uuid::Uuid,
@@ -862,6 +880,15 @@ mod tests {
                 );
                 Ok(m)
             }
+            async fn compter_tentative_annonce(&self, _: uuid::Uuid) -> Result<(), DomainError> {
+                Ok(())
+            }
+            async fn marquer_annonce_publiee(&self, _: uuid::Uuid) -> Result<(), DomainError> {
+                Ok(())
+            }
+            async fn annonces_en_attente(&self, _: i32) -> Result<Vec<GameServer>, DomainError> {
+                Ok(vec![])
+            }
             async fn set_channel_names(
                 &self,
                 _: uuid::Uuid,
@@ -1042,6 +1069,15 @@ mod tests {
             ) -> Result<HashMap<Uuid, TemplateUsage>, DomainError> {
                 Ok(HashMap::new())
             }
+            async fn compter_tentative_annonce(&self, _: uuid::Uuid) -> Result<(), DomainError> {
+                Ok(())
+            }
+            async fn marquer_annonce_publiee(&self, _: uuid::Uuid) -> Result<(), DomainError> {
+                Ok(())
+            }
+            async fn annonces_en_attente(&self, _: i32) -> Result<Vec<GameServer>, DomainError> {
+                Ok(vec![])
+            }
             async fn set_channel_names(
                 &self,
                 _: uuid::Uuid,
@@ -1164,6 +1200,8 @@ mod tests {
             updated_at: chrono::Utc::now(),
             started_at: None,
             stopped_at: None,
+            announcement_posted_at: None,
+            announcement_attempts: 0,
             channel_name_registration: None,
             channel_name_private: None,
             channel_name_voice: None,
@@ -1278,6 +1316,15 @@ mod tests {
                 _: &[Uuid],
             ) -> Result<HashMap<Uuid, TemplateUsage>, DomainError> {
                 Ok(HashMap::new())
+            }
+            async fn compter_tentative_annonce(&self, _: uuid::Uuid) -> Result<(), DomainError> {
+                Ok(())
+            }
+            async fn marquer_annonce_publiee(&self, _: uuid::Uuid) -> Result<(), DomainError> {
+                Ok(())
+            }
+            async fn annonces_en_attente(&self, _: i32) -> Result<Vec<GameServer>, DomainError> {
+                Ok(vec![])
             }
             async fn set_channel_names(
                 &self,
@@ -1401,6 +1448,8 @@ mod tests {
             updated_at: chrono::Utc::now(),
             started_at: None,
             stopped_at: None,
+            announcement_posted_at: None,
+            announcement_attempts: 0,
             channel_name_registration: None,
             channel_name_private: None,
             channel_name_voice: None,
@@ -1500,6 +1549,15 @@ mod tests {
                 _: &[Uuid],
             ) -> Result<HashMap<Uuid, TemplateUsage>, DomainError> {
                 Ok(HashMap::new())
+            }
+            async fn compter_tentative_annonce(&self, _: uuid::Uuid) -> Result<(), DomainError> {
+                Ok(())
+            }
+            async fn marquer_annonce_publiee(&self, _: uuid::Uuid) -> Result<(), DomainError> {
+                Ok(())
+            }
+            async fn annonces_en_attente(&self, _: i32) -> Result<Vec<GameServer>, DomainError> {
+                Ok(vec![])
             }
             async fn set_channel_names(
                 &self,
@@ -1718,6 +1776,15 @@ mod tests {
                 _: &[Uuid],
             ) -> Result<HashMap<Uuid, TemplateUsage>, DomainError> {
                 Ok(HashMap::new())
+            }
+            async fn compter_tentative_annonce(&self, _: uuid::Uuid) -> Result<(), DomainError> {
+                Ok(())
+            }
+            async fn marquer_annonce_publiee(&self, _: uuid::Uuid) -> Result<(), DomainError> {
+                Ok(())
+            }
+            async fn annonces_en_attente(&self, _: i32) -> Result<Vec<GameServer>, DomainError> {
+                Ok(vec![])
             }
             async fn set_channel_names(
                 &self,
@@ -1962,6 +2029,15 @@ mod tests {
                 _: &[Uuid],
             ) -> Result<HashMap<Uuid, TemplateUsage>, DomainError> {
                 Ok(HashMap::new())
+            }
+            async fn compter_tentative_annonce(&self, _: uuid::Uuid) -> Result<(), DomainError> {
+                Ok(())
+            }
+            async fn marquer_annonce_publiee(&self, _: uuid::Uuid) -> Result<(), DomainError> {
+                Ok(())
+            }
+            async fn annonces_en_attente(&self, _: i32) -> Result<Vec<GameServer>, DomainError> {
+                Ok(vec![])
             }
             async fn set_channel_names(
                 &self,
@@ -2221,6 +2297,15 @@ mod tests {
             ) -> Result<HashMap<Uuid, TemplateUsage>, DomainError> {
                 Ok(HashMap::new())
             }
+            async fn compter_tentative_annonce(&self, _: uuid::Uuid) -> Result<(), DomainError> {
+                Ok(())
+            }
+            async fn marquer_annonce_publiee(&self, _: uuid::Uuid) -> Result<(), DomainError> {
+                Ok(())
+            }
+            async fn annonces_en_attente(&self, _: i32) -> Result<Vec<GameServer>, DomainError> {
+                Ok(vec![])
+            }
             async fn set_channel_names(
                 &self,
                 _: uuid::Uuid,
@@ -2431,6 +2516,15 @@ mod tests {
                 _: &[Uuid],
             ) -> Result<HashMap<Uuid, TemplateUsage>, DomainError> {
                 Ok(HashMap::new())
+            }
+            async fn compter_tentative_annonce(&self, _: uuid::Uuid) -> Result<(), DomainError> {
+                Ok(())
+            }
+            async fn marquer_annonce_publiee(&self, _: uuid::Uuid) -> Result<(), DomainError> {
+                Ok(())
+            }
+            async fn annonces_en_attente(&self, _: i32) -> Result<Vec<GameServer>, DomainError> {
+                Ok(vec![])
             }
             async fn set_channel_names(
                 &self,
@@ -2671,6 +2765,15 @@ mod tests {
             ) -> Result<HashMap<Uuid, TemplateUsage>, DomainError> {
                 Ok(HashMap::new())
             }
+            async fn compter_tentative_annonce(&self, _: uuid::Uuid) -> Result<(), DomainError> {
+                Ok(())
+            }
+            async fn marquer_annonce_publiee(&self, _: uuid::Uuid) -> Result<(), DomainError> {
+                Ok(())
+            }
+            async fn annonces_en_attente(&self, _: i32) -> Result<Vec<GameServer>, DomainError> {
+                Ok(vec![])
+            }
             async fn set_channel_names(
                 &self,
                 _: uuid::Uuid,
@@ -2818,6 +2921,8 @@ mod tests {
             updated_at: chrono::Utc::now(),
             started_at: None,
             stopped_at: None,
+            announcement_posted_at: None,
+            announcement_attempts: 0,
             channel_name_registration: None,
             channel_name_private: None,
             channel_name_voice: None,

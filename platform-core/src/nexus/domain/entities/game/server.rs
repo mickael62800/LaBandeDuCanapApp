@@ -135,6 +135,11 @@ pub struct GameServer {
     pub channel_name_private: Option<String>,
     /// Nom libre du salon vocal.
     pub channel_name_voice: Option<String>,
+    // ── Annonce d'ouverture (Atrium) ──
+    /// Instant ou l'annonce a ete publiee. `None` = la reprise repassera.
+    pub announcement_posted_at: Option<DateTime<Utc>>,
+    /// Tentatives de redaction deja faites, pour borner la reprise.
+    pub announcement_attempts: i32,
     /// Date de revelation de l'IP (None = pas de revelation programmee).
     pub ip_reveal_at: Option<DateTime<Utc>>,
     /// True une fois l'IP revelee dans le salon.

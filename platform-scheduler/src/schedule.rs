@@ -93,6 +93,7 @@ mod tests {
         "health-check",
         "auto-start",
         "game-schedules",
+        "session-announcements",
         "game-alerts",
         "reconcile",
         "image-cleanup",

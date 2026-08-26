@@ -439,6 +439,14 @@ pub fn build_router_with(state: AppState, config: HttpConfig) -> Router {
             put(handlers::game::servers::update_channel_names),
         )
         .route(
+            "/api/games/servers/{server_id}/announcement",
+            get(handlers::game::servers::get_session_announcement),
+        )
+        .route(
+            "/api/games/servers/{server_id}/announcement/posted",
+            post(handlers::game::servers::mark_session_announcement_posted),
+        )
+        .route(
             "/api/games/servers/{server_id}/schedule-ranges",
             get(handlers::game::servers::get_schedule_ranges)
                 .put(handlers::game::servers::save_schedule_ranges),
@@ -556,6 +564,10 @@ pub fn build_router_with(state: AppState, config: HttpConfig) -> Router {
         .route(
             "/api/games/internal/jobs/game-schedules",
             post(handlers::game::jobs::job_game_schedules),
+        )
+        .route(
+            "/api/games/internal/jobs/session-announcements",
+            post(handlers::game::jobs::job_session_announcements),
         )
         // Les routes de cycle de vie des conteneurs rejoignent le groupe
         // protege : elles heritent du Bearer et du verrou mono-serveur, et

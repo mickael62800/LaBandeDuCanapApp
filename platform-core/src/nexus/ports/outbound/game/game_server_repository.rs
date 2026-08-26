@@ -117,6 +117,25 @@ pub trait GameServerRepository: Send + Sync {
         voice: Option<&str>,
     ) -> Result<(), DomainError>;
 
+    /// Compte une tentative de redaction d'annonce.
+    ///
+    /// Appelee AVANT l'appel au redacteur, pas apres : comptee apres, une panne
+    /// entre l'appel et l'ecriture ne laisserait aucune trace et le plafond de
+    /// reprise ne serait jamais atteint.
+    async fn compter_tentative_annonce(&self, id: uuid::Uuid) -> Result<(), DomainError>;
+
+    /// L'annonce a ete publiee : la session ne doit plus etre reprise.
+    async fn marquer_annonce_publiee(&self, id: uuid::Uuid) -> Result<(), DomainError>;
+
+    /// Sessions dont l'annonce reste a publier.
+    ///
+    /// Un salon existe (donc la session est ouverte), aucune annonce n'a ete
+    /// publiee, et le plafond de tentatives n'est pas atteint.
+    async fn annonces_en_attente(
+        &self,
+        tentatives_max: i32,
+    ) -> Result<Vec<GameServer>, DomainError>;
+
     /// Marque l'IP comme revelee (le job de revelation l'a publiee).
     async fn mark_ip_revealed(&self, id: Uuid) -> Result<(), DomainError>;
 

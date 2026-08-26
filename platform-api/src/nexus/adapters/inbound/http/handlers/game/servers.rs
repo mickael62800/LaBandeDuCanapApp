@@ -21,6 +21,7 @@ use crate::nexus::adapters::inbound::http::dto::game::servers::{
 use crate::nexus::adapters::inbound::http::handlers::ApiError;
 use crate::nexus::bootstrap::AppState;
 use platform_core::nexus::domain::entities::game::server::{CreateGameServerCommand, GameServer};
+use platform_core::nexus::domain::errors::DomainError;
 use platform_core::nexus::ports::outbound::events::game_events::{
     IP_REVEAL, SERVER_DELETED, SERVER_SCHEDULED, SERVER_STARTED, SERVER_STOPPED,
     SESSION_CHANNELS_RENAMED,
@@ -733,6 +734,68 @@ pub async fn update_channel_names(
         &detail.server.guild_id,
     )
     .await;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+// ── Annonce d'ouverture ──
+
+#[derive(Debug, serde::Serialize)]
+pub struct SessionAnnouncementDto {
+    pub content: String,
+}
+
+/// GET /api/games/servers/{server_id}/announcement
+///
+/// Le bot demande le texte, le publie, puis marque. Il ne le compose pas :
+/// seule l'API sait a quel domaine confier la plume.
+///
+/// 503 SIGNIFIE « RETENTE PLUS TARD », et le bot doit alors s'abstenir de
+/// publier le panneau d'inscription. 422 signifie l'inverse : la demande ne
+/// passera jamais, inutile d'y revenir.
+pub async fn get_session_announcement(
+    State(state): State<AppState>,
+    Path(server_id): Path<Uuid>,
+) -> Result<Json<SessionAnnouncementDto>, ApiError> {
+    use platform_core::nexus::ports::inbound::game::session_announcement::SessionAnnouncementError as E;
+
+    match state.session_announcement_uc.rediger(server_id).await {
+        Ok(content) => Ok(Json(SessionAnnouncementDto { content })),
+        Err(E::Introuvable(id)) => {
+            Err(DomainError::NotFound(format!("game_server {id} introuvable")).into())
+        }
+        Err(erreur @ (E::RienAAnnoncer | E::AbandonApresPlafond)) => {
+            Err(DomainError::ValidationError(erreur.to_string()).into())
+        }
+        Err(E::Redaction(redaction)) => {
+            use platform_core::nexus::ports::outbound::game::announcement_gateway::AnnouncementError;
+            match redaction {
+                AnnouncementError::Indisponible => Err(DomainError::Infrastructure(
+                    "Atrium ne peut pas rediger l'annonce".into(),
+                )
+                .into()),
+                AnnouncementError::Refusee(detail) => {
+                    Err(DomainError::ValidationError(detail).into())
+                }
+            }
+        }
+        Err(E::Interne(detail)) => Err(DomainError::Internal(detail).into()),
+    }
+}
+
+/// POST /api/games/servers/{server_id}/announcement/posted
+///
+/// Marque l'annonce comme publiee. Appelee par le bot DES QUE l'annonce est
+/// partie, avant le panneau : un panneau rate se rejoue sans dommage, une
+/// annonce publiee deux fois se voit.
+pub async fn mark_session_announcement_posted(
+    State(state): State<AppState>,
+    Path(server_id): Path<Uuid>,
+) -> Result<StatusCode, ApiError> {
+    state
+        .session_announcement_uc
+        .marquer_publiee(server_id)
+        .await
+        .map_err(|e| ApiError(DomainError::Internal(e.to_string())))?;
     Ok(StatusCode::NO_CONTENT)
 }
 

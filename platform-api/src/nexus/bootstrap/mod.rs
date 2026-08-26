@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use crate::nexus::adapters::outbound::atrium::AtriumAnnouncementGateway;
 use platform_core::nexus::application::coussin_bet_service::CoussinBetService;
 use platform_core::nexus::application::coussin_insurance_service::CoussinInsuranceService;
 use platform_core::nexus::application::coussin_inventory_service::CoussinInventoryService;
@@ -10,6 +11,7 @@ use platform_core::nexus::application::coussin_service::CoussinService;
 use platform_core::nexus::application::coussin_steal_service::CoussinStealService;
 use platform_core::nexus::application::game::manage_game_servers_service::ManageGameServersService;
 use platform_core::nexus::application::game::manage_templates_service::ManageGameTemplatesService;
+use platform_core::nexus::application::game::session_announcement::SessionAnnouncementService;
 use platform_core::nexus::application::grand_salon_service::GrandSalonService;
 use platform_core::nexus::application::play_wheel_service::PlayWheelService;
 use platform_core::nexus::application::wallet_service::WalletService;
@@ -22,6 +24,7 @@ use platform_core::nexus::ports::inbound::coussin_profile::CoussinProfileUseCase
 use platform_core::nexus::ports::inbound::coussin_steal::CoussinStealUseCase;
 use platform_core::nexus::ports::inbound::game::manage_game_servers::ManageGameServersUseCase;
 use platform_core::nexus::ports::inbound::game::manage_game_templates::ManageGameTemplatesUseCase;
+use platform_core::nexus::ports::inbound::game::session_announcement::SessionAnnouncementUseCase;
 use platform_core::nexus::ports::inbound::get_wallet::GetWalletUseCase;
 use platform_core::nexus::ports::inbound::play_wheel::PlayWheelUseCase;
 use platform_core::nexus::ports::inbound::transfer_coins::TransferCoinsUseCase;
@@ -113,6 +116,12 @@ pub struct AppState {
     >,
     // ── Game Portal ──
     pub game_servers_uc: Arc<dyn ManageGameServersUseCase>,
+    /// Redaction de l'annonce d'ouverture, confiee a Atrium.
+    ///
+    /// L'annonce PRECEDE le panneau d'inscription : quand Atrium ne peut pas
+    /// ecrire, rien n'est publie et la reprise retente.
+    pub session_announcement_uc:
+        Arc<dyn platform_core::nexus::ports::inbound::game::session_announcement::SessionAnnouncementUseCase>,
     pub game_templates_uc: Arc<dyn ManageGameTemplatesUseCase>,
     /// Adapters exposes pour les endpoints internes /jobs/* (worker) et
     /// quelques handlers qui accedent directement aux repos.
@@ -372,13 +381,43 @@ pub async fn build_state() -> Result<AppState, Box<dyn std::error::Error>> {
     let game_servers_uc: Arc<dyn ManageGameServersUseCase> = Arc::new(ManageGameServersService {
         server_repo: game_server_repo.clone(),
         template_repo: game_template_repo.clone(),
-        config_repo: game_config_repo,
+        config_repo: game_config_repo.clone(),
         audit_repo: game_audit_repo.clone(),
         container_runtime: container_runtime.clone(),
         rcon_client: rcon_client.clone(),
         port_allocator: port_allocator.clone(),
         bot_config: bot_config_repo.clone(),
     });
+
+    // ── Annonce d'ouverture : Nexus fournit les faits, Atrium la plume ──
+    //
+    // La configuration Atrium est lue ici parce que les deux domaines vivent
+    // dans le meme processus et partagent son environnement. Si elle manque,
+    // l'annonce sera systematiquement indisponible : la reprise retentera et
+    // le plafond finira par prevenir, plutot que d'ouvrir les sessions sur un
+    // silence inexplique.
+    let session_announcement_uc: Arc<dyn SessionAnnouncementUseCase> = {
+        let atrium_config = crate::atrium::AppConfig::from_env();
+        if let Err(erreur) = &atrium_config {
+            tracing::error!(
+                %erreur,
+                "configuration Atrium absente : les annonces de session resteront indisponibles"
+            );
+        }
+        let atrium_config = atrium_config.unwrap_or_else(|_| crate::atrium::AppConfig::dummy());
+        let atrium_pool = crate::atrium::connect_pool(&atrium_config).ok();
+
+        Arc::new(SessionAnnouncementService {
+            server_repo: game_server_repo.clone(),
+            template_repo: game_template_repo.clone(),
+            config_repo: game_config_repo.clone(),
+            schedule_repo: game_schedule_repo.clone(),
+            gateway: Arc::new(AtriumAnnouncementGateway::new(
+                crate::atrium::game_announcement_use_case(&atrium_config),
+                atrium_pool,
+            )),
+        })
+    };
     let game_templates_uc: Arc<dyn ManageGameTemplatesUseCase> = Arc::new(
         ManageGameTemplatesService::new(game_template_repo.clone(), bot_config_repo.clone()),
     );
@@ -443,6 +482,7 @@ pub async fn build_state() -> Result<AppState, Box<dyn std::error::Error>> {
         achievements_uc,
         game_servers_uc,
         game_templates_uc,
+        session_announcement_uc,
         game_server_repo,
         game_template_repo,
         game_template_settings_repo,

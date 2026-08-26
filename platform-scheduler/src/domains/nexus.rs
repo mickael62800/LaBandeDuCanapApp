@@ -65,6 +65,15 @@ pub fn start(config: DomainConfig) {
         // et l'annonce « redemarrage dans 1 minute » ne veut plus rien dire si
         // elle part avec deux minutes de retard.
         ("game-schedules", env("GAME_SCHEDULES_INTERVAL_SECS", 60)),
+        // Reprise des annonces d'ouverture qu'Atrium n'a pas pu rediger.
+        //
+        // Cinq minutes, pas une : chaque passage consomme un quota d'IA, et
+        // une panne se resorbe rarement en soixante secondes. Douze tentatives
+        // a cette cadence couvrent une heure d'indisponibilite.
+        (
+            "session-announcements",
+            env("SESSION_ANNOUNCEMENTS_INTERVAL_SECS", 300),
+        ),
     ] {
         let client = config.client.clone();
         crate::schedule::spawn_interval(job_name(job), interval, move || {
@@ -115,6 +124,7 @@ fn job_name(job: &str) -> &'static str {
         "coussin-expire-steals" => "nexus.coussin-expire-steals",
         "game-alerts" => "nexus.game-alerts",
         "game-schedules" => "nexus.game-schedules",
+        "session-announcements" => "nexus.session-announcements",
         _ => "nexus.unknown",
     }
 }

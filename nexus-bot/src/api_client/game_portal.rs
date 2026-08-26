@@ -57,6 +57,55 @@ impl ApiClient {
         Err(format!("erreur nexus-api ({status})"))
     }
 
+    /// GET /api/games/servers/{id}/announcement — texte redige par Atrium.
+    ///
+    /// `Ok(None)` veut dire « retente plus tard » : Atrium n'a rien pu ecrire.
+    /// `Err` veut dire « ne retente pas », la demande ne passera jamais. Le bot
+    /// s'abstient de publier le panneau dans les deux cas, mais seul le premier
+    /// merite une reprise.
+    pub async fn annonce_de_session(&self, server_id: &str) -> Result<Option<String>, String> {
+        #[derive(serde::Deserialize)]
+        struct Reponse {
+            content: String,
+        }
+
+        let url = format!(
+            "{}/api/games/servers/{}/announcement",
+            self.base_url,
+            encode_segment(server_id)
+        );
+        let mut req = self.http.get(&url);
+        if let Some(key) = &self.api_key {
+            req = req.bearer_auth(key);
+        }
+        let resp = req
+            .send()
+            .await
+            .map_err(|e| format!("nexus-api injoignable: {e}"))?;
+        let status = resp.status();
+        if status.is_success() {
+            return resp
+                .json::<Reponse>()
+                .await
+                .map(|r| Some(r.content))
+                .map_err(|e| format!("reponse nexus-api invalide: {e}"));
+        }
+        if status == reqwest::StatusCode::SERVICE_UNAVAILABLE {
+            return Ok(None);
+        }
+        Err(format!("erreur nexus-api ({status})"))
+    }
+
+    /// POST /api/games/servers/{id}/announcement/posted
+    pub async fn marquer_annonce_publiee(&self, server_id: &str) -> Result<(), String> {
+        let url = format!(
+            "{}/api/games/servers/{}/announcement/posted",
+            self.base_url,
+            encode_segment(server_id)
+        );
+        self.send_no_content(self.http.post(&url)).await
+    }
+
     /// GET /api/games/templates/{template_id}.
     pub async fn get_game_template(&self, template_id: &str) -> Result<GameTemplate, String> {
         let url = format!(

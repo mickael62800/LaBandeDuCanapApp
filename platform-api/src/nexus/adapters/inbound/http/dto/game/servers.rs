@@ -119,6 +119,7 @@ pub struct GameServerDto {
     pub started_at: Option<DateTime<Utc>>,
     pub stopped_at: Option<DateTime<Utc>>,
     // Session Discord (evenement de serveur).
+    pub announcement_posted_at: Option<String>,
     pub channel_name_registration: Option<String>,
     pub channel_name_private: Option<String>,
     pub channel_name_voice: Option<String>,
@@ -161,6 +162,7 @@ impl From<GameServer> for GameServerDto {
             created_at: s.created_at,
             started_at: s.started_at,
             stopped_at: s.stopped_at,
+            announcement_posted_at: s.announcement_posted_at.map(|d| d.to_rfc3339()),
             channel_name_registration: s.channel_name_registration,
             channel_name_private: s.channel_name_private,
             channel_name_voice: s.channel_name_voice,

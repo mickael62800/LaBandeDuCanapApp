@@ -416,6 +416,37 @@ impl ManageGameServersUseCase for DummyManageGameServers {
     }
 }
 
+/// Redaction d'annonce doublee : ces essais couvrent le routage HTTP, pas la
+/// plume. Une annonce toujours indisponible suffit, et evite d'appeler une IA
+/// depuis un test.
+struct DummySessionAnnouncement;
+
+#[async_trait::async_trait]
+impl platform_core::nexus::ports::inbound::game::session_announcement::SessionAnnouncementUseCase
+    for DummySessionAnnouncement
+{
+    async fn rediger(
+        &self,
+        _: uuid::Uuid,
+    ) -> Result<
+        String,
+        platform_core::nexus::ports::inbound::game::session_announcement::SessionAnnouncementError,
+    > {
+        Err(
+            platform_core::nexus::ports::inbound::game::session_announcement::SessionAnnouncementError::RienAAnnoncer,
+        )
+    }
+
+    async fn marquer_publiee(
+        &self,
+        _: uuid::Uuid,
+    ) -> Result<
+        (),
+        platform_core::nexus::ports::inbound::game::session_announcement::SessionAnnouncementError,
+    > {
+        Ok(())
+    }
+}
 struct DummyManageGameTemplates;
 #[async_trait]
 impl ManageGameTemplatesUseCase for DummyManageGameTemplates {
@@ -491,6 +522,15 @@ impl GameServerRepository for DummyGameServerRepo {
         _: &[Uuid],
     ) -> Result<std::collections::HashMap<Uuid, TemplateUsage>, DomainError> {
         Ok(std::collections::HashMap::new())
+    }
+    async fn compter_tentative_annonce(&self, _: uuid::Uuid) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn marquer_annonce_publiee(&self, _: uuid::Uuid) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn annonces_en_attente(&self, _: i32) -> Result<Vec<GameServer>, DomainError> {
+        Ok(vec![])
     }
     async fn set_channel_names(
         &self,
@@ -1146,6 +1186,7 @@ fn create_test_app_state(api_key: impl Into<String>) -> AppState {
         ),
         game_servers_uc: Arc::new(DummyManageGameServers),
         game_templates_uc: Arc::new(DummyManageGameTemplates),
+        session_announcement_uc: Arc::new(DummySessionAnnouncement),
         game_server_repo: Arc::new(DummyGameServerRepo),
         game_template_repo: Arc::new(DummyGameTemplateRepo),
         game_template_settings_repo: Arc::new(DummyGameTemplateSettingsRepo),

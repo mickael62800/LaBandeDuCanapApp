@@ -1065,6 +1065,9 @@ async fn handle_event(ctx: &Context, api: &ApiClient, payload_json: &str) {
         ev::SERVER_STOPPED => on_stopped(ctx, api, &server_id).await,
         ev::SERVER_DELETED => on_deleted(ctx, api, &server_id, payload_json).await,
         ev::SESSION_CHANNELS_RENAMED => renommer_les_salons(ctx, api, &server_id).await,
+        // Reprise : la sequence est la meme qu a l ouverture, et le garde
+        // « deja annoncee » la rend sans effet sur une session deja servie.
+        ev::SESSION_ANNOUNCEMENT_RETRY => publier_annonce_puis_panneau(ctx, api, &server_id).await,
         ev::IP_REVEAL => on_ip_reveal(ctx, api, &server_id).await,
         ev::DAILY_PING => on_daily_ping(ctx, api, &server_id).await,
         ev::SERVER_RESTART_WARNING => {
@@ -1531,13 +1534,6 @@ async fn on_started(ctx: &Context, api: &ApiClient, guild_id: GuildId, server_id
     }
 
     let (game_name, role_id) = game_name_and_role(api, &server).await;
-    let cover_url = api
-        .get_game_template(&server.template_id)
-        .await
-        .ok()
-        .and_then(|template| {
-            public_cover_url_for_status(template.cover_image_url.as_deref(), etat_affiche(&server))
-        });
 
     let cfg = api
         .get_guild_config(&server.guild_id, MODULE_BOT_NAME)
@@ -1657,6 +1653,86 @@ async fn on_started(ctx: &Context, api: &ApiClient, guild_id: GuildId, server_id
         }
     }
 
+    publier_annonce_puis_panneau(ctx, api, server_id).await;
+}
+
+/// Publie l'annonce d'Atrium, PUIS le panneau d'inscription.
+///
+/// L'ORDRE EST LA REGLE, ET L'ANNONCE EST UN PREALABLE. Quand Atrium ne peut
+/// rien ecrire, on ne publie RIEN — ni annonce, ni panneau — et la reprise
+/// repassera. C'est un choix assume : personne ne s'inscrit tant que la panne
+/// dure, mais la soiree ne s'ouvre jamais sur un message que personne n'a
+/// voulu.
+///
+/// UNE SEULE IMPLEMENTATION pour l'ouverture et pour la reprise. Deux copies
+/// auraient fini par diverger, et la reprise aurait publie un panneau
+/// legerement different de celui de l'ouverture.
+///
+/// Le marquage a lieu DES QUE L'ANNONCE EST PARTIE, avant le panneau : un
+/// panneau rate se rejoue sans dommage, une annonce publiee deux fois se voit.
+pub(crate) async fn publier_annonce_puis_panneau(ctx: &Context, api: &ApiClient, server_id: &str) {
+    let Ok(detail) = api.get_game_server(server_id).await else {
+        return;
+    };
+    let server = detail.server;
+
+    // Deja annoncee : la reprise ne doit pas repasser dessus.
+    if server.announcement_posted_at.is_some() {
+        return;
+    }
+    let Some(text_ch) = parse_channel(server.text_channel_id.as_ref()) else {
+        return;
+    };
+
+    let annonce = match api.annonce_de_session(server_id).await {
+        Ok(Some(texte)) => texte,
+        Ok(None) => {
+            tracing::warn!(
+                server_id,
+                "game-portal: Atrium indisponible, panneau differe (la reprise repassera)"
+            );
+            return;
+        }
+        Err(e) => {
+            tracing::error!(
+                error = %e,
+                server_id,
+                "game-portal: annonce refusee, panneau non publie"
+            );
+            return;
+        }
+    };
+
+    if let Err(e) = text_ch
+        .send_message(&ctx.http, CreateMessage::new().content(annonce))
+        .await
+    {
+        tracing::warn!(error = %e, server_id, "game-portal: annonce non publiee");
+        return;
+    }
+    if let Err(e) = api.marquer_annonce_publiee(server_id).await {
+        // L'annonce EST publiee. Ne pas avoir pu l'ecrire en base fera
+        // repasser la reprise et republier : desagreable, mais moins grave que
+        // d'interrompre ici et de laisser la session sans panneau.
+        tracing::warn!(error = %e, server_id, "game-portal: annonce publiee mais non marquee");
+    }
+
+    let (game_name, role_id) = game_name_and_role(api, &server).await;
+    let cover_url = api
+        .get_game_template(&server.template_id)
+        .await
+        .ok()
+        .and_then(|template| {
+            public_cover_url_for_status(template.cover_image_url.as_deref(), etat_affiche(&server))
+        });
+    let registered_user_ids: Vec<String> = api
+        .list_server_registrations(server_id)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| r.user_id)
+        .collect();
+
     let embed = build_public_panel_embed(
         &game_name,
         &server.name,
@@ -1688,7 +1764,7 @@ async fn on_started(ctx: &Context, api: &ApiClient, guild_id: GuildId, server_id
             .await;
     }
 
-    tracing::info!(guild = %guild_id, server_id, "game-portal: session ouverte (salons crees)");
+    tracing::info!(server_id, "game-portal: annonce puis panneau publies");
 }
 
 // ── Arret -> on CONSERVE les salons ──
@@ -2433,6 +2509,7 @@ mod tests {
             ip_reveal_at: None,
             ip_revealed: true,
             display_state: Some("open".into()),
+            announcement_posted_at: None,
             channel_name_registration: None,
             channel_name_private: None,
             channel_name_voice: None,
@@ -2582,6 +2659,7 @@ mod tests {
             ip_reveal_at: None,
             ip_revealed: true,
             display_state: Some("open".into()),
+            announcement_posted_at: None,
             channel_name_registration: None,
             channel_name_private: None,
             channel_name_voice: None,

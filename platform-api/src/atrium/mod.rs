@@ -16,11 +16,12 @@ use axum::{
     Json, Router,
 };
 use platform_core::atrium::{
-    application::{CalmingService, ServerSummaryService, WelcomeService},
+    application::{CalmingService, GameAnnouncementService, ServerSummaryService, WelcomeService},
     domain::{WelcomeError, WelcomePrompt},
     ports::{
         inbound::{
-            GenerateCalmingReplyUseCase, GenerateServerSummaryUseCase, GenerateWelcomeReplyUseCase,
+            GenerateCalmingReplyUseCase, GenerateGameAnnouncementUseCase,
+            GenerateServerSummaryUseCase, GenerateWelcomeReplyUseCase,
         },
         outbound::{AiProviderError, WelcomeAiGateway},
     },
@@ -340,6 +341,10 @@ pub fn calming_use_case(config: &AppConfig) -> Arc<dyn GenerateCalmingReplyUseCa
 
 pub fn summary_use_case(config: &AppConfig) -> Arc<dyn GenerateServerSummaryUseCase> {
     Arc::new(ServerSummaryService::new(deepseek_gateway(config)))
+}
+
+pub fn game_announcement_use_case(config: &AppConfig) -> Arc<dyn GenerateGameAnnouncementUseCase> {
+    Arc::new(GameAnnouncementService::new(deepseek_gateway(config)))
 }
 
 pub mod grpc;

@@ -17,6 +17,8 @@ pub struct SessionFacts {
     /// d'ouverture, et rien ne garantirait qu'elles concordent.
     pub opening_label: Option<String>,
     pub schedule_label: Option<String>,
+    /// Reglement de la soiree. Transmis comme contexte, jamais reformule.
+    pub rules: Option<String>,
 }
 
 /// Pourquoi la redaction a echoue.

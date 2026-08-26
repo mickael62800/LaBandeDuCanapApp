@@ -439,6 +439,10 @@ pub fn build_router_with(state: AppState, config: HttpConfig) -> Router {
             put(handlers::game::servers::update_channel_names),
         )
         .route(
+            "/api/games/servers/{server_id}/rules",
+            put(handlers::game::servers::update_rules),
+        )
+        .route(
             "/api/games/servers/{server_id}/announcement",
             get(handlers::game::servers::get_session_announcement),
         )

@@ -416,6 +416,9 @@ impl GameServerRepository for DummyServerRepo {
     async fn annonces_en_attente(&self, _: i32) -> Result<Vec<GameServer>, DomainError> {
         Ok(vec![])
     }
+    async fn set_rules(&self, _: uuid::Uuid, _: Option<&str>) -> Result<(), DomainError> {
+        Ok(())
+    }
     async fn set_channel_names(
         &self,
         _: uuid::Uuid,
@@ -899,6 +902,9 @@ impl GameServerRepository for QuotaExceededServerRepo {
     async fn annonces_en_attente(&self, _: i32) -> Result<Vec<GameServer>, DomainError> {
         Ok(vec![])
     }
+    async fn set_rules(&self, _: uuid::Uuid, _: Option<&str>) -> Result<(), DomainError> {
+        Ok(())
+    }
     async fn set_channel_names(
         &self,
         _: uuid::Uuid,
@@ -1321,6 +1327,9 @@ async fn test_manage_game_servers_lifecycle_methods() {
         }
         async fn annonces_en_attente(&self, _: i32) -> Result<Vec<GameServer>, DomainError> {
             Ok(vec![])
+        }
+        async fn set_rules(&self, _: uuid::Uuid, _: Option<&str>) -> Result<(), DomainError> {
+            Ok(())
         }
         async fn set_channel_names(
             &self,

@@ -9,6 +9,7 @@ fn demande() -> GameAnnouncementRequest {
         opening_label: Some("vendredi 29 aout a 19h".into()),
         schedule_label: Some("vendredi et samedi, 19h-23h".into()),
         admin_context: String::new(),
+        rules: None,
     }
 }
 

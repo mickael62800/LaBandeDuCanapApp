@@ -254,6 +254,9 @@ pub struct GameServer {
     /// publiee : le bot doit la demander avant de poser le panneau.
     #[serde(default)]
     pub announcement_posted_at: Option<String>,
+    /// Reglement de la soiree, affiche mot pour mot sous l'annonce.
+    #[serde(default)]
+    pub rules: Option<String>,
     #[serde(default)]
     pub channel_name_registration: Option<String>,
     #[serde(default)]

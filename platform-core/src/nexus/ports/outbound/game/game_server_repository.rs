@@ -117,6 +117,9 @@ pub trait GameServerRepository: Send + Sync {
         voice: Option<&str>,
     ) -> Result<(), DomainError>;
 
+    /// Enregistre le reglement. `None` l'efface.
+    async fn set_rules(&self, id: uuid::Uuid, rules: Option<&str>) -> Result<(), DomainError>;
+
     /// Compte une tentative de redaction d'annonce.
     ///
     /// Appelee AVANT l'appel au redacteur, pas apres : comptee apres, une panne

@@ -1706,10 +1706,29 @@ pub(crate) async fn publier_annonce_puis_panneau(ctx: &Context, api: &ApiClient,
         }
     };
 
-    if let Err(e) = text_ch
-        .send_message(&ctx.http, CreateMessage::new().content(annonce))
-        .await
-    {
+    // LE REGLEMENT VOYAGE AVEC L'ANNONCE, DANS LE MEME MESSAGE.
+    //
+    // Un cartouche separe plutot que du texte courant : le ton d'Atrium et les
+    // regles ne se lisent pas de la meme facon, et les melanger ferait passer
+    // le reglement pour une plaisanterie de plus.
+    //
+    // Le texte est celui de l'exploitant, MOT POUR MOT. Atrium l'a recu comme
+    // contexte pour ne rien annoncer qu'il interdise, mais ce qui s'affiche
+    // n'est jamais passe par le modele : un reglement reformule est un
+    // reglement qui change de sens sans que personne ne s'en apercoive.
+    let mut message = CreateMessage::new().content(annonce);
+    if let Some(reglement) = server.rules.as_deref().map(str::trim) {
+        if !reglement.is_empty() {
+            message = message.embed(
+                CreateEmbed::new()
+                    .title("📜 Reglement de la soiree")
+                    .description(reglement)
+                    .colour(Colour::new(0x5865f2)),
+            );
+        }
+    }
+
+    if let Err(e) = text_ch.send_message(&ctx.http, message).await {
         tracing::warn!(error = %e, server_id, "game-portal: annonce non publiee");
         return;
     }
@@ -2572,6 +2591,7 @@ mod tests {
             ip_revealed: true,
             display_state: Some("open".into()),
             announcement_posted_at: None,
+            rules: None,
             channel_name_registration: None,
             channel_name_private: None,
             channel_name_voice: None,
@@ -2722,6 +2742,7 @@ mod tests {
             ip_revealed: true,
             display_state: Some("open".into()),
             announcement_posted_at: None,
+            rules: None,
             channel_name_registration: None,
             channel_name_private: None,
             channel_name_voice: None,

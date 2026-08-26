@@ -34,6 +34,16 @@ const errorMessage = ref("");
 
 const chosen = ref<GameTemplate | null>(null);
 const name = ref("");
+/**
+ * Règlement de la soirée : ce qu'on attend des joueurs, ce qui est interdit.
+ *
+ * Il part vers Atrium comme CONTEXTE — pour que son annonce n'invite pas à
+ * faire ce que le règlement proscrit — mais ce qui s'affiche sous l'annonce est
+ * ce texte, mot pour mot. Un règlement reformulé par une IA change de sens sans
+ * que personne ne s'en aperçoive.
+ */
+const reglement = ref("");
+const REGLEMENT_MAX = 2000;
 const memoryMb = ref<number>(0);
 const cpuLimit = ref<number>(2);
 /// Date et heure d'ouverture (révélation de l'IP & démarrage programmé)
@@ -152,6 +162,7 @@ async function creerSeulement() {
       cpu_limit: cpuLimit.value,
       owner_user_id: user.value?.id ?? "",
       config: values.value,
+      rules: reglement.value.trim() || null,
       // Sans programmation, il n'y a pas d'heure d'ouverture a laquelle
       // rattacher une revelation d'IP : elle se reglera au moment de programmer.
       ip_reveal_days: 0,
@@ -184,6 +195,7 @@ async function submit() {
       cpu_limit: cpuLimit.value,
       owner_user_id: user.value?.id ?? "",
       config: values.value,
+      rules: reglement.value.trim() || null,
       ip_reveal_days: days,
     });
 
@@ -292,6 +304,22 @@ watch(selectedGuildId, loadTemplates, { immediate: true });
             <span>Nom du serveur</span>
             <input v-model="name" type="text" maxlength="64" />
             <small v-if="nameError" class="nc-err">{{ nameError }}</small>
+          </label>
+
+          <label class="nc-field nc-field--large">
+            <span>Règlement de la soirée <em>(facultatif)</em></span>
+            <textarea
+              v-model="reglement"
+              rows="5"
+              :maxlength="REGLEMENT_MAX"
+              placeholder="Ex. Pas de PvP hors de la zone rouge. On attend tout le monde avant de lancer le raid. Les bases privées ne se pillent pas."
+            ></textarea>
+            <small class="nc-note">
+              Affiché mot pour mot sous l'annonce d'ouverture, dans un cartouche
+              à part. Atrium le lit pour ne rien annoncer qu'il interdise, mais
+              ne le réécrit jamais.
+              <strong>{{ reglement.length }}/{{ REGLEMENT_MAX }}</strong>
+            </small>
           </label>
 
           <label class="nc-field">
@@ -549,6 +577,7 @@ watch(selectedGuildId, loadTemplates, { immediate: true });
 }
 
 .nc-field input,
+.nc-field textarea,
 .nc-field select {
   background: var(--bg-card);
   border: 1px solid var(--bg-hover);
@@ -558,6 +587,7 @@ watch(selectedGuildId, loadTemplates, { immediate: true });
 }
 
 .nc-field input:focus,
+.nc-field textarea:focus,
 .nc-field select:focus {
   outline: none;
   border-color: var(--accent);
@@ -565,6 +595,24 @@ watch(selectedGuildId, loadTemplates, { immediate: true });
 
 
 .nc-field small {
+  font-size: 0.76rem;
+}
+
+/* Le reglement occupe toute la largeur : un texte de plusieurs lignes coince
+   dans une colonne se relit mal, et on le relit avant de le publier. */
+.nc-field--large {
+  grid-column: 1 / -1;
+}
+
+.nc-field textarea {
+  font: inherit;
+  line-height: 1.45;
+  resize: vertical;
+  min-height: 6rem;
+}
+
+.nc-note {
+  color: var(--text-secondary);
   font-size: 0.76rem;
 }
 

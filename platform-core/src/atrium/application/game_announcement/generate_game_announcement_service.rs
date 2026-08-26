@@ -79,6 +79,23 @@ systeme.",
         system.push_str(admin_context);
     }
 
+    // LE REGLEMENT EST UN CONTEXTE, PAS UNE MATIERE A REECRIRE.
+    //
+    // Il est affiche tel quel sous l'annonce. Le modele le lit pour ne pas
+    // promettre ce que le reglement interdit — annoncer du PvP quand il est
+    // proscrit ferait venir des joueurs pour rien — mais le recopier
+    // produirait un doublon, et le reformuler changerait son sens.
+    if let Some(reglement) = request.rules.as_deref().map(str::trim) {
+        if !reglement.is_empty() {
+            system.push_str(
+                "\nREGLEMENT DE LA SOIREE (contexte seulement) : il sera affiche INTEGRALEMENT \
+sous ton message. Ne le recopie pas, ne le resume pas, ne le reformule pas. Tiens-en compte \
+pour ne rien annoncer qu'il interdise. Tu peux au plus y renvoyer d'une demi-phrase.\n",
+            );
+            system.push_str(reglement);
+        }
+    }
+
     let user = format!(
         "Annonce l'ouverture de cette soiree de jeu.\n\nDONNEES:\n{}",
         request.faits()

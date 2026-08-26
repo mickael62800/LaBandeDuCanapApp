@@ -29,6 +29,7 @@ fn demande() -> GameAnnouncementRequest {
         opening_label: Some("vendredi 29 aout a 19h".into()),
         schedule_label: None,
         admin_context: String::new(),
+        rules: None,
     }
 }
 
@@ -116,4 +117,39 @@ fn la_consigne_du_serveur_remplace_le_ton_par_defaut() {
 fn sans_consigne_un_ton_par_defaut_est_pose() {
     let prompt = build_prompt(&demande());
     assert!(prompt.system.contains("TON PAR DEFAUT"));
+}
+
+// ── Reglement ──────────────────────────────────────────────────────────────
+
+#[test]
+fn le_reglement_entre_dans_le_prompt_comme_contexte() {
+    let mut d = demande();
+    d.rules = Some("Pas de PvP hors de la zone rouge.".into());
+    let prompt = build_prompt(&d);
+
+    assert!(prompt.system.contains("Pas de PvP hors de la zone rouge."));
+    // L'interdiction de recopier compte autant que le texte lui-meme : sans
+    // elle, le modele reprendrait le reglement et il apparaitrait deux fois.
+    assert!(prompt.system.contains("Ne le recopie pas"));
+    assert!(prompt.system.contains("affiche INTEGRALEMENT"));
+}
+
+/// Le reglement ne doit pas partir dans le message utilisateur, ou il se
+/// melerait aux faits a mettre en forme.
+#[test]
+fn le_reglement_ne_se_melange_pas_aux_faits() {
+    let mut d = demande();
+    d.rules = Some("Pas de PvP hors de la zone rouge.".into());
+
+    assert!(!build_prompt(&d).user.contains("PvP"));
+}
+
+#[test]
+fn sans_reglement_aucune_consigne_n_est_ajoutee() {
+    let prompt = build_prompt(&demande());
+    assert!(!prompt.system.contains("REGLEMENT"));
+
+    let mut vide = demande();
+    vide.rules = Some("   ".into());
+    assert!(!build_prompt(&vide).system.contains("REGLEMENT"));
 }

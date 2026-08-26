@@ -701,3 +701,17 @@
   padding: 8px 10px;
   max-width: 32rem;
 }
+
+.sd-channel-names textarea {
+  background: var(--bg-card);
+  border: 1px solid var(--bg-hover);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font: inherit;
+  line-height: 1.45;
+  padding: 8px 10px;
+  resize: vertical;
+  min-height: 7rem;
+  width: 100%;
+  max-width: 46rem;
+}

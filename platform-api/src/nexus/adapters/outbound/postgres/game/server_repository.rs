@@ -151,7 +151,7 @@ impl GameServerRepository for PgGameServerRepository {
 
         let row: ServerRow = sqlx::query_as(&format!(
             "INSERT INTO game_servers \
-                 (guild_id, template_id, name, allocated_memory_mb, cpu_limit, owner_user_id, idle_shutdown_days) \
+                 (guild_id, template_id, name, allocated_memory_mb, cpu_limit, owner_user_id, idle_shutdown_days, rules) \
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8) \
              RETURNING {SELECT_COLS}"
         ))
@@ -533,6 +533,19 @@ impl GameServerRepository for PgGameServerRepository {
         .execute(&self.pool)
         .await
         .map_err(pg_ctx("set_channel_names"))?;
+        Ok(())
+    }
+
+    async fn set_rules(&self, id: Uuid, rules: Option<&str>) -> Result<(), DomainError> {
+        sqlx::query(
+            "UPDATE game_servers SET rules = $2, updated_at = NOW() \
+             WHERE id = $1 AND deleted_at IS NULL",
+        )
+        .bind(id)
+        .bind(rules)
+        .execute(&self.pool)
+        .await
+        .map_err(pg_ctx("set_rules"))?;
         Ok(())
     }
 

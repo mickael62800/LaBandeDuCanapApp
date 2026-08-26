@@ -366,6 +366,14 @@ impl ManageGameServersUseCase for DummyManageGameServers {
     ) -> Result<(), DomainError> {
         Ok(())
     }
+    async fn update_rules(
+        &self,
+        _: uuid::Uuid,
+        _: Option<String>,
+        _: &str,
+    ) -> Result<(), DomainError> {
+        Ok(())
+    }
     async fn update_channel_names(
         &self,
         _: uuid::Uuid,
@@ -537,6 +545,9 @@ impl GameServerRepository for DummyGameServerRepo {
     }
     async fn annonces_en_attente(&self, _: i32) -> Result<Vec<GameServer>, DomainError> {
         Ok(vec![])
+    }
+    async fn set_rules(&self, _: uuid::Uuid, _: Option<&str>) -> Result<(), DomainError> {
+        Ok(())
     }
     async fn set_channel_names(
         &self,

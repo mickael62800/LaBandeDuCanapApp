@@ -741,6 +741,34 @@ pub async fn update_channel_names(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// Reglement de la soiree, en ecriture.
+#[derive(Debug, serde::Deserialize)]
+pub struct UpdateRulesDto {
+    #[serde(default)]
+    pub rules: Option<String>,
+}
+
+/// PUT /api/games/servers/{server_id}/rules
+///
+/// Le texte n'est jamais republie tout seul : il accompagne l'annonce
+/// d'ouverture. Le modifier apres coup vaut donc pour la PROCHAINE annonce —
+/// celle deja publiee garde le reglement en vigueur ce jour-la, ce qui est la
+/// bonne lecture d'un reglement.
+pub async fn update_rules(
+    State(state): State<AppState>,
+    Path(server_id): Path<Uuid>,
+    headers: HeaderMap,
+    Query(q): Query<ActorQuery>,
+    Json(dto): Json<UpdateRulesDto>,
+) -> Result<StatusCode, ApiError> {
+    let actor = acteur(&state, &headers, server_id, q.actor_id.as_deref()).await?;
+    state
+        .game_servers_uc
+        .update_rules(server_id, dto.rules, &actor)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 // ── Annonce d'ouverture ──
 
 #[derive(Debug, serde::Serialize)]

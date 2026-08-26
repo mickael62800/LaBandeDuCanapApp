@@ -133,6 +133,14 @@ pub trait ManageGameServersUseCase: Send + Sync {
         actor_user_id: &str,
     ) -> Result<(), DomainError>;
 
+    /// Reglement de la soiree. `None` efface le reglement existant.
+    async fn update_rules(
+        &self,
+        id: Uuid,
+        rules: Option<String>,
+        actor_user_id: &str,
+    ) -> Result<(), DomainError>;
+
     // ── Console RCON ──────────────────────────────────────────────────
     /// Execute une commande RCON (Owner uniquement). Retourne la reponse brute.
     async fn execute_rcon(

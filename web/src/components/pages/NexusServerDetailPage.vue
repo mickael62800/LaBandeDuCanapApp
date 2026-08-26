@@ -644,12 +644,51 @@ async function saveNomsDeSalons() {
   }
 }
 
+// ── Règlement de la soirée ──
+//
+// Il part vers Atrium comme contexte, mais s'affiche mot pour mot sous
+// l'annonce. Le modifier vaut pour la prochaine annonce : celle déjà publiée
+// garde le règlement en vigueur ce jour-là.
+
+const reglement = ref("");
+const savingReglement = ref(false);
+const REGLEMENT_MAX = 2000;
+
+const reglementChange = computed(
+  () => !!server.value && reglement.value !== (server.value.rules ?? ""),
+);
+
+function resetReglement() {
+  if (!server.value) return;
+  reglement.value = server.value.rules ?? "";
+}
+
+async function saveReglement() {
+  if (!selectedGuildId.value || !server.value || savingReglement.value) return;
+  savingReglement.value = true;
+  try {
+    await nexusGamesService.updateRules(
+      selectedGuildId.value,
+      server.value.id,
+      reglement.value.trim() || null,
+    );
+    success("Règlement enregistré. Il accompagnera la prochaine annonce.");
+    await load();
+    resetReglement();
+  } catch (e) {
+    showError(e instanceof Error ? e.message : "Enregistrement impossible");
+  } finally {
+    savingReglement.value = false;
+  }
+}
+
 watch(
   [selectedGuildId, serverId],
   () => {
     void load().then(() => {
       resetResourceInputs();
       resetNoms();
+      resetReglement();
     });
     // Les seuils vivent cote serveur : on les relit avec la fiche.
     void loadAlerts();
@@ -1111,6 +1150,45 @@ function fmtDuration(secs: number | null): string {
             {{ savingNoms ? "Enregistrement…" : "Enregistrer les noms" }}
           </AppButton>
           <AppButton v-if="nomsChanges" variant="secondary" size="xs" @click="resetNoms">
+            Annuler
+          </AppButton>
+        </div>
+      </section>
+
+      <!-- Règlement de la soirée -->
+      <section v-if="onglet === 'apercu' && server" class="sd-pane sd-resources">
+        <h3>Règlement de la soirée</h3>
+        <p class="sd-note">
+          Affiché mot pour mot sous l'annonce d'ouverture, dans un cartouche à
+          part. Atrium le lit pour ne rien annoncer qu'il interdise, mais ne le
+          réécrit jamais. Le modifier vaut pour la prochaine annonce.
+        </p>
+        <div class="sd-channel-names">
+          <label>
+            <textarea
+              v-model="reglement"
+              rows="6"
+              :maxlength="REGLEMENT_MAX"
+              placeholder="Ex. Pas de PvP hors de la zone rouge. On attend tout le monde avant de lancer le raid."
+            ></textarea>
+          </label>
+        </div>
+        <small class="sd-note">{{ reglement.length }}/{{ REGLEMENT_MAX }}</small>
+        <div class="sd-thresholds-row">
+          <AppButton
+            variant="secondary"
+            size="sm"
+            :disabled="!reglementChange || savingReglement"
+            @click="saveReglement"
+          >
+            {{ savingReglement ? "Enregistrement…" : "Enregistrer le règlement" }}
+          </AppButton>
+          <AppButton
+            v-if="reglementChange"
+            variant="secondary"
+            size="xs"
+            @click="resetReglement"
+          >
             Annuler
           </AppButton>
         </div>

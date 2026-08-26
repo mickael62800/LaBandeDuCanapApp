@@ -1124,6 +1124,37 @@ impl ManageGameServersUseCase for ManageGameServersService {
         Ok(())
     }
 
+    async fn update_rules(
+        &self,
+        id: Uuid,
+        rules: Option<String>,
+        actor_user_id: &str,
+    ) -> Result<(), DomainError> {
+        let server = self
+            .server_repo
+            .find_by_id(id)
+            .await?
+            .ok_or_else(|| DomainError::NotFound(format!("game_server {id} introuvable")))?;
+
+        // La validation vit dans le domaine, pas dans le handler : le meme
+        // texte passe par la creation et par cette modification, et deux
+        // controles separes finiraient par diverger.
+        let rules =
+            crate::nexus::domain::entities::game::server::nettoyer_reglement(rules.as_deref())
+                .map_err(DomainError::ValidationError)?;
+
+        self.server_repo.set_rules(id, rules.as_deref()).await?;
+        self.audit(
+            &server.guild_id,
+            Some(id),
+            Some(actor_user_id),
+            GameAuditAction::ConfigUpdate,
+            serde_json::json!({ "champ": "reglement", "longueur": rules.as_ref().map(|r| r.chars().count()) }),
+        )
+        .await;
+        Ok(())
+    }
+
     async fn update_config(
         &self,
         id: Uuid,

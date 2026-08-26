@@ -103,6 +103,7 @@ impl SessionAnnouncementUseCase for SessionAnnouncementService {
             max_players: jauge_de_joueurs(&config, &modele.default_env),
             opening_label,
             schedule_label,
+            rules: serveur.rules,
         };
 
         Ok(self.gateway.rediger(faits).await?)

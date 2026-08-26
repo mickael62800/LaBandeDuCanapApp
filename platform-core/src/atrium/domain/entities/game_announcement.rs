@@ -31,6 +31,14 @@ pub struct GameAnnouncementRequest {
     pub schedule_label: Option<String>,
     /// Consigne de ton configuree par serveur (`game_context`). Vide = defaut.
     pub admin_context: String,
+    /// Reglement de la soiree, tel que l'exploitant l'a ecrit.
+    ///
+    /// LE MODELE LE LIT MAIS NE LE REECRIT PAS. Il sert a ce que l'annonce
+    /// sonne juste — ne pas promettre du PvP quand le reglement l'interdit —
+    /// et le texte original est affiche dessous, mot pour mot. Un reglement
+    /// reformule est un reglement qui change de sens sans que personne ne s'en
+    /// apercoive.
+    pub rules: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

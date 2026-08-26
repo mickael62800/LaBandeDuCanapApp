@@ -69,6 +69,7 @@ impl GameAnnouncementGateway for AtriumAnnouncementGateway {
             max_players: faits.max_players,
             opening_label: faits.opening_label,
             schedule_label: faits.schedule_label,
+            rules: faits.rules,
         };
 
         self.redaction

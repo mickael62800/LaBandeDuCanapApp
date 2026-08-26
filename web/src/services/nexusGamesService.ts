@@ -34,6 +34,8 @@ export interface GameServer {
   started_at: string | null;
   stopped_at: string | null;
   /** Noms libres des salons. `null` = suivre le modèle de la guilde. */
+  /** Règlement de la soirée, affiché mot pour mot sous l'annonce d'Atrium. */
+  rules: string | null;
   channel_name_registration: string | null;
   channel_name_private: string | null;
   channel_name_voice: string | null;
@@ -228,6 +230,8 @@ export interface CreateServerPayload {
   owner_user_id: string;
   config: Record<string, string>;
   ip_reveal_days?: number;
+  /** Règlement de la soirée. Affiché mot pour mot sous l'annonce. */
+  rules?: string | null;
 }
 
 export interface PlayerSession {
@@ -458,6 +462,21 @@ export const nexusGamesService = {
       `/api/games/servers/${encodeURIComponent(serverId)}/channel-names`,
       guildId,
       noms,
+    );
+  },
+
+  /**
+   * PUT /api/games/servers/{id}/rules — règlement de la soirée.
+   *
+   * Modifier le texte vaut pour la PROCHAINE annonce : celle déjà publiée
+   * garde le règlement en vigueur ce jour-là, ce qui est la bonne lecture d'un
+   * règlement.
+   */
+  updateRules(guildId: string, serverId: string, rules: string | null): Promise<void> {
+    return nexusPut<void>(
+      `/api/games/servers/${encodeURIComponent(serverId)}/rules`,
+      guildId,
+      { rules },
     );
   },
 

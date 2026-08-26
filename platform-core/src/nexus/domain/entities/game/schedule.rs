@@ -173,6 +173,14 @@ pub struct AutoSchedule {
     pub ranges: Vec<TimeRange>,
     /// Preavis avant fermeture ou redemarrage, en minutes. 0 = pas d'annonce.
     pub warn_minutes: u16,
+    /// Date d'ouverture de session : avant elle, aucun demarrage.
+    ///
+    /// LES PLAGES DISENT « A QUELLE HEURE », PAS « A PARTIR DE QUAND ». Sans
+    /// cette porte, un serveur dont l'ouverture est annoncee dans trois
+    /// semaines demarrait des ce soir a 19h : l'heure courante tombait dans une
+    /// plage, et rien d'autre n'etait consulte. La date affichee aux joueurs
+    /// n'avait aucun effet sur le serveur.
+    pub opens_at: Option<DateTime<Utc>>,
     /// Date de fin de session : au-dela, plus aucun demarrage.
     pub closes_at: Option<DateTime<Utc>>,
     /// Mode `Restart` : heures entre deux redemarrages. `None` = aucun
@@ -210,6 +218,8 @@ pub enum ScheduleAction {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StopReason {
+    /// La session n'a pas encore ouvert : le serveur ouvrira a la date prevue.
+    NotYetOpen,
     /// Fin de la plage horaire du jour : le serveur rouvrira.
     OutsideRange,
     /// Date de fin de session atteinte : il ne rouvrira plus.
@@ -229,6 +239,29 @@ pub fn decide(
 ) -> ScheduleAction {
     if !schedule.enabled {
         return ScheduleAction::Nothing;
+    }
+
+    // Session pas encore ouverte : on n'allume rien, et on eteint si quelque
+    // chose tourne deja.
+    //
+    // Symetrique de la fermeture, et pour la meme raison : les plages disent a
+    // quelle HEURE le serveur tourne, jamais a partir de QUEL JOUR. Sans cette
+    // porte, un serveur dont l'ouverture est annoncee dans trois semaines
+    // demarrait des ce soir a 19h, et la date lue par les joueurs ne
+    // correspondait a rien.
+    //
+    // Vaut pour les DEUX modes : une permanence qui n'a pas encore ouvert n'a
+    // pas plus de raison de tourner qu'une plage.
+    if let Some(ouverture) = schedule.opens_at {
+        if now < ouverture {
+            return if running {
+                ScheduleAction::Stop {
+                    reason: StopReason::NotYetOpen,
+                }
+            } else {
+                ScheduleAction::Nothing
+            };
+        }
     }
 
     // Session terminee : on eteint, et plus rien ne redemarre. Sans cette
@@ -493,7 +526,16 @@ pub fn next_opening(schedule: &AutoSchedule, now: DateTime<Utc>) -> Option<DateT
         return None;
     }
     let tz = schedule.timezone.parse::<Tz>().ok()?;
-    let locale = now.with_timezone(&tz);
+
+    // LA RECHERCHE PART DE L'OUVERTURE, PAS D'AUJOURD'HUI. Une session qui
+    // ouvre dans trois semaines n'a aucune plage exploitable dans les huit
+    // jours qui viennent : partir de maintenant aurait repondu « aucune
+    // ouverture prevue » pour une date pourtant fixee et affichee aux joueurs.
+    let depart = match schedule.opens_at {
+        Some(ouverture) if ouverture > now => ouverture,
+        _ => now,
+    };
+    let locale = depart.with_timezone(&tz);
 
     // HUIT JOURS, ET NON QUARANTE-HUIT HEURES. Depuis que les plages portent
     // des jours, un serveur ouvert le seul dimanche n'a rien a annoncer avant
@@ -522,7 +564,10 @@ pub fn next_opening(schedule: &AutoSchedule, now: DateTime<Utc>) -> Option<DateT
                 continue;
             };
             let instant = instant.with_timezone(&Utc);
-            if instant > now && schedule.closes_at.is_none_or(|fin| instant < fin) {
+            if instant > depart
+                && schedule.opens_at.is_none_or(|debut| instant >= debut)
+                && schedule.closes_at.is_none_or(|fin| instant < fin)
+            {
                 return Some(instant);
             }
         }
@@ -560,6 +605,7 @@ mod tests {
             timezone: "Europe/Paris".into(),
             ranges,
             warn_minutes: 10,
+            opens_at: None,
             closes_at: None,
             restart_interval_hours: None,
             restart_anchor_minute: 0,
@@ -577,6 +623,7 @@ mod tests {
             timezone: "Europe/Paris".into(),
             ranges: vec![],
             warn_minutes: 15,
+            opens_at: None,
             closes_at: None,
             restart_interval_hours: Some(heures),
             restart_anchor_minute: 0,
@@ -1337,6 +1384,7 @@ mod tests_etiquette {
             timezone: "Europe/Paris".into(),
             ranges,
             warn_minutes: 10,
+            opens_at: None,
             closes_at: None,
             restart_interval_hours: None,
             restart_anchor_minute: 0,
@@ -1422,6 +1470,146 @@ mod tests_etiquette {
         assert_eq!(
             etiquette_des_plages(&h).as_deref(),
             Some("samedi, 12h-14h ; dimanche, 19h-23h")
+        );
+    }
+}
+
+/// La porte d'ouverture de session.
+///
+/// LE DEFAUT QU'ELLE FERME. Les plages disent a quelle HEURE un serveur tourne,
+/// jamais a partir de QUEL JOUR. Sans cette porte, un serveur dont l'ouverture
+/// etait annoncee dans trois semaines demarrait des le soir meme a 19h : la
+/// date affichee aux joueurs n'avait strictement aucun effet sur le conteneur.
+#[cfg(test)]
+mod tests_porte_d_ouverture {
+    use super::*;
+
+    fn instant(mois: u32, jour: u32, heure: u32) -> DateTime<Utc> {
+        Utc.with_ymd_and_hms(2026, mois, jour, heure, 0, 0).unwrap()
+    }
+
+    /// Plage tous les jours 17h-21h UTC (19h-23h a Paris en aout), ouverture le
+    /// 8 septembre.
+    fn horaire_ouvrant_le_8_septembre() -> AutoSchedule {
+        AutoSchedule {
+            enabled: true,
+            mode: ScheduleMode::Ranges,
+            timezone: "Europe/Paris".into(),
+            ranges: vec![TimeRange {
+                start_minute: 19 * 60,
+                end_minute: 23 * 60,
+                days: TOUS_LES_JOURS,
+            }],
+            warn_minutes: 10,
+            opens_at: Some(instant(9, 8, 17)),
+            closes_at: None,
+            restart_interval_hours: None,
+            restart_anchor_minute: 0,
+            last_restart_at: None,
+            last_warned_at: None,
+            last_final_warned_at: None,
+        }
+    }
+
+    /// LE CAS SIGNALE. On est dans la plage horaire, mais la session n'a pas
+    /// encore ouvert : le serveur ne doit pas demarrer.
+    #[test]
+    fn dans_la_plage_mais_avant_l_ouverture_rien_ne_demarre() {
+        let h = horaire_ouvrant_le_8_septembre();
+        // 20 aout, 19h30 a Paris : en pleine plage, trois semaines trop tot.
+        let action = decide(
+            &h,
+            false,
+            false,
+            instant(8, 20, 17) + chrono::Duration::minutes(30),
+        );
+        assert_eq!(action, ScheduleAction::Nothing);
+    }
+
+    /// Un serveur deja allume avant l'ouverture — demarre a la main, ou par
+    /// l'ancien comportement — doit s'eteindre, pas rester en marche.
+    #[test]
+    fn un_serveur_allume_avant_l_ouverture_est_eteint() {
+        let h = horaire_ouvrant_le_8_septembre();
+        let action = decide(
+            &h,
+            true,
+            false,
+            instant(8, 20, 17) + chrono::Duration::minutes(30),
+        );
+        assert_eq!(
+            action,
+            ScheduleAction::Stop {
+                reason: StopReason::NotYetOpen
+            }
+        );
+    }
+
+    /// Passe l'ouverture, la plage reprend ses droits : c'est elle qui decide
+    /// de l'heure, la porte ne decidait que du jour.
+    #[test]
+    fn apres_l_ouverture_la_plage_reprend_ses_droits() {
+        let h = horaire_ouvrant_le_8_septembre();
+        // 10 septembre, 19h30 locales (17h30 UTC, Paris est a UTC+2).
+        let dans_la_plage = decide(
+            &h,
+            false,
+            false,
+            instant(9, 10, 17) + chrono::Duration::minutes(30),
+        );
+        assert_eq!(dans_la_plage, ScheduleAction::Start);
+
+        // 10 septembre, 14h locales : apres l'ouverture, mais hors plage.
+        let hors_plage = decide(&h, true, false, instant(9, 10, 12));
+        assert_eq!(
+            hors_plage,
+            ScheduleAction::Stop {
+                reason: StopReason::OutsideRange
+            }
+        );
+    }
+
+    /// La porte vaut aussi pour la permanence : un serveur 24/24 qui n'a pas
+    /// encore ouvert n'a pas plus de raison de tourner qu'une plage.
+    #[test]
+    fn la_permanence_attend_aussi_son_ouverture() {
+        let mut h = horaire_ouvrant_le_8_septembre();
+        h.mode = ScheduleMode::Restart;
+        h.restart_interval_hours = Some(6);
+
+        assert_eq!(
+            decide(&h, false, false, instant(8, 20, 17)),
+            ScheduleAction::Nothing
+        );
+    }
+
+    /// Sans date d'ouverture, rien ne change : c'est le comportement de tous
+    /// les serveurs qui n'en declarent pas.
+    #[test]
+    fn sans_date_d_ouverture_le_comportement_est_inchange() {
+        let mut h = horaire_ouvrant_le_8_septembre();
+        h.opens_at = None;
+
+        let action = decide(
+            &h,
+            false,
+            false,
+            instant(8, 20, 17) + chrono::Duration::minutes(30),
+        );
+        assert_eq!(action, ScheduleAction::Start);
+    }
+
+    /// L'annonce doit designer la premiere plage QUI SUIT l'ouverture, pas la
+    /// prochaine plage du calendrier — sinon elle promet une soiree qui
+    /// n'aura pas lieu.
+    #[test]
+    fn la_prochaine_ouverture_ne_precede_jamais_la_date_de_session() {
+        let h = horaire_ouvrant_le_8_septembre();
+        let suivante = next_opening(&h, instant(8, 20, 10)).expect("une ouverture est prevue");
+
+        assert!(
+            suivante >= instant(9, 8, 17),
+            "ouverture annoncee avant la session : {suivante}"
         );
     }
 }

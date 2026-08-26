@@ -60,6 +60,7 @@ fn horaire(ranges: Vec<TimeRange>, fuseau: &str) -> AutoSchedule {
         timezone: fuseau.into(),
         ranges,
         warn_minutes: 10,
+        opens_at: None,
         closes_at: None,
         restart_interval_hours: None,
         restart_anchor_minute: 0,

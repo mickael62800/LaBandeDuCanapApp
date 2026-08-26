@@ -96,6 +96,7 @@ pub async fn run(state: &AppState) -> Result<ScheduleReport, DomainError> {
             timezone: horaire.timezone.clone(),
             ranges: horaire.ranges.clone(),
             warn_minutes: horaire.warn_minutes,
+            opens_at: server.ip_reveal_at,
             closes_at: server.closes_at,
             restart_interval_hours: horaire.restart_interval_hours,
             restart_anchor_minute: horaire.restart_anchor_minute,
@@ -140,10 +141,38 @@ pub async fn run(state: &AppState) -> Result<ScheduleReport, DomainError> {
                         rapport.stopped += 1;
                         let _ = state.game_schedule_repo.clear_warning(server.id).await;
                         let motif = match reason {
+                            StopReason::NotYetOpen => "session pas encore ouverte",
                             StopReason::OutsideRange => "fin de plage horaire",
                             StopReason::SessionOver => "fin de session",
                         };
                         tracing::info!(server_id = %server.id, nom = %server.name, motif, "horaires : serveur ferme");
+
+                        // ARCHIVE DU MONDE : UNE FERMETURE DE PLAGE EST LA MEME
+                        // FENETRE QU'UN REDEMARRAGE.
+                        //
+                        // Le jeu vient de sauvegarder, le conteneur est arrete,
+                        // rien ne le relancera avant demain : le monde est
+                        // complet sur le disque, sans ecriture en cours. C'est
+                        // exactement la condition qui rend l'archive fiable, et
+                        // seul le redemarrage programme en profitait.
+                        //
+                        // Un serveur de soiree, qui ne tourne QUE sur des
+                        // plages, n'etait donc jamais archive par
+                        // l'application. Il ne restait que la sauvegarde
+                        // nocturne du systeme — utile, mais exterieure a
+                        // l'application et prise a une heure qui n'a aucun
+                        // rapport avec la fin de la partie.
+                        //
+                        // La fin de SESSION la merite plus encore : c'est le
+                        // dernier etat du monde, et il ne sera plus jamais
+                        // recalcule.
+                        //
+                        // Les garde-fous de `archiver_le_monde` s'appliquent
+                        // tels quels : interrupteur de configuration, volume
+                        // existant, et delai minimal entre deux archives. Une
+                        // plage qui se ferme chaque soir ne produit donc pas
+                        // plus d'une archive par jour.
+                        archiver_le_monde(state, &server).await;
                     }
                     Err(error) => {
                         tracing::warn!(%error, server_id = %server.id, "horaires : fermeture impossible");

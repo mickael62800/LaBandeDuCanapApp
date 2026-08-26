@@ -194,6 +194,7 @@ fn vers_auto_schedule(stored: &StoredSchedule) -> AutoSchedule {
         timezone: stored.timezone.clone(),
         ranges: stored.ranges.clone(),
         warn_minutes: stored.warn_minutes,
+        opens_at: None,
         closes_at: None,
         restart_interval_hours: stored.restart_interval_hours,
         restart_anchor_minute: stored.restart_anchor_minute,

@@ -978,12 +978,13 @@ pub async fn get_schedule_ranges(
     };
 
     let stored = state.game_schedule_repo.find(server_id).await?;
-    let closes_at = state
-        .game_servers_uc
-        .get(server_id)
-        .await
-        .ok()
-        .and_then(|d| d.server.closes_at);
+    // Les deux bornes de session viennent de la fiche du serveur, pas de
+    // l'horaire : ce sont des dates, pas des recurrences. L'ecran doit voir la
+    // meme chose que le job qui pilote le conteneur, sinon il annoncerait une
+    // ouverture que le serveur ne respecte pas.
+    let fiche = state.game_servers_uc.get(server_id).await.ok();
+    let opens_at = fiche.as_ref().and_then(|d| d.server.ip_reveal_at);
+    let closes_at = fiche.and_then(|d| d.server.closes_at);
 
     let dto = match stored {
         Some(s) => {
@@ -993,6 +994,7 @@ pub async fn get_schedule_ranges(
                 timezone: s.timezone.clone(),
                 ranges: s.ranges.clone(),
                 warn_minutes: s.warn_minutes,
+                opens_at,
                 closes_at,
                 restart_interval_hours: s.restart_interval_hours,
                 restart_anchor_minute: s.restart_anchor_minute,

@@ -386,10 +386,19 @@ fn build_options_embeds(
 /// d'inscription et privés portent tous deux `... | session:{id} | ...` dans
 /// leur topic (posé à la création). `None` si le salon n'est pas un salon de
 /// session.
-fn server_id_from_topic(topic: &str) -> Option<&str> {
+pub(crate) fn server_id_from_topic(topic: &str) -> Option<&str> {
     let after = topic.split("session:").nth(1)?;
     let id = after.split([' ', '|']).next()?.trim();
     (!id.is_empty()).then_some(id)
+}
+
+/// Session de jeu du salon courant, retrouvee par le sujet du salon.
+///
+/// Le sujet porte `session:{id}` depuis la creation et ne change jamais, meme
+/// quand le salon est renomme : c'est le seul repere fiable.
+pub(crate) async fn session_du_salon(ctx: &Context, salon: ChannelId) -> Option<String> {
+    let sujet = salon.to_channel(&ctx).await.ok()?.guild()?.topic?;
+    server_id_from_topic(&sujet).map(str::to_string)
 }
 
 /// Construit les embeds de paramètres à afficher en réponse ÉPHÉMÈRE à la
@@ -1673,6 +1682,60 @@ async fn on_started(ctx: &Context, api: &ApiClient, guild_id: GuildId, server_id
 ///
 /// Le marquage a lieu DES QUE L'ANNONCE EST PARTIE, avant le panneau : un
 /// panneau rate se rejoue sans dommage, une annonce publiee deux fois se voit.
+
+/// Publie le panneau d'inscription dans un salon et l'epingle.
+///
+/// UNE SEULE IMPLEMENTATION pour l'ouverture d'une session et pour sa remise en
+/// etat : un panneau republie par la commande de resynchronisation doit etre
+/// identique a celui de l'ouverture, sinon les deux divergeraient au fil des
+/// evolutions et personne ne saurait lequel fait foi.
+///
+/// Rend le nom du jeu et le role du jeu, que l'appelant reutilise pour la
+/// mention qui suit.
+pub(crate) async fn poster_le_panneau(
+    ctx: &Context,
+    api: &ApiClient,
+    text_ch: ChannelId,
+    server: &GameServer,
+) -> (String, Option<RoleId>) {
+    let (game_name, role_id) = game_name_and_role(api, server).await;
+    let cover_url = api
+        .get_game_template(&server.template_id)
+        .await
+        .ok()
+        .and_then(|template| {
+            public_cover_url_for_status(template.cover_image_url.as_deref(), etat_affiche(server))
+        });
+    let registered_user_ids: Vec<String> = api
+        .list_server_registrations(&server.id)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| r.user_id)
+        .collect();
+
+    let embed = build_public_panel_embed(
+        &game_name,
+        &server.name,
+        &registered_user_ids,
+        server.ip_reveal_at.as_deref(),
+        server.ip_revealed,
+        cover_url.as_deref(),
+    );
+    let msg = text_ch
+        .send_message(
+            &ctx.http,
+            CreateMessage::new()
+                .embed(embed)
+                .components(panel_rows(&server.id, server.ip_revealed)),
+        )
+        .await;
+    if let Ok(m) = &msg {
+        let _ = text_ch.pin(&ctx.http, m.id).await;
+    }
+
+    (game_name, role_id)
+}
 pub(crate) async fn publier_annonce_puis_panneau(ctx: &Context, api: &ApiClient, server_id: &str) {
     let Ok(detail) = api.get_game_server(server_id).await else {
         return;
@@ -1750,41 +1813,7 @@ pub(crate) async fn publier_annonce_puis_panneau(ctx: &Context, api: &ApiClient,
         tracing::warn!(error = %e, server_id, "game-portal: annonce publiee mais non marquee");
     }
 
-    let (game_name, role_id) = game_name_and_role(api, &server).await;
-    let cover_url = api
-        .get_game_template(&server.template_id)
-        .await
-        .ok()
-        .and_then(|template| {
-            public_cover_url_for_status(template.cover_image_url.as_deref(), etat_affiche(&server))
-        });
-    let registered_user_ids: Vec<String> = api
-        .list_server_registrations(server_id)
-        .await
-        .unwrap_or_default()
-        .into_iter()
-        .map(|r| r.user_id)
-        .collect();
-
-    let embed = build_public_panel_embed(
-        &game_name,
-        &server.name,
-        &registered_user_ids,
-        server.ip_reveal_at.as_deref(),
-        server.ip_revealed,
-        cover_url.as_deref(),
-    );
-    let msg = text_ch
-        .send_message(
-            &ctx.http,
-            CreateMessage::new()
-                .embed(embed)
-                .components(panel_rows(server_id, server.ip_revealed)),
-        )
-        .await;
-    if let Ok(m) = &msg {
-        let _ = text_ch.pin(&ctx.http, m.id).await;
-    }
+    let (game_name, role_id) = poster_le_panneau(ctx, api, text_ch, &server).await;
 
     if let Some(rid) = role_id {
         let _ = text_ch
@@ -3191,5 +3220,252 @@ mod tests_reconciliation {
             Some(id)
         );
         assert_eq!(server_id_from_topic("Salon de discussion general"), None);
+    }
+}
+
+// ── Remise en etat d'une session ───────────────────────────────────────────
+
+/// Ce que la remise en etat a trouve et repare.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct RapportResync {
+    /// Inscrits connus de l'API.
+    pub inscrits: usize,
+    /// Inscrits a qui le role manquait, et qui l'ont recu.
+    pub roles_poses: usize,
+    /// Inscrits introuvables dans la guilde : partis, ou identifiant illisible.
+    pub absents: usize,
+    /// Le role de session avait disparu et a ete recree.
+    pub role_recree: bool,
+    /// Le panneau d'inscription manquait et a ete republie.
+    pub panneau_republie: bool,
+}
+
+impl RapportResync {
+    /// Rien n'a bouge : tout etait deja en place.
+    pub fn rien_a_faire(&self) -> bool {
+        self.roles_poses == 0 && !self.role_recree && !self.panneau_republie
+    }
+
+    /// Compte rendu lisible, tel qu'il est renvoye a l'administrateur.
+    ///
+    /// Il DIT CE QUI A ETE FAIT, pas « termine ». Une commande de reparation
+    /// qui repond seulement « ok » n'apprend rien : on relance une
+    /// resynchronisation justement parce qu'on ne sait pas ce qui manque.
+    pub fn resume(&self) -> String {
+        if self.rien_a_faire() {
+            return format!(
+                "✅ Rien a reparer. {} inscrit(s), role et panneau en place.",
+                self.inscrits
+            );
+        }
+        let mut lignes = vec![format!(
+            "✅ Session resynchronisee ({} inscrits).",
+            self.inscrits
+        )];
+        if self.role_recree {
+            lignes.push("• Role de session recree.".into());
+        }
+        if self.roles_poses > 0 {
+            lignes.push(format!("• Role rendu a {} membre(s).", self.roles_poses));
+        }
+        if self.panneau_republie {
+            lignes.push("• Panneau d'inscription republie.".into());
+        }
+        if self.absents > 0 {
+            lignes.push(format!(
+                "• {} inscrit(s) introuvable(s) dans le serveur (partis ?).",
+                self.absents
+            ));
+        }
+        lignes.join("\n")
+    }
+}
+
+/// Le salon contient-il deja un panneau d'inscription ?
+///
+/// On cherche un message DU BOT porteur de composants : le panneau est le seul
+/// a en avoir dans un salon de session. Comparer un titre d'embed serait plus
+/// fragile — il change avec le nom du jeu.
+///
+/// Une lecture impossible repond « oui » : republier a l'aveugle poserait un
+/// second panneau a cote du premier, et deux panneaux valent moins qu'un.
+async fn le_panneau_existe(ctx: &Context, salon: ChannelId) -> bool {
+    let bot_id = ctx.cache.current_user().id;
+    match salon
+        .messages(&ctx.http, GetMessages::new().limit(50))
+        .await
+    {
+        Ok(messages) => messages
+            .iter()
+            .any(|m| m.author.id == bot_id && !m.components.is_empty()),
+        Err(e) => {
+            tracing::warn!(error = %e, %salon, "resync : lecture du salon impossible");
+            true
+        }
+    }
+}
+
+/// Remet une session d'aplomb : role, inscrits, panneau.
+///
+/// POURQUOI CETTE COMMANDE EXISTE. Une session vit dans deux mondes — la base,
+/// qui sait qui est inscrit, et Discord, qui distribue les acces. Ils se
+/// desynchronisent : un role supprime a la main, un panneau efface, un membre
+/// revenu apres un depart, une panne pendant l'ouverture. Rien ne rattrapait
+/// ces ecarts, et il fallait recreer la session entiere pour un role manquant.
+///
+/// ELLE AJOUTE, ELLE NE RETIRE JAMAIS. Un membre porteur du role mais absent
+/// des inscrits n'est pas touche : il peut l'avoir recu a la main, pour une
+/// bonne raison qu'on ignore. Une commande de reparation qui retire des acces
+/// serait bien plus dangereuse que le desordre qu'elle corrige.
+pub(crate) async fn resynchroniser_session(
+    ctx: &Context,
+    api: &ApiClient,
+    guild_id: GuildId,
+    server_id: &str,
+) -> Result<RapportResync, String> {
+    let detail = api
+        .get_game_server(server_id)
+        .await
+        .map_err(|e| format!("serveur introuvable : {e}"))?;
+    let server = detail.server;
+    let mut rapport = RapportResync::default();
+
+    let game_name = api
+        .get_game_template(&server.template_id)
+        .await
+        .map(|t| t.name)
+        .unwrap_or_else(|_| "Jeu".into());
+    let nom_du_role = session_role_name(&game_name, server_id);
+
+    // 1. Le role de session, recree s'il a disparu.
+    let roles = guild_id
+        .roles(&ctx.http)
+        .await
+        .map_err(|e| format!("roles illisibles : {e}"))?;
+    let role_id = match roles.values().find(|r| r.name == nom_du_role) {
+        Some(role) => role.id,
+        None => {
+            let cree = guild_id
+                .create_role(
+                    &ctx.http,
+                    EditRole::new()
+                        .name(nom_du_role.clone())
+                        .colour(Colour::new(0x5865f2))
+                        .mentionable(false)
+                        .hoist(false),
+                )
+                .await
+                .map_err(|e| format!("role de session non recree : {e}"))?;
+            rapport.role_recree = true;
+            cree.id
+        }
+    };
+
+    // 2. Les inscrits recoivent le role qui leur manque.
+    let inscrits = api
+        .list_server_registrations(server_id)
+        .await
+        .map_err(|e| format!("inscriptions illisibles : {e}"))?;
+    rapport.inscrits = inscrits.len();
+
+    for inscription in &inscrits {
+        let Ok(user_num) = inscription.user_id.parse::<u64>() else {
+            rapport.absents += 1;
+            continue;
+        };
+        let Ok(membre) = guild_id.member(&ctx.http, user_num).await else {
+            // Parti du serveur : ce n'est pas une erreur, mais l'administrateur
+            // doit le savoir — c'est souvent la raison du desordre constate.
+            rapport.absents += 1;
+            continue;
+        };
+        if membre.roles.contains(&role_id) {
+            continue;
+        }
+        if let Err(e) = membre.add_role(&ctx.http, role_id).await {
+            tracing::warn!(error = %e, user = %inscription.user_id, "resync : role non pose");
+            rapport.absents += 1;
+        } else {
+            rapport.roles_poses += 1;
+        }
+    }
+
+    // 3. Le panneau d'inscription, republie s'il manque.
+    if let Some(text_ch) = parse_channel(server.text_channel_id.as_ref()) {
+        if !le_panneau_existe(ctx, text_ch).await {
+            poster_le_panneau(ctx, api, text_ch, &server).await;
+            rapport.panneau_republie = true;
+        }
+    }
+
+    tracing::info!(server_id, ?rapport, "resync : session remise en etat");
+    Ok(rapport)
+}
+
+/// Le compte rendu de la remise en etat.
+///
+/// C'est la seule chose que l'administrateur voit : une commande de reparation
+/// qui repond « ok » n'apprend rien, puisqu'on la lance justement parce qu'on
+/// ignore ce qui manque.
+#[cfg(test)]
+mod tests_resync {
+    use super::RapportResync;
+
+    #[test]
+    fn une_session_intacte_le_dit_sans_ambiguite() {
+        let r = RapportResync {
+            inscrits: 7,
+            ..Default::default()
+        };
+        assert!(r.rien_a_faire());
+
+        let texte = r.resume();
+        assert!(texte.contains("Rien a reparer"));
+        assert!(texte.contains('7'));
+    }
+
+    #[test]
+    fn chaque_reparation_est_nommee() {
+        let r = RapportResync {
+            inscrits: 5,
+            roles_poses: 3,
+            absents: 1,
+            role_recree: true,
+            panneau_republie: true,
+        };
+        assert!(!r.rien_a_faire());
+
+        let texte = r.resume();
+        assert!(texte.contains("Role de session recree"));
+        assert!(texte.contains("3 membre(s)"));
+        assert!(texte.contains("Panneau d'inscription republie"));
+        assert!(texte.contains("1 inscrit(s) introuvable"));
+    }
+
+    /// Un role pose est une reparation, meme sans role recree ni panneau
+    /// republie : c'est le cas le plus courant, et le rapport ne doit pas
+    /// annoncer « rien a reparer » alors qu'on vient de rendre des acces.
+    #[test]
+    fn un_role_rendu_suffit_a_ne_pas_dire_rien_a_faire() {
+        let r = RapportResync {
+            inscrits: 4,
+            roles_poses: 1,
+            ..Default::default()
+        };
+        assert!(!r.rien_a_faire());
+        assert!(r.resume().contains("1 membre(s)"));
+    }
+
+    /// Des absents SEULS ne sont pas une reparation : on n'a rien change, on a
+    /// seulement constate. Le dire autrement laisserait croire a une action.
+    #[test]
+    fn des_absents_seuls_ne_valent_pas_reparation() {
+        let r = RapportResync {
+            inscrits: 4,
+            absents: 2,
+            ..Default::default()
+        };
+        assert!(r.rien_a_faire());
+        assert!(r.resume().contains("Rien a reparer"));
     }
 }

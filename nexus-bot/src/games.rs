@@ -10,8 +10,8 @@ use std::collections::HashSet;
 use serenity::all::{
     Colour, CommandDataOptionValue, CommandInteraction, CommandOptionType, ComponentInteraction,
     ComponentInteractionDataKind, Context, CreateCommand, CreateCommandOption,
-    CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage,
-    EditInteractionResponse, EditMessage, EditRole, GuildId, ReactionType, RoleId,
+    CreateInteractionResponse, CreateInteractionResponseFollowup, CreateInteractionResponseMessage,
+    CreateMessage, EditInteractionResponse, EditMessage, EditRole, GuildId, ReactionType, RoleId,
 };
 use serenity::builder::CreateEmbed;
 use tracing::{info, warn};
@@ -139,6 +139,11 @@ fn register_admin() -> CreateCommand {
                 .required(false),
             ),
         )
+        .add_option(CreateCommandOption::new(
+            CommandOptionType::SubCommand,
+            "resync",
+            "Remettre la session de ce salon d'aplomb (role, inscrits, panneau)",
+        ))
 }
 
 // ── Dispatch ──
@@ -170,6 +175,7 @@ pub async fn handle_command(api: &ApiClient, ctx: &Context, command: &CommandInt
         ("game-admin", "delete") => handle_delete(ctx, command, api, &guild_id).await,
         ("game-admin", "panel") => handle_panel(ctx, command, api, &guild_id).await,
         ("game-admin", "refresh") => handle_refresh(ctx, command, api, &guild_id).await,
+        ("game-admin", "resync") => handle_resync(ctx, command, api).await,
         ("game", "list") => handle_list(ctx, command, api, &guild_id).await,
         ("game", "join") => handle_join(ctx, command, api, &guild_id).await,
         ("game", "leave") => handle_leave(ctx, command, api, &guild_id).await,
@@ -181,6 +187,66 @@ pub async fn handle_command(api: &ApiClient, ctx: &Context, command: &CommandInt
 // ── Sub-commands ──
 
 /// `/game parametres` — accessible a TOUS les joueurs. Affiche les reglages du
+
+/// `/game-admin resync` — remet la session du salon courant d'aplomb.
+///
+/// AUCUN IDENTIFIANT A SAISIR : la session est celle du salon ou la commande
+/// est lancee. Demander un UUID a un administrateur pour reparer le salon sous
+/// ses yeux serait absurde, et c'est le genre de friction qui fait qu'une
+/// commande de reparation ne sert jamais.
+///
+/// Reponse DIFFEREE : parcourir les inscrits appelle Discord une fois par
+/// membre, ce qui depasse largement les trois secondes accordees a une
+/// interaction.
+async fn handle_resync(ctx: &Context, cmd: &CommandInteraction, api: &ApiClient) {
+    let Some(guild_id) = cmd.guild_id else {
+        reply(
+            ctx,
+            cmd,
+            "Cette commande ne fonctionne que dans un serveur.",
+        )
+        .await;
+        return;
+    };
+
+    let Some(server_id) = crate::game_portal::session_du_salon(ctx, cmd.channel_id).await else {
+        reply(
+            ctx,
+            cmd,
+            "Ce salon n'appartient a aucune session de jeu. Lance la commande depuis le salon d'inscription ou le salon prive de la session.",
+        )
+        .await;
+        return;
+    };
+
+    if cmd
+        .create_response(
+            ctx,
+            CreateInteractionResponse::Defer(
+                CreateInteractionResponseMessage::new().ephemeral(true),
+            ),
+        )
+        .await
+        .is_err()
+    {
+        return;
+    }
+
+    let texte =
+        match crate::game_portal::resynchroniser_session(ctx, api, guild_id, &server_id).await {
+            Ok(rapport) => rapport.resume(),
+            Err(erreur) => format!("⚠️ Resynchronisation incomplete : {erreur}"),
+        };
+
+    let _ = cmd
+        .create_followup(
+            ctx,
+            CreateInteractionResponseFollowup::new()
+                .content(texte)
+                .ephemeral(true),
+        )
+        .await;
+}
 /// serveur de session correspondant au salon courant, en reponse EPHEMERE
 /// (visible du seul demandeur). Contextuel : dans le salon prive des inscrits le
 /// mot de passe est inclus ; dans le salon d'inscription il est masque.

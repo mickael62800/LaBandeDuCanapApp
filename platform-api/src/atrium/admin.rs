@@ -148,6 +148,9 @@ pub async fn get_usage(
 pub struct ContextConfigResponse {
     pub welcome_context: String,
     pub conflict_context: String,
+    /// Ton des annonces d ouverture de soiree de jeu. Les faits viennent de
+    /// Nexus ; ceci n ajuste que la plume.
+    pub game_context: String,
     /// Fenetre de depart eclair, en minutes. Renvoyee en chaine comme les
     /// autres cles brutes : le formulaire edite du texte, et une valeur absente
     /// doit s'afficher comme le defaut du schema, pas comme 0.
@@ -174,6 +177,7 @@ pub async fn get_config(
     Ok(Json(ContextConfigResponse {
         welcome_context: raw.get("welcome_context").cloned().unwrap_or_default(),
         conflict_context: raw.get("conflict_context").cloned().unwrap_or_default(),
+        game_context: raw.get("game_context").cloned().unwrap_or_default(),
         welcome_ghost_minutes: raw
             .get("welcome_ghost_minutes")
             .cloned()
@@ -205,13 +209,14 @@ pub async fn set_config(
         .as_ref()
         .ok_or_else(|| ApiError::unavailable("configuration indisponible"))?;
 
-    const ALLOWED: [&str; 7] = [
+    const ALLOWED: [&str; 8] = [
         "enabled",
         "user_daily_limit",
         "user_cooldown_secs",
         "global_daily_limit",
         "welcome_context",
         "conflict_context",
+        "game_context",
         "welcome_ghost_minutes",
     ];
     // Clés numériques : bornées, positives. Les autres sont du texte libre

@@ -1,0 +1,3 @@
+pub mod generate_game_announcement_service;
+
+pub use generate_game_announcement_service::GameAnnouncementService;

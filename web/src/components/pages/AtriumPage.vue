@@ -65,10 +65,11 @@ const dirty = computed(() =>
   ),
 );
 
-// Consignes de ton (welcome_context / conflict_context). Séparées des quotas :
+// Consignes de ton (welcome_context / conflict_context / game_context).
+// Séparées des quotas :
 // ce sont des textes libres, enregistrés dans le même `bot_guild_config` mais
 // via un bloc distinct pour n'envoyer que ce que l'admin a réellement modifié.
-const contextForm = ref({ welcome_context: "", conflict_context: "" });
+const contextForm = ref({ welcome_context: "", conflict_context: "", game_context: "" });
 const savedContext = ref({ ...contextForm.value });
 const savingContext = ref(false);
 const dirtyContext = computed(() =>
@@ -203,6 +204,7 @@ async function load() {
     contextForm.value = {
       welcome_context: context.welcome_context,
       conflict_context: context.conflict_context,
+      game_context: context.game_context,
     };
     savedContext.value = { ...contextForm.value };
     ghostForm.value = { welcome_ghost_minutes: context.welcome_ghost_minutes };
@@ -462,6 +464,21 @@ watch(selectedGuildId, load, { immediate: true });
               :maxlength="CONTEXT_MAX"
               placeholder="Ex. Ton ferme mais bienveillant, rappelle la règle sans accuser personne."
             />
+          </label>
+          <label class="at-field">
+            <span>Contexte des annonces de jeu</span>
+            <AppTextarea
+              v-model="contextForm.game_context"
+              :rows="4"
+              :maxlength="CONTEXT_MAX"
+              placeholder="Ex. Ton franchement sarcastique, blasé, comme si tu avais déjà vu cette soirée mille fois."
+            />
+            <small class="at-note">
+              Atrium rédige le message qui précède le panneau d'inscription, à
+              partir des faits fournis par Nexus — le jeu, la jauge de joueurs,
+              les horaires. Il n'a pas le droit d'en inventer d'autres. Si Atrium
+              ne peut pas écrire, rien n'est publié et l'ouverture attend.
+            </small>
           </label>
         </div>
 

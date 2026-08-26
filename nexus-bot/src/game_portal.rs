@@ -1719,6 +1719,17 @@ pub(crate) async fn publier_annonce_puis_panneau(ctx: &Context, api: &ApiClient,
     let mut message = CreateMessage::new().content(annonce);
     if let Some(reglement) = server.rules.as_deref().map(str::trim) {
         if !reglement.is_empty() {
+            // LE TEXTE PART BRUT, SANS ECHAPPEMENT, ET C'EST VOULU.
+            //
+            // Une description d'embed rend le Markdown de Discord : gras,
+            // italique, listes, titres, citations, blocs de code, liens.
+            // L'exploitant peut donc mettre en forme son reglement, et
+            // echapper le texte le priverait de tout cela.
+            //
+            // L'embed apporte en prime une propriete de surete : les mentions
+            // qu'il contient ne PINGUENT PAS. Un « @everyone respectez les
+            // regles » ecrit dans un reglement ne reveillera donc pas le
+            // serveur — ce qui ne serait pas vrai dans le corps du message.
             message = message.embed(
                 CreateEmbed::new()
                     .title("📜 Reglement de la soiree")

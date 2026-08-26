@@ -1167,13 +1167,22 @@ function fmtDuration(secs: number | null): string {
           <label>
             <textarea
               v-model="reglement"
-              rows="6"
+              rows="8"
               :maxlength="REGLEMENT_MAX"
-              placeholder="Ex. Pas de PvP hors de la zone rouge. On attend tout le monde avant de lancer le raid."
+              placeholder="## Avant de jouer&#10;- On **attend tout le monde** avant de lancer le raid&#10;&#10;## Interdit&#10;- Pas de PvP hors de la *zone rouge*"
             ></textarea>
           </label>
         </div>
-        <small class="sd-note">{{ reglement.length }}/{{ REGLEMENT_MAX }}</small>
+        <small class="sd-note">
+          <strong>Le Markdown Discord fonctionne</strong> :
+          <code>**gras**</code>, <code>*italique*</code>, <code>## titre</code>,
+          <code>- liste</code>, <code>&gt; citation</code>,
+          <code>`code`</code>. Les mentions écrites ici
+          <strong>ne notifient personne</strong> — le cartouche les affiche sans
+          les déclencher.
+          <br />
+          {{ reglement.length }}/{{ REGLEMENT_MAX }}
+        </small>
         <div class="sd-thresholds-row">
           <AppButton
             variant="secondary"

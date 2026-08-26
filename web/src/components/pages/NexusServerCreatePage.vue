@@ -310,14 +310,21 @@ watch(selectedGuildId, loadTemplates, { immediate: true });
             <span>Règlement de la soirée <em>(facultatif)</em></span>
             <textarea
               v-model="reglement"
-              rows="5"
+              rows="7"
               :maxlength="REGLEMENT_MAX"
-              placeholder="Ex. Pas de PvP hors de la zone rouge. On attend tout le monde avant de lancer le raid. Les bases privées ne se pillent pas."
+              placeholder="## Avant de jouer&#10;- On **attend tout le monde** avant de lancer le raid&#10;- Les bases privées ne se pillent pas&#10;&#10;## Interdit&#10;- Pas de PvP hors de la *zone rouge*&#10;> En cas de litige, un modérateur tranche."
             ></textarea>
             <small class="nc-note">
               Affiché mot pour mot sous l'annonce d'ouverture, dans un cartouche
               à part. Atrium le lit pour ne rien annoncer qu'il interdise, mais
               ne le réécrit jamais.
+              <br />
+              <strong>Le Markdown Discord fonctionne</strong> :
+              <code>**gras**</code>, <code>*italique*</code>,
+              <code>## titre</code>, <code>- liste</code>,
+              <code>&gt; citation</code>. Les mentions écrites ici
+              <strong>ne notifient personne</strong>.
+              <br />
               <strong>{{ reglement.length }}/{{ REGLEMENT_MAX }}</strong>
             </small>
           </label>

@@ -260,6 +260,8 @@ pub struct NewGameServer {
     pub owner_user_id: String,
     pub idle_shutdown_days: Option<i32>,
     pub initial_config: std::collections::HashMap<String, String>,
+    /// Reglement de la soiree, deja valide par le domaine.
+    pub rules: Option<String>,
 }
 
 /// Maj des champs runtime (apres allocation Docker).

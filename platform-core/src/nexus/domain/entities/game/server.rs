@@ -140,6 +140,12 @@ pub struct GameServer {
     pub announcement_posted_at: Option<DateTime<Utc>>,
     /// Tentatives de redaction deja faites, pour borner la reprise.
     pub announcement_attempts: i32,
+    /// Reglement de la soiree, affiche mot pour mot sous l'annonce.
+    ///
+    /// Transmis a Atrium comme contexte pour que son annonce sonne juste, mais
+    /// JAMAIS reformule par lui : un reglement reecrit est un reglement qui
+    /// change de sens sans que personne ne s'en apercoive.
+    pub rules: Option<String>,
     /// Abandon deja signale dans le salon de logs. `None` = a signaler.
     pub announcement_abandon_notified_at: Option<DateTime<Utc>>,
     /// Date de revelation de l'IP (None = pas de revelation programmee).
@@ -301,6 +307,9 @@ pub struct CreateGameServerCommand {
     pub cpu_limit: Option<f64>,
     pub owner_user_id: String,
     pub initial_config: std::collections::HashMap<String, String>,
+    /// Reglement de la soiree. `None` = pas de reglement, ce qui est le cas
+    /// courant d'une partie improvisee.
+    pub rules: Option<String>,
 }
 
 /// Validation regex-like du nom de serveur (alphanumerique + espaces / _ / -).
@@ -694,4 +703,28 @@ mod tests_debit {
             None
         );
     }
+}
+
+/// Longueur maximale d'un reglement.
+///
+/// Il voyage dans le prompt d'Atrium ET s'affiche dans un embed Discord (4096
+/// caracteres). Deux mille laisse la place aux deux sans jamais tronquer un
+/// texte que l'exploitant croyait complet.
+pub const REGLEMENT_MAX_CHARS: usize = 2_000;
+
+/// Un reglement utilisable, ou rien.
+///
+/// Un champ vide arrive du formulaire comme une chaine vide, pas comme `None`.
+/// L'enregistrer telle quelle afficherait un cartouche « Reglement » vide sous
+/// chaque annonce.
+pub fn nettoyer_reglement(brut: Option<&str>) -> Result<Option<String>, String> {
+    let Some(texte) = brut.map(str::trim).filter(|t| !t.is_empty()) else {
+        return Ok(None);
+    };
+    if texte.chars().count() > REGLEMENT_MAX_CHARS {
+        return Err(format!(
+            "le reglement depasse {REGLEMENT_MAX_CHARS} caracteres"
+        ));
+    }
+    Ok(Some(texte.to_string()))
 }

@@ -56,6 +56,7 @@ struct ServerRow {
     announcement_posted_at: Option<DateTime<Utc>>,
     announcement_attempts: i32,
     announcement_abandon_notified_at: Option<DateTime<Utc>>,
+    rules: Option<String>,
     voice_channel_id: Option<String>,
     ip_reveal_at: Option<DateTime<Utc>>,
     closes_at: Option<DateTime<Utc>>,
@@ -105,6 +106,7 @@ impl TryFrom<ServerRow> for GameServer {
             announcement_posted_at: r.announcement_posted_at,
             announcement_attempts: r.announcement_attempts,
             announcement_abandon_notified_at: r.announcement_abandon_notified_at,
+            rules: r.rules,
             text_channel_id: r.text_channel_id,
             voice_channel_id: r.voice_channel_id,
             ip_reveal_at: r.ip_reveal_at,
@@ -126,7 +128,8 @@ const SELECT_COLS: &str = "id, guild_id, template_id, name, status, container_id
      restart_attempts, last_restart_at, \
      text_channel_id, voice_channel_id, ip_reveal_at, ip_revealed, closes_at, config_dirty, \
      rcon_latency_ms, net_rx_bytes, net_tx_bytes, net_sampled_at, \
-     channel_name_registration, channel_name_private, channel_name_voice, \n     announcement_posted_at, announcement_attempts, announcement_abandon_notified_at";
+     channel_name_registration, channel_name_private, channel_name_voice, \
+     announcement_posted_at, announcement_attempts, announcement_abandon_notified_at, rules";
 
 /// Une tranche d'historique telle que la base la resume.
 #[derive(FromRow)]
@@ -149,7 +152,7 @@ impl GameServerRepository for PgGameServerRepository {
         let row: ServerRow = sqlx::query_as(&format!(
             "INSERT INTO game_servers \
                  (guild_id, template_id, name, allocated_memory_mb, cpu_limit, owner_user_id, idle_shutdown_days) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) \
              RETURNING {SELECT_COLS}"
         ))
         .bind(new.guild_id.as_str())
@@ -159,6 +162,7 @@ impl GameServerRepository for PgGameServerRepository {
         .bind(new.cpu_limit)
         .bind(&new.owner_user_id)
         .bind(new.idle_shutdown_days)
+        .bind(new.rules.as_deref())
         .fetch_one(&mut *tx)
         .await
         .map_err(pg_ctx("create game_server"))?;

@@ -112,6 +112,7 @@ impl ManageGameServersUseCase for ManageGameServersService {
             owner_user_id: cmd.owner_user_id.clone(),
             idle_shutdown_days: None,
             initial_config: cmd.initial_config,
+            rules: cmd.rules.clone(),
         };
         let server = self.server_repo.create(new).await?;
         let server_id = server.id;

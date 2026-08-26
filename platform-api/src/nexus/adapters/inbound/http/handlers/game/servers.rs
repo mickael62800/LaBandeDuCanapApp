@@ -41,6 +41,10 @@ pub async fn create_server(
         cpu_limit: dto.cpu_limit,
         owner_user_id: dto.owner_user_id,
         initial_config: dto.config,
+        rules: platform_core::nexus::domain::entities::game::server::nettoyer_reglement(
+            dto.rules.as_deref(),
+        )
+        .map_err(|e| ApiError(DomainError::ValidationError(e)))?,
     };
     let server = state.game_servers_uc.create(cmd).await?;
 

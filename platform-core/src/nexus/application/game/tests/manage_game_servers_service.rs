@@ -110,6 +110,7 @@ fn sample_server(host_port: Option<u16>) -> GameServer {
         announcement_posted_at: None,
         announcement_attempts: 0,
         announcement_abandon_notified_at: None,
+        rules: None,
         channel_name_registration: None,
         channel_name_private: None,
         channel_name_voice: None,
@@ -334,6 +335,7 @@ fn sample_command() -> CreateGameServerCommand {
         cpu_limit: Some(4.0),
         owner_user_id: "user_1".to_string(),
         initial_config: HashMap::new(),
+        rules: None,
     }
 }
 

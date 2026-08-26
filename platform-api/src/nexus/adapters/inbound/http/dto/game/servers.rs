@@ -56,6 +56,10 @@ pub struct CreateGameServerDto {
     /// Overrides initiaux (key/value SCREAMING_SNAKE).
     #[serde(default, deserialize_with = "deserialize_config_map")]
     pub config: HashMap<String, String>,
+    /// Reglement de la soiree. Vide = aucun. Reproduit mot pour mot sous
+    /// l'annonce ; Atrium le recoit comme contexte mais ne le reformule pas.
+    #[serde(default)]
+    pub rules: Option<String>,
     /// Delai (jours) avant la revelation de l'IP. Vide = defaut de la guild
     /// (`ip_reveal_default_days`). 0 = pas de revelation programmee.
     pub ip_reveal_days: Option<i32>,
@@ -120,6 +124,7 @@ pub struct GameServerDto {
     pub stopped_at: Option<DateTime<Utc>>,
     // Session Discord (evenement de serveur).
     pub announcement_posted_at: Option<String>,
+    pub rules: Option<String>,
     pub channel_name_registration: Option<String>,
     pub channel_name_private: Option<String>,
     pub channel_name_voice: Option<String>,
@@ -163,6 +168,7 @@ impl From<GameServer> for GameServerDto {
             started_at: s.started_at,
             stopped_at: s.stopped_at,
             announcement_posted_at: s.announcement_posted_at.map(|d| d.to_rfc3339()),
+            rules: s.rules,
             channel_name_registration: s.channel_name_registration,
             channel_name_private: s.channel_name_private,
             channel_name_voice: s.channel_name_voice,

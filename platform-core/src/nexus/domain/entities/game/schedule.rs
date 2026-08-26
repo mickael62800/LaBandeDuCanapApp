@@ -1258,3 +1258,170 @@ mod tests {
         assert_eq!(locale.hour(), 19);
     }
 }
+
+/// Les plages d'ouverture en clair, pour une annonce lisible.
+///
+/// Rend `None` quand il n'y a rien a dire : pas de plage, ou un mode qui n'en
+/// utilise pas. Un texte vide serait pire qu'une absence — il inviterait celui
+/// qui redige l'annonce a combler le blanc.
+///
+/// Les plages qui partagent les memes horaires sont regroupees : « vendredi et
+/// samedi, 19h-23h » plutot que deux lignes identiques a un jour pres. C'est
+/// ce que dirait un humain.
+pub fn etiquette_des_plages(schedule: &AutoSchedule) -> Option<String> {
+    if schedule.mode != ScheduleMode::Ranges || schedule.ranges.is_empty() {
+        return None;
+    }
+
+    let morceaux: Vec<String> = schedule
+        .ranges
+        .iter()
+        .filter(|plage| plage.days != 0)
+        .map(|plage| {
+            format!(
+                "{}, {}-{}",
+                jours_en_clair(plage.days),
+                heure_en_clair(plage.start_minute),
+                heure_en_clair(plage.end_minute)
+            )
+        })
+        .collect();
+
+    (!morceaux.is_empty()).then(|| morceaux.join(" ; "))
+}
+
+fn heure_en_clair(minutes: u16) -> String {
+    let h = minutes / 60;
+    let m = minutes % 60;
+    if m == 0 {
+        format!("{h}h")
+    } else {
+        format!("{h}h{m:02}")
+    }
+}
+
+fn jours_en_clair(masque: u8) -> String {
+    const NOMS: [&str; 7] = [
+        "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche",
+    ];
+    if masque & TOUS_LES_JOURS == TOUS_LES_JOURS {
+        return "tous les jours".to_string();
+    }
+
+    let coches: Vec<&str> = NOMS
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| masque & (1 << i) != 0)
+        .map(|(_, nom)| *nom)
+        .collect();
+
+    match coches.as_slice() {
+        [] => String::new(),
+        [seul] => seul.to_string(),
+        // « lundi, mardi et mercredi » : le dernier separateur est un « et »,
+        // sans quoi l'enumeration se lit comme une liste de courses.
+        [debut @ .., dernier] => format!("{} et {dernier}", debut.join(", ")),
+    }
+}
+
+/// L'etiquette des plages part dans l'annonce lue par les joueurs : une erreur
+/// ici se voit tout de suite, et fait mentir Nexus sur ses propres horaires.
+#[cfg(test)]
+mod tests_etiquette {
+    use super::*;
+
+    fn horaire_avec(ranges: Vec<TimeRange>) -> AutoSchedule {
+        AutoSchedule {
+            enabled: true,
+            mode: ScheduleMode::Ranges,
+            timezone: "Europe/Paris".into(),
+            ranges,
+            warn_minutes: 10,
+            closes_at: None,
+            restart_interval_hours: None,
+            restart_anchor_minute: 0,
+            last_restart_at: None,
+            last_warned_at: None,
+            last_final_warned_at: None,
+        }
+    }
+
+    fn plage_jours(h1: u16, h2: u16, jours: u8) -> TimeRange {
+        TimeRange {
+            start_minute: h1 * 60,
+            end_minute: h2 * 60,
+            days: jours,
+        }
+    }
+
+    #[test]
+    fn deux_jours_se_lisent_avec_un_et() {
+        use chrono::Weekday::*;
+        let jours = bit_du_jour(Fri) | bit_du_jour(Sat);
+        let h = horaire_avec(vec![plage_jours(19, 23, jours)]);
+
+        assert_eq!(
+            etiquette_des_plages(&h).as_deref(),
+            Some("vendredi et samedi, 19h-23h")
+        );
+    }
+
+    #[test]
+    fn trois_jours_gardent_des_virgules_avant_le_et() {
+        use chrono::Weekday::*;
+        let jours = bit_du_jour(Mon) | bit_du_jour(Tue) | bit_du_jour(Wed);
+        let h = horaire_avec(vec![plage_jours(20, 22, jours)]);
+
+        assert_eq!(
+            etiquette_des_plages(&h).as_deref(),
+            Some("lundi, mardi et mercredi, 20h-22h")
+        );
+    }
+
+    #[test]
+    fn la_semaine_entiere_se_dit_en_trois_mots() {
+        let h = horaire_avec(vec![plage_jours(19, 23, TOUS_LES_JOURS)]);
+        assert_eq!(
+            etiquette_des_plages(&h).as_deref(),
+            Some("tous les jours, 19h-23h")
+        );
+    }
+
+    #[test]
+    fn les_minutes_apparaissent_seulement_quand_il_y_en_a() {
+        let mut plage = plage_jours(19, 23, TOUS_LES_JOURS);
+        plage.start_minute = 19 * 60 + 30;
+        let h = horaire_avec(vec![plage]);
+
+        assert_eq!(
+            etiquette_des_plages(&h).as_deref(),
+            Some("tous les jours, 19h30-23h")
+        );
+    }
+
+    /// RIEN A DIRE DOIT SE DIRE PAR `None`. Une chaine vide inviterait celui
+    /// qui redige l'annonce a combler le blanc — donc a inventer un horaire.
+    #[test]
+    fn sans_plage_exploitable_rien_n_est_annonce() {
+        assert!(etiquette_des_plages(&horaire_avec(vec![])).is_none());
+        assert!(etiquette_des_plages(&horaire_avec(vec![plage_jours(19, 23, 0)])).is_none());
+
+        let mut permanence = horaire_avec(vec![plage_jours(19, 23, TOUS_LES_JOURS)]);
+        permanence.mode = ScheduleMode::Restart;
+        assert!(etiquette_des_plages(&permanence).is_none());
+    }
+
+    #[test]
+    fn plusieurs_plages_sont_enumerees() {
+        use chrono::Weekday::*;
+        let h = horaire_avec(vec![
+            plage_jours(12, 14, bit_du_jour(Sat)),
+            plage_jours(19, 23, bit_du_jour(Sun)),
+        ]);
+
+        assert_eq!(
+            etiquette_des_plages(&h).as_deref(),
+            Some("samedi, 12h-14h ; dimanche, 19h-23h")
+        );
+    }
+}

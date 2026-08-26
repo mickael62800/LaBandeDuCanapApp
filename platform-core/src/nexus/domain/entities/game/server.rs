@@ -140,6 +140,8 @@ pub struct GameServer {
     pub announcement_posted_at: Option<DateTime<Utc>>,
     /// Tentatives de redaction deja faites, pour borner la reprise.
     pub announcement_attempts: i32,
+    /// Abandon deja signale dans le salon de logs. `None` = a signaler.
+    pub announcement_abandon_notified_at: Option<DateTime<Utc>>,
     /// Date de revelation de l'IP (None = pas de revelation programmee).
     pub ip_reveal_at: Option<DateTime<Utc>>,
     /// True une fois l'IP revelee dans le salon.

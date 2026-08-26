@@ -1065,7 +1065,10 @@ async fn handle_event(ctx: &Context, api: &ApiClient, payload_json: &str) {
         ev::SERVER_STOPPED => on_stopped(ctx, api, &server_id).await,
         ev::SERVER_DELETED => on_deleted(ctx, api, &server_id, payload_json).await,
         ev::SESSION_CHANNELS_RENAMED => renommer_les_salons(ctx, api, &server_id).await,
-        // Reprise : la sequence est la meme qu a l ouverture, et le garde
+        ev::SESSION_ANNOUNCEMENT_ABANDONED => {
+            signaler_abandon_d_annonce(ctx, api, payload_json).await
+        }
+        // Reprise : la sequence est la meme qu'a l'ouverture, et le garde
         // « deja annoncee » la rend sans effet sur une session deja servie.
         ev::SESSION_ANNOUNCEMENT_RETRY => publier_annonce_puis_panneau(ctx, api, &server_id).await,
         ev::IP_REVEAL => on_ip_reveal(ctx, api, &server_id).await,
@@ -1856,6 +1859,65 @@ async fn salons_deja_nomme(ctx: &Context, salon: ChannelId, nom: &str) -> bool {
         .ok()
         .and_then(|c| c.guild().map(|g| g.name == nom))
         .unwrap_or(false)
+}
+
+/// Signale dans le salon de logs qu'une session n'aura pas son annonce.
+///
+/// POURQUOI CETTE ALERTE EXISTE. L'annonce d'Atrium precede le panneau
+/// d'inscription : tant qu'elle manque, personne ne peut s'inscrire. Passe le
+/// plafond de tentatives, la reprise cesse — et sans ce message, une soiree
+/// resterait sans panneau, decouverte par les joueurs plutot que par
+/// l'exploitant.
+///
+/// Elle dit aussi COMMENT s'en sortir : le blocage se leve en publiant le
+/// panneau a la main ou en recreant la session, pas en attendant.
+///
+/// Sans salon de logs configure, rien n'est publie. C'est le reglage
+/// `log_channel_id` du module, et l'absence de salon est un choix, pas une
+/// panne : on ne va pas ecrire ailleurs faute de mieux.
+async fn signaler_abandon_d_annonce(ctx: &Context, api: &ApiClient, payload_json: &str) {
+    let Some((_, server_id, guild_id)) = parse_portal_event(payload_json) else {
+        return;
+    };
+    let donnees = serde_json::from_str::<serde_json::Value>(payload_json).ok();
+    let nom = donnees
+        .as_ref()
+        .and_then(|env| env.get("data"))
+        .and_then(|d| d.get("nom"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("un serveur")
+        .to_string();
+
+    let cfg = api
+        .get_guild_config(&guild_id.to_string(), MODULE_BOT_NAME)
+        .await
+        .unwrap_or_default();
+    let Some(salon) = cfg
+        .get("log_channel_id")
+        .and_then(|s| s.parse::<u64>().ok())
+        .map(ChannelId::new)
+    else {
+        tracing::warn!(
+            server_id,
+            "game-portal: abandon d'annonce non signale (aucun salon de logs configure)"
+        );
+        return;
+    };
+
+    let message = format!(
+        "⚠️ **{nom}** : Atrium n'a pas pu rediger l'annonce d'ouverture apres \
+plusieurs tentatives, la reprise s'arrete.\n\
+Les salons existent, mais **le panneau d'inscription n'a pas ete publie** : \
+personne ne peut s'inscrire.\n\
+Verifie la disponibilite d'Atrium et son quota, puis recree la session pour \
+relancer l'ouverture."
+    );
+    if let Err(e) = salon
+        .send_message(&ctx.http, CreateMessage::new().content(message))
+        .await
+    {
+        tracing::warn!(error = %e, server_id, "game-portal: alerte d'abandon non publiee");
+    }
 }
 // ── Suppression du jeu -> suppression des salons ──
 

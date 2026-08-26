@@ -296,9 +296,12 @@ pub async fn job_session_announcements(
         let rapport = crate::nexus::jobs::session_announcements::run(&state).await?;
         Ok(JobReport {
             job: "session_announcements",
-            processed: rapport.relancees,
+            processed: rapport.relancees + rapport.abandons,
             errors: rapport.errors,
-            details: serde_json::json!({ "relancees": rapport.relancees }),
+            details: serde_json::json!({
+                "relancees": rapport.relancees,
+                "abandons": rapport.abandons,
+            }),
         })
     })
     .await

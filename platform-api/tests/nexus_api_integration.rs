@@ -529,6 +529,12 @@ impl GameServerRepository for DummyGameServerRepo {
     async fn marquer_annonce_publiee(&self, _: uuid::Uuid) -> Result<(), DomainError> {
         Ok(())
     }
+    async fn annonces_abandonnees(&self, _: i32) -> Result<Vec<GameServer>, DomainError> {
+        Ok(vec![])
+    }
+    async fn marquer_abandon_signale(&self, _: uuid::Uuid) -> Result<(), DomainError> {
+        Ok(())
+    }
     async fn annonces_en_attente(&self, _: i32) -> Result<Vec<GameServer>, DomainError> {
         Ok(vec![])
     }

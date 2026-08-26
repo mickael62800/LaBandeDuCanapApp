@@ -24,6 +24,8 @@ use crate::nexus::bootstrap::AppState;
 pub struct Rapport {
     /// Sessions rappelees au bot.
     pub relancees: usize,
+    /// Sessions abandonnees, signalees dans le salon de logs.
+    pub abandons: usize,
     pub errors: usize,
 }
 
@@ -54,6 +56,42 @@ pub async fn run(
         rapport.relancees += 1;
     }
 
+    // ── Abandons a signaler ──
+    //
+    // Une session qui a epuise ses tentatives ne sera plus reprise. Le taire
+    // laisserait une soiree sans panneau d'inscription, et personne ne
+    // l'apprendrait autrement que par les joueurs.
+    //
+    // Le marquage a lieu APRES la publication de l'evenement : marque avant,
+    // une panne entre les deux ferait disparaitre l'alerte pour toujours. Dans
+    // l'autre sens, le pire est une alerte publiee deux fois.
+    let abandonnees = state
+        .game_server_repo
+        .annonces_abandonnees(TENTATIVES_MAX)
+        .await?;
+    for serveur in abandonnees {
+        state
+            .events
+            .publish(
+                game_events::SESSION_ANNOUNCEMENT_ABANDONED,
+                serde_json::json!({
+                    "server_id": serveur.id.to_string(),
+                    "guild_id": serveur.guild_id,
+                    "nom": serveur.name,
+                    "tentatives": serveur.announcement_attempts,
+                }),
+            )
+            .await;
+        if let Err(erreur) = state
+            .game_server_repo
+            .marquer_abandon_signale(serveur.id)
+            .await
+        {
+            tracing::warn!(%erreur, server_id = %serveur.id, "abandon signale mais non marque");
+            rapport.errors += 1;
+        }
+        rapport.abandons += 1;
+    }
     if rapport.relancees > 0 {
         tracing::info!(
             relancees = rapport.relancees,

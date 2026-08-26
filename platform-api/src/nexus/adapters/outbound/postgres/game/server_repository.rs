@@ -55,6 +55,7 @@ struct ServerRow {
     channel_name_voice: Option<String>,
     announcement_posted_at: Option<DateTime<Utc>>,
     announcement_attempts: i32,
+    announcement_abandon_notified_at: Option<DateTime<Utc>>,
     voice_channel_id: Option<String>,
     ip_reveal_at: Option<DateTime<Utc>>,
     closes_at: Option<DateTime<Utc>>,
@@ -103,6 +104,7 @@ impl TryFrom<ServerRow> for GameServer {
             channel_name_voice: r.channel_name_voice,
             announcement_posted_at: r.announcement_posted_at,
             announcement_attempts: r.announcement_attempts,
+            announcement_abandon_notified_at: r.announcement_abandon_notified_at,
             text_channel_id: r.text_channel_id,
             voice_channel_id: r.voice_channel_id,
             ip_reveal_at: r.ip_reveal_at,
@@ -124,7 +126,7 @@ const SELECT_COLS: &str = "id, guild_id, template_id, name, status, container_id
      restart_attempts, last_restart_at, \
      text_channel_id, voice_channel_id, ip_reveal_at, ip_revealed, closes_at, config_dirty, \
      rcon_latency_ms, net_rx_bytes, net_tx_bytes, net_sampled_at, \
-     channel_name_registration, channel_name_private, channel_name_voice, \n     announcement_posted_at, announcement_attempts";
+     channel_name_registration, channel_name_private, channel_name_voice, \n     announcement_posted_at, announcement_attempts, announcement_abandon_notified_at";
 
 /// Une tranche d'historique telle que la base la resume.
 #[derive(FromRow)]
@@ -571,6 +573,38 @@ impl GameServerRepository for PgGameServerRepository {
         .await
         .map_err(pg_ctx("annonces_en_attente"))?;
         rows.into_iter().map(GameServer::try_from).collect()
+    }
+
+    async fn annonces_abandonnees(
+        &self,
+        tentatives_max: i32,
+    ) -> Result<Vec<GameServer>, DomainError> {
+        let rows: Vec<ServerRow> = sqlx::query_as(&format!(
+            "SELECT {SELECT_COLS} FROM game_servers \
+             WHERE deleted_at IS NULL AND status != 'deleted' \
+               AND text_channel_id IS NOT NULL \
+               AND announcement_posted_at IS NULL \
+               AND announcement_attempts >= $1 \
+               AND announcement_abandon_notified_at IS NULL \
+             ORDER BY created_at"
+        ))
+        .bind(tentatives_max)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(pg_ctx("annonces_abandonnees"))?;
+        rows.into_iter().map(GameServer::try_from).collect()
+    }
+
+    async fn marquer_abandon_signale(&self, id: Uuid) -> Result<(), DomainError> {
+        sqlx::query(
+            "UPDATE game_servers SET announcement_abandon_notified_at = NOW(), updated_at = NOW() \
+             WHERE id = $1 AND announcement_abandon_notified_at IS NULL",
+        )
+        .bind(id)
+        .execute(&self.pool)
+        .await
+        .map_err(pg_ctx("marquer_abandon_signale"))?;
+        Ok(())
     }
 
     async fn mark_ip_revealed(&self, id: Uuid) -> Result<(), DomainError> {

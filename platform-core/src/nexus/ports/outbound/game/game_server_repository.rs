@@ -136,6 +136,17 @@ pub trait GameServerRepository: Send + Sync {
         tentatives_max: i32,
     ) -> Result<Vec<GameServer>, DomainError>;
 
+    /// Sessions qui ont epuise leurs tentatives sans que l'abandon ait ete
+    /// signale. La reprise passant toutes les cinq minutes, sans ce filtre
+    /// l'alerte se repeterait indefiniment dans le salon de logs.
+    async fn annonces_abandonnees(
+        &self,
+        tentatives_max: i32,
+    ) -> Result<Vec<GameServer>, DomainError>;
+
+    /// L'abandon a ete signale : ne plus le signaler.
+    async fn marquer_abandon_signale(&self, id: uuid::Uuid) -> Result<(), DomainError>;
+
     /// Marque l'IP comme revelee (le job de revelation l'a publiee).
     async fn mark_ip_revealed(&self, id: Uuid) -> Result<(), DomainError>;
 

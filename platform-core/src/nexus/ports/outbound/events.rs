@@ -45,6 +45,11 @@ pub mod game_events {
     /// sequence. Emis par la reprise periodique, jamais a l'ouverture.
     pub const SESSION_ANNOUNCEMENT_RETRY: &str = "game_session_announcement_retry";
 
+    /// Une session a epuise ses tentatives d'annonce : le bot le signale dans
+    /// le salon de logs. Emis une seule fois par session — sans quoi la reprise
+    /// republierait l'alerte toutes les cinq minutes.
+    pub const SESSION_ANNOUNCEMENT_ABANDONED: &str = "game_session_announcement_abandoned";
+
     /// Charge utile de `SERVER_DELETED`, construite ici pour que publieur et
     /// consommateur ne puissent pas diverger.
     ///

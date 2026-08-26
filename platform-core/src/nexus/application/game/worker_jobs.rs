@@ -171,6 +171,12 @@ mod tests {
         async fn marquer_annonce_publiee(&self, _: uuid::Uuid) -> Result<(), DomainError> {
             Ok(())
         }
+        async fn annonces_abandonnees(&self, _: i32) -> Result<Vec<GameServer>, DomainError> {
+            Ok(vec![])
+        }
+        async fn marquer_abandon_signale(&self, _: uuid::Uuid) -> Result<(), DomainError> {
+            Ok(())
+        }
         async fn annonces_en_attente(&self, _: i32) -> Result<Vec<GameServer>, DomainError> {
             Ok(vec![])
         }
@@ -577,6 +583,12 @@ mod tests {
             async fn marquer_annonce_publiee(&self, _: uuid::Uuid) -> Result<(), DomainError> {
                 Ok(())
             }
+            async fn annonces_abandonnees(&self, _: i32) -> Result<Vec<GameServer>, DomainError> {
+                Ok(vec![])
+            }
+            async fn marquer_abandon_signale(&self, _: uuid::Uuid) -> Result<(), DomainError> {
+                Ok(())
+            }
             async fn annonces_en_attente(&self, _: i32) -> Result<Vec<GameServer>, DomainError> {
                 Ok(vec![])
             }
@@ -886,6 +898,12 @@ mod tests {
             async fn marquer_annonce_publiee(&self, _: uuid::Uuid) -> Result<(), DomainError> {
                 Ok(())
             }
+            async fn annonces_abandonnees(&self, _: i32) -> Result<Vec<GameServer>, DomainError> {
+                Ok(vec![])
+            }
+            async fn marquer_abandon_signale(&self, _: uuid::Uuid) -> Result<(), DomainError> {
+                Ok(())
+            }
             async fn annonces_en_attente(&self, _: i32) -> Result<Vec<GameServer>, DomainError> {
                 Ok(vec![])
             }
@@ -1075,6 +1093,12 @@ mod tests {
             async fn marquer_annonce_publiee(&self, _: uuid::Uuid) -> Result<(), DomainError> {
                 Ok(())
             }
+            async fn annonces_abandonnees(&self, _: i32) -> Result<Vec<GameServer>, DomainError> {
+                Ok(vec![])
+            }
+            async fn marquer_abandon_signale(&self, _: uuid::Uuid) -> Result<(), DomainError> {
+                Ok(())
+            }
             async fn annonces_en_attente(&self, _: i32) -> Result<Vec<GameServer>, DomainError> {
                 Ok(vec![])
             }
@@ -1202,6 +1226,7 @@ mod tests {
             stopped_at: None,
             announcement_posted_at: None,
             announcement_attempts: 0,
+            announcement_abandon_notified_at: None,
             channel_name_registration: None,
             channel_name_private: None,
             channel_name_voice: None,
@@ -1321,6 +1346,12 @@ mod tests {
                 Ok(())
             }
             async fn marquer_annonce_publiee(&self, _: uuid::Uuid) -> Result<(), DomainError> {
+                Ok(())
+            }
+            async fn annonces_abandonnees(&self, _: i32) -> Result<Vec<GameServer>, DomainError> {
+                Ok(vec![])
+            }
+            async fn marquer_abandon_signale(&self, _: uuid::Uuid) -> Result<(), DomainError> {
                 Ok(())
             }
             async fn annonces_en_attente(&self, _: i32) -> Result<Vec<GameServer>, DomainError> {
@@ -1450,6 +1481,7 @@ mod tests {
             stopped_at: None,
             announcement_posted_at: None,
             announcement_attempts: 0,
+            announcement_abandon_notified_at: None,
             channel_name_registration: None,
             channel_name_private: None,
             channel_name_voice: None,
@@ -1554,6 +1586,12 @@ mod tests {
                 Ok(())
             }
             async fn marquer_annonce_publiee(&self, _: uuid::Uuid) -> Result<(), DomainError> {
+                Ok(())
+            }
+            async fn annonces_abandonnees(&self, _: i32) -> Result<Vec<GameServer>, DomainError> {
+                Ok(vec![])
+            }
+            async fn marquer_abandon_signale(&self, _: uuid::Uuid) -> Result<(), DomainError> {
                 Ok(())
             }
             async fn annonces_en_attente(&self, _: i32) -> Result<Vec<GameServer>, DomainError> {
@@ -1781,6 +1819,12 @@ mod tests {
                 Ok(())
             }
             async fn marquer_annonce_publiee(&self, _: uuid::Uuid) -> Result<(), DomainError> {
+                Ok(())
+            }
+            async fn annonces_abandonnees(&self, _: i32) -> Result<Vec<GameServer>, DomainError> {
+                Ok(vec![])
+            }
+            async fn marquer_abandon_signale(&self, _: uuid::Uuid) -> Result<(), DomainError> {
                 Ok(())
             }
             async fn annonces_en_attente(&self, _: i32) -> Result<Vec<GameServer>, DomainError> {
@@ -2034,6 +2078,12 @@ mod tests {
                 Ok(())
             }
             async fn marquer_annonce_publiee(&self, _: uuid::Uuid) -> Result<(), DomainError> {
+                Ok(())
+            }
+            async fn annonces_abandonnees(&self, _: i32) -> Result<Vec<GameServer>, DomainError> {
+                Ok(vec![])
+            }
+            async fn marquer_abandon_signale(&self, _: uuid::Uuid) -> Result<(), DomainError> {
                 Ok(())
             }
             async fn annonces_en_attente(&self, _: i32) -> Result<Vec<GameServer>, DomainError> {
@@ -2303,6 +2353,12 @@ mod tests {
             async fn marquer_annonce_publiee(&self, _: uuid::Uuid) -> Result<(), DomainError> {
                 Ok(())
             }
+            async fn annonces_abandonnees(&self, _: i32) -> Result<Vec<GameServer>, DomainError> {
+                Ok(vec![])
+            }
+            async fn marquer_abandon_signale(&self, _: uuid::Uuid) -> Result<(), DomainError> {
+                Ok(())
+            }
             async fn annonces_en_attente(&self, _: i32) -> Result<Vec<GameServer>, DomainError> {
                 Ok(vec![])
             }
@@ -2521,6 +2577,12 @@ mod tests {
                 Ok(())
             }
             async fn marquer_annonce_publiee(&self, _: uuid::Uuid) -> Result<(), DomainError> {
+                Ok(())
+            }
+            async fn annonces_abandonnees(&self, _: i32) -> Result<Vec<GameServer>, DomainError> {
+                Ok(vec![])
+            }
+            async fn marquer_abandon_signale(&self, _: uuid::Uuid) -> Result<(), DomainError> {
                 Ok(())
             }
             async fn annonces_en_attente(&self, _: i32) -> Result<Vec<GameServer>, DomainError> {
@@ -2771,6 +2833,12 @@ mod tests {
             async fn marquer_annonce_publiee(&self, _: uuid::Uuid) -> Result<(), DomainError> {
                 Ok(())
             }
+            async fn annonces_abandonnees(&self, _: i32) -> Result<Vec<GameServer>, DomainError> {
+                Ok(vec![])
+            }
+            async fn marquer_abandon_signale(&self, _: uuid::Uuid) -> Result<(), DomainError> {
+                Ok(())
+            }
             async fn annonces_en_attente(&self, _: i32) -> Result<Vec<GameServer>, DomainError> {
                 Ok(vec![])
             }
@@ -2923,6 +2991,7 @@ mod tests {
             stopped_at: None,
             announcement_posted_at: None,
             announcement_attempts: 0,
+            announcement_abandon_notified_at: None,
             channel_name_registration: None,
             channel_name_private: None,
             channel_name_voice: None,

@@ -203,6 +203,29 @@ impl GameTemplate {
                 ))
             }
         };
+        // UN CHAMP VIDE N'EST PAS UNE VALEUR, C'EST UNE ABSENCE DE CHOIX.
+        //
+        // Le formulaire envoie TOUS ses champs, y compris ceux auxquels
+        // personne n'a touche. Un reglage numerique laisse vide arrivait donc
+        // ici comme une chaine vide et se faisait refuser — « valeur numerique
+        // attendue, recu "" » — bloquant la creation entiere du serveur pour un
+        // champ facultatif que l'exploitant n'avait pas rempli.
+        //
+        // Cent trente reglages de bac a sable, tous facultatifs et tous vides
+        // par defaut, rendaient ce refus systematique.
+        //
+        // On l'accepte donc sans le valider : plus bas, la composition de
+        // l'environnement et celle du fichier de bac a sable ignorent l'une
+        // comme l'autre les valeurs vides. Rien n'est ecrit, et le jeu applique
+        // son propre defaut.
+        //
+        // Cela vaut pour TOUS les types, y compris le texte : une chaine vide
+        // se validerait de toute facon, et un traitement uniforme evite qu'un
+        // type nouveau reintroduise le probleme par oubli.
+        if value.trim().is_empty() {
+            return Ok(());
+        }
+
         match field.field_type {
             ConfigFieldType::Number => {
                 let num: f64 = value
@@ -436,5 +459,60 @@ mod tests {
         let f = field("PORT", ConfigFieldType::Number);
         let t = tmpl(vec![f]);
         assert!(t.validate_config_value("PORT", "25565").is_ok());
+    }
+
+    /// Un champ facultatif laisse vide ne doit jamais faire echouer une
+    /// creation.
+    ///
+    /// Le formulaire envoie TOUS ses champs. Depuis que Project Zomboid en
+    /// compte cent trente pour son seul bac a sable, tous facultatifs et vides
+    /// par defaut, un refus sur la chaine vide bloquait la creation de tout
+    /// serveur — « valeur numerique attendue, recu "" ».
+    #[test]
+    fn un_champ_vide_est_accepte_quel_que_soit_son_type() {
+        let mut nombre = field("SANDBOX_Zombies", ConfigFieldType::Number);
+        nombre.min = Some(1.0);
+        nombre.max = Some(5.0);
+        let mut choix = field("DIFFICULTY", ConfigFieldType::Enum);
+        choix.options = Some(vec!["easy".into()]);
+        let mut texte = field("MOTD", ConfigFieldType::Text);
+        texte.max_length = Some(5);
+        let t = tmpl(vec![nombre, choix, texte]);
+
+        for cle in ["SANDBOX_Zombies", "DIFFICULTY", "MOTD"] {
+            assert!(
+                t.validate_config_value(cle, "").is_ok(),
+                "{cle} vide refuse"
+            );
+            assert!(
+                t.validate_config_value(cle, "   ").is_ok(),
+                "{cle} en blancs refuse"
+            );
+        }
+    }
+
+    /// La tolerance ne vaut QUE pour le vide : une valeur renseignee reste
+    /// validee, sans quoi n'importe quoi entrerait dans la configuration.
+    #[test]
+    fn une_valeur_renseignee_reste_validee() {
+        let mut f = field("SANDBOX_Zombies", ConfigFieldType::Number);
+        f.min = Some(1.0);
+        f.max = Some(5.0);
+        let t = tmpl(vec![f]);
+
+        assert!(t.validate_config_value("SANDBOX_Zombies", "3").is_ok());
+        assert!(t.validate_config_value("SANDBOX_Zombies", "9").is_err());
+        assert!(t
+            .validate_config_value("SANDBOX_Zombies", "beaucoup")
+            .is_err());
+    }
+
+    /// Une cle inconnue reste refusee, vide ou non : c'est elle qui empeche
+    /// d'injecter n'importe quelle variable d'environnement dans le conteneur.
+    #[test]
+    fn une_cle_inconnue_reste_refusee_meme_vide() {
+        let t = tmpl(vec![field("MOTD", ConfigFieldType::Text)]);
+        assert!(t.validate_config_value("LD_PRELOAD", "").is_err());
+        assert!(t.validate_config_value("LD_PRELOAD", "/evil.so").is_err());
     }
 }

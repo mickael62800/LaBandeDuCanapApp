@@ -255,3 +255,37 @@ fn aucune_cle_de_mod_ne_figure_dans_la_liste() {
         );
     }
 }
+
+// ── Un champ vide n'est pas une valeur ─────────────────────────────────────
+
+/// Le formulaire envoie TOUS ses champs, y compris les cent trente reglages de
+/// bac a sable auxquels personne n'a touche. Un seul champ numerique vide
+/// refuse bloquait la creation entiere du serveur.
+#[test]
+fn cent_trente_champs_vides_ne_produisent_aucun_fichier() {
+    let tout_vide: HashMap<String, String> = REGLAGES
+        .iter()
+        .map(|r| (format!("{PREFIXE_SANDBOX}{}", r.cle), String::new()))
+        .collect();
+
+    assert_eq!(tout_vide.len(), 130);
+    assert!(composer(&tout_vide).is_none());
+}
+
+/// Un seul reglage renseigne parmi cent trente doit produire un fichier qui ne
+/// contient QUE lui : les cent vingt-neuf autres gardent le defaut du jeu.
+#[test]
+fn un_seul_reglage_renseigne_n_ecrit_que_lui() {
+    let mut config: HashMap<String, String> = REGLAGES
+        .iter()
+        .map(|r| (format!("{PREFIXE_SANDBOX}{}", r.cle), String::new()))
+        .collect();
+    config.insert(format!("{PREFIXE_SANDBOX}Speed"), "1".into());
+
+    let lua = composer(&config).expect("un fichier est attendu");
+    assert!(lua.contains("Speed = 1"));
+    assert!(!lua.contains("Zombies"));
+    assert!(!lua.contains("FoodLoot"));
+    // Seules VERSION, la sous-table et le reglage : six lignes au plus.
+    assert!(lua.lines().count() <= 6, "fichier trop bavard :\n{lua}");
+}

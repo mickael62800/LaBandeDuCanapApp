@@ -137,6 +137,13 @@ impl ManageGameServersService {
             if zomboid_sandbox::est_cle_sandbox(k) {
                 continue;
             }
+            // Une valeur vide est une absence de choix, pas un choix. La poser
+            // quand meme donnerait au conteneur `MAX_PLAYERS=""` la ou l'image
+            // aurait applique son propre defaut — et certaines refusent tout
+            // simplement de demarrer sur une variable vide.
+            if v.trim().is_empty() {
+                continue;
+            }
             env.insert(k.clone(), v.clone());
         }
         if template.slug == "palworld" {
@@ -336,6 +343,13 @@ impl ManageGameServersService {
         // l'inspection, qu'ils pilotent quelque chose.
         for (k, v) in overrides {
             if zomboid_sandbox::est_cle_sandbox(k) {
+                continue;
+            }
+            // Une valeur vide est une absence de choix, pas un choix. La poser
+            // quand meme donnerait au conteneur `MAX_PLAYERS=""` la ou l'image
+            // aurait applique son propre defaut — et certaines refusent tout
+            // simplement de demarrer sur une variable vide.
+            if v.trim().is_empty() {
                 continue;
             }
             env.insert(k.clone(), v.clone());

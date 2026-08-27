@@ -769,6 +769,52 @@ pub async fn update_rules(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// Resultat d'une sauvegarde declenchee a la main.
+#[derive(Debug, serde::Serialize)]
+pub struct BackupNowDto {
+    pub size_bytes: u64,
+    /// Vrai quand le serveur tournait : la copie peut contenir un fichier a
+    /// moitie ecrit, et l'ecran doit le dire plutot que de laisser croire a une
+    /// sauvegarde equivalente a celle prise a froid.
+    pub a_chaud: bool,
+}
+
+/// POST /api/games/servers/{server_id}/backup
+///
+/// Sauvegarde du monde a la demande.
+///
+/// NI L'INTERRUPTEUR NI LE DELAI MINIMAL NE S'APPLIQUENT : ce sont des garde-
+/// fous contre l'archivage AUTOMATIQUE repetitif. Ici quelqu'un a clique, en
+/// general juste avant de toucher au monde — lui opposer un delai reviendrait a
+/// lui refuser la seule sauvegarde qui compte.
+pub async fn backup_now(
+    State(state): State<AppState>,
+    Path(server_id): Path<Uuid>,
+    headers: HeaderMap,
+    Query(q): Query<ActorQuery>,
+) -> Result<Json<BackupNowDto>, ApiError> {
+    let actor = acteur(&state, &headers, server_id, q.actor_id.as_deref()).await?;
+    let detail = state.game_servers_uc.get(server_id).await?;
+    let server = detail.server;
+
+    let a_chaud = server.status.is_active();
+    let Some(size_bytes) =
+        crate::nexus::jobs::game_schedules::archiver_le_monde(&state, &server, true).await
+    else {
+        return Err(DomainError::Infrastructure(
+            "sauvegarde impossible : le serveur n'a pas encore de monde, ou l'agent n'a pas repondu"
+                .into(),
+        )
+        .into());
+    };
+
+    tracing::info!(%server_id, %actor, size_bytes, a_chaud, "sauvegarde manuelle du monde");
+    Ok(Json(BackupNowDto {
+        size_bytes,
+        a_chaud,
+    }))
+}
+
 // ── Annonce d'ouverture ──
 
 #[derive(Debug, serde::Serialize)]

@@ -682,6 +682,32 @@ async function saveReglement() {
   }
 }
 
+// ── Sauvegarde manuelle du monde ──
+//
+// L'archive automatique n'a lieu qu'au redémarrage programmé ou à la fermeture
+// d'une plage. Rien ne permettait de dire « sauvegarde maintenant » — ce qui
+// manquait justement avant toute opération risquée.
+
+const savingBackup = ref(false);
+
+async function sauvegarderLeMonde() {
+  if (!selectedGuildId.value || !server.value || savingBackup.value) return;
+  savingBackup.value = true;
+  try {
+    const r = await nexusGamesService.backupNow(selectedGuildId.value, server.value.id);
+    const taille = (r.size_bytes / 1024 / 1024).toFixed(0);
+    success(
+      r.a_chaud
+        ? `Monde sauvegardé (${taille} Mo) — copie à chaud, le serveur tournait : cohérence non garantie.`
+        : `Monde sauvegardé (${taille} Mo), à froid.`,
+    );
+  } catch (e) {
+    showError(e instanceof Error ? e.message : "Sauvegarde impossible");
+  } finally {
+    savingBackup.value = false;
+  }
+}
+
 watch(
   [selectedGuildId, serverId],
   () => {
@@ -1201,6 +1227,36 @@ function fmtDuration(secs: number | null): string {
             Annuler
           </AppButton>
         </div>
+      </section>
+
+      <!-- Sauvegarde du monde -->
+      <section v-if="onglet === 'apercu' && server" class="sd-pane sd-resources">
+        <h3>Sauvegarde du monde</h3>
+        <p class="sd-note">
+          Une archive est prise automatiquement au redémarrage programmé et à la
+          fermeture d'une plage horaire. Ce bouton en force une maintenant —
+          utile avant toute opération risquée.
+          <template v-if="isRunning">
+            <br />
+            <strong>Le serveur tourne</strong> : la copie se fera à chaud et peut
+            attraper un fichier à moitié écrit. Arrête-le d'abord pour une
+            sauvegarde sûre.
+          </template>
+        </p>
+        <div class="sd-thresholds-row">
+          <AppButton
+            variant="secondary"
+            size="sm"
+            :disabled="savingBackup"
+            @click="sauvegarderLeMonde"
+          >
+            {{ savingBackup ? "Sauvegarde en cours…" : "Sauvegarder le monde maintenant" }}
+          </AppButton>
+        </div>
+        <small class="sd-note">
+          À la suppression du serveur, toutes les archives sont effacées sauf la
+          plus récente.
+        </small>
       </section>
 
       <!-- Configuration -->

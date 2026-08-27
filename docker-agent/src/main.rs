@@ -176,6 +176,7 @@ fn router(state: Arc<AgentState>) -> Router {
         .route("/game/volumes/{name}/ensure", post(game_ensure_volume))
         .route("/game/volumes/{name}/remove", post(game_remove_volume))
         .route("/game/volumes/{name}/archive", post(game_archive_volume))
+        .route("/game/archives/prune", post(game_prune_archives))
         .route("/game/images/pull", post(game_pull_image))
         .route("/game/images/remove", post(game_remove_image))
         .route("/game/containers", post(game_create_container))
@@ -606,6 +607,41 @@ async fn game_archive_volume(
     Ok(Json(
         game(&state)?.archive_volume(&name, &body.filename).await?,
     ))
+}
+
+/// Corps de la purge d'archives.
+#[derive(serde::Deserialize)]
+struct PruneRequest {
+    /// Nom de serveur assaini, tel que `nom_archive` le compose.
+    prefixe: String,
+    /// Archives les plus recentes a conserver.
+    garder: usize,
+}
+
+#[derive(serde::Serialize)]
+struct PruneResponse {
+    supprimees: usize,
+    octets_liberes: u64,
+}
+
+/// POST /game/archives/prune
+///
+/// Efface les archives d'un serveur sauf les plus recentes. Appelee a la
+/// suppression d'un serveur : le volume disparait, ses archives ne doivent pas
+/// occuper le disque indefiniment — mais on garde la derniere.
+async fn game_prune_archives(
+    Extension(state): Extension<Arc<AgentState>>,
+    headers: HeaderMap,
+    Json(body): Json<PruneRequest>,
+) -> Result<Json<PruneResponse>, AgentError> {
+    guarded_game!(state, headers);
+    let (supprimees, octets_liberes) = game(&state)?
+        .prune_archives(&body.prefixe, body.garder)
+        .await?;
+    Ok(Json(PruneResponse {
+        supprimees,
+        octets_liberes,
+    }))
 }
 
 async fn game_pull_image(

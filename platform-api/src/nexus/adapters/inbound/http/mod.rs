@@ -443,6 +443,10 @@ pub fn build_router_with(state: AppState, config: HttpConfig) -> Router {
             put(handlers::game::servers::update_rules),
         )
         .route(
+            "/api/games/servers/{server_id}/backup",
+            post(handlers::game::servers::backup_now),
+        )
+        .route(
             "/api/games/servers/{server_id}/announcement",
             get(handlers::game::servers::get_session_announcement),
         )

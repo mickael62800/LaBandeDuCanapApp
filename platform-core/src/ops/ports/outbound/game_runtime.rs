@@ -99,6 +99,27 @@ pub trait GameContainerRuntime: Send + Sync {
         nom_fichier: &str,
     ) -> Result<VolumeArchive, DomainError>;
 
+    /// Supprime les archives d'un serveur, sauf les `garder` plus recentes.
+    ///
+    /// APPELEE A LA SUPPRESSION D'UN SERVEUR. Le volume part avec lui, mais ses
+    /// archives lui survivent sur le disque — plusieurs gigaoctets par monde,
+    /// pour un serveur qui n'existe plus. On les efface toutes sauf la
+    /// derniere : garder une trace du monde tel qu'il etait le dernier soir
+    /// coute peu de place, et c'est la seule chose qu'on regrettera d'avoir
+    /// perdue.
+    ///
+    /// Defaut inoffensif : une implementation qui ne gere pas les archives ne
+    /// doit pas faire echouer une suppression de serveur.
+    ///
+    /// Rend le nombre d'archives supprimees et l'espace libere.
+    async fn prune_archives(
+        &self,
+        _prefixe: &str,
+        _garder: usize,
+    ) -> Result<(usize, u64), DomainError> {
+        Ok((0, 0))
+    }
+
     /// Supprime une image Docker. Retourne true si supprimee, false si
     /// l'image n'existait pas / etait encore utilisee. force=true tente
     /// la suppression meme si des containers stoppes l'utilisent.

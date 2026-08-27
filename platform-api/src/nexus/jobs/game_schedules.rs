@@ -172,7 +172,7 @@ pub async fn run(state: &AppState) -> Result<ScheduleReport, DomainError> {
                         // existant, et delai minimal entre deux archives. Une
                         // plage qui se ferme chaque soir ne produit donc pas
                         // plus d'une archive par jour.
-                        archiver_le_monde(state, &server).await;
+                        archiver_le_monde(state, &server, false).await;
                     }
                     Err(error) => {
                         tracing::warn!(%error, server_id = %server.id, "horaires : fermeture impossible");
@@ -278,7 +278,7 @@ async fn redemarrer(state: &AppState, server: &GameServer) -> Result<(), DomainE
     // exactement l'incoherence qu'on cherche a eviter. Le cout est mesure —
     // une vingtaine de secondes pour 5 Go — et c'est du temps d'indisponibilite
     // assume, une fois par jour au plus.
-    archiver_le_monde(state, server).await;
+    archiver_le_monde(state, server, false).await;
 
     // 5. Relance.
     state.game_servers_uc.start(server.id, ACTEUR).await
@@ -312,25 +312,36 @@ fn nom_archive(nom_serveur: &str, maintenant: chrono::DateTime<Utc>) -> String {
 /// Ne remonte JAMAIS d'erreur : un serveur qui resterait eteint parce que sa
 /// sauvegarde a echoue serait un remede pire que le mal. Tout echec est
 /// journalise et la relance suit son cours.
-async fn archiver_le_monde(state: &AppState, server: &GameServer) {
+pub(crate) async fn archiver_le_monde(
+    state: &AppState,
+    server: &GameServer,
+    manuelle: bool,
+) -> Option<u64> {
     let config = match load_game_portal_config(&state.bot_config_repo, &server.guild_id).await {
         Ok(config) => config,
         Err(error) => {
             tracing::warn!(%error, server_id = %server.id, "archive : configuration illisible");
-            return;
+            return None;
         }
     };
-    if !config.backup_on_restart {
-        return;
+    // L'interrupteur ne vaut que pour l'archivage AUTOMATIQUE. Une demande
+    // manuelle est un ordre explicite : la refuser au nom d'un reglage que
+    // l'exploitant vient de contourner en cliquant serait absurde.
+    if !manuelle && !config.backup_on_restart {
+        return None;
     }
 
     // Un serveur jamais demarre n'a pas de volume, donc pas de monde.
-    let Some(volume) = server.volume_name.as_deref() else {
-        return;
-    };
+    let volume = server.volume_name.as_deref()?;
 
+    // LE DELAI MINIMAL NE VAUT QUE POUR L'ARCHIVAGE AUTOMATIQUE. Il existe
+    // pour eviter huit copies quasi identiques par jour sur une permanence qui
+    // redemarre toutes les trois heures. Une demande manuelle, elle, vient de
+    // quelqu'un qui sait pourquoi il la fait — juste avant de toucher au monde,
+    // le plus souvent. La lui refuser au nom d'un delai serait le priver de la
+    // seule sauvegarde qui compte.
     match state.game_backup_repo.last_auto_backup_at(server.id).await {
-        Ok(Some(derniere)) => {
+        Ok(Some(derniere)) if !manuelle => {
             let ecoulees = (Utc::now() - derniere).num_hours();
             if ecoulees < config.backup_min_interval_hours {
                 tracing::debug!(
@@ -339,16 +350,17 @@ async fn archiver_le_monde(state: &AppState, server: &GameServer) {
                     minimum = config.backup_min_interval_hours,
                     "archive : delai non ecoule, on passe"
                 );
-                return;
+                return None;
             }
         }
+        Ok(Some(_)) => {}
         Ok(None) => {}
         Err(error) => {
             // Si la base ne repond pas, l'enregistrement echouerait aussi :
             // on produirait une archive que rien ne referencerait, et qu'aucune
             // purge ne supprimerait jamais.
             tracing::warn!(%error, server_id = %server.id, "archive : dernier passage illisible");
-            return;
+            return None;
         }
     }
 
@@ -369,18 +381,26 @@ async fn archiver_le_monde(state: &AppState, server: &GameServer) {
                 duree_ms = debut.elapsed().as_millis(),
                 "archive : monde sauvegarde a froid"
             );
+            // Le TYPE distingue les deux origines. Une archive « manual » est
+            // le geste d'un exploitant, souvent juste avant une operation
+            // risquee : la confondre avec une archive automatique la
+            // soumettrait aux memes purges, et elle disparaitrait au moment
+            // ou elle compte le plus.
+            let origine = if manuelle { "manual" } else { "auto" };
             if let Err(error) = state
                 .game_backup_repo
-                .record(server.id, &archive.path, archive.size_bytes as i64, "auto")
+                .record(server.id, &archive.path, archive.size_bytes as i64, origine)
                 .await
             {
                 // L'archive existe mais rien ne la designe : la purge ne la
                 // supprimera pas, et l'interface ne la listera pas.
                 tracing::warn!(%error, server_id = %server.id, chemin = %archive.path, "archive : ecrite mais non enregistree");
             }
+            Some(archive.size_bytes)
         }
         Err(error) => {
             tracing::warn!(%error, server_id = %server.id, "archive : sauvegarde du monde impossible");
+            None
         }
     }
 }

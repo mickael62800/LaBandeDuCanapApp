@@ -201,6 +201,26 @@ impl ContainerRuntime for HttpGameRuntime {
         .await
     }
 
+    async fn prune_archives(
+        &self,
+        prefixe: &str,
+        garder: usize,
+    ) -> Result<(usize, u64), DomainError> {
+        #[derive(serde::Deserialize)]
+        struct Reponse {
+            supprimees: usize,
+            octets_liberes: u64,
+        }
+        let r: Reponse = self
+            .send(
+                self.agent
+                    .post("/game/archives/prune")
+                    .json(&serde_json::json!({ "prefixe": prefixe, "garder": garder })),
+            )
+            .await?;
+        Ok((r.supprimees, r.octets_liberes))
+    }
+
     async fn remove_image(&self, image: &str, force: bool) -> Result<bool, DomainError> {
         self.send(
             self.agent

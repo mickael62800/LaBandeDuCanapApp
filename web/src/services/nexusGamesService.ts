@@ -480,6 +480,27 @@ export const nexusGamesService = {
     );
   },
 
+  /**
+   * POST /api/games/servers/{id}/backup — sauvegarde du monde à la demande.
+   *
+   * Ni l'interrupteur de configuration ni le délai minimal ne s'appliquent :
+   * ce sont des garde-fous contre l'archivage automatique répétitif, pas
+   * contre un geste délibéré.
+   *
+   * `a_chaud` vaut vrai quand le serveur tournait : la copie peut alors
+   * contenir un fichier à moitié écrit, et l'écran doit le dire.
+   */
+  backupNow(
+    guildId: string,
+    serverId: string,
+  ): Promise<{ size_bytes: number; a_chaud: boolean }> {
+    return nexusPost<{ size_bytes: number; a_chaud: boolean }>(
+      `/api/games/servers/${encodeURIComponent(serverId)}/backup`,
+      guildId,
+      {},
+    );
+  },
+
   /** GET /api/games/servers/{id}/schedule-ranges — plages d'ouverture. */
   getScheduleRanges(guildId: string, serverId: string): Promise<ServerSchedule> {
     return nexusGet<ServerSchedule>(

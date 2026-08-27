@@ -19,6 +19,7 @@ use crate::nexus::application::game::config_loader::{load_game_portal_config, Ga
 use crate::nexus::application::game::password_gen::generate_rcon_password;
 use crate::nexus::domain::entities::game::audit::GameAuditAction;
 use crate::nexus::domain::entities::game::quota::GuildQuotaState;
+use crate::nexus::domain::entities::game::server::prefixe_archive;
 use crate::nexus::domain::entities::game::server::{
     validate_server_name, CreateGameServerCommand, GameServer, GameServerStatus,
 };
@@ -473,6 +474,39 @@ impl ManageGameServersUseCase for ManageGameServersService {
         if let Some(vol) = &server.volume_name {
             if let Err(e) = self.container_runtime.remove_volume(vol).await {
                 warn!(error = %e, volume = %vol, "remove volume a echoue (peut-etre encore utilise)");
+            }
+
+            // PURGE DES ARCHIVES : ON GARDE LA DERNIERE, ON EFFACE LE RESTE.
+            //
+            // Le monde vivant vient de disparaitre avec le volume. Ses archives,
+            // elles, survivent sur le disque — plusieurs gigaoctets par monde,
+            // pour un serveur qui n'existe plus. Les laisser toutes remplirait
+            // le disque de mondes que plus personne ne rouvrira.
+            //
+            // On en garde UNE : celle du dernier soir. Elle coute peu de place,
+            // et c'est la seule chose qu'on regretterait d'avoir perdue si la
+            // suppression se revelait etre une erreur.
+            //
+            // Best-effort : une purge ratee ne doit pas faire echouer une
+            // suppression deja engagee — le conteneur et le volume sont partis,
+            // revenir en arriere n'a plus de sens.
+            match self
+                .container_runtime
+                .prune_archives(&prefixe_archive(&server.name), 1)
+                .await
+            {
+                Ok((0, _)) => {}
+                Ok((supprimees, octets)) => {
+                    info!(
+                        server_id = %id,
+                        supprimees,
+                        octets,
+                        "archives purgees a la suppression (la plus recente conservee)"
+                    );
+                }
+                Err(e) => {
+                    warn!(error = %e, server_id = %id, "purge des archives impossible");
+                }
             }
         }
 

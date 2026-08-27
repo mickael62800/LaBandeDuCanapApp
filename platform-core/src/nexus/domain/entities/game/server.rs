@@ -728,3 +728,63 @@ pub fn nettoyer_reglement(brut: Option<&str>) -> Result<Option<String>, String> 
     }
     Ok(Some(texte.to_string()))
 }
+
+/// Prefixe des archives d'un serveur.
+///
+/// DOIT SUIVRE `nom_archive` A LA LETTRE : c'est ce prefixe qui decide quelles
+/// archives une purge emporte. Les deux assainissent le nom de la meme facon —
+/// tout ce qui n'est ni alphanumerique, ni tiret, ni souligne devient `_`. Si
+/// les deux divergeaient, la purge ne trouverait plus rien (au mieux) ou
+/// emporterait les archives d'un autre serveur (au pire).
+pub fn prefixe_archive(nom_serveur: &str) -> String {
+    nom_serveur
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+/// Le prefixe d'archive doit rester identique a celui de `nom_archive`.
+///
+/// C'est lui qui decide quelles archives une purge emporte. Si les deux
+/// assainissements divergeaient, la purge ne trouverait plus rien — ou
+/// emporterait les archives d'un autre serveur.
+#[cfg(test)]
+mod tests_prefixe_archive {
+    use super::prefixe_archive;
+
+    #[test]
+    fn tout_ce_qui_n_est_pas_sur_devient_un_souligne() {
+        assert_eq!(
+            prefixe_archive("Le Canap sur Palworld"),
+            "Le_Canap_sur_Palworld"
+        );
+        assert_eq!(
+            prefixe_archive("Minecraft #2 (test)"),
+            "Minecraft__2__test_"
+        );
+        assert_eq!(prefixe_archive("7 Days to Die"), "7_Days_to_Die");
+    }
+
+    /// Tirets et soulignes traversent : ce sont les seuls signes que la
+    /// reconnaissance d'archive accepte en plus des lettres et chiffres.
+    #[test]
+    fn tirets_et_soulignes_traversent() {
+        assert_eq!(prefixe_archive("mon-serveur_2"), "mon-serveur_2");
+    }
+
+    /// Un nom qui sortirait du repertoire ne doit rien laisser passer : c'est
+    /// la meme garde que cote agent, posee une seconde fois a la source.
+    #[test]
+    fn aucune_remontee_ne_survit() {
+        let sorti = prefixe_archive("../../etc");
+        assert!(!sorti.contains('.'));
+        assert!(!sorti.contains('/'));
+        assert_eq!(sorti, "______etc");
+    }
+}

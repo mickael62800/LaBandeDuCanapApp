@@ -715,3 +715,30 @@
   width: 100%;
   max-width: 46rem;
 }
+
+/* Liste des archives : une par ligne, nom de fichier en tete pour qu'on puisse
+   le recopier tel quel dans un terminal. */
+.sd-archives {
+  list-style: none;
+  margin: var(--space-sm) 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sd-archives li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-sm);
+  font-size: 0.8rem;
+}
+
+.sd-archives code {
+  color: var(--text-primary);
+}
+
+.sd-archive-meta {
+  color: var(--text-secondary);
+}

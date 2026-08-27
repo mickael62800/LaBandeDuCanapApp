@@ -222,6 +222,16 @@ export interface GameServerStats {
   rcon_latency_ms: number | null;
 }
 
+
+/** Une archive de monde, telle que l'écran la montre. */
+export interface GameBackup {
+  id: string;
+  file_name: string;
+  size_bytes: number;
+  /** `auto` (redémarrage, fermeture de plage) ou `manual` (bouton). */
+  backup_type: string;
+  created_at: string;
+}
 export interface CreateServerPayload {
   template_slug: string;
   name: string;
@@ -498,6 +508,14 @@ export const nexusGamesService = {
       `/api/games/servers/${encodeURIComponent(serverId)}/backup`,
       guildId,
       {},
+    );
+  },
+
+  /** GET /api/games/servers/{id}/backups — archives connues, plus récente d'abord. */
+  listBackups(guildId: string, serverId: string): Promise<GameBackup[]> {
+    return nexusGet<GameBackup[]>(
+      `/api/games/servers/${encodeURIComponent(serverId)}/backups`,
+      guildId,
     );
   },
 

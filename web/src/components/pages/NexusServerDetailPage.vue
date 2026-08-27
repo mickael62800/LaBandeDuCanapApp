@@ -23,6 +23,7 @@ import {
   nexusGamesService,
   adresseServeur,
   type GameServer,
+  type GameBackup,
   type GameTemplate,
   type PlayerSession,
 } from "@/services/nexusGamesService";
@@ -689,17 +690,45 @@ async function saveReglement() {
 // manquait justement avant toute opération risquée.
 
 const savingBackup = ref(false);
+const archives = ref<GameBackup[]>([]);
+
+/**
+ * Les archives connues de l'application.
+ *
+ * Un fichier présent sur le disque mais absent de cette liste ne sera ni montré
+ * ici, ni purgé — c'est précisément ce qu'on veut pouvoir constater.
+ */
+async function chargerArchives() {
+  if (!selectedGuildId.value || !serverId.value) return;
+  try {
+    archives.value = await nexusGamesService.listBackups(
+      selectedGuildId.value,
+      serverId.value,
+    );
+  } catch {
+    // Liste indisponible : on garde la précédente plutôt que de la vider sous
+    // les yeux de l'administrateur.
+  }
+}
+
+function tailleLisible(octets: number): string {
+  const go = octets / 1024 / 1024 / 1024;
+  return go >= 1
+    ? `${go.toFixed(1)} Go`
+    : `${(octets / 1024 / 1024).toFixed(0)} Mo`;
+}
 
 async function sauvegarderLeMonde() {
   if (!selectedGuildId.value || !server.value || savingBackup.value) return;
   savingBackup.value = true;
   try {
     const r = await nexusGamesService.backupNow(selectedGuildId.value, server.value.id);
-    const taille = (r.size_bytes / 1024 / 1024).toFixed(0);
+    const taille = tailleLisible(r.size_bytes);
+    await chargerArchives();
     success(
       r.a_chaud
-        ? `Monde sauvegardé (${taille} Mo) — copie à chaud, le serveur tournait : cohérence non garantie.`
-        : `Monde sauvegardé (${taille} Mo), à froid.`,
+        ? `Monde sauvegardé (${taille}) — copie à chaud, le serveur tournait : cohérence non garantie.`
+        : `Monde sauvegardé (${taille}), à froid.`,
     );
   } catch (e) {
     showError(e instanceof Error ? e.message : "Sauvegarde impossible");
@@ -715,6 +744,7 @@ watch(
       resetResourceInputs();
       resetNoms();
       resetReglement();
+      void chargerArchives();
     });
     // Les seuils vivent cote serveur : on les relit avec la fiche.
     void loadAlerts();
@@ -1253,6 +1283,19 @@ function fmtDuration(secs: number | null): string {
             {{ savingBackup ? "Sauvegarde en cours…" : "Sauvegarder le monde maintenant" }}
           </AppButton>
         </div>
+        <ul v-if="archives.length" class="sd-archives">
+          <li v-for="a in archives" :key="a.id">
+            <code>{{ a.file_name }}</code>
+            <span class="sd-archive-meta">
+              {{ tailleLisible(a.size_bytes) }} ·
+              {{ a.backup_type === "manual" ? "manuelle" : "automatique" }} ·
+              {{ fmtDate(a.created_at) }}
+            </span>
+          </li>
+        </ul>
+        <p v-else class="sd-note">
+          Aucune archive enregistrée pour ce serveur.
+        </p>
         <small class="sd-note">
           À la suppression du serveur, toutes les archives sont effacées sauf la
           plus récente.

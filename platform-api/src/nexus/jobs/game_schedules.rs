@@ -379,7 +379,8 @@ pub(crate) async fn archiver_le_monde(
                 chemin = %archive.path,
                 taille = archive.size_bytes,
                 duree_ms = debut.elapsed().as_millis(),
-                "archive : monde sauvegarde a froid"
+                a_chaud = server.status.is_active(),
+                "archive : monde sauvegarde"
             );
             // Le TYPE distingue les deux origines. Une archive « manual » est
             // le geste d'un exploitant, souvent juste avant une operation

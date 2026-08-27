@@ -447,6 +447,10 @@ pub fn build_router_with(state: AppState, config: HttpConfig) -> Router {
             post(handlers::game::servers::backup_now),
         )
         .route(
+            "/api/games/servers/{server_id}/backups",
+            get(handlers::game::servers::list_backups),
+        )
+        .route(
             "/api/games/servers/{server_id}/announcement",
             get(handlers::game::servers::get_session_announcement),
         )

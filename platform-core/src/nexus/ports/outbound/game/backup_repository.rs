@@ -24,6 +24,17 @@ pub trait GameBackupRepository: Send + Sync {
         server_id: Uuid,
     ) -> Result<Option<DateTime<Utc>>, DomainError>;
 
+    /// Archives d'un serveur, la plus recente en tete.
+    ///
+    /// La table avait un producteur mais aucun lecteur : une sauvegarde
+    /// declenchee a la main ne se voyait nulle part, et il fallait ouvrir un
+    /// terminal sur l'hote pour savoir si elle avait eu lieu.
+    async fn list_for_server(
+        &self,
+        server_id: Uuid,
+        limite: i64,
+    ) -> Result<Vec<GameBackup>, DomainError>;
+
     /// Consigne une archive ecrite sur le disque.
     async fn record(
         &self,
@@ -32,4 +43,15 @@ pub trait GameBackupRepository: Send + Sync {
         size_bytes: i64,
         backup_type: &str,
     ) -> Result<(), DomainError>;
+}
+
+/// Une archive telle que l'interface la montre.
+#[derive(Debug, Clone)]
+pub struct GameBackup {
+    pub id: Uuid,
+    pub file_path: String,
+    pub size_bytes: i64,
+    /// `auto` (redemarrage ou fermeture de plage) ou `manual` (bouton).
+    pub backup_type: String,
+    pub created_at: DateTime<Utc>,
 }

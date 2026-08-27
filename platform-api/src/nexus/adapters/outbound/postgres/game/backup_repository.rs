@@ -5,7 +5,9 @@ use uuid::Uuid;
 
 use super::super::pg_ctx;
 use platform_core::nexus::domain::errors::DomainError;
-use platform_core::nexus::ports::outbound::game::backup_repository::GameBackupRepository;
+use platform_core::nexus::ports::outbound::game::backup_repository::{
+    GameBackup, GameBackupRepository,
+};
 
 pub struct PgGameBackupRepository {
     pool: PgPool,
@@ -35,6 +37,41 @@ impl GameBackupRepository for PgGameBackupRepository {
         .map_err(pg_ctx("last auto backup"))
     }
 
+    async fn list_for_server(
+        &self,
+        server_id: Uuid,
+        limite: i64,
+    ) -> Result<Vec<GameBackup>, DomainError> {
+        #[derive(sqlx::FromRow)]
+        struct Ligne {
+            id: Uuid,
+            file_path: String,
+            size_bytes: i64,
+            backup_type: String,
+            created_at: DateTime<Utc>,
+        }
+        let lignes: Vec<Ligne> = sqlx::query_as(
+            "SELECT id, file_path, size_bytes, backup_type, created_at \
+             FROM game_backups WHERE server_id = $1 \
+             ORDER BY created_at DESC LIMIT $2",
+        )
+        .bind(server_id)
+        .bind(limite.clamp(1, 200))
+        .fetch_all(&self.pool)
+        .await
+        .map_err(pg_ctx("list game_backups"))?;
+
+        Ok(lignes
+            .into_iter()
+            .map(|l| GameBackup {
+                id: l.id,
+                file_path: l.file_path,
+                size_bytes: l.size_bytes,
+                backup_type: l.backup_type,
+                created_at: l.created_at,
+            })
+            .collect())
+    }
     async fn record(
         &self,
         server_id: Uuid,

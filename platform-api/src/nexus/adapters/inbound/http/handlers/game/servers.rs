@@ -815,6 +815,48 @@ pub async fn backup_now(
     }))
 }
 
+/// Une archive telle que l'ecran la montre.
+///
+/// LE CHEMIN COMPLET N'EST PAS EXPOSE : c'est un chemin de l'hote, et le
+/// navigateur n'a rien a en faire. Seul le nom du fichier compte pour retrouver
+/// l'archive dans un terminal.
+#[derive(Debug, serde::Serialize)]
+pub struct GameBackupDto {
+    pub id: String,
+    pub file_name: String,
+    pub size_bytes: i64,
+    pub backup_type: String,
+    pub created_at: String,
+}
+
+/// GET /api/games/servers/{server_id}/backups
+pub async fn list_backups(
+    State(state): State<AppState>,
+    Path(server_id): Path<Uuid>,
+) -> Result<Json<Vec<GameBackupDto>>, ApiError> {
+    let archives = state
+        .game_backup_repo
+        .list_for_server(server_id, 20)
+        .await?;
+    Ok(Json(
+        archives
+            .into_iter()
+            .map(|a| GameBackupDto {
+                id: a.id.to_string(),
+                file_name: a
+                    .file_path
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or(&a.file_path)
+                    .to_string(),
+                size_bytes: a.size_bytes,
+                backup_type: a.backup_type,
+                created_at: a.created_at.to_rfc3339(),
+            })
+            .collect(),
+    ))
+}
+
 // ── Annonce d'ouverture ──
 
 #[derive(Debug, serde::Serialize)]

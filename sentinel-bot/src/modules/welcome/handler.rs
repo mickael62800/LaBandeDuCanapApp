@@ -642,13 +642,61 @@ async fn on_member_add_impl(ctx: &Context, new_member: &Member, rules_accepted: 
     }
 }
 
+/// Delai au-dela duquel un « accueil » n'en est plus un.
+///
+/// Le parcours legitime est court : on arrive, on lit le reglement, on accepte.
+/// Quarante-huit heures couvrent largement le membre qui laisse l'ecran ouvert
+/// une nuit ou revient le lendemain.
+///
+/// Au-dela, ce n'est plus une arrivee — c'est un evenement parasite sur un
+/// membre installe depuis longtemps.
+const ACCUEIL_VALABLE_HEURES: i64 = 48;
+
+/// Cet accueil correspond-il encore a une arrivee ?
+///
+/// LE DEFAUT QU'ELLE FERME. La fin de validation se deduit d'une transition
+/// `pending` vrai -> faux lue dans le CACHE de la bibliotheque. Un cache
+/// perime sur un membre ancien fait passer n'importe quelle modification — un
+/// role attribue, un pseudo change — pour une fin de validation. Le bot
+/// souhaitait alors la bienvenue a quelqu'un present depuis des semaines,
+/// devant tout le serveur, et rien n'empechait que cela recommence.
+///
+/// Une date d'arrivee INCONNUE laisse passer l'accueil : sur un membre qui
+/// vient reellement d'arriver, se taire serait pire que de souhaiter la
+/// bienvenue deux fois.
+/// Les deux horodatages sont en secondes Unix : serenity rend un
+/// `OffsetDateTime`, le reste du bot vit en `chrono`, et convertir de part et
+/// d'autre pour une soustraction ferait entrer un pont entre deux
+/// bibliotheques de dates la ou un entier suffit.
+pub fn accueil_encore_pertinent(arrivee_unix: Option<i64>, maintenant_unix: i64) -> bool {
+    let Some(arrivee) = arrivee_unix else {
+        return true;
+    };
+    // Une arrivee dans le FUTUR est une horloge desynchronisee, pas un membre
+    // ancien : on laisse passer plutot que de faire taire un accueil legitime.
+    let ecoulees = (maintenant_unix - arrivee) / 3_600;
+    ecoulees < ACCUEIL_VALABLE_HEURES
+}
+
 async fn send_welcome_after_rules(
     ctx: &Context,
     guild_id: GuildId,
     user_id: serenity::all::UserId,
 ) {
     match guild_id.member(&ctx.http, user_id).await {
-        Ok(member) => on_member_add_impl(ctx, &member, true).await,
+        Ok(member) => {
+            let arrivee = member.joined_at.map(|t| t.unix_timestamp());
+            if !accueil_encore_pertinent(arrivee, chrono::Utc::now().timestamp()) {
+                warn!(
+                    %guild_id,
+                    %user_id,
+                    ?arrivee,
+                    "Accueil ignore : le membre est present depuis trop longtemps (evenement parasite)"
+                );
+                return;
+            }
+            on_member_add_impl(ctx, &member, true).await
+        }
         Err(e) => warn!(error = %e, %guild_id, %user_id, "Accueil apres reglement impossible"),
     }
 }
@@ -1441,5 +1489,73 @@ pub async fn lift_age_ban(ctx: &Context, guild_id: GuildId, user_id: u64) {
     match guild_id.unban(&ctx.http, uid).await {
         Ok(_) => info!(guild = %guild_id, user = user_id, "Ban d'age leve (deban)"),
         Err(e) => warn!(error = %e, guild = %guild_id, user = user_id, "Echec deban age"),
+    }
+}
+
+/// La garde qui empeche d'accueillir un membre installe depuis longtemps.
+///
+/// Le bot a souhaite la bienvenue, devant tout le serveur, a quelqu'un present
+/// depuis des semaines. La fin de validation se deduit d'une transition lue
+/// dans un cache : un cache perime fait passer n'importe quelle modification de
+/// membre pour une arrivee.
+#[cfg(test)]
+mod tests_accueil_pertinent {
+    use super::{accueil_encore_pertinent, ACCUEIL_VALABLE_HEURES};
+
+    const MAINTENANT: i64 = 1_800_000_000;
+    const HEURE: i64 = 3_600;
+
+    #[test]
+    fn un_arrivant_du_jour_est_accueilli() {
+        assert!(accueil_encore_pertinent(Some(MAINTENANT), MAINTENANT));
+        assert!(accueil_encore_pertinent(
+            Some(MAINTENANT - 2 * HEURE),
+            MAINTENANT
+        ));
+    }
+
+    /// Le parcours legitime peut s'etaler : on arrive le soir, on accepte le
+    /// lendemain. Ces cas doivent passer.
+    #[test]
+    fn un_reglement_accepte_le_lendemain_passe_encore() {
+        assert!(accueil_encore_pertinent(
+            Some(MAINTENANT - 30 * HEURE),
+            MAINTENANT
+        ));
+    }
+
+    /// LE CAS OBSERVE : un membre present depuis des semaines ne doit plus
+    /// declencher d'accueil, quel que soit l'evenement qui l'a reveille.
+    #[test]
+    fn un_membre_installe_depuis_longtemps_n_est_plus_accueilli() {
+        for jours in [3, 15, 200] {
+            assert!(
+                !accueil_encore_pertinent(Some(MAINTENANT - jours * 24 * HEURE), MAINTENANT),
+                "accueil laisse passer apres {jours} jours"
+            );
+        }
+    }
+
+    #[test]
+    fn la_frontiere_tombe_ou_elle_est_annoncee() {
+        let limite = MAINTENANT - ACCUEIL_VALABLE_HEURES * HEURE;
+        assert!(!accueil_encore_pertinent(Some(limite), MAINTENANT));
+        assert!(accueil_encore_pertinent(Some(limite + 1), MAINTENANT));
+    }
+
+    /// Une date d'arrivee inconnue laisse passer : sur un membre qui vient
+    /// reellement d'arriver, se taire serait pire que d'accueillir deux fois.
+    #[test]
+    fn une_date_inconnue_laisse_passer_l_accueil() {
+        assert!(accueil_encore_pertinent(None, MAINTENANT));
+    }
+
+    /// Une horloge desynchronisee ne doit pas faire taire un accueil legitime.
+    #[test]
+    fn une_arrivee_dans_le_futur_laisse_passer() {
+        assert!(accueil_encore_pertinent(
+            Some(MAINTENANT + 10 * HEURE),
+            MAINTENANT
+        ));
     }
 }

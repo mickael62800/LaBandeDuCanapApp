@@ -465,14 +465,18 @@ pub fn format_schedule_summary(
     if let Some(reveal) = ip_reveal_at {
         if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(reveal) {
             let ts = dt.timestamp();
-            parts.push(format!("🔓 **Révélation de l'adresse :** <t:{ts}:F> (<t:{ts}:R>)"));
+            parts.push(format!(
+                "🔓 **Révélation de l'adresse :** <t:{ts}:F> (<t:{ts}:R>)"
+            ));
         }
     }
 
     if let Some(closes) = closes_at {
         if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(closes) {
             let ts = dt.timestamp();
-            parts.push(format!("🏁 **Fermeture définitive :** <t:{ts}:F> (<t:{ts}:R>)"));
+            parts.push(format!(
+                "🏁 **Fermeture définitive :** <t:{ts}:F> (<t:{ts}:R>)"
+            ));
         }
     }
 
@@ -566,7 +570,8 @@ pub fn build_options_embeds_full(
                 .footer(CreateEmbedFooter::new(OPTIONS_FOOTER));
 
             if index == 0 {
-                embed = embed.description("Réglages actuels, informations et horaires de ce serveur.");
+                embed =
+                    embed.description("Réglages actuels, informations et horaires de ce serveur.");
                 if let Some(specs) = specs_summary.filter(|s| !s.trim().is_empty()) {
                     embed = embed.field("🎮 Serveur & Capacité", specs, false);
                 }
@@ -575,7 +580,10 @@ pub fn build_options_embeds_full(
                 }
                 if let Some(r) = rules.filter(|r| !r.trim().is_empty()) {
                     let preview = if r.len() > 500 {
-                        format!("{}...\n*(Consulte le salon d'inscription pour le règlement complet)*", &r[..500])
+                        format!(
+                            "{}...\n*(Consulte le salon d'inscription pour le règlement complet)*",
+                            &r[..500]
+                        )
                     } else {
                         r.to_string()
                     };
@@ -1004,7 +1012,10 @@ pub fn build_panel_embed_full(
     let reglement_txt = match rules.filter(|r| !r.trim().is_empty()) {
         Some(r) => {
             if r.len() > 250 {
-                format!("{}...\n*(Voir le règlement complet ci-dessous ou via `/game parametres`)*", &r[..250])
+                format!(
+                    "{}...\n*(Voir le règlement complet ci-dessous ou via `/game parametres`)*",
+                    &r[..250]
+                )
             } else {
                 r.to_string()
             }
@@ -1500,9 +1511,17 @@ pub fn build_options_embeds_for_server_full(
         registration_options(config, schema)
     };
     let specs = format_specs_summary(server, config);
-    let sched_txt = format_schedule_summary(schedule, server.ip_reveal_at.as_deref(), server.closes_at.as_deref());
+    let sched_txt = format_schedule_summary(
+        schedule,
+        server.ip_reveal_at.as_deref(),
+        server.closes_at.as_deref(),
+    );
     let default_rules = "📜 _Charte standard du serveur : respect des membres et fair-play._";
-    let rules_txt = server.rules.as_deref().filter(|r| !r.trim().is_empty()).unwrap_or(default_rules);
+    let rules_txt = server
+        .rules
+        .as_deref()
+        .filter(|r| !r.trim().is_empty())
+        .unwrap_or(default_rules);
     build_options_embeds_full(
         &game_name,
         &server.name,
@@ -2040,7 +2059,10 @@ pub(crate) async fn poster_le_panneau(
     let empty_cfg = std::collections::HashMap::new();
     let config = detail.as_ref().map(|d| &d.config).unwrap_or(&empty_cfg);
     let template = api.get_game_template(&server.template_id).await.ok();
-    let schema = template.as_ref().map(|t| t.config_schema.as_slice()).unwrap_or_default();
+    let schema = template
+        .as_ref()
+        .map(|t| t.config_schema.as_slice())
+        .unwrap_or_default();
     let specs = format_specs_summary(server, config);
     let options_summary = format_options_summary(config, schema, false);
 
@@ -2088,7 +2110,10 @@ pub(crate) async fn publier_annonce_puis_panneau(ctx: &Context, api: &ApiClient,
     let annonce = match api.annonce_de_session(server_id).await {
         Ok(Some(texte)) => texte,
         Ok(None) | Err(_) => {
-            format!("🎮 Le serveur **{}** est ouvert aux inscriptions !", server.name)
+            format!(
+                "🎮 Le serveur **{}** est ouvert aux inscriptions !",
+                server.name
+            )
         }
     };
 
@@ -3615,9 +3640,10 @@ pub fn trouver_panneau_et_reglement_ids(
             if *has_components && panneau.is_none() {
                 panneau = Some(*id);
             }
-            if embed_titles.iter().any(|t| {
-                t.contains("Reglement") || t.contains("Règlement") || t.contains("Charte")
-            }) && reglement.is_none()
+            if embed_titles
+                .iter()
+                .any(|t| t.contains("Reglement") || t.contains("Règlement") || t.contains("Charte"))
+                && reglement.is_none()
             {
                 reglement = Some(*id);
             }
@@ -3744,7 +3770,10 @@ pub(crate) async fn resynchroniser_session(
     // 4. Le panneau d'inscription et le reglement.
     if let Some(text_ch) = parse_channel(server.text_channel_id.as_ref()) {
         let bot_id = ctx.cache.current_user().id;
-        let messages = match text_ch.messages(&ctx.http, GetMessages::new().limit(50)).await {
+        let messages = match text_ch
+            .messages(&ctx.http, GetMessages::new().limit(50))
+            .await
+        {
             Ok(msgs) => msgs,
             Err(e) => {
                 tracing::warn!(error = %e, %text_ch, "resync : lecture des messages impossible");
@@ -3762,7 +3791,11 @@ pub(crate) async fn resynchroniser_session(
                 if m.embeds.iter().any(|e| {
                     e.title
                         .as_deref()
-                        .map(|t| t.contains("Reglement") || t.contains("Règlement") || t.contains("Charte"))
+                        .map(|t| {
+                            t.contains("Reglement")
+                                || t.contains("Règlement")
+                                || t.contains("Charte")
+                        })
                         .unwrap_or(false)
                 }) && existing_rules.is_none()
                 {
@@ -3777,10 +3810,16 @@ pub(crate) async fn resynchroniser_session(
             .await
             .ok()
             .and_then(|template| {
-                public_cover_url_for_status(template.cover_image_url.as_deref(), etat_affiche(&server))
+                public_cover_url_for_status(
+                    template.cover_image_url.as_deref(),
+                    etat_affiche(&server),
+                )
             });
         let template = api.get_game_template(&server.template_id).await.ok();
-        let schema = template.as_ref().map(|t| t.config_schema.as_slice()).unwrap_or_default();
+        let schema = template
+            .as_ref()
+            .map(|t| t.config_schema.as_slice())
+            .unwrap_or_default();
         let specs = format_specs_summary(&server, &detail.config);
         let options_summary = format_options_summary(&detail.config, schema, false);
 
@@ -3932,7 +3971,9 @@ mod tests_resync {
 #[cfg(test)]
 mod tests_portal_rich_formatting {
     use super::*;
-    use crate::api_client::{GameServer, GameTemplate, ScheduleRangesDto, TemplateField, TimeRangeDto};
+    use crate::api_client::{
+        GameServer, GameTemplate, ScheduleRangesDto, TemplateField, TimeRangeDto,
+    };
     use serenity::all::{MessageId, UserId};
     use std::collections::HashMap;
 
@@ -4043,7 +4084,10 @@ mod tests_portal_rich_formatting {
         let embed = format_rules_embed("1. Respecter les autres.\n2. Fair play.");
         let val = serde_json::to_value(&embed).unwrap();
         assert_eq!(val["title"], "📜 Règlement de la soirée");
-        assert_eq!(val["description"], "1. Respecter les autres.\n2. Fair play.");
+        assert_eq!(
+            val["description"],
+            "1. Respecter les autres.\n2. Fair play."
+        );
     }
 
     #[test]
@@ -4095,12 +4139,25 @@ mod tests_portal_rich_formatting {
         assert!(val["title"].as_str().unwrap().contains("Valheim"));
         let fields = val["fields"].as_array().unwrap();
         assert_eq!(fields.len(), 6);
-        assert!(fields.iter().any(|f| f["name"].as_str().unwrap().contains("Inscrits (2)")));
-        assert!(fields.iter().any(|f| f["name"].as_str().unwrap().contains("Adresse (IP)")));
-        assert!(fields.iter().any(|f| f["name"].as_str().unwrap().contains("Serveur & Capacité")));
-        assert!(fields.iter().any(|f| f["name"].as_str().unwrap().contains("Horaires & Disponibilité")));
-        assert!(fields.iter().any(|f| f["name"].as_str().unwrap().contains("Règlement")));
-        assert!(fields.iter().any(|f| f["name"].as_str().unwrap().contains("Paramètres du jeu")));
+        assert!(fields
+            .iter()
+            .any(|f| f["name"].as_str().unwrap().contains("Inscrits (2)")));
+        assert!(fields
+            .iter()
+            .any(|f| f["name"].as_str().unwrap().contains("Adresse (IP)")));
+        assert!(fields
+            .iter()
+            .any(|f| f["name"].as_str().unwrap().contains("Serveur & Capacité")));
+        assert!(fields.iter().any(|f| f["name"]
+            .as_str()
+            .unwrap()
+            .contains("Horaires & Disponibilité")));
+        assert!(fields
+            .iter()
+            .any(|f| f["name"].as_str().unwrap().contains("Règlement")));
+        assert!(fields
+            .iter()
+            .any(|f| f["name"].as_str().unwrap().contains("Paramètres du jeu")));
     }
 
     #[test]
@@ -4133,29 +4190,27 @@ mod tests_portal_rich_formatting {
             slug: "valheim".into(),
             name: "Valheim".into(),
             cover_image_url: None,
-            config_schema: vec![
-                TemplateField {
-                    key: "WORLD_NAME".into(),
-                    label: "Nom du monde".into(),
-                    group: Some("Général".into()),
-                },
-            ],
+            config_schema: vec![TemplateField {
+                key: "WORLD_NAME".into(),
+                label: "Nom du monde".into(),
+                group: Some("Général".into()),
+            }],
         };
         let mut config = HashMap::new();
         config.insert("WORLD_NAME".into(), "Midgard".into());
 
-        let embeds = build_options_embeds_for_server_full(
-            &server,
-            Some(&template),
-            &config,
-            None,
-            false,
-        );
+        let embeds =
+            build_options_embeds_for_server_full(&server, Some(&template), &config, None, false);
         assert!(!embeds.is_empty());
         let val = serde_json::to_value(&embeds[0]).unwrap();
         assert!(val["title"].as_str().unwrap().contains("Valheim"));
         let fields = val["fields"].as_array().unwrap();
-        assert!(fields.iter().any(|f| f["name"].as_str().unwrap().contains("Serveur & Capacité")));
-        assert!(fields.iter().any(|f| f["name"].as_str().unwrap().contains("Règlement de la soirée")));
+        assert!(fields
+            .iter()
+            .any(|f| f["name"].as_str().unwrap().contains("Serveur & Capacité")));
+        assert!(fields.iter().any(|f| f["name"]
+            .as_str()
+            .unwrap()
+            .contains("Règlement de la soirée")));
     }
 }

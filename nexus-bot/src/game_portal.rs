@@ -349,6 +349,27 @@ fn registration_options(
     lignes_reglages(config, schema, false)
 }
 
+pub fn format_options_summary(
+    config: &std::collections::HashMap<String, String>,
+    schema: &[crate::api_client::TemplateField],
+    is_private: bool,
+) -> Option<String> {
+    let opts = if is_private {
+        public_game_options(config, schema)
+    } else {
+        registration_options(config, schema)
+    };
+    if opts.is_empty() {
+        return None;
+    }
+    let mut txt = opts.join("\n");
+    if txt.len() > 900 {
+        txt.truncate(900);
+        txt.push_str("\n*(Tape `/game parametres` pour tous les réglages)*");
+    }
+    Some(txt)
+}
+
 pub fn format_hour_minute(minutes: u16) -> String {
     let h = minutes / 60;
     let m = minutes % 60;
@@ -914,6 +935,7 @@ pub fn build_panel_embed(
         None,
         None,
         None,
+        None,
     )
 }
 
@@ -929,6 +951,7 @@ pub fn build_panel_embed_full(
     rules: Option<&str>,
     closes_at: Option<&str>,
     specs_summary: Option<&str>,
+    options_summary: Option<&str>,
 ) -> CreateEmbed {
     let inscrits_txt = if inscrits.is_empty() {
         "_Personne pour l'instant — sois le premier !_".to_string()
@@ -990,12 +1013,17 @@ pub fn build_panel_embed_full(
     };
     embed = embed.field("📜 Règlement", reglement_txt, false);
 
-    embed
-        .field(
-            "Réglages",
+    if let Some(opts) = options_summary.filter(|o| !o.trim().is_empty()) {
+        embed = embed.field("⚙️ Paramètres du jeu", opts, false);
+    } else {
+        embed = embed.field(
+            "⚙️ Réglages",
             "Tape `/game parametres` pour voir tous les réglages détaillés du serveur.",
             false,
-        )
+        );
+    }
+
+    embed
         .color(0x5865f2)
         .footer(CreateEmbedFooter::new("Game Portal | Nexus"))
         .timestamp(serenity::model::Timestamp::now())
@@ -1014,6 +1042,7 @@ pub fn build_public_panel_embed_full(
     rules: Option<&str>,
     closes_at: Option<&str>,
     specs_summary: Option<&str>,
+    options_summary: Option<&str>,
 ) -> CreateEmbed {
     let mut embed = build_panel_embed_full(
         game_name,
@@ -1027,6 +1056,7 @@ pub fn build_public_panel_embed_full(
         rules,
         closes_at,
         specs_summary,
+        options_summary,
     );
     if let Some(url) = cover_url {
         embed = embed.image(url);
@@ -1049,6 +1079,7 @@ fn build_public_panel_embed(
         ip_reveal_at,
         ip_revealed,
         cover_url,
+        None,
         None,
         None,
         None,
@@ -2008,7 +2039,10 @@ pub(crate) async fn poster_le_panneau(
     let detail = api.get_game_server(&server.id).await.ok();
     let empty_cfg = std::collections::HashMap::new();
     let config = detail.as_ref().map(|d| &d.config).unwrap_or(&empty_cfg);
+    let template = api.get_game_template(&server.template_id).await.ok();
+    let schema = template.as_ref().map(|t| t.config_schema.as_slice()).unwrap_or_default();
     let specs = format_specs_summary(server, config);
+    let options_summary = format_options_summary(config, schema, false);
 
     let embed = build_public_panel_embed_full(
         &game_name,
@@ -2021,6 +2055,7 @@ pub(crate) async fn poster_le_panneau(
         server.rules.as_deref(),
         server.closes_at.as_deref(),
         Some(&specs),
+        options_summary.as_deref(),
     );
     let msg = text_ch
         .send_message(
@@ -3744,7 +3779,10 @@ pub(crate) async fn resynchroniser_session(
             .and_then(|template| {
                 public_cover_url_for_status(template.cover_image_url.as_deref(), etat_affiche(&server))
             });
+        let template = api.get_game_template(&server.template_id).await.ok();
+        let schema = template.as_ref().map(|t| t.config_schema.as_slice()).unwrap_or_default();
         let specs = format_specs_summary(&server, &detail.config);
+        let options_summary = format_options_summary(&detail.config, schema, false);
 
         let updated_embed = build_public_panel_embed_full(
             &game_name,
@@ -3757,6 +3795,7 @@ pub(crate) async fn resynchroniser_session(
             server.rules.as_deref(),
             server.closes_at.as_deref(),
             Some(&specs),
+            options_summary.as_deref(),
         );
 
         if let Some(mut panel_msg) = existing_panel {
@@ -4049,6 +4088,7 @@ mod tests_portal_rich_formatting {
             Some("Pas de cheat"),
             None,
             Some("Statut : 🟢 En ligne · RAM : 4.0 Go"),
+            Some("• Monde : Midgard\n• PvP : Non"),
         );
 
         let val = serde_json::to_value(&embed).unwrap();
@@ -4060,7 +4100,7 @@ mod tests_portal_rich_formatting {
         assert!(fields.iter().any(|f| f["name"].as_str().unwrap().contains("Serveur & Capacité")));
         assert!(fields.iter().any(|f| f["name"].as_str().unwrap().contains("Horaires & Disponibilité")));
         assert!(fields.iter().any(|f| f["name"].as_str().unwrap().contains("Règlement")));
-        assert!(fields.iter().any(|f| f["name"].as_str().unwrap().contains("Réglages")));
+        assert!(fields.iter().any(|f| f["name"].as_str().unwrap().contains("Paramètres du jeu")));
     }
 
     #[test]

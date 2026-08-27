@@ -251,20 +251,57 @@ async fn handle_resync(ctx: &Context, cmd: &CommandInteraction, api: &ApiClient)
 /// (visible du seul demandeur). Contextuel : dans le salon prive des inscrits le
 /// mot de passe est inclus ; dans le salon d'inscription il est masque.
 async fn handle_show_params(ctx: &Context, cmd: &CommandInteraction, api: &ApiClient) {
-    match crate::game_portal::params_embeds_for_channel(ctx, api, cmd.channel_id).await {
-        Ok(embeds) => {
-            let _ = cmd
-                .create_response(
-                    ctx,
-                    CreateInteractionResponse::Message(
-                        CreateInteractionResponseMessage::new()
-                            .embeds(embeds)
-                            .ephemeral(true),
-                    ),
-                )
-                .await;
+    // PLUSIEURS MESSAGES, PAS UN SEUL. Discord borne un message a dix embeds ET
+    // a six mille caracteres cumules. Project Zomboid expose a lui seul cent
+    // trente reglages de bac a sable : tout envoyer d'un coup faisait refuser
+    // le message ENTIER, et la troncature precedente faisait disparaitre
+    // l'essentiel de la configuration sans un mot.
+    let pages = match crate::game_portal::params_pages_for_channel(ctx, api, cmd.channel_id).await {
+        Ok(pages) if !pages.is_empty() => pages,
+        Ok(_) => {
+            reply(ctx, cmd, "Aucun paramètre à afficher pour ce serveur.").await;
+            return;
         }
-        Err(message) => reply(ctx, cmd, message).await,
+        Err(message) => {
+            reply(ctx, cmd, message).await;
+            return;
+        }
+    };
+
+    let mut pages = pages.into_iter();
+    let premiere = pages.next().unwrap_or_default();
+    if cmd
+        .create_response(
+            ctx,
+            CreateInteractionResponse::Message(
+                CreateInteractionResponseMessage::new()
+                    .embeds(premiere)
+                    .ephemeral(true),
+            ),
+        )
+        .await
+        .is_err()
+    {
+        // La reponse initiale a echoue : les complements n'auraient nulle part
+        // ou aller, l'interaction n'etant pas ouverte.
+        return;
+    }
+
+    for page in pages {
+        // Chaque page suivante est un message complementaire, ephemere comme le
+        // premier. Un echec sur l'un n'empeche pas les suivants : une page
+        // manquante vaut mieux que la moitie de la configuration perdue.
+        if let Err(e) = cmd
+            .create_followup(
+                ctx,
+                CreateInteractionResponseFollowup::new()
+                    .embeds(page)
+                    .ephemeral(true),
+            )
+            .await
+        {
+            tracing::warn!(error = %e, "parametres : page complementaire non envoyee");
+        }
     }
 }
 

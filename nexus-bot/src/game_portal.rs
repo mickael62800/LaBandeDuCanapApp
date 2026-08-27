@@ -551,25 +551,94 @@ pub fn build_options_embeds_full(
     schedule_summary: Option<&str>,
     rules: Option<&str>,
 ) -> Vec<CreateEmbed> {
-    let mut chunks = chunk_options(options);
-    if chunks.is_empty() {
-        chunks.push("_Aucune option publique configurée._".into());
+    build_options_pages(
+        game_name,
+        server_name,
+        options,
+        specs_summary,
+        schedule_summary,
+        rules,
+    )
+    .into_iter()
+    .next()
+    .unwrap_or_default()
+}
+
+/// Les memes parametres, repartis en PAGES prêtes a etre envoyees une par
+/// message.
+///
+/// La premiere page est la reponse a la commande ; les suivantes partent en
+/// messages complementaires. Sans cela, tout ce qui depasse les limites de
+/// Discord disparaissait sans un mot — et avec cent trente reglages de bac a
+/// sable, cela representait l'essentiel de la configuration.
+pub fn build_options_pages(
+    game_name: &str,
+    server_name: &str,
+    options: &[String],
+    specs_summary: Option<&str>,
+    schedule_summary: Option<&str>,
+    rules: Option<&str>,
+) -> Vec<Vec<CreateEmbed>> {
+    let mut blocs = chunk_options(options);
+    if blocs.is_empty() {
+        blocs.push("_Aucune option publique configurée._".into());
     }
-    chunks.truncate(10);
-    chunks
+    let pages = repartir_en_pages(blocs);
+    let total = pages.len();
+
+    pages
         .into_iter()
         .enumerate()
+        .map(|(no_page, blocs)| {
+            construire_page(
+                game_name,
+                server_name,
+                &blocs,
+                no_page,
+                total,
+                specs_summary,
+                schedule_summary,
+                rules,
+            )
+        })
+        .collect()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn construire_page(
+    game_name: &str,
+    server_name: &str,
+    blocs: &[String],
+    no_page: usize,
+    total: usize,
+    specs_summary: Option<&str>,
+    schedule_summary: Option<&str>,
+    rules: Option<&str>,
+) -> Vec<CreateEmbed> {
+    blocs
+        .iter()
+        .enumerate()
         .map(|(index, chunk)| {
+            let premier_de_tout = no_page == 0 && index == 0;
             let mut embed = CreateEmbed::new()
-                .title(if index == 0 {
+                .title(if premier_de_tout {
                     format!("⚙️ Paramètres — {game_name} · {server_name}")
+                } else if index == 0 && total > 1 {
+                    // Le numero de page dit qu'il y a une suite, et laquelle :
+                    // « (suite) » repete n fois ne permet pas de savoir si l'on
+                    // a tout recu.
+                    format!("⚙️ Paramètres (page {} sur {total})", no_page + 1)
                 } else {
                     "⚙️ Paramètres (suite)".to_string()
                 })
                 .color(0x2ecc71)
                 .footer(CreateEmbedFooter::new(OPTIONS_FOOTER));
 
-            if index == 0 {
+            // L'EN-TETE NE FIGURE QUE SUR LA TOUTE PREMIERE PAGE. Le repeter
+            // sur chacune consommerait le budget de caracteres de toutes les
+            // suivantes — et c'est ce budget qui decide combien de reglages
+            // s'affichent.
+            if premier_de_tout {
                 embed =
                     embed.description("Réglages actuels, informations et horaires de ce serveur.");
                 if let Some(specs) = specs_summary.filter(|s| !s.trim().is_empty()) {
@@ -622,11 +691,15 @@ pub(crate) async fn session_du_salon(ctx: &Context, salon: ChannelId) -> Option<
 /// passe est inclus (comme à la révélation) ; ailleurs (salon d'inscription) il
 /// est masqué. Retourne un message d'erreur affichable si le salon n'est pas un
 /// salon de session.
-pub async fn params_embeds_for_channel(
+/// Les pages de parametres du salon courant.
+///
+/// La premiere est la reponse a la commande, les suivantes partent en messages
+/// complementaires : voir `build_options_pages`.
+pub async fn params_pages_for_channel(
     ctx: &Context,
     api: &ApiClient,
     channel: ChannelId,
-) -> Result<Vec<CreateEmbed>, &'static str> {
+) -> Result<Vec<Vec<CreateEmbed>>, &'static str> {
     let topic = match channel.to_channel(&ctx.http).await {
         Ok(ch) => ch.guild().and_then(|g| g.topic),
         Err(_) => None,
@@ -646,18 +719,101 @@ pub async fn params_embeds_for_channel(
     let template = api.get_game_template(&detail.server.template_id).await.ok();
     let schedule = api.get_schedule_ranges(server_id).await.ok();
 
-    Ok(build_options_embeds_for_server_full(
-        &detail.server,
-        template.as_ref(),
-        &detail.config,
+    let server = &detail.server;
+    let game_name = template
+        .as_ref()
+        .map(|t| t.name.clone())
+        .unwrap_or_else(|| "Jeu".into());
+    let schema = template
+        .as_ref()
+        .map(|t| t.config_schema.as_slice())
+        .unwrap_or_default();
+    let options = if is_private {
+        public_game_options(&detail.config, schema)
+    } else {
+        registration_options(&detail.config, schema)
+    };
+    let specs = format_specs_summary(server, &detail.config);
+    let sched_txt = format_schedule_summary(
         schedule.as_ref(),
-        is_private,
+        server.ip_reveal_at.as_deref(),
+        server.closes_at.as_deref(),
+    );
+    let default_rules = "📜 _Charte standard du serveur : respect des membres et fair-play._";
+    let rules_txt = server
+        .rules
+        .as_deref()
+        .filter(|r| !r.trim().is_empty())
+        .unwrap_or(default_rules);
+
+    Ok(build_options_pages(
+        &game_name,
+        &server.name,
+        &options,
+        Some(&specs),
+        Some(&sched_txt),
+        Some(rules_txt),
     ))
 }
 
 /// Decoupe les options en blocs tenant dans la VALEUR d'un champ d'embed
 /// Discord, dont la limite dure est 1024 caracteres. On borne a 1000 pour
 /// garder une marge (chaque option est deja une ligne markdown courte).
+
+/// Limites de Discord sur les embeds d'UN message.
+///
+/// Elles ne se devinent pas : la seconde surtout, qui porte sur la SOMME de
+/// tous les embeds du message et non sur chacun. Dix embeds de mille
+/// caracteres tiennent chacun sous la limite individuelle, et pourtant Discord
+/// refuse le message entier — sans rien publier du tout.
+const EMBEDS_MAX_PAR_MESSAGE: usize = 10;
+const CARACTERES_MAX_PAR_MESSAGE: usize = 6000;
+
+/// Marge laissee au titre, a la description, au pied de page et aux champs
+/// d'en-tete du premier embed. Mesuree large : depasser de peu coute le
+/// message entier, alors qu'une page de plus ne coute rien.
+const MARGE_ENTETE: usize = 1500;
+
+/// Repartit les blocs d'options en PAGES, une par message.
+///
+/// POURQUOI DES PAGES ET NON UNE TRONCATURE. Le code precedent coupait a dix
+/// blocs (`truncate(10)`) : au-dela, les reglages disparaissaient sans que rien
+/// ne le signale. Avec les cent trente reglages de bac a sable de Project
+/// Zomboid, l'essentiel de la configuration ne s'affichait tout simplement
+/// plus — et le message risquait en prime d'etre refuse en bloc pour
+/// depassement des six mille caracteres.
+///
+/// Chaque page respecte les DEUX limites. La premiere recoit une marge
+/// supplementaire, puisqu'elle porte aussi les specifications, les horaires et
+/// le reglement.
+///
+/// Un bloc plus gros que le budget d'une page entiere part seul sur sa page :
+/// mieux vaut un message que Discord pourrait refuser qu'un bloc perdu en
+/// silence. `chunk_options` borne deja les blocs a mille caracteres, donc ce
+/// cas ne devrait pas se presenter.
+pub fn repartir_en_pages(blocs: Vec<String>) -> Vec<Vec<String>> {
+    let mut pages: Vec<Vec<String>> = Vec::new();
+    let mut page: Vec<String> = Vec::new();
+    let mut taille = MARGE_ENTETE;
+
+    for bloc in blocs {
+        let cout = bloc.chars().count();
+        let pleine = page.len() >= EMBEDS_MAX_PAR_MESSAGE
+            || (!page.is_empty() && taille + cout > CARACTERES_MAX_PAR_MESSAGE);
+        if pleine {
+            pages.push(std::mem::take(&mut page));
+            // Les pages suivantes n'ont pas d'en-tete : tout le budget leur
+            // revient.
+            taille = 0;
+        }
+        taille += cout;
+        page.push(bloc);
+    }
+    if !page.is_empty() {
+        pages.push(page);
+    }
+    pages
+}
 fn chunk_options(options: &[String]) -> Vec<String> {
     let mut chunks = Vec::new();
     let mut current = String::new();
@@ -4212,5 +4368,105 @@ mod tests_portal_rich_formatting {
             .as_str()
             .unwrap()
             .contains("Règlement de la soirée")));
+    }
+}
+
+/// La repartition des parametres en messages Discord.
+///
+/// Deux limites, dont une piegeuse : dix embeds par message, et six mille
+/// caracteres pour la SOMME des embeds. Le code precedent tronquait a dix
+/// blocs, ce qui faisait disparaitre l'essentiel des cent trente reglages de
+/// bac a sable de Zomboid — sans un mot.
+#[cfg(test)]
+mod tests_pages_de_parametres {
+    use super::{repartir_en_pages, CARACTERES_MAX_PAR_MESSAGE, EMBEDS_MAX_PAR_MESSAGE};
+
+    fn blocs(nombre: usize, taille: usize) -> Vec<String> {
+        (0..nombre).map(|_| "x".repeat(taille)).collect()
+    }
+
+    /// Ce qui tient dans un message y reste : pas de page inutile.
+    #[test]
+    fn une_configuration_courte_tient_en_une_page() {
+        let pages = repartir_en_pages(blocs(3, 800));
+        assert_eq!(pages.len(), 1);
+        assert_eq!(pages[0].len(), 3);
+    }
+
+    /// LE CAS QUI FAISAIT REFUSER LE MESSAGE. Dix blocs de mille caracteres
+    /// tiennent chacun sous la limite individuelle, mais leur somme depasse les
+    /// six mille : Discord refusait alors le message ENTIER.
+    #[test]
+    fn la_somme_des_embeds_ne_depasse_jamais_la_limite() {
+        for pages in [
+            repartir_en_pages(blocs(10, 1000)),
+            repartir_en_pages(blocs(40, 900)),
+        ] {
+            for (index, page) in pages.iter().enumerate() {
+                let total: usize = page.iter().map(|b| b.chars().count()).sum();
+                assert!(
+                    total <= CARACTERES_MAX_PAR_MESSAGE,
+                    "page {index} : {total} caracteres"
+                );
+                assert!(
+                    page.len() <= EMBEDS_MAX_PAR_MESSAGE,
+                    "page {index} trop dense"
+                );
+            }
+        }
+    }
+
+    /// AUCUN BLOC NE DOIT DISPARAITRE. C'est le defaut que ces pages corrigent :
+    /// la troncature precedente perdait tout ce qui depassait le dixieme bloc.
+    #[test]
+    fn aucun_reglage_n_est_perdu_en_route() {
+        let entree = blocs(40, 900);
+        let attendu = entree.len();
+        let pages = repartir_en_pages(entree);
+
+        let total: usize = pages.iter().map(|p| p.len()).sum();
+        assert_eq!(total, attendu, "des blocs ont disparu");
+        assert!(pages.len() > 1, "une seule page pour quarante blocs");
+    }
+
+    /// L'ordre porte le sens : les reglages sont groupes par section, et une
+    /// page qui les melangerait rendrait la lecture impossible.
+    #[test]
+    fn l_ordre_des_blocs_est_conserve() {
+        let entree: Vec<String> = (0..30).map(|i| format!("bloc-{i:02}")).collect();
+        let pages = repartir_en_pages(entree.clone());
+
+        let aplati: Vec<String> = pages.into_iter().flatten().collect();
+        assert_eq!(aplati, entree);
+    }
+
+    /// La premiere page porte aussi les specifications, les horaires et le
+    /// reglement : elle doit accepter moins de blocs que les suivantes, sinon
+    /// c'est elle qui ferait depasser le message.
+    #[test]
+    fn la_premiere_page_est_plus_courte_que_les_suivantes() {
+        let pages = repartir_en_pages(blocs(30, 1000));
+        assert!(pages.len() >= 3);
+        assert!(
+            pages[0].len() < pages[1].len(),
+            "premiere page : {} blocs, seconde : {}",
+            pages[0].len(),
+            pages[1].len()
+        );
+    }
+
+    #[test]
+    fn aucune_entree_ne_donne_aucune_page() {
+        assert!(repartir_en_pages(Vec::new()).is_empty());
+    }
+
+    /// Un bloc plus gros que le budget part seul plutot que d'etre perdu :
+    /// mieux vaut un message que Discord pourrait refuser qu'un reglage
+    /// disparu en silence.
+    #[test]
+    fn un_bloc_hors_budget_part_seul() {
+        let pages = repartir_en_pages(vec!["x".repeat(9000), "petit".into()]);
+        assert_eq!(pages.len(), 2);
+        assert_eq!(pages[0].len(), 1);
     }
 }

@@ -145,3 +145,113 @@ fn les_reglages_exposes_sont_uniques() {
     assert!(reglage("Zombies").is_some());
     assert!(reglage("PasUnReglage").is_none());
 }
+
+// ── Les quatre tables ──────────────────────────────────────────────────────
+
+#[test]
+fn les_quatre_tables_sont_ecrites_dans_un_ordre_fige() {
+    let lua = composer(&config(&[
+        ("Zombies", "3"),
+        ("AllowMiniMap", "false"),
+        ("Speed", "2"),
+        ("PopulationMultiplier", "1.5"),
+    ]))
+    .unwrap();
+
+    let map = lua.find("Map = {").expect("Map attendue");
+    let lore = lua.find("ZombieLore = {").expect("ZombieLore attendue");
+    let cfg = lua.find("ZombieConfig = {").expect("ZombieConfig attendue");
+    let racine = lua.find("Zombies = 3").expect("racine attendue");
+
+    assert!(racine < map, "la racine s'ecrit avant les sous-tables");
+    assert!(map < lore && lore < cfg, "ordre des sous-tables instable");
+}
+
+#[test]
+fn un_booleen_s_ecrit_sans_guillemets() {
+    let lua = composer(&config(&[("EnableSnowOnGround", "false")])).unwrap();
+    assert!(lua.contains("EnableSnowOnGround = false,"), "{lua}");
+
+    let lua = composer(&config(&[("Nutrition", "true")])).unwrap();
+    assert!(lua.contains("Nutrition = true,"), "{lua}");
+}
+
+#[test]
+fn un_booleen_illisible_est_ignore() {
+    let lua = composer(&config(&[("Nutrition", "peut-etre"), ("Zombies", "3")])).unwrap();
+    assert!(!lua.contains("Nutrition"));
+}
+
+/// Le seul reglage vanilla de type texte. Il finit entre guillemets dans du
+/// Lua : le jeu de caracteres est restreint plutot qu'echappe, parce qu'un
+/// echappement incomplet suffirait a rendre le fichier executable.
+#[test]
+fn la_liste_d_objets_est_ecrite_entre_guillemets() {
+    let lua = composer(&config(&[(
+        "WorldItemRemovalList",
+        "Base.Hat,Base.Glasses,Base.Maggots",
+    )]))
+    .unwrap();
+
+    assert!(
+        lua.contains("WorldItemRemovalList = \"Base.Hat,Base.Glasses,Base.Maggots\","),
+        "{lua}"
+    );
+}
+
+#[test]
+fn un_texte_hors_du_jeu_de_caracteres_est_refuse() {
+    for poison in [
+        "Base.Hat\", os.execute('x'), y = \"",
+        "Base.Hat\\\"",
+        "Base.Hat\nBase.Glasses",
+        "Base.Hat[[",
+        "café",
+    ] {
+        let lua = composer(&config(&[
+            ("WorldItemRemovalList", poison),
+            ("Zombies", "3"),
+        ]))
+        .unwrap();
+        assert!(
+            !lua.contains("WorldItemRemovalList"),
+            "texte {poison:?} accepte :\n{lua}"
+        );
+    }
+}
+
+/// Les cent trente cles doivent etre celles du jeu, chacune dans sa table.
+/// Une cle rangee dans la mauvaise table ne produit aucune erreur et n'a
+/// simplement aucun effet — c'est le defaut le plus difficile a reperer.
+#[test]
+fn les_cles_connues_sont_dans_la_bonne_table() {
+    let attendus = [
+        ("Zombies", Section::Racine),
+        ("CarSpawnRate", Section::Racine),
+        ("WorldItemRemovalList", Section::Racine),
+        ("Speed", Section::ZombieLore),
+        ("DisableFakeDead", Section::ZombieLore),
+        ("PopulationMultiplier", Section::ZombieConfig),
+        ("RallyGroupRadius", Section::ZombieConfig),
+        ("AllowMiniMap", Section::Map),
+        ("MapAllKnown", Section::Map),
+    ];
+    for (cle, section) in attendus {
+        let r = reglage(cle).unwrap_or_else(|| panic!("{cle} absente de la liste"));
+        assert_eq!(r.section, section, "{cle} rangee dans la mauvaise table");
+    }
+    assert_eq!(REGLAGES.len(), 130, "le nombre de reglages a change");
+}
+
+/// Aucune cle de mod ne doit s'etre glissee dans la liste : elles n'ont aucun
+/// effet chez qui n'a pas le mod, et brouillent un formulaire deja long.
+#[test]
+fn aucune_cle_de_mod_ne_figure_dans_la_liste() {
+    for r in REGLAGES {
+        assert!(
+            !r.cle.starts_with("lgd_") && !r.cle.contains('_'),
+            "cle suspecte, probablement issue d'un mod : {}",
+            r.cle
+        );
+    }
+}

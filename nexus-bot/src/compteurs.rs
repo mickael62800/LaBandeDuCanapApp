@@ -433,6 +433,7 @@ mod tests {
             text_channel_id: None,
             voice_channel_id: None,
             last_player_count: joueurs,
+            ..Default::default()
         }
     }
 

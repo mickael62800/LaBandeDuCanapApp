@@ -229,7 +229,7 @@ pub struct ServerDetailResponse {
     pub config: HashMap<String, String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize, Default, Clone)]
 pub struct GameServer {
     pub id: String,
     pub guild_id: String,
@@ -270,6 +270,54 @@ pub struct GameServer {
     /// de serveur vide. Cf. `compteurs`.
     #[serde(default)]
     pub last_player_count: i32,
+    #[serde(default)]
+    pub closes_at: Option<String>,
+    #[serde(default)]
+    pub allocated_memory_mb: Option<i32>,
+    #[serde(default)]
+    pub cpu_limit: Option<f64>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct ScheduleRangesDto {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub mode: String,
+    #[serde(default = "default_timezone")]
+    pub timezone: String,
+    #[serde(default)]
+    pub ranges: Vec<TimeRangeDto>,
+    #[serde(default = "default_warn_minutes")]
+    pub warn_minutes: i32,
+    #[serde(default)]
+    pub next_opening: Option<String>,
+    #[serde(default)]
+    pub next_restart: Option<String>,
+    #[serde(default)]
+    pub restart_interval_hours: Option<i32>,
+    #[serde(default)]
+    pub restart_anchor_minute: u8,
+}
+
+fn default_timezone() -> String {
+    "Europe/Paris".to_string()
+}
+
+fn default_warn_minutes() -> i32 {
+    10
+}
+
+fn default_all_days() -> u8 {
+    0b111_1111
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct TimeRangeDto {
+    pub start_minute: u16,
+    pub end_minute: u16,
+    #[serde(default = "default_all_days")]
+    pub days: u8,
 }
 
 #[derive(Debug, Clone, Deserialize)]

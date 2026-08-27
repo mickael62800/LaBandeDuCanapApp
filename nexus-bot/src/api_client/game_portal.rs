@@ -22,6 +22,16 @@ impl ApiClient {
         self.send(self.http.get(&url)).await
     }
 
+    /// GET /api/games/servers/{server_id}/schedule-ranges
+    pub async fn get_schedule_ranges(&self, server_id: &str) -> Result<ScheduleRangesDto, String> {
+        let url = format!(
+            "{}/api/games/servers/{}/schedule-ranges",
+            self.base_url,
+            encode_segment(server_id)
+        );
+        self.send(self.http.get(&url)).await
+    }
+
     /// Le serveur existe-t-il encore ?
     ///
     /// DISTINGUE L'ABSENCE DE LA PANNE, et c'est tout l'interet de la methode.

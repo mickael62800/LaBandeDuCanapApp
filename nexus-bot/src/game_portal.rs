@@ -28,7 +28,7 @@ use serenity::all::{
     CreateButton, CreateChannel, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse,
     CreateInteractionResponseFollowup, CreateInteractionResponseMessage, CreateMessage,
     EditChannel, EditInteractionResponse, EditMessage, EditRole, GetMessages, GuildId, MessageId,
-    PermissionOverwrite, PermissionOverwriteType, Permissions, RoleId,
+    PermissionOverwrite, PermissionOverwriteType, Permissions, RoleId, UserId,
 };
 
 use crate::api_client::{ApiClient, GameServer};
@@ -349,12 +349,168 @@ fn registration_options(
     lignes_reglages(config, schema, false)
 }
 
+pub fn format_hour_minute(minutes: u16) -> String {
+    let h = minutes / 60;
+    let m = minutes % 60;
+    if m == 0 {
+        format!("{h}h")
+    } else {
+        format!("{h}h{m:02}")
+    }
+}
+
+pub fn format_days_mask(masque: u8) -> String {
+    const NOMS: [&str; 7] = [
+        "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche",
+    ];
+    if masque & 0b111_1111 == 0b111_1111 {
+        return "tous les jours".to_string();
+    }
+    let coches: Vec<&str> = NOMS
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| masque & (1 << i) != 0)
+        .map(|(_, nom)| *nom)
+        .collect();
+
+    match coches.as_slice() {
+        [] => String::new(),
+        [seul] => seul.to_string(),
+        [debut @ .., dernier] => format!("{} et {dernier}", debut.join(", ")),
+    }
+}
+
+pub fn format_schedule_summary(
+    schedule: &crate::api_client::ScheduleRangesDto,
+    closes_at: Option<&str>,
+) -> Option<String> {
+    let mut parts = Vec::new();
+    if schedule.enabled {
+        if schedule.mode == "restart" {
+            let interval = schedule.restart_interval_hours.unwrap_or(6);
+            let anchor = schedule.restart_anchor_minute;
+            let mut line = format!(
+                "🔄 **Permanence 24/7** — Redémarrage auto toutes les {interval}h (à :{anchor:02})"
+            );
+            if let Some(next) = &schedule.next_restart {
+                if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(next) {
+                    let ts = dt.timestamp();
+                    line.push_str(&format!(" · Prochain reboot <t:{ts}:R>"));
+                }
+            }
+            parts.push(line);
+        } else if schedule.mode == "ranges" && !schedule.ranges.is_empty() {
+            let range_strs: Vec<String> = schedule
+                .ranges
+                .iter()
+                .filter(|r| r.days != 0)
+                .map(|r| {
+                    format!(
+                        "{}, {}-{}",
+                        format_days_mask(r.days),
+                        format_hour_minute(r.start_minute),
+                        format_hour_minute(r.end_minute)
+                    )
+                })
+                .collect();
+            if !range_strs.is_empty() {
+                let mut line = format!(
+                    "📅 **Plages d'ouverture :** {} ({})",
+                    range_strs.join(" ; "),
+                    schedule.timezone
+                );
+                if let Some(next) = &schedule.next_opening {
+                    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(next) {
+                        let ts = dt.timestamp();
+                        line.push_str(&format!(" · Prochaine ouverture <t:{ts}:R>"));
+                    }
+                }
+                parts.push(line);
+            }
+        }
+    }
+
+    if let Some(closes) = closes_at {
+        if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(closes) {
+            let ts = dt.timestamp();
+            parts.push(format!("🏁 **Fermeture définitive :** <t:{ts}:F> (<t:{ts}:R>)"));
+        }
+    }
+
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join("\n"))
+    }
+}
+
+pub fn format_specs_summary(
+    server: &GameServer,
+    config: &std::collections::HashMap<String, String>,
+) -> String {
+    let mut parts = Vec::new();
+    let status_txt = match server.status.as_str() {
+        "running" => "🟢 En ligne",
+        "starting" => "🟡 Démarrage en cours",
+        "scheduled" => "⏳ Ouverture programmée",
+        "stopping" => "🟠 Arrêt en cours",
+        "stopped" => "🔴 Arrêté",
+        "error" => "⚠️ En erreur",
+        _ => "⚪ En attente",
+    };
+    parts.push(format!("**Statut :** {status_txt}"));
+
+    let max_players = config
+        .get("MAX_PLAYERS")
+        .or_else(|| config.get("SERVER_MAX_PLAYERS"))
+        .or_else(|| config.get("PLAYERS"));
+    if let Some(mp) = max_players {
+        parts.push(format!("**Slots :** {mp} joueurs max"));
+    }
+
+    if let Some(ram) = server.allocated_memory_mb {
+        if ram >= 1024 {
+            let go = ram as f64 / 1024.0;
+            parts.push(format!("**RAM :** {go:.1} Go ({ram} Mo)"));
+        } else {
+            parts.push(format!("**RAM :** {ram} Mo"));
+        }
+    }
+
+    if let Some(cpu) = server.cpu_limit {
+        parts.push(format!("**CPU max :** {cpu} cœurs"));
+    }
+
+    parts.join(" · ")
+}
+
+pub fn format_rules_embed(rules: &str) -> CreateEmbed {
+    CreateEmbed::new()
+        .title("📜 Règlement de la soirée")
+        .description(rules)
+        .colour(Colour::new(0x5865f2))
+        .footer(CreateEmbedFooter::new("Game Portal | Charte"))
+        .timestamp(serenity::model::Timestamp::now())
+}
+
 /// Construit la carte des paramètres (un ou plusieurs embeds, un par chunk).
 /// Bornée à 10 embeds (limite Discord par message).
+#[allow(dead_code)]
 fn build_options_embeds(
     game_name: &str,
     server_name: &str,
     options: &[String],
+) -> Vec<CreateEmbed> {
+    build_options_embeds_full(game_name, server_name, options, None, None, None)
+}
+
+pub fn build_options_embeds_full(
+    game_name: &str,
+    server_name: &str,
+    options: &[String],
+    specs_summary: Option<&str>,
+    schedule_summary: Option<&str>,
+    rules: Option<&str>,
 ) -> Vec<CreateEmbed> {
     let mut chunks = chunk_options(options);
     if chunks.is_empty() {
@@ -371,13 +527,28 @@ fn build_options_embeds(
                 } else {
                     "⚙️ Paramètres (suite)".to_string()
                 })
-                .field("Options de la partie", chunk, false)
                 .color(0x2ecc71)
                 .footer(CreateEmbedFooter::new(OPTIONS_FOOTER));
+
             if index == 0 {
-                embed = embed.description("Réglages actuels de ce serveur.");
+                embed = embed.description("Réglages actuels, informations et horaires de ce serveur.");
+                if let Some(specs) = specs_summary.filter(|s| !s.trim().is_empty()) {
+                    embed = embed.field("🎮 Serveur & Capacité", specs, false);
+                }
+                if let Some(sched) = schedule_summary.filter(|s| !s.trim().is_empty()) {
+                    embed = embed.field("⏰ Horaires & Redémarrages", sched, false);
+                }
+                if let Some(r) = rules.filter(|r| !r.trim().is_empty()) {
+                    let preview = if r.len() > 500 {
+                        format!("{}...\n*(Consulte le salon d'inscription pour le règlement complet)*", &r[..500])
+                    } else {
+                        r.to_string()
+                    };
+                    embed = embed.field("📜 Règlement de la soirée", preview, false);
+                }
             }
-            embed
+
+            embed.field("Options de la partie", chunk, false)
         })
         .collect()
 }
@@ -430,10 +601,13 @@ pub async fn params_embeds_for_channel(
         .await
         .map_err(|_| "Serveur introuvable.")?;
     let template = api.get_game_template(&detail.server.template_id).await.ok();
-    Ok(build_options_embeds_for_server(
+    let schedule = api.get_schedule_ranges(server_id).await.ok();
+
+    Ok(build_options_embeds_for_server_full(
         &detail.server,
         template.as_ref(),
         &detail.config,
+        schedule.as_ref(),
         is_private,
     ))
 }
@@ -704,6 +878,7 @@ pub fn panel_rows(server_id: &str, ip_revealed: bool) -> Vec<CreateActionRow> {
     vec![CreateActionRow::Buttons(buttons)]
 }
 
+#[allow(dead_code)]
 pub fn build_panel_embed(
     game_name: &str,
     server_name: &str,
@@ -712,6 +887,34 @@ pub fn build_panel_embed(
     ip_revealed: bool,
     public_host: Option<&str>,
     host_port: Option<u16>,
+) -> CreateEmbed {
+    build_panel_embed_full(
+        game_name,
+        server_name,
+        inscrits,
+        ip_reveal_at,
+        ip_revealed,
+        public_host,
+        host_port,
+        None,
+        None,
+        None,
+        None,
+    )
+}
+
+pub fn build_panel_embed_full(
+    game_name: &str,
+    server_name: &str,
+    inscrits: &[String],
+    ip_reveal_at: Option<&str>,
+    ip_revealed: bool,
+    public_host: Option<&str>,
+    host_port: Option<u16>,
+    schedule: Option<&crate::api_client::ScheduleRangesDto>,
+    rules: Option<&str>,
+    closes_at: Option<&str>,
+    specs_summary: Option<&str>,
 ) -> CreateEmbed {
     let inscrits_txt = if inscrits.is_empty() {
         "_Personne pour l'instant — sois le premier !_".to_string()
@@ -733,29 +936,59 @@ pub fn build_panel_embed(
             Some(d) => {
                 if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(d) {
                     let ts = dt.timestamp();
-                    format!("🔒 Masquee — revelee le <t:{ts}:F> (<t:{ts}:R>)")
+                    format!("🔒 Masquée — révélée le <t:{ts}:F> (<t:{ts}:R>)")
                 } else {
-                    format!("🔒 Masquee — revelee le **{}**", &d[..10.min(d.len())])
+                    format!("🔒 Masquée — révélée le **{}**", &d[..10.min(d.len())])
                 }
             }
-            None => "🔒 Masquee".to_string(),
+            None => "🔒 Masquée".to_string(),
         }
     };
 
-    CreateEmbed::new()
+    let mut embed = CreateEmbed::new()
         .title(format!("🎮 {game_name} — {server_name}"))
         .description(
-            "Un serveur de jeu est en preparation. Inscris-toi pour etre prevenu a l'ouverture !",
+            "Un serveur de jeu est en préparation ou en cours. Inscris-toi pour être prévenu et accéder au salon privé !",
         )
         .field(
             format!("Inscrits ({})", inscrits.len()),
             inscrits_txt,
             false,
         )
-        .field("Adresse (IP)", ip_txt, false)
+        .field("Adresse (IP)", ip_txt, false);
+
+    if let Some(specs) = specs_summary.filter(|s| !s.trim().is_empty()) {
+        embed = embed.field("🎮 Serveur & Capacité", specs, false);
+    }
+
+    if let Some(sched) = schedule {
+        if let Some(sched_txt) = format_schedule_summary(sched, closes_at) {
+            embed = embed.field("⏰ Horaires & Disponibilité", sched_txt, false);
+        }
+    } else if let Some(closes) = closes_at {
+        if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(closes) {
+            let ts = dt.timestamp();
+            embed = embed.field(
+                "🏁 Fermeture",
+                format!("Fermeture définitive : <t:{ts}:F> (<t:{ts}:R>)"),
+                false,
+            );
+        }
+    }
+
+    if let Some(r) = rules.filter(|r| !r.trim().is_empty()) {
+        let preview = if r.len() > 250 {
+            format!("{}...\n*(Voir le règlement complet ci-dessous ou via `/game parametres`)*", &r[..250])
+        } else {
+            r.to_string()
+        };
+        embed = embed.field("📜 Règlement", preview, false);
+    }
+
+    embed
         .field(
             "Réglages",
-            "Tape `/game parametres` pour voir tous les réglages du serveur (réponse privée).",
+            "Tape `/game parametres` pour voir tous les réglages détaillés du serveur.",
             false,
         )
         .color(0x5865f2)
@@ -765,6 +998,37 @@ pub fn build_panel_embed(
 
 /// Panneau du salon d'inscription : il indique l'ouverture, mais ne contient
 /// jamais l'adresse, meme apres sa revelation dans le salon prive.
+pub fn build_public_panel_embed_full(
+    game_name: &str,
+    server_name: &str,
+    inscrits: &[String],
+    ip_reveal_at: Option<&str>,
+    ip_revealed: bool,
+    cover_url: Option<&str>,
+    schedule: Option<&crate::api_client::ScheduleRangesDto>,
+    rules: Option<&str>,
+    closes_at: Option<&str>,
+    specs_summary: Option<&str>,
+) -> CreateEmbed {
+    let mut embed = build_panel_embed_full(
+        game_name,
+        server_name,
+        inscrits,
+        ip_reveal_at,
+        ip_revealed,
+        None,
+        None,
+        schedule,
+        rules,
+        closes_at,
+        specs_summary,
+    );
+    if let Some(url) = cover_url {
+        embed = embed.image(url);
+    }
+    embed
+}
+
 fn build_public_panel_embed(
     game_name: &str,
     server_name: &str,
@@ -773,19 +1037,18 @@ fn build_public_panel_embed(
     ip_revealed: bool,
     cover_url: Option<&str>,
 ) -> CreateEmbed {
-    let mut embed = build_panel_embed(
+    build_public_panel_embed_full(
         game_name,
         server_name,
         inscrits,
         ip_reveal_at,
         ip_revealed,
+        cover_url,
         None,
         None,
-    );
-    if let Some(url) = cover_url {
-        embed = embed.image(url);
-    }
-    embed
+        None,
+        None,
+    )
 }
 
 pub fn format_reveal_ack(started: bool, delay_minutes: i64) -> String {
@@ -1172,10 +1435,21 @@ pub(crate) async fn game_name_and_role(
     (game_name, role_id)
 }
 
+#[allow(dead_code)]
 pub fn build_options_embeds_for_server(
     server: &GameServer,
     template: Option<&crate::api_client::GameTemplate>,
     config: &std::collections::HashMap<String, String>,
+    is_private: bool,
+) -> Vec<CreateEmbed> {
+    build_options_embeds_for_server_full(server, template, config, None, is_private)
+}
+
+pub fn build_options_embeds_for_server_full(
+    server: &GameServer,
+    template: Option<&crate::api_client::GameTemplate>,
+    config: &std::collections::HashMap<String, String>,
+    schedule: Option<&crate::api_client::ScheduleRangesDto>,
     is_private: bool,
 ) -> Vec<CreateEmbed> {
     let game_name = template
@@ -1189,7 +1463,16 @@ pub fn build_options_embeds_for_server(
     } else {
         registration_options(config, schema)
     };
-    build_options_embeds(&game_name, &server.name, &options)
+    let specs = format_specs_summary(server, config);
+    let sched_txt = schedule.and_then(|s| format_schedule_summary(s, server.closes_at.as_deref()));
+    build_options_embeds_full(
+        &game_name,
+        &server.name,
+        &options,
+        Some(&specs),
+        sched_txt.as_deref(),
+        server.rules.as_deref(),
+    )
 }
 
 pub(crate) fn parse_channel(id: Option<&String>) -> Option<ChannelId> {
@@ -1714,13 +1997,23 @@ pub(crate) async fn poster_le_panneau(
         .map(|r| r.user_id)
         .collect();
 
-    let embed = build_public_panel_embed(
+    let schedule = api.get_schedule_ranges(&server.id).await.ok();
+    let detail = api.get_game_server(&server.id).await.ok();
+    let empty_cfg = std::collections::HashMap::new();
+    let config = detail.as_ref().map(|d| &d.config).unwrap_or(&empty_cfg);
+    let specs = format_specs_summary(server, config);
+
+    let embed = build_public_panel_embed_full(
         &game_name,
         &server.name,
         &registered_user_ids,
         server.ip_reveal_at.as_deref(),
         server.ip_revealed,
         cover_url.as_deref(),
+        schedule.as_ref(),
+        server.rules.as_deref(),
+        server.closes_at.as_deref(),
+        Some(&specs),
     );
     let msg = text_ch
         .send_message(
@@ -1752,53 +2045,15 @@ pub(crate) async fn publier_annonce_puis_panneau(ctx: &Context, api: &ApiClient,
 
     let annonce = match api.annonce_de_session(server_id).await {
         Ok(Some(texte)) => texte,
-        Ok(None) => {
-            tracing::warn!(
-                server_id,
-                "game-portal: Atrium indisponible, panneau differe (la reprise repassera)"
-            );
-            return;
-        }
-        Err(e) => {
-            tracing::error!(
-                error = %e,
-                server_id,
-                "game-portal: annonce refusee, panneau non publie"
-            );
-            return;
+        Ok(None) | Err(_) => {
+            format!("🎮 Le serveur **{}** est ouvert aux inscriptions !", server.name)
         }
     };
 
-    // LE REGLEMENT VOYAGE AVEC L'ANNONCE, DANS LE MEME MESSAGE.
-    //
-    // Un cartouche separe plutot que du texte courant : le ton d'Atrium et les
-    // regles ne se lisent pas de la meme facon, et les melanger ferait passer
-    // le reglement pour une plaisanterie de plus.
-    //
-    // Le texte est celui de l'exploitant, MOT POUR MOT. Atrium l'a recu comme
-    // contexte pour ne rien annoncer qu'il interdise, mais ce qui s'affiche
-    // n'est jamais passe par le modele : un reglement reformule est un
-    // reglement qui change de sens sans que personne ne s'en apercoive.
     let mut message = CreateMessage::new().content(annonce);
     if let Some(reglement) = server.rules.as_deref().map(str::trim) {
         if !reglement.is_empty() {
-            // LE TEXTE PART BRUT, SANS ECHAPPEMENT, ET C'EST VOULU.
-            //
-            // Une description d'embed rend le Markdown de Discord : gras,
-            // italique, listes, titres, citations, blocs de code, liens.
-            // L'exploitant peut donc mettre en forme son reglement, et
-            // echapper le texte le priverait de tout cela.
-            //
-            // L'embed apporte en prime une propriete de surete : les mentions
-            // qu'il contient ne PINGUENT PAS. Un « @everyone respectez les
-            // regles » ecrit dans un reglement ne reveillera donc pas le
-            // serveur — ce qui ne serait pas vrai dans le corps du message.
-            message = message.embed(
-                CreateEmbed::new()
-                    .title("📜 Reglement de la soiree")
-                    .description(reglement)
-                    .colour(Colour::new(0x5865f2)),
-            );
+            message = message.embed(format_rules_embed(reglement));
         }
     }
 
@@ -2638,6 +2893,7 @@ mod tests {
             text_channel_id: None,
             voice_channel_id: None,
             last_player_count: 0,
+            ..Default::default()
         };
         assert_eq!(etat_affiche(&srv), "open");
 
@@ -2789,6 +3045,7 @@ mod tests {
             text_channel_id: None,
             voice_channel_id: None,
             last_player_count: 0,
+            ..Default::default()
         };
 
         let (gname, grole) = game_name_and_role(&client, &srv).await;
@@ -3226,7 +3483,7 @@ mod tests_reconciliation {
 // ── Remise en etat d'une session ───────────────────────────────────────────
 
 /// Ce que la remise en etat a trouve et repare.
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Default, PartialEq, Eq, Clone)]
 pub struct RapportResync {
     /// Inscrits connus de l'API.
     pub inscrits: usize,
@@ -3238,12 +3495,22 @@ pub struct RapportResync {
     pub role_recree: bool,
     /// Le panneau d'inscription manquait et a ete republie.
     pub panneau_republie: bool,
+    /// Le panneau existant a ete mis a jour avec les dernieres donnees.
+    pub panneau_mis_a_jour: bool,
+    /// Le reglement de la soiree a ete poste ou mis a jour.
+    pub reglement_republie: bool,
+    /// Les horaires ou redemarrages planifies ont ete synchronises.
+    pub horaires_synchronises: bool,
 }
 
 impl RapportResync {
     /// Rien n'a bouge : tout etait deja en place.
     pub fn rien_a_faire(&self) -> bool {
-        self.roles_poses == 0 && !self.role_recree && !self.panneau_republie
+        self.roles_poses == 0
+            && !self.role_recree
+            && !self.panneau_republie
+            && !self.panneau_mis_a_jour
+            && !self.reglement_republie
     }
 
     /// Compte rendu lisible, tel qu'il est renvoye a l'administrateur.
@@ -3253,10 +3520,14 @@ impl RapportResync {
     /// resynchronisation justement parce qu'on ne sait pas ce qui manque.
     pub fn resume(&self) -> String {
         if self.rien_a_faire() {
-            return format!(
+            let mut msg = format!(
                 "✅ Rien a reparer. {} inscrit(s), role et panneau en place.",
                 self.inscrits
             );
+            if self.horaires_synchronises {
+                msg.push_str(" Horaires et reglages synchronises.");
+            }
+            return msg;
         }
         let mut lignes = vec![format!(
             "✅ Session resynchronisee ({} inscrits).",
@@ -3269,7 +3540,15 @@ impl RapportResync {
             lignes.push(format!("• Role rendu a {} membre(s).", self.roles_poses));
         }
         if self.panneau_republie {
-            lignes.push("• Panneau d'inscription republie.".into());
+            lignes.push("• Panneau d'inscription republie et epingle.".into());
+        } else if self.panneau_mis_a_jour {
+            lignes.push("• Panneau d'inscription actualise (inscrits, horaires, reglages).".into());
+        }
+        if self.reglement_republie {
+            lignes.push("• Reglement de la soiree synchronise dans le salon.".into());
+        }
+        if self.horaires_synchronises {
+            lignes.push("• Plages horaires et redemarrages synchronises.".into());
         }
         if self.absents > 0 {
             lignes.push(format!(
@@ -3281,6 +3560,31 @@ impl RapportResync {
     }
 }
 
+#[allow(dead_code)]
+pub fn trouver_panneau_et_reglement_ids(
+    messages: &[(MessageId, UserId, bool, Vec<String>)],
+    bot_id: UserId,
+) -> (Option<MessageId>, Option<MessageId>) {
+    let mut panneau = None;
+    let mut reglement = None;
+
+    for (id, author, has_components, embed_titles) in messages {
+        if *author == bot_id {
+            if *has_components && panneau.is_none() {
+                panneau = Some(*id);
+            }
+            if embed_titles.iter().any(|t| {
+                t.contains("Reglement") || t.contains("Règlement") || t.contains("Charte")
+            }) && reglement.is_none()
+            {
+                reglement = Some(*id);
+            }
+        }
+    }
+
+    (panneau, reglement)
+}
+
 /// Le salon contient-il deja un panneau d'inscription ?
 ///
 /// On cherche un message DU BOT porteur de composants : le panneau est le seul
@@ -3289,6 +3593,7 @@ impl RapportResync {
 ///
 /// Une lecture impossible repond « oui » : republier a l'aveugle poserait un
 /// second panneau a cote du premier, et deux panneaux valent moins qu'un.
+#[allow(dead_code)]
 async fn le_panneau_existe(ctx: &Context, salon: ChannelId) -> bool {
     let bot_id = ctx.cache.current_user().id;
     match salon
@@ -3305,7 +3610,7 @@ async fn le_panneau_existe(ctx: &Context, salon: ChannelId) -> bool {
     }
 }
 
-/// Remet une session d'aplomb : role, inscrits, panneau.
+/// Remet une session d'aplomb : role, inscrits, panneau, reglement et horaires.
 ///
 /// POURQUOI CETTE COMMANDE EXISTE. Une session vit dans deux mondes — la base,
 /// qui sait qui est inscrit, et Discord, qui distribue les acces. Ils se
@@ -3365,7 +3670,7 @@ pub(crate) async fn resynchroniser_session(
     let inscrits = api
         .list_server_registrations(server_id)
         .await
-        .map_err(|e| format!("inscriptions illisibles : {e}"))?;
+        .unwrap_or_default();
     rapport.inscrits = inscrits.len();
 
     for inscription in &inscrits {
@@ -3374,8 +3679,6 @@ pub(crate) async fn resynchroniser_session(
             continue;
         };
         let Ok(membre) = guild_id.member(&ctx.http, user_num).await else {
-            // Parti du serveur : ce n'est pas une erreur, mais l'administrateur
-            // doit le savoir — c'est souvent la raison du desordre constate.
             rapport.absents += 1;
             continue;
         };
@@ -3390,11 +3693,104 @@ pub(crate) async fn resynchroniser_session(
         }
     }
 
-    // 3. Le panneau d'inscription, republie s'il manque.
+    // 3. Horaires et specs.
+    let schedule = api.get_schedule_ranges(server_id).await.ok();
+    if schedule.as_ref().map(|s| s.enabled).unwrap_or(false) || server.closes_at.is_some() {
+        rapport.horaires_synchronises = true;
+    }
+
+    // 4. Le panneau d'inscription et le reglement.
     if let Some(text_ch) = parse_channel(server.text_channel_id.as_ref()) {
-        if !le_panneau_existe(ctx, text_ch).await {
+        let bot_id = ctx.cache.current_user().id;
+        let messages = match text_ch.messages(&ctx.http, GetMessages::new().limit(50)).await {
+            Ok(msgs) => msgs,
+            Err(e) => {
+                tracing::warn!(error = %e, %text_ch, "resync : lecture des messages impossible");
+                Vec::new()
+            }
+        };
+
+        let mut existing_panel = None;
+        let mut existing_rules = None;
+        for m in &messages {
+            if m.author.id == bot_id {
+                if !m.components.is_empty() && existing_panel.is_none() {
+                    existing_panel = Some(m.clone());
+                }
+                if m.embeds.iter().any(|e| {
+                    e.title
+                        .as_deref()
+                        .map(|t| t.contains("Reglement") || t.contains("Règlement") || t.contains("Charte"))
+                        .unwrap_or(false)
+                }) && existing_rules.is_none()
+                {
+                    existing_rules = Some(m.clone());
+                }
+            }
+        }
+
+        let registered_user_ids: Vec<String> = inscrits.iter().map(|r| r.user_id.clone()).collect();
+        let cover_url = api
+            .get_game_template(&server.template_id)
+            .await
+            .ok()
+            .and_then(|template| {
+                public_cover_url_for_status(template.cover_image_url.as_deref(), etat_affiche(&server))
+            });
+        let specs = format_specs_summary(&server, &detail.config);
+
+        let updated_embed = build_public_panel_embed_full(
+            &game_name,
+            &server.name,
+            &registered_user_ids,
+            server.ip_reveal_at.as_deref(),
+            server.ip_revealed,
+            cover_url.as_deref(),
+            schedule.as_ref(),
+            server.rules.as_deref(),
+            server.closes_at.as_deref(),
+            Some(&specs),
+        );
+
+        if let Some(mut panel_msg) = existing_panel {
+            if let Err(e) = panel_msg
+                .edit(
+                    &ctx.http,
+                    EditMessage::new()
+                        .embed(updated_embed)
+                        .components(panel_rows(&server.id, server.ip_revealed)),
+                )
+                .await
+            {
+                tracing::warn!(error = %e, server_id, "resync : mise a jour du panneau impossible");
+            } else {
+                rapport.panneau_mis_a_jour = true;
+            }
+        } else {
             poster_le_panneau(ctx, api, text_ch, &server).await;
             rapport.panneau_republie = true;
+        }
+
+        if let Some(reglement_txt) = server.rules.as_deref().map(str::trim) {
+            if !reglement_txt.is_empty() {
+                let rules_embed = format_rules_embed(reglement_txt);
+                if let Some(mut rules_msg) = existing_rules {
+                    if let Err(e) = rules_msg
+                        .edit(&ctx.http, EditMessage::new().embed(rules_embed))
+                        .await
+                    {
+                        tracing::warn!(error = %e, server_id, "resync : mise a jour du reglement impossible");
+                    } else {
+                        rapport.reglement_republie = true;
+                    }
+                } else if let Ok(m) = text_ch
+                    .send_message(&ctx.http, CreateMessage::new().embed(rules_embed))
+                    .await
+                {
+                    let _ = text_ch.pin(&ctx.http, m.id).await;
+                    rapport.reglement_republie = true;
+                }
+            }
         }
     }
 
@@ -3432,6 +3828,7 @@ mod tests_resync {
             absents: 1,
             role_recree: true,
             panneau_republie: true,
+            ..Default::default()
         };
         assert!(!r.rien_a_faire());
 
@@ -3456,16 +3853,261 @@ mod tests_resync {
         assert!(r.resume().contains("1 membre(s)"));
     }
 
-    /// Des absents SEULS ne sont pas une reparation : on n'a rien change, on a
-    /// seulement constate. Le dire autrement laisserait croire a une action.
     #[test]
-    fn des_absents_seuls_ne_valent_pas_reparation() {
+    fn resync_avec_mise_a_jour_panneau_et_reglement() {
         let r = RapportResync {
-            inscrits: 4,
-            absents: 2,
+            inscrits: 3,
+            panneau_mis_a_jour: true,
+            reglement_republie: true,
+            horaires_synchronises: true,
+            ..Default::default()
+        };
+        assert!(!r.rien_a_faire());
+        let texte = r.resume();
+        assert!(texte.contains("Panneau d'inscription actualise"));
+        assert!(texte.contains("Reglement de la soiree"));
+        assert!(texte.contains("Plages horaires"));
+    }
+
+    #[test]
+    fn resync_intacte_avec_horaires() {
+        let r = RapportResync {
+            inscrits: 2,
+            horaires_synchronises: true,
             ..Default::default()
         };
         assert!(r.rien_a_faire());
-        assert!(r.resume().contains("Rien a reparer"));
+        let texte = r.resume();
+        assert!(texte.contains("Rien a reparer"));
+        assert!(texte.contains("Horaires et reglages synchronises"));
+    }
+}
+
+#[cfg(test)]
+mod tests_portal_rich_formatting {
+    use super::*;
+    use crate::api_client::{GameServer, GameTemplate, ScheduleRangesDto, TemplateField, TimeRangeDto};
+    use serenity::all::{MessageId, UserId};
+    use std::collections::HashMap;
+
+    #[test]
+    fn test_format_hour_minute() {
+        assert_eq!(format_hour_minute(0), "0h");
+        assert_eq!(format_hour_minute(30), "0h30");
+        assert_eq!(format_hour_minute(60), "1h");
+        assert_eq!(format_hour_minute(1140), "19h");
+        assert_eq!(format_hour_minute(1175), "19h35");
+        assert_eq!(format_hour_minute(1380), "23h");
+    }
+
+    #[test]
+    fn test_format_days_mask() {
+        assert_eq!(format_days_mask(0b111_1111), "tous les jours");
+        assert_eq!(format_days_mask(0b000_0001), "lundi");
+        assert_eq!(format_days_mask(0b000_0011), "lundi et mardi");
+        assert_eq!(format_days_mask(0b000_0111), "lundi, mardi et mercredi");
+        assert_eq!(format_days_mask(0), "");
+    }
+
+    #[test]
+    fn test_format_schedule_summary_restart() {
+        let sched = ScheduleRangesDto {
+            enabled: true,
+            mode: "restart".to_string(),
+            restart_interval_hours: Some(4),
+            restart_anchor_minute: 15,
+            next_restart: Some("2026-08-27T20:15:00Z".to_string()),
+            ..Default::default()
+        };
+        let summary = format_schedule_summary(&sched, None).expect("summary exists");
+        assert!(summary.contains("Permanence 24/7"));
+        assert!(summary.contains("toutes les 4h (à :15)"));
+        assert!(summary.contains("Prochain reboot"));
+    }
+
+    #[test]
+    fn test_format_schedule_summary_ranges() {
+        let sched = ScheduleRangesDto {
+            enabled: true,
+            mode: "ranges".to_string(),
+            timezone: "Europe/Paris".to_string(),
+            ranges: vec![TimeRangeDto {
+                start_minute: 1140,
+                end_minute: 1380,
+                days: 0b000_0101, // lundi et mercredi
+            }],
+            next_opening: Some("2026-08-27T19:00:00Z".to_string()),
+            ..Default::default()
+        };
+        let summary = format_schedule_summary(&sched, Some("2026-08-31T23:59:00Z")).expect("summary exists");
+        assert!(summary.contains("Plages d'ouverture"));
+        assert!(summary.contains("lundi et mercredi, 19h-23h (Europe/Paris)"));
+        assert!(summary.contains("Prochaine ouverture"));
+        assert!(summary.contains("Fermeture définitive"));
+    }
+
+    #[test]
+    fn test_format_schedule_summary_disabled() {
+        let sched = ScheduleRangesDto {
+            enabled: false,
+            ..Default::default()
+        };
+        assert!(format_schedule_summary(&sched, None).is_none());
+    }
+
+    #[test]
+    fn test_format_specs_summary() {
+        let server = GameServer {
+            id: "srv1".into(),
+            guild_id: "g1".into(),
+            template_id: "valheim".into(),
+            name: "Serveur Viking".into(),
+            status: "running".into(),
+            owner_user_id: "u1".into(),
+            host_port: Some(2456),
+            public_host: Some("play.canap.fr".into()),
+            ip_reveal_at: None,
+            ip_revealed: true,
+            display_state: Some("open".into()),
+            announcement_posted_at: None,
+            rules: Some("Pas de triche".into()),
+            channel_name_registration: None,
+            channel_name_private: None,
+            channel_name_voice: None,
+            text_channel_id: None,
+            voice_channel_id: None,
+            last_player_count: 3,
+            closes_at: None,
+            allocated_memory_mb: Some(4096),
+            cpu_limit: Some(2.0),
+        };
+        let mut config = HashMap::new();
+        config.insert("MAX_PLAYERS".into(), "10".into());
+
+        let specs = format_specs_summary(&server, &config);
+        assert!(specs.contains("🟢 En ligne"));
+        assert!(specs.contains("10 joueurs max"));
+        assert!(specs.contains("4.0 Go (4096 Mo)"));
+        assert!(specs.contains("2 cœurs"));
+    }
+
+    #[test]
+    fn test_format_rules_embed() {
+        let embed = format_rules_embed("1. Respecter les autres.\n2. Fair play.");
+        let val = serde_json::to_value(&embed).unwrap();
+        assert_eq!(val["title"], "📜 Règlement de la soirée");
+        assert_eq!(val["description"], "1. Respecter les autres.\n2. Fair play.");
+    }
+
+    #[test]
+    fn test_trouver_panneau_et_reglement_ids() {
+        let bot = UserId::new(100);
+        let other = UserId::new(200);
+
+        let p_id = MessageId::new(1);
+        let r_id = MessageId::new(2);
+        let other_id = MessageId::new(3);
+
+        let msgs = vec![
+            (other_id, other, true, vec![]),
+            (p_id, bot, true, vec!["🎮 Valheim — Serveur".into()]),
+            (r_id, bot, false, vec!["📜 Règlement de la soirée".into()]),
+        ];
+
+        let (panneau, reglement) = trouver_panneau_et_reglement_ids(&msgs, bot);
+        assert_eq!(panneau, Some(p_id));
+        assert_eq!(reglement, Some(r_id));
+    }
+
+    #[test]
+    fn test_build_panel_embed_full() {
+        let inscrits = vec!["111".into(), "222".into()];
+        let sched = ScheduleRangesDto {
+            enabled: true,
+            mode: "restart".into(),
+            restart_interval_hours: Some(6),
+            restart_anchor_minute: 0,
+            ..Default::default()
+        };
+        let embed = build_panel_embed_full(
+            "Valheim",
+            "Session du samedi",
+            &inscrits,
+            None,
+            true,
+            Some("1.2.3.4"),
+            Some(2456),
+            Some(&sched),
+            Some("Pas de cheat"),
+            None,
+            Some("Statut : 🟢 En ligne · RAM : 4.0 Go"),
+        );
+
+        let val = serde_json::to_value(&embed).unwrap();
+        assert!(val["title"].as_str().unwrap().contains("Valheim"));
+        let fields = val["fields"].as_array().unwrap();
+        assert_eq!(fields.len(), 6);
+        assert!(fields.iter().any(|f| f["name"].as_str().unwrap().contains("Inscrits (2)")));
+        assert!(fields.iter().any(|f| f["name"].as_str().unwrap().contains("Adresse (IP)")));
+        assert!(fields.iter().any(|f| f["name"].as_str().unwrap().contains("Serveur & Capacité")));
+        assert!(fields.iter().any(|f| f["name"].as_str().unwrap().contains("Horaires & Disponibilité")));
+        assert!(fields.iter().any(|f| f["name"].as_str().unwrap().contains("Règlement")));
+        assert!(fields.iter().any(|f| f["name"].as_str().unwrap().contains("Réglages")));
+    }
+
+    #[test]
+    fn test_build_options_embeds_for_server_full() {
+        let server = GameServer {
+            id: "srv1".into(),
+            guild_id: "g1".into(),
+            template_id: "valheim".into(),
+            name: "Serveur".into(),
+            status: "running".into(),
+            owner_user_id: "u1".into(),
+            host_port: Some(2456),
+            public_host: Some("1.2.3.4".into()),
+            ip_reveal_at: None,
+            ip_revealed: true,
+            display_state: Some("open".into()),
+            announcement_posted_at: None,
+            rules: Some("Règles du serveur".into()),
+            channel_name_registration: None,
+            channel_name_private: None,
+            channel_name_voice: None,
+            text_channel_id: None,
+            voice_channel_id: None,
+            last_player_count: 0,
+            closes_at: None,
+            allocated_memory_mb: Some(2048),
+            cpu_limit: None,
+        };
+        let template = GameTemplate {
+            slug: "valheim".into(),
+            name: "Valheim".into(),
+            cover_image_url: None,
+            config_schema: vec![
+                TemplateField {
+                    key: "WORLD_NAME".into(),
+                    label: "Nom du monde".into(),
+                    group: Some("Général".into()),
+                },
+            ],
+        };
+        let mut config = HashMap::new();
+        config.insert("WORLD_NAME".into(), "Midgard".into());
+
+        let embeds = build_options_embeds_for_server_full(
+            &server,
+            Some(&template),
+            &config,
+            None,
+            false,
+        );
+        assert!(!embeds.is_empty());
+        let val = serde_json::to_value(&embeds[0]).unwrap();
+        assert!(val["title"].as_str().unwrap().contains("Valheim"));
+        let fields = val["fields"].as_array().unwrap();
+        assert!(fields.iter().any(|f| f["name"].as_str().unwrap().contains("Serveur & Capacité")));
+        assert!(fields.iter().any(|f| f["name"].as_str().unwrap().contains("Règlement de la soirée")));
     }
 }

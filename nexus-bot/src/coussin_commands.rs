@@ -1,5 +1,5 @@
 use super::*;
-use serenity::all::{ChannelId, CreateEmbed, UserId};
+use serenity::all::{CreateEmbed, UserId};
 
 impl Handler {
     pub(super) async fn handle_coussin(&self, ctx: &Context, cmd: &CommandInteraction) {
@@ -510,7 +510,7 @@ pub fn validate_coussin_challenge(
 }
 
 pub fn build_challenge_request_payload(
-    channel_id: ChannelId,
+    channel_id: serenity::all::ChannelId,
     attacker_id: UserId,
     attacker_name: &str,
     defender_id: UserId,

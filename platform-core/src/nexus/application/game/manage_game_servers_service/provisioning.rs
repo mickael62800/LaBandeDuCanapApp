@@ -1,5 +1,6 @@
 use super::*;
 use crate::nexus::domain::entities::game::presence;
+use crate::nexus::domain::entities::game::zomboid_sandbox;
 
 /// Substitue `{{KEY}}` (avec spaces tolerees) par `env[KEY]`. Si la cle
 /// n'existe pas, le placeholder est remplace par une chaine vide (comme
@@ -127,7 +128,15 @@ impl ManageGameServersService {
                     .collect()
             })
             .unwrap_or_default();
+        // Les reglages de bac a sable ne sont PAS des variables
+        // d'environnement : ils partent dans un fichier Lua de la sauvegarde
+        // (`zomboid_sandbox`). Les injecter ici ajouterait au conteneur une
+        // vingtaine de reglages que l'image ignore, et laisserait croire, a
+        // l'inspection, qu'ils pilotent quelque chose.
         for (k, v) in overrides {
+            if zomboid_sandbox::est_cle_sandbox(k) {
+                continue;
+            }
             env.insert(k.clone(), v.clone());
         }
         if template.slug == "palworld" {
@@ -320,7 +329,15 @@ impl ManageGameServersService {
                     .collect()
             })
             .unwrap_or_default();
+        // Les reglages de bac a sable ne sont PAS des variables
+        // d'environnement : ils partent dans un fichier Lua de la sauvegarde
+        // (`zomboid_sandbox`). Les injecter ici ajouterait au conteneur une
+        // vingtaine de reglages que l'image ignore, et laisserait croire, a
+        // l'inspection, qu'ils pilotent quelque chose.
         for (k, v) in overrides {
+            if zomboid_sandbox::est_cle_sandbox(k) {
+                continue;
+            }
             env.insert(k.clone(), v.clone());
         }
         env

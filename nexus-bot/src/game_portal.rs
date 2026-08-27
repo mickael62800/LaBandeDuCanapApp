@@ -381,52 +381,70 @@ pub fn format_days_mask(masque: u8) -> String {
 }
 
 pub fn format_schedule_summary(
-    schedule: &crate::api_client::ScheduleRangesDto,
+    schedule: Option<&crate::api_client::ScheduleRangesDto>,
+    ip_reveal_at: Option<&str>,
     closes_at: Option<&str>,
-) -> Option<String> {
+) -> String {
     let mut parts = Vec::new();
-    if schedule.enabled {
-        if schedule.mode == "restart" {
-            let interval = schedule.restart_interval_hours.unwrap_or(6);
-            let anchor = schedule.restart_anchor_minute;
-            let mut line = format!(
-                "🔄 **Permanence 24/7** — Redémarrage auto toutes les {interval}h (à :{anchor:02})"
-            );
-            if let Some(next) = &schedule.next_restart {
-                if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(next) {
-                    let ts = dt.timestamp();
-                    line.push_str(&format!(" · Prochain reboot <t:{ts}:R>"));
-                }
-            }
-            parts.push(line);
-        } else if schedule.mode == "ranges" && !schedule.ranges.is_empty() {
-            let range_strs: Vec<String> = schedule
-                .ranges
-                .iter()
-                .filter(|r| r.days != 0)
-                .map(|r| {
-                    format!(
-                        "{}, {}-{}",
-                        format_days_mask(r.days),
-                        format_hour_minute(r.start_minute),
-                        format_hour_minute(r.end_minute)
-                    )
-                })
-                .collect();
-            if !range_strs.is_empty() {
+    let mut custom_sched = false;
+
+    if let Some(sched) = schedule {
+        if sched.enabled {
+            if sched.mode == "restart" {
+                custom_sched = true;
+                let interval = sched.restart_interval_hours.unwrap_or(6);
+                let anchor = sched.restart_anchor_minute;
                 let mut line = format!(
-                    "📅 **Plages d'ouverture :** {} ({})",
-                    range_strs.join(" ; "),
-                    schedule.timezone
+                    "🔄 **Permanence 24/7** — Redémarrage auto toutes les {interval}h (à :{anchor:02})"
                 );
-                if let Some(next) = &schedule.next_opening {
+                if let Some(next) = &sched.next_restart {
                     if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(next) {
                         let ts = dt.timestamp();
-                        line.push_str(&format!(" · Prochaine ouverture <t:{ts}:R>"));
+                        line.push_str(&format!(" · Prochain reboot <t:{ts}:R>"));
                     }
                 }
                 parts.push(line);
+            } else if sched.mode == "ranges" && !sched.ranges.is_empty() {
+                custom_sched = true;
+                let range_strs: Vec<String> = sched
+                    .ranges
+                    .iter()
+                    .filter(|r| r.days != 0)
+                    .map(|r| {
+                        format!(
+                            "{}, {}-{}",
+                            format_days_mask(r.days),
+                            format_hour_minute(r.start_minute),
+                            format_hour_minute(r.end_minute)
+                        )
+                    })
+                    .collect();
+                if !range_strs.is_empty() {
+                    let mut line = format!(
+                        "📅 **Plages d'ouverture :** {} ({})",
+                        range_strs.join(" ; "),
+                        sched.timezone
+                    );
+                    if let Some(next) = &sched.next_opening {
+                        if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(next) {
+                            let ts = dt.timestamp();
+                            line.push_str(&format!(" · Prochaine ouverture <t:{ts}:R>"));
+                        }
+                    }
+                    parts.push(line);
+                }
             }
+        }
+    }
+
+    if !custom_sched {
+        parts.push("🕒 **Disponibilité :** Ouvert 24h/24 (serveur permanent)".to_string());
+    }
+
+    if let Some(reveal) = ip_reveal_at {
+        if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(reveal) {
+            let ts = dt.timestamp();
+            parts.push(format!("🔓 **Révélation de l'adresse :** <t:{ts}:F> (<t:{ts}:R>)"));
         }
     }
 
@@ -437,11 +455,7 @@ pub fn format_schedule_summary(
         }
     }
 
-    if parts.is_empty() {
-        None
-    } else {
-        Some(parts.join("\n"))
-    }
+    parts.join("\n")
 }
 
 pub fn format_specs_summary(
@@ -961,29 +975,20 @@ pub fn build_panel_embed_full(
         embed = embed.field("🎮 Serveur & Capacité", specs, false);
     }
 
-    if let Some(sched) = schedule {
-        if let Some(sched_txt) = format_schedule_summary(sched, closes_at) {
-            embed = embed.field("⏰ Horaires & Disponibilité", sched_txt, false);
-        }
-    } else if let Some(closes) = closes_at {
-        if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(closes) {
-            let ts = dt.timestamp();
-            embed = embed.field(
-                "🏁 Fermeture",
-                format!("Fermeture définitive : <t:{ts}:F> (<t:{ts}:R>)"),
-                false,
-            );
-        }
-    }
+    let sched_txt = format_schedule_summary(schedule, ip_reveal_at, closes_at);
+    embed = embed.field("⏰ Horaires & Disponibilité", sched_txt, false);
 
-    if let Some(r) = rules.filter(|r| !r.trim().is_empty()) {
-        let preview = if r.len() > 250 {
-            format!("{}...\n*(Voir le règlement complet ci-dessous ou via `/game parametres`)*", &r[..250])
-        } else {
-            r.to_string()
-        };
-        embed = embed.field("📜 Règlement", preview, false);
-    }
+    let reglement_txt = match rules.filter(|r| !r.trim().is_empty()) {
+        Some(r) => {
+            if r.len() > 250 {
+                format!("{}...\n*(Voir le règlement complet ci-dessous ou via `/game parametres`)*", &r[..250])
+            } else {
+                r.to_string()
+            }
+        }
+        None => "📜 _Charte standard du serveur : respect des membres et fair-play._".to_string(),
+    };
+    embed = embed.field("📜 Règlement", reglement_txt, false);
 
     embed
         .field(
@@ -1464,14 +1469,16 @@ pub fn build_options_embeds_for_server_full(
         registration_options(config, schema)
     };
     let specs = format_specs_summary(server, config);
-    let sched_txt = schedule.and_then(|s| format_schedule_summary(s, server.closes_at.as_deref()));
+    let sched_txt = format_schedule_summary(schedule, server.ip_reveal_at.as_deref(), server.closes_at.as_deref());
+    let default_rules = "📜 _Charte standard du serveur : respect des membres et fair-play._";
+    let rules_txt = server.rules.as_deref().filter(|r| !r.trim().is_empty()).unwrap_or(default_rules);
     build_options_embeds_full(
         &game_name,
         &server.name,
         &options,
         Some(&specs),
-        sched_txt.as_deref(),
-        server.rules.as_deref(),
+        Some(&sched_txt),
+        Some(rules_txt),
     )
 }
 
@@ -2742,7 +2749,7 @@ mod tests {
             Some(2456),
         );
         let json_embed = serde_json::to_value(&embed).unwrap();
-        assert_eq!(json_embed["fields"].as_array().unwrap().len(), 3);
+        assert_eq!(json_embed["fields"].as_array().unwrap().len(), 5);
 
         let public_embed = build_public_panel_embed(
             "Valheim",
@@ -2753,7 +2760,7 @@ mod tests {
             Some("https://example.com/valheim.jpg"),
         );
         let json_pub = serde_json::to_value(&public_embed).unwrap();
-        assert_eq!(json_pub["fields"].as_array().unwrap().len(), 3);
+        assert_eq!(json_pub["fields"].as_array().unwrap().len(), 5);
 
         let opts_embeds = build_options_embeds("Valheim", "Serveur", &[]);
         assert_eq!(opts_embeds.len(), 1);
@@ -3919,7 +3926,7 @@ mod tests_portal_rich_formatting {
             next_restart: Some("2026-08-27T20:15:00Z".to_string()),
             ..Default::default()
         };
-        let summary = format_schedule_summary(&sched, None).expect("summary exists");
+        let summary = format_schedule_summary(Some(&sched), None, None);
         assert!(summary.contains("Permanence 24/7"));
         assert!(summary.contains("toutes les 4h (à :15)"));
         assert!(summary.contains("Prochain reboot"));
@@ -3939,7 +3946,7 @@ mod tests_portal_rich_formatting {
             next_opening: Some("2026-08-27T19:00:00Z".to_string()),
             ..Default::default()
         };
-        let summary = format_schedule_summary(&sched, Some("2026-08-31T23:59:00Z")).expect("summary exists");
+        let summary = format_schedule_summary(Some(&sched), None, Some("2026-08-31T23:59:00Z"));
         assert!(summary.contains("Plages d'ouverture"));
         assert!(summary.contains("lundi et mercredi, 19h-23h (Europe/Paris)"));
         assert!(summary.contains("Prochaine ouverture"));
@@ -3952,7 +3959,8 @@ mod tests_portal_rich_formatting {
             enabled: false,
             ..Default::default()
         };
-        assert!(format_schedule_summary(&sched, None).is_none());
+        let summary = format_schedule_summary(Some(&sched), None, None);
+        assert!(summary.contains("Ouvert 24h/24"));
     }
 
     #[test]

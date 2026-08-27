@@ -74,6 +74,16 @@ pub fn rcon_env(template_slug: &str) -> RconEnv {
             password_key: "ADMIN_PASSWORD",
             port_key: "RCON_PORT",
         }
+    } else if slug.starts_with("project-zomboid") {
+        // `renegademaster/zomboid-dedicated-server` ouvre RCON de lui-meme :
+        // son README ne declare aucune variable d'activation. En inventer une
+        // ajouterait au conteneur un reglage que rien ne lit — et laisserait
+        // croire que la console depend d'un interrupteur qui n'existe pas.
+        RconEnv {
+            enable_key: None,
+            password_key: "RCON_PASSWORD",
+            port_key: "RCON_PORT",
+        }
     } else {
         RconEnv {
             enable_key: Some("ENABLE_RCON"),
@@ -105,6 +115,8 @@ pub fn players_command(template_slug: &str) -> &'static str {
         "ShowPlayers"
     } else if slug.starts_with("ark") {
         "ListPlayers"
+    } else if slug.starts_with("project-zomboid") {
+        "players"
     } else {
         "list"
     }
@@ -135,6 +147,8 @@ pub fn parse_players(template_slug: &str, raw: &str) -> LecturePresence {
         parse_palworld_show_players(raw)
     } else if slug.starts_with("ark") {
         parse_ark_list_players(raw)
+    } else if slug.starts_with("project-zomboid") {
+        parse_zomboid_players(raw)
     } else {
         parse_minecraft_list(raw)
     }
@@ -190,6 +204,39 @@ fn parse_palworld_show_players(raw: &str) -> LecturePresence {
         });
     }
     LecturePresence::Joueurs(players)
+}
+
+/// `players` (Project Zomboid) repond :
+///
+/// ```text
+/// Players connected (2):
+/// -DarkPoney
+/// -Biquette
+/// ```
+///
+/// L'en-tete accompagne TOUTE reponse valide, serveur vide compris — le
+/// compteur vaut alors zero. Son absence signale une console qui parle d'autre
+/// chose, et l'on s'abstient plutot que d'annoncer zero joueur : ce zero
+/// alimente l'extinction automatique.
+///
+/// Zomboid ne rend que des pseudos, jamais d'identifiant Steam : aucun haut
+/// fait ne peut donc etre attribue sur cette base.
+fn parse_zomboid_players(raw: &str) -> LecturePresence {
+    let bas = raw.to_ascii_lowercase();
+    if !bas.contains("players connected") {
+        return LecturePresence::Indeterminee;
+    }
+    let joueurs = raw
+        .lines()
+        .filter_map(|ligne| ligne.trim().strip_prefix('-'))
+        .map(str::trim)
+        .filter(|nom| !nom.is_empty())
+        .map(|nom| PlayerPresence {
+            name: nom.to_owned(),
+            game_player_id: None,
+        })
+        .collect();
+    LecturePresence::Joueurs(joueurs)
 }
 
 fn is_steam_id64(value: &str) -> bool {
@@ -440,5 +487,85 @@ mod tests {
             "There are 0 of a max of 20 players online:",
         ));
         assert!(players.is_empty());
+    }
+}
+
+/// Le contrat RCON de Project Zomboid.
+///
+/// Une commande ou un format mal lus donnent « zero joueur » sur un serveur
+/// peuple — et ce zero alimente l'extinction automatique. C'est le seul module
+/// ou une erreur de lecture eteint un serveur ou des gens jouent.
+#[cfg(test)]
+mod tests_zomboid {
+    use super::*;
+
+    #[test]
+    fn la_console_s_ouvre_sans_interrupteur() {
+        let env = rcon_env("project-zomboid");
+        // L'image n'a pas de variable d'activation : en poser une ajouterait au
+        // conteneur un reglage que rien ne lit.
+        assert_eq!(env.enable_key, None);
+        assert_eq!(env.password_key, "RCON_PASSWORD");
+        assert_eq!(env.port_key, "RCON_PORT");
+    }
+
+    /// La convention Minecraft (`ENABLE_RCON` / `list`) laisserait la console
+    /// muette et le comptage a zero.
+    #[test]
+    fn zomboid_n_herite_pas_du_contrat_minecraft() {
+        assert_eq!(players_command("project-zomboid"), "players");
+        assert_ne!(
+            players_command("project-zomboid"),
+            players_command("minecraft-vanilla")
+        );
+        assert_ne!(
+            rcon_env("project-zomboid").enable_key,
+            rcon_env("minecraft-vanilla").enable_key
+        );
+    }
+
+    #[test]
+    fn les_joueurs_connectes_sont_lus() {
+        let reponse = "Players connected (2):\n-DarkPoney\n-Biquette\n";
+        let LecturePresence::Joueurs(joueurs) = parse_players("project-zomboid", reponse) else {
+            panic!("reponse valide jugee incomprehensible");
+        };
+
+        assert_eq!(joueurs.len(), 2);
+        assert_eq!(joueurs[0].name, "DarkPoney");
+        assert_eq!(joueurs[1].name, "Biquette");
+        // Zomboid ne rend que des pseudos : aucun haut fait ne peut etre
+        // attribue sur cette base.
+        assert!(joueurs.iter().all(|j| j.game_player_id.is_none()));
+    }
+
+    #[test]
+    fn un_serveur_vide_compte_bien_zero() {
+        let LecturePresence::Joueurs(joueurs) =
+            parse_players("project-zomboid", "Players connected (0):")
+        else {
+            panic!("serveur vide juge incomprehensible");
+        };
+        assert!(joueurs.is_empty());
+    }
+
+    /// LE CAS QUI ETEINT UN SERVEUR. Une reponse inattendue — erreur, mise a
+    /// jour, console qui parle d'autre chose — ne doit JAMAIS se lire « zero
+    /// joueur » : ce zero declenche l'extinction automatique.
+    #[test]
+    fn une_reponse_inattendue_ne_vaut_pas_zero_joueur() {
+        for bruit in [
+            "",
+            "Unknown command",
+            "Error: connection lost",
+            "-DarkPoney",
+            "2 players",
+        ] {
+            assert_eq!(
+                parse_players("project-zomboid", bruit),
+                LecturePresence::Indeterminee,
+                "reponse {bruit:?} lue comme un serveur vide"
+            );
+        }
     }
 }

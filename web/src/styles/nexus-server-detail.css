@@ -742,3 +742,56 @@
 .sd-archive-meta {
   color: var(--text-secondary);
 }
+
+/* Progression du démarrage. Une jauge sans pourcentage — les mods n'en
+   publient aucun — s'anime au lieu de rester figée à zéro, ce qui se lirait
+   comme un blocage. */
+.sd-progression {
+  margin: var(--space-sm) 0 var(--space-md);
+  padding: var(--space-sm);
+  border: 1px solid var(--bg-hover);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+}
+
+.sd-progression-tete {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 0.86rem;
+  margin-bottom: 6px;
+}
+
+.sd-jauge {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--bg-hover);
+  overflow: hidden;
+}
+
+.sd-jauge-remplie {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+
+.sd-jauge--indeterminee {
+  background: linear-gradient(
+    90deg,
+    var(--bg-hover) 0%,
+    var(--accent) 50%,
+    var(--bg-hover) 100%
+  );
+  background-size: 200% 100%;
+  animation: sd-defilement 1.6s linear infinite;
+}
+
+@keyframes sd-defilement {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sd-jauge--indeterminee { animation: none; }
+}

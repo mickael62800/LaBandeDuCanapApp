@@ -232,6 +232,22 @@ export interface GameBackup {
   backup_type: string;
   created_at: string;
 }
+
+/**
+ * Où en est le démarrage d'un serveur.
+ *
+ * `pourcentage` est absent pendant le téléchargement des mods : le jeu n'en
+ * publie aucun, et en inventer un afficherait une barre sans rapport avec la
+ * réalité.
+ */
+export interface StartupProgress {
+  etape: string;
+  pourcentage: number | null;
+  octets_recus: number | null;
+  octets_total: number | null;
+  mods_vus: number;
+  mods_attendus: number | null;
+}
 export interface CreateServerPayload {
   template_slug: string;
   name: string;
@@ -517,6 +533,21 @@ export const nexusGamesService = {
       `/api/games/servers/${encodeURIComponent(serverId)}/backups`,
       guildId,
     );
+  },
+
+  /**
+   * GET /api/games/servers/{id}/startup — avancement du démarrage.
+   *
+   * `null` quand rien n'est reconnu : le serveur n'a pas encore parlé, ou il a
+   * dépassé la phase de téléchargement. L'écran n'affiche alors pas de barre,
+   * plutôt qu'une barre figée.
+   */
+  async startupProgress(guildId: string, serverId: string): Promise<StartupProgress | null> {
+    const r = await nexusGet<StartupProgress | null>(
+      `/api/games/servers/${encodeURIComponent(serverId)}/startup`,
+      guildId,
+    );
+    return r ?? null;
   },
 
   /** GET /api/games/servers/{id}/schedule-ranges — plages d'ouverture. */

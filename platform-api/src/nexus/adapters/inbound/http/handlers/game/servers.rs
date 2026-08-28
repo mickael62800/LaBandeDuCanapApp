@@ -508,6 +508,65 @@ pub async fn get_logs(
     Ok(Json(logs))
 }
 
+/// Ou en est le demarrage d'un serveur.
+#[derive(Debug, serde::Serialize)]
+pub struct ProgressionDemarrageDto {
+    /// Libelle de l'etape, en francais et pret a afficher.
+    pub etape: String,
+    /// 0 a 100. Absent pendant les mods, qui ne publient aucune progression.
+    pub pourcentage: Option<f32>,
+    pub octets_recus: Option<u64>,
+    pub octets_total: Option<u64>,
+    /// Mods deja abordes, et combien la configuration en declare.
+    pub mods_vus: usize,
+    pub mods_attendus: Option<usize>,
+}
+
+/// GET /api/games/servers/{server_id}/startup
+///
+/// Un premier lancement telecharge plusieurs gigaoctets. L'ecran n'affichait
+/// que « Demarrage… », sans dire s'il restait dix secondes ou dix minutes — ni
+/// si quelque chose etait bloque. Les journaux, eux, contiennent tout.
+///
+/// 204 quand rien n'est reconnu : le serveur n'a pas encore parle, ou il a
+/// depasse la phase de telechargement. L'ecran n'affiche alors pas de barre,
+/// plutot qu'une barre qui ne bouge pas.
+pub async fn get_startup_progress(
+    State(state): State<AppState>,
+    Path(server_id): Path<Uuid>,
+) -> Result<axum::response::Response, ApiError> {
+    use axum::response::IntoResponse;
+    use platform_core::nexus::domain::entities::game::progression_demarrage as progression;
+
+    // Deux cents lignes : de quoi couvrir toute la phase de telechargement sans
+    // rapatrier un journal entier a chaque rafraichissement.
+    let logs = state.game_servers_uc.get_logs(server_id, 200).await?;
+    let Some(p) = progression::lire_progression(&logs) else {
+        return Ok(StatusCode::NO_CONTENT.into_response());
+    };
+
+    // Le nombre de mods attendus vient de la configuration, pas des journaux :
+    // eux ne montrent que ceux deja abordes.
+    let mods_attendus = state
+        .game_servers_uc
+        .get(server_id)
+        .await
+        .ok()
+        .and_then(|d| d.config.get("MOD_WORKSHOP_IDS").cloned())
+        .map(|liste| liste.split(';').filter(|m| !m.trim().is_empty()).count())
+        .filter(|n| *n > 0);
+
+    Ok(Json(ProgressionDemarrageDto {
+        etape: p.etape.libelle().to_string(),
+        pourcentage: p.pourcentage,
+        octets_recus: p.octets.map(|(recus, _)| recus),
+        octets_total: p.octets.map(|(_, total)| total),
+        mods_vus: p.mods_vus.len(),
+        mods_attendus,
+    })
+    .into_response())
+}
+
 /// GET /api/games/servers/{server_id}/stats
 pub async fn get_stats(
     State(state): State<AppState>,

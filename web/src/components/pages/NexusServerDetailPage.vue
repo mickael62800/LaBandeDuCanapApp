@@ -24,6 +24,7 @@ import {
   adresseServeur,
   type GameServer,
   type GameBackup,
+  type StartupProgress,
   type GameTemplate,
   type PlayerSession,
 } from "@/services/nexusGamesService";
@@ -191,9 +192,57 @@ watch(isTransient, (transient) => {
     transientTimer = null;
   }
   if (transient) {
-    transientTimer = setInterval(load, 2000);
+    transientTimer = setInterval(() => {
+      void load();
+      void chargerProgression();
+    }, 2000);
+    void chargerProgression();
+  } else {
+    progression.value = null;
   }
 }, { immediate: true });
+
+// ── Progression du démarrage ──
+//
+// Un premier lancement télécharge plusieurs gigaoctets — le jeu, puis les mods
+// Workshop. L'écran n'affichait que « Démarrage… », sans dire s'il restait dix
+// secondes ou dix minutes, ni si quelque chose était bloqué.
+
+const progression = ref<StartupProgress | null>(null);
+
+async function chargerProgression() {
+  if (!selectedGuildId.value || !serverId.value || !isTransient.value) return;
+  try {
+    progression.value = await nexusGamesService.startupProgress(
+      selectedGuildId.value,
+      serverId.value,
+    );
+  } catch {
+    // Progression indisponible : on garde la précédente plutôt que de faire
+    // disparaître la barre à la première requête qui échoue.
+  }
+}
+
+/**
+ * Texte affiché sous la barre.
+ *
+ * Les mods ne publient AUCUNE progression : on dit combien ont été abordés
+ * plutôt que d'inventer un pourcentage qui avancerait sans rapport avec la
+ * réalité.
+ */
+const detailProgression = computed(() => {
+  const p = progression.value;
+  if (!p) return "";
+  if (p.octets_total && p.octets_recus !== null) {
+    return `${tailleLisible(p.octets_recus)} sur ${tailleLisible(p.octets_total)}`;
+  }
+  if (p.mods_vus > 0) {
+    return p.mods_attendus
+      ? `mod ${p.mods_vus} sur ${p.mods_attendus}`
+      : `${p.mods_vus} mod(s) en cours`;
+  }
+  return "";
+});
 onUnmounted(() => transientTimer && clearInterval(transientTimer));
 
 const isScheduled = computed(() => server.value?.status === "scheduled");
@@ -827,6 +876,24 @@ function fmtDuration(secs: number | null): string {
           </template>
           <AppButton variant="danger" size="sm" @click="remove">Supprimer</AppButton>
         </div>
+      </div>
+
+      <!-- Progression du démarrage : téléchargement du jeu puis des mods -->
+      <div v-if="progression" class="sd-progression">
+        <div class="sd-progression-tete">
+          <strong>{{ progression.etape }}</strong>
+          <span v-if="progression.pourcentage !== null">
+            {{ progression.pourcentage.toFixed(1) }} %
+          </span>
+        </div>
+        <div class="sd-jauge" :class="{ 'sd-jauge--indeterminee': progression.pourcentage === null }">
+          <div
+            v-if="progression.pourcentage !== null"
+            class="sd-jauge-remplie"
+            :style="{ width: `${progression.pourcentage}%` }"
+          ></div>
+        </div>
+        <small v-if="detailProgression" class="sd-note">{{ detailProgression }}</small>
       </div>
 
       <!-- Formulaire de programmation unifié (Ouverture + Fermeture) -->

@@ -10,6 +10,7 @@ pub mod command;
 pub mod config;
 pub mod player_session;
 pub mod presence;
+pub mod progression_demarrage;
 pub mod quota;
 pub mod schedule;
 pub mod server;

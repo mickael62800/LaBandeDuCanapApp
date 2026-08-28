@@ -40,6 +40,7 @@ import GameConfigField from "../molecules/GameConfigField.vue";
 import PaginationBar from "../molecules/PaginationBar.vue";
 import AdminPageShell from "../layouts/AdminPageShell.vue";
 import GameCommandPanel from "../organisms/GameCommandPanel.vue";
+import GameServerLogsPanel from "../organisms/GameServerLogsPanel.vue";
 
 import { Line } from 'vue-chartjs'
 
@@ -1605,11 +1606,13 @@ function fmtDuration(secs: number | null): string {
 
       <!-- Logs -->
       <section v-else-if="onglet === 'logs'" class="sd-pane">
-        <div class="sd-col-header">
-          <h3>📜 Logs du conteneur</h3>
-          <AppButton variant="ghost" size="sm" @click="loadLogs">Rafraîchir</AppButton>
-        </div>
-        <pre class="sd-logs full-width-logs">{{ logs.join("\n") || "Aucune ligne de log disponible." }}</pre>
+        <GameServerLogsPanel
+          v-if="selectedGuildId && server"
+          :guild-id="selectedGuildId"
+          :server-id="server.id"
+          :server-name="server.name"
+          :is-running="isRunning"
+        />
       </section>
 
       <!-- Console RCON -->

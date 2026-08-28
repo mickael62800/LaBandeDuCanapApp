@@ -187,8 +187,10 @@ function update(value: string | number | boolean): void {
    pose desormais `align-items: start` et le libelle ne s'etire plus. */
 .gcf-label {
   color: var(--text-secondary);
-  min-height: 2.4em;
-  line-height: 1.2;
+  font-size: 0.95rem;
+  font-weight: 600;
+  min-height: 2.2em;
+  line-height: 1.3;
 }
 
 /* Un mot plus long que la colonne (une URL de modpack) ne doit pas elargir la
@@ -200,10 +202,11 @@ function update(value: string | number | boolean): void {
 
 .gcf-input {
   background: var(--bg-card);
-  border: 1px solid var(--bg-hover);
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--text-primary);
-  padding: 6px 10px;
+  padding: 8px 12px;
+  font-size: 0.98rem;
   width: 100%;
 }
 
@@ -213,17 +216,19 @@ function update(value: string | number | boolean): void {
 }
 
 .gcf small {
-  font-size: 0.76rem;
+  font-size: 0.88rem;
+  line-height: 1.45;
 }
 
 .gcf-note {
   color: var(--text-secondary);
+  margin-top: 2px;
 }
 
 .gcf-slider {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
+  gap: var(--space-md);
 }
 
 .gcf-range {
@@ -232,14 +237,8 @@ function update(value: string | number | boolean): void {
   cursor: pointer;
 }
 
-/* La valeur chiffrée reste lisible sans manger la largeur du curseur.
-   Ciblée PAR SA PLACE (dans `.gcf-slider`) et non par une classe `.gcf-number`.
-   Cette classe-là entrait en collision avec `gcf-${field.type}`, pose sur la
-   RACINE : tout réglage de type `number` voyait donc sa cellule entière bridée
-   à 6.5rem. Le curseur débordait, et les descriptions comme les avertissements
-   se retrouvaient compressés sur une centaine de pixels, un mot par ligne. */
 .gcf-slider .gcf-input {
-  width: 6.5rem;
+  width: 7rem;
   flex-shrink: 0;
 }
 
@@ -281,7 +280,7 @@ function update(value: string | number | boolean): void {
   background: var(--accent-warm-bg);
   border-left: 3px solid var(--accent-warm);
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: 0.88rem;
   line-height: 1.5;
 }
 </style>

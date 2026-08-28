@@ -48,6 +48,7 @@ const autoRefreshInterval = ref<number>(0); // 0 = désactivé, sinon en seconde
 const autoScroll = ref<boolean>(true);
 const isFullscreen = ref<boolean>(false);
 const showLineNumbers = ref<boolean>(true);
+const fontSize = ref<"sm" | "md" | "lg">("md");
 
 // Référence du conteneur de logs pour le défilement
 const terminalRef = ref<HTMLElement | null>(null);
@@ -417,6 +418,16 @@ onUnmounted(() => {
           <span v-if="autoRefreshInterval > 0" class="gsl-pulse-dot" title="Auto-refresh actif" />
         </label>
 
+        <!-- Taille du texte -->
+        <label class="gsl-ctrl-select">
+          <span>Texte :</span>
+          <select v-model="fontSize" class="gsl-select">
+            <option value="sm">Normal (13px)</option>
+            <option value="md">Grand (15px)</option>
+            <option value="lg">Très grand (18px)</option>
+          </select>
+        </label>
+
         <!-- Suivi auto -->
         <button
           type="button"
@@ -502,6 +513,7 @@ onUnmounted(() => {
     <div
       ref="terminalRef"
       class="gsl-terminal"
+      :class="[`font-${fontSize}`]"
       @scroll="handleScroll"
     >
       <!-- Message d'erreur de chargement -->
@@ -844,28 +856,46 @@ onUnmounted(() => {
 
 /* Zone Terminale */
 .gsl-terminal {
-  height: 480px;
-  min-height: 280px;
+  height: 680px;
+  min-height: 520px;
+  max-height: 85vh;
   overflow-y: auto;
   overflow-x: auto;
   background: #090a10;
-  padding: 8px 0;
+  padding: 10px 0;
   font-family: "JetBrains Mono", "Cascadia Code", "Fira Code", Consolas, monospace;
-  font-size: 0.78rem;
-  line-height: 1.5;
+  font-size: 0.95rem;
+  line-height: 1.6;
   color: #d1d5db;
+}
+
+.gsl-terminal.font-sm {
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.gsl-terminal.font-md {
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.gsl-terminal.font-lg {
+  font-size: 1.12rem;
+  line-height: 1.75;
 }
 
 .gsl-fullscreen .gsl-terminal {
   flex: 1;
   height: auto;
+  max-height: none;
 }
 
 .gsl-state-msg {
-  padding: 32px 16px;
+  padding: 40px 16px;
   text-align: center;
   color: var(--text-secondary, #8f95b2);
   font-style: italic;
+  font-size: 0.95rem;
 }
 
 .gsl-state-error {
@@ -882,8 +912,8 @@ onUnmounted(() => {
 .gsl-line {
   display: flex;
   align-items: baseline;
-  gap: 10px;
-  padding: 2px 12px;
+  gap: 12px;
+  padding: 3px 14px;
   border-left: 3px solid transparent;
   transition: background 0.1s ease;
   white-space: pre-wrap;
@@ -919,27 +949,28 @@ onUnmounted(() => {
 }
 
 .gsl-line-num {
-  font-size: 0.68rem;
+  font-size: 0.78rem;
   color: #4b5563;
   user-select: none;
-  min-width: 32px;
+  min-width: 38px;
   text-align: right;
 }
 
 .gsl-timestamp {
-  font-size: 0.70rem;
+  font-size: 0.80rem;
   color: #6b7280;
   user-select: none;
   white-space: nowrap;
 }
 
 .gsl-level-tag {
-  font-size: 0.65rem;
+  font-size: 0.70rem;
   font-weight: 700;
-  padding: 1px 4px;
+  padding: 1px 5px;
   border-radius: 3px;
   user-select: none;
   text-transform: uppercase;
+  letter-spacing: 0.3px;
 }
 
 .tag-error { background: #ef4444; color: #fff; }

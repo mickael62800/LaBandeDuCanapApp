@@ -289,3 +289,53 @@ fn un_seul_reglage_renseigne_n_ecrit_que_lui() {
     // Seules VERSION, la sous-table et le reglage : six lignes au plus.
     assert!(lua.lines().count() <= 6, "fichier trop bavard :\n{lua}");
 }
+
+// ── Le nom du fichier ──────────────────────────────────────────────────────
+
+/// LE DEFAUT QUE CES TESTS FERMENT. Project Zomboid nomme tous les fichiers
+/// d'une partie d'apres `SERVER_NAME`. Le code posait le bac a sable sous le
+/// nom du serveur NEXUS : les deux fichiers coexistaient dans le volume, et le
+/// jeu ne lisait jamais le notre. Cent trente reglages sans le moindre effet,
+/// et rien pour le signaler.
+#[test]
+fn le_nom_du_fichier_vient_de_server_name() {
+    assert_eq!(
+        chemin_du_fichier("ZomboidSentinel"),
+        "/home/steam/Zomboid/Server/ZomboidSentinel_SandboxVars.lua"
+    );
+}
+
+#[test]
+fn la_valeur_saisie_prime_sur_celle_du_catalogue() {
+    let mut c = HashMap::new();
+    c.insert("SERVER_NAME".to_string(), "Le Canap".to_string());
+    let defauts = serde_json::json!({ "SERVER_NAME": "ZomboidSentinel" });
+
+    assert_eq!(server_name_effectif(&c, &defauts), "Le Canap");
+}
+
+#[test]
+fn a_defaut_le_nom_vient_du_catalogue() {
+    let defauts = serde_json::json!({ "SERVER_NAME": "ZomboidSentinel" });
+    assert_eq!(
+        server_name_effectif(&HashMap::new(), &defauts),
+        "ZomboidSentinel"
+    );
+}
+
+/// Un champ vide n'est pas un nom : il ferait ecrire
+/// `_SandboxVars.lua`, que le jeu n'ouvrira jamais.
+#[test]
+fn un_nom_vide_retombe_sur_le_suivant() {
+    let mut c = HashMap::new();
+    c.insert("SERVER_NAME".to_string(), "   ".to_string());
+    let defauts = serde_json::json!({ "SERVER_NAME": "ZomboidSentinel" });
+    assert_eq!(server_name_effectif(&c, &defauts), "ZomboidSentinel");
+
+    // Ni catalogue ni saisie : le defaut connu, jamais une chaine vide.
+    assert_eq!(
+        server_name_effectif(&HashMap::new(), &serde_json::json!({})),
+        SERVER_NAME_PAR_DEFAUT
+    );
+    assert!(!server_name_effectif(&HashMap::new(), &serde_json::json!({})).is_empty());
+}

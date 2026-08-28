@@ -820,11 +820,7 @@ impl ManageGameServersUseCase for ManageGameServersService {
             // Best-effort : un bac a sable non ecrit donne une partie aux
             // reglages par defaut, ce qui reste jouable. Refuser de demarrer
             // pour autant priverait la soiree de son serveur.
-            if let Some(contenu) = zomboid_sandbox_pour(&template.slug, &server.name, &overrides) {
-                let chemin =
-                    crate::nexus::domain::entities::game::zomboid_sandbox::chemin_du_fichier(
-                        &server.name,
-                    );
+            if let Some((chemin, contenu)) = zomboid_sandbox_pour(&template, &overrides) {
                 if let Err(e) = self
                     .container_runtime
                     .upload_file_to_container(&cid, &chemin, &contenu)
@@ -1462,16 +1458,22 @@ mod tests;
 /// d'appeler cette fonction sans condition au moment de creer un conteneur, et
 /// d'y brancher un second jeu plus tard sans toucher a l'appelant.
 fn zomboid_sandbox_pour(
-    template_slug: &str,
-    nom_du_serveur: &str,
+    template: &GameTemplate,
     config: &HashMap<String, String>,
-) -> Option<String> {
-    if !template_slug
+) -> Option<(String, String)> {
+    use crate::nexus::domain::entities::game::zomboid_sandbox as sandbox;
+
+    if !template
+        .slug
         .to_ascii_lowercase()
         .starts_with("project-zomboid")
     {
         return None;
     }
-    let _ = nom_du_serveur;
-    crate::nexus::domain::entities::game::zomboid_sandbox::composer(config)
+    let contenu = sandbox::composer(config)?;
+    // LE CHEMIN VIENT DE `SERVER_NAME`, PAS DU NOM NEXUS. Le jeu nomme tous les
+    // fichiers d'une partie d'apres celui-la ; poser le notre ailleurs le
+    // laissait a cote, jamais lu.
+    let nom = sandbox::server_name_effectif(config, &template.default_env);
+    Some((sandbox::chemin_du_fichier(&nom), contenu))
 }

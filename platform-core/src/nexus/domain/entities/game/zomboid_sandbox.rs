@@ -39,13 +39,55 @@ pub const SANDBOX_VERSION: u32 = 5;
 /// moment de composer l'environnement.
 pub const PREFIXE_SANDBOX: &str = "SANDBOX_";
 
+/// Nom de serveur employe quand aucun n'est configure.
+///
+/// Celui du modele de catalogue, pas celui de l'image : c'est lui que le
+/// conteneur recevra si personne ne le change.
+pub const SERVER_NAME_PAR_DEFAUT: &str = "ZomboidSentinel";
+
 /// Ou vit le fichier, dans le volume de la sauvegarde.
 ///
-/// Le nom du serveur en fait partie : chaque partie a le sien. C'est aussi
-/// pourquoi renommer un serveur demarre une partie vierge — le jeu ne retrouve
-/// plus ni sa sauvegarde ni son bac a sable.
-pub fn chemin_du_fichier(nom_du_serveur: &str) -> String {
-    format!("/home/steam/Zomboid/Server/{nom_du_serveur}_SandboxVars.lua")
+/// LE NOM ATTENDU EST CELUI DE `SERVER_NAME`, PAS CELUI DU SERVEUR NEXUS.
+///
+/// Project Zomboid nomme tous les fichiers d'une partie d'apres le nom passe
+/// au lancement, qui vient de la variable `SERVER_NAME`. Un serveur nomme
+/// « project-zomboid » cote plateforme mais laisse a `ZomboidSentinel` cote
+/// configuration lit donc `ZomboidSentinel_SandboxVars.lua`.
+///
+/// Le code posait le fichier sous le nom NEXUS. Les deux coexistaient dans le
+/// volume — `project-zomboid_SandboxVars.lua` a cote de
+/// `ZomboidSentinel_SandboxVars.lua` — et le jeu ne lisait jamais le notre :
+/// les cent trente reglages n'avaient aucun effet, sans le moindre message.
+///
+/// C'est aussi pourquoi renommer un serveur demarre une partie vierge : le jeu
+/// ne retrouve plus ni sa sauvegarde ni son bac a sable.
+pub fn chemin_du_fichier(server_name: &str) -> String {
+    format!("/home/steam/Zomboid/Server/{server_name}_SandboxVars.lua")
+}
+
+/// `SERVER_NAME` reellement applique au conteneur.
+///
+/// Meme resolution que pour l'environnement : la valeur saisie l'emporte sur
+/// celle du catalogue. Toute divergence entre les deux ferait ecrire le bac a
+/// sable a cote du fichier que le jeu ouvre.
+pub fn server_name_effectif(
+    config: &std::collections::HashMap<String, String>,
+    default_env: &serde_json::Value,
+) -> String {
+    config
+        .get("SERVER_NAME")
+        .map(|v| v.trim())
+        .filter(|v| !v.is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            default_env
+                .get("SERVER_NAME")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| SERVER_NAME_PAR_DEFAUT.to_string())
 }
 
 /// Ou ranger un reglage dans le fichier.

@@ -2213,6 +2213,20 @@ fn build_bot_intro_embed(game_name: &str, server_name: &str) -> CreateEmbed {
 ///
 /// Rend le nom du jeu et le role du jeu, que l'appelant reutilise pour la
 /// mention qui suit.
+async fn epingler_et_nettoyer_notification(ctx: &Context, text_ch: ChannelId, msg_id: MessageId) {
+    if text_ch.pin(&ctx.http, msg_id).await.is_ok() {
+        // Discord génère automatiquement un message système PinsAdd (« NexusBot a épinglé un message »).
+        // On supprime ces messages système pour que le salon reste totalement propre.
+        if let Ok(messages) = text_ch.messages(&ctx.http, GetMessages::new().limit(5)).await {
+            for m in messages {
+                if m.kind == serenity::model::channel::MessageType::PinsAdd {
+                    let _ = m.delete(&ctx.http).await;
+                }
+            }
+        }
+    }
+}
+
 pub(crate) async fn poster_le_panneau(
     ctx: &Context,
     api: &ApiClient,
@@ -2252,7 +2266,7 @@ pub(crate) async fn poster_le_panneau(
         .send_message(&ctx.http, CreateMessage::new().embed(intro_embed))
         .await;
     if let Ok(m) = &msg {
-        let _ = text_ch.pin(&ctx.http, m.id).await;
+        epingler_et_nettoyer_notification(ctx, text_ch, m.id).await;
     }
 
     // 2. Carte du règlement (si existe)
@@ -2262,7 +2276,7 @@ pub(crate) async fn poster_le_panneau(
             .send_message(&ctx.http, CreateMessage::new().embed(embed))
             .await;
         if let Ok(m) = &msg {
-            let _ = text_ch.pin(&ctx.http, m.id).await;
+            epingler_et_nettoyer_notification(ctx, text_ch, m.id).await;
         }
     }
 
@@ -2285,7 +2299,7 @@ pub(crate) async fn poster_le_panneau(
             let message = CreateMessage::new().embeds(page_embeds);
             let msg = text_ch.send_message(&ctx.http, message).await;
             if let Ok(m) = &msg {
-                let _ = text_ch.pin(&ctx.http, m.id).await;
+                epingler_et_nettoyer_notification(ctx, text_ch, m.id).await;
             }
         }
     }
@@ -2308,7 +2322,7 @@ pub(crate) async fn poster_le_panneau(
         )
         .await;
     if let Ok(m) = &msg {
-        let _ = text_ch.pin(&ctx.http, m.id).await;
+        epingler_et_nettoyer_notification(ctx, text_ch, m.id).await;
     }
 
     (game_name, role_id)
@@ -4283,7 +4297,7 @@ pub(crate) async fn resynchroniser_session(
                     .send_message(&ctx.http, CreateMessage::new().embed(rules_embed))
                     .await
                 {
-                    let _ = text_ch.pin(&ctx.http, m.id).await;
+                    epingler_et_nettoyer_notification(ctx, text_ch, m.id).await;
                     rapport.reglement_republie = true;
                 }
             }

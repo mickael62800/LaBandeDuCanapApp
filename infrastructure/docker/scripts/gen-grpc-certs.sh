@@ -84,7 +84,9 @@ fi
 
 # Permissions : lecture pour les conteneurs (les conteneurs Rust s'exécutent en uid 1000,
 # et le volume interne grpc_certs est isolé et monté en read-only :ro).
-chmod 644 ca.pem server.pem client.pem server.key client.key 2>/dev/null || true
+chmod 755 "$CERT_DIR" 2>/dev/null || true
+chmod -R a+rX "$CERT_DIR" 2>/dev/null || true
+chmod 644 "$CERT_DIR"/* 2>/dev/null || true
 echo "[gen-grpc-certs] Done. Files in $CERT_DIR:"
 ls -la "$CERT_DIR"
 

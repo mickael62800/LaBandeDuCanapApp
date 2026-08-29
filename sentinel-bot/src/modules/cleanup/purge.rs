@@ -191,6 +191,22 @@ pub fn register() -> CreateCommand {
                 .required(true),
             ),
         )
+        .add_option(
+            CreateCommandOption::new(
+                CommandOptionType::SubCommand,
+                "pins",
+                "Supprimer les notifications systeme d'epingles (ex: X a epingle un message)",
+            )
+            .add_sub_option(
+                CreateCommandOption::new(
+                    CommandOptionType::Integer,
+                    "nombre",
+                    "Nombre de messages a analyser (1-100, defaut: 50)",
+                )
+                .min_int_value(1)
+                .max_int_value(100),
+            ),
+        )
 }
 
 pub async fn handle(ctx: &Context, command: &CommandInteraction) {
@@ -453,6 +469,10 @@ pub async fn handle(ctx: &Context, command: &CommandInteraction) {
         "attachments" => messages
             .into_iter()
             .filter(|m| !m.attachments.is_empty())
+            .collect(),
+        "pins" => messages
+            .into_iter()
+            .filter(|m| m.kind == serenity::all::MessageType::PinsAdd)
             .collect(),
         _ => {
             reply_error(ctx, command, "Sous-commande inconnue.").await;

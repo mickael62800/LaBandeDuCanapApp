@@ -71,7 +71,6 @@ fn option_string(cmd: &CommandInteraction, name: &str) -> Option<String> {
 mod coussin_commands;
 mod coussin_steal_events;
 mod economy_commands;
-mod purge_commands;
 
 /// La guilde est-elle celle servie par cette installation ?
 ///
@@ -189,7 +188,6 @@ impl EventHandler for Handler {
                 "game" | "game-admin" => games::handle_command(&self.api, &ctx, &cmd).await,
                 "salon" => grand_salon::handle_command(&self.api, &ctx, &cmd).await,
                 "haut-faits" => achievements::handle_command(&self.api, &ctx, &cmd).await,
-                "purge" => purge_commands::handle_command(&ctx, &cmd).await,
                 _ => {}
             },
             Interaction::Component(component) => {
@@ -434,7 +432,6 @@ pub fn build_all_slash_commands() -> Vec<CreateCommand> {
         .chain(std::iter::once(achievements::register()))
         .chain(std::iter::once(grand_salon::register()))
         .chain(std::iter::once(wheel_panel::register()))
-        .chain(std::iter::once(purge_commands::register()))
         .collect()
 }
 

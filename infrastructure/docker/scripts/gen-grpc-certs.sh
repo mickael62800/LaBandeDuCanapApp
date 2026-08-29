@@ -82,11 +82,9 @@ EOF
     rm -f client.csr client.cnf
 fi
 
-# Permissions : les CLES PRIVEES (ca.key, server.key, client.key) sont en 600 —
-# un volume monte en RO par plusieurs conteneurs n'excuse pas des cles lisibles
-# par tous si le volume ou l'hote est compromis. Les certificats PUBLICS restent
-# en 644 (ils ne contiennent aucun secret ; les conteneurs lancent en uid 1000).
-chmod 600 ca.key server.key client.key
-chmod 644 ca.pem server.pem client.pem
+# Permissions : lecture pour les conteneurs (les conteneurs Rust s'exécutent en uid 1000,
+# et le volume interne grpc_certs est isolé et monté en read-only :ro).
+chmod 644 ca.pem server.pem client.pem server.key client.key 2>/dev/null || true
 echo "[gen-grpc-certs] Done. Files in $CERT_DIR:"
 ls -la "$CERT_DIR"
+

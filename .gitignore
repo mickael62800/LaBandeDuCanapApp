@@ -15,6 +15,10 @@ apps/desktop/src-tauri/gen/
 .env.*.local
 !.env.example
 
+# Sorties de tests / debug (web) — jamais à committer
+web/d*.txt
+web/full-test.txt
+
 # IDE
 .vscode/
 .idea/

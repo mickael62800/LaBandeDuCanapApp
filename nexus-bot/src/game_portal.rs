@@ -2282,10 +2282,7 @@ pub(crate) async fn poster_le_panneau(
             None,
         );
         for page_embeds in options_pages {
-            let mut message = CreateMessage::new();
-            for embed in page_embeds {
-                message = message.embed(embed);
-            }
+            let message = CreateMessage::new().embeds(page_embeds);
             let msg = text_ch.send_message(&ctx.http, message).await;
             if let Ok(m) = &msg {
                 let _ = text_ch.pin(&ctx.http, m.id).await;
@@ -4726,5 +4723,183 @@ mod tests_pages_de_parametres {
         let pages = repartir_en_pages(vec!["x".repeat(9000), "petit".into()]);
         assert_eq!(pages.len(), 2);
         assert_eq!(pages[0].len(), 1);
+    }
+
+    #[test]
+    fn build_options_pages_preserve_tous_les_embeds_dans_le_message() {
+        use serenity::builder::CreateMessage;
+
+        let options: Vec<String> = (0..250)
+            .map(|i| format!("**Option très détaillée et configurée {i:03}** : `Valeur personnalisée {i}`"))
+            .collect();
+        let pages = super::build_options_pages(
+            "Project Zomboid",
+            "Serveur Survie",
+            &options,
+            Some("Specs"),
+            Some("Horaires"),
+            None,
+        );
+
+        assert!(!pages.is_empty());
+        assert!(pages.len() >= 2, "Doit comporter plusieurs pages");
+
+        // Page 1
+        let v0_0 = serde_json::to_value(&pages[0][0]).unwrap();
+        assert_eq!(
+            v0_0.get("title").and_then(|v| v.as_str()),
+            Some("⚙️ Paramètres — Project Zomboid · Serveur Survie")
+        );
+        if pages[0].len() > 1 {
+            let v0_1 = serde_json::to_value(&pages[0][1]).unwrap();
+            assert_eq!(
+                v0_1.get("title").and_then(|v| v.as_str()),
+                Some("⚙️ Paramètres (suite)")
+            );
+        }
+
+        // Page 2
+        let total = pages.len();
+        let v1_0 = serde_json::to_value(&pages[1][0]).unwrap();
+        assert_eq!(
+            v1_0.get("title").and_then(|v| v.as_str()),
+            Some(format!("⚙️ Paramètres (page 2 sur {total})").as_str())
+        );
+
+        // Verification que CreateMessage::embeds préserve bien tous les embeds de la page
+        for page in pages {
+            let count = page.len();
+            let msg = CreateMessage::new().embeds(page);
+            let msg_val = serde_json::to_value(&msg).unwrap();
+            let embeds_arr = msg_val.get("embeds").and_then(|v| v.as_array()).unwrap();
+            assert_eq!(embeds_arr.len(), count, "Tous les embeds de la page doivent être dans le message");
+        }
+    }
+
+    #[test]
+    fn test_is_safe_game_option_securite() {
+        use super::{is_player_password_key, is_safe_game_option};
+
+        // Clés interdites (secrets / admin)
+        assert!(!is_safe_game_option("ADMIN_PASSWORD"));
+        assert!(!is_safe_game_option("RCON_PASSWORD"));
+        assert!(!is_safe_game_option("SERVER_TOKEN"));
+        assert!(!is_safe_game_option("SECRET_KEY"));
+        assert!(!is_safe_game_option("PRIVATE_KEY"));
+        assert!(!is_safe_game_option("API_KEY"));
+        assert!(!is_safe_game_option("ACCESS_KEY"));
+        assert!(!is_safe_game_option("OPERATOR_LIST"));
+        assert!(!is_safe_game_option("OP_PERMISSION_LEVEL"));
+
+        // Casse mixte
+        assert!(!is_safe_game_option("admin_password"));
+        assert!(!is_safe_game_option("Rcon_Port_Secret"));
+
+        // Clés autorisées normales
+        assert!(is_safe_game_option("MAX_PLAYERS"));
+        assert!(is_safe_game_option("PVP"));
+        assert!(is_safe_game_option("DIFFICULTY"));
+        assert!(is_safe_game_option("SANDBOX_Zombies"));
+        assert!(is_safe_game_option("SANDBOX_StartTime"));
+        assert!(!is_safe_game_option("OPS")); // OPS est bien exclu (opérateurs Minecraft)
+
+        // Mots de passe joueur
+        assert!(is_player_password_key("PASSWORD"));
+        assert!(is_player_password_key("SERVER_PASS"));
+        assert!(is_player_password_key("SERVER_PASSWORD"));
+        assert!(is_player_password_key("SERVERCONFIG_SERVERPASSWORD"));
+        assert!(is_safe_game_option("SERVER_PASSWORD"));
+    }
+
+    #[test]
+    fn test_zomboid_130_options_exhaustivite_et_sections() {
+        use super::{registration_options, public_game_options, build_options_pages};
+        use crate::api_client::TemplateField;
+        use std::collections::HashMap;
+
+        let sections = [
+            "Bac a sable Monde",
+            "Bac a sable Personnage",
+            "Bac a sable Véhicule",
+            "Bac a sable Zombies",
+            "Serveur",
+        ];
+
+        let mut schema = Vec::new();
+        let mut config = HashMap::new();
+
+        for (i, sec) in sections.iter().cycle().take(130).enumerate() {
+            let key = format!("SANDBOX_OPT_{i:03}");
+            let label = format!("Réglage Sandbox {i:03}");
+            schema.push(TemplateField {
+                key: key.clone(),
+                label,
+                group: Some(sec.to_string()),
+            });
+            config.insert(key, format!("Val_{i}"));
+        }
+
+        // Ajout d'un mot de passe joueur et d'un mot de passe admin
+        schema.push(TemplateField {
+            key: "SERVER_PASSWORD".into(),
+            label: "Mot de passe joueur".into(),
+            group: Some("Serveur".into()),
+        });
+        config.insert("SERVER_PASSWORD".into(), "SecretJoueur123".into());
+
+        config.insert("ADMIN_PASSWORD".into(), "AdminSuperSecret".into());
+
+        // Inscription (public) : pas de mot de passe ni de clé admin
+        let pub_opts = registration_options(&config, &schema);
+        assert_eq!(pub_opts.iter().filter(|l| l.contains("SecretJoueur123")).count(), 0);
+        assert_eq!(pub_opts.iter().filter(|l| l.contains("AdminSuperSecret")).count(), 0);
+
+        // Salon privé : mot de passe joueur présent, mot de passe admin absent
+        let priv_opts = public_game_options(&config, &schema);
+        assert_eq!(priv_opts.iter().filter(|l| l.contains("SecretJoueur123")).count(), 1);
+        assert_eq!(priv_opts.iter().filter(|l| l.contains("AdminSuperSecret")).count(), 0);
+
+        // Découpage en pages
+        let pages = build_options_pages(
+            "Project Zomboid",
+            "Serveur Survie Canapé",
+            &pub_opts,
+            Some("16 joueurs · 8 Go RAM"),
+            Some("24/7"),
+            None,
+        );
+
+        assert!(pages.len() >= 2);
+
+        // Vérifier que chaque page contient au moins un embed et que la première commence par le titre du serveur
+        let first_embed_val = serde_json::to_value(&pages[0][0]).unwrap();
+        assert_eq!(
+            first_embed_val["title"].as_str().unwrap(),
+            "⚙️ Paramètres — Project Zomboid · Serveur Survie Canapé"
+        );
+
+        // Vérifier que toutes les 130 options sont présentes dans le texte des embeds générés
+        let all_embeds_text: String = pages
+            .iter()
+            .flatten()
+            .map(|e| {
+                let v = serde_json::to_value(e).unwrap();
+                let fields = v["fields"].as_array().cloned().unwrap_or_default();
+                fields
+                    .iter()
+                    .map(|f| f["value"].as_str().unwrap_or_default().to_string())
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        for i in 0..130 {
+            let label = format!("Réglage Sandbox {i:03}");
+            assert!(
+                all_embeds_text.contains(&label),
+                "L'option '{label}' doit figurer dans les embeds générés"
+            );
+        }
     }
 }

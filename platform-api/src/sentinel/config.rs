@@ -74,6 +74,16 @@ impl AppConfig {
                     tracing::error!("SENTINEL_API_KEY non configuree. Definir SENTINEL_API_KEY ou SENTINEL_REQUIRE_API_KEY=false pour le dev.");
                     std::process::exit(1);
                 }
+                if key.is_empty() && !require {
+                    // MODE DEV : aucune cle API, le middleware laisse tout passer.
+                    // On l'ecrit fort au boot pour qu'une installation deployee
+                    // avec SENTINEL_REQUIRE_API_KEY=false ne passe pas inapercue.
+                    tracing::warn!(
+                        "SENTINEL_API_KEY vide et SENTINEL_REQUIRE_API_KEY=false : \n\
+                         MODE DEV ACTIF — l'authentification par cle API est desactivee. \n\
+                         A n'utiliser JAMAIS en production : definir une cle de 32+ caracteres."
+                    );
+                }
                 if !key.is_empty() && key.len() < 16 {
                     // Securite : une API_KEY courte est bruteforçable. On refuse
                     // de demarrer avec une cle < 16 chars quand elle est requise,

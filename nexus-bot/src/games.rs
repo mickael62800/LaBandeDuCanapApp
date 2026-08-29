@@ -17,6 +17,7 @@ use serenity::builder::CreateEmbed;
 use tracing::{info, warn};
 
 use crate::api_client::{ApiClient, Game};
+use crate::game_portal;
 
 /// Prefix du custom_id des select menus de panel de jeux (LEGACY : anciens
 /// panels deployes avant la bascule boutons ; le handler reste pour compat).
@@ -72,6 +73,16 @@ fn register_public() -> CreateCommand {
             CommandOptionType::SubCommand,
             "parametres",
             "Voir les reglages du serveur de ce salon (reponse privee)",
+        ))
+        .add_option(CreateCommandOption::new(
+            CommandOptionType::SubCommand,
+            "refresh",
+            "Rafraichir les cartes d'inscription du jeu (admin)",
+        ))
+        .add_option(CreateCommandOption::new(
+            CommandOptionType::SubCommand,
+            "recreate",
+            "Recreer toutes les cartes du jeu (admin)",
         ))
 }
 
@@ -180,6 +191,8 @@ pub async fn handle_command(api: &ApiClient, ctx: &Context, command: &CommandInt
         ("game", "join") => handle_join(ctx, command, api, &guild_id).await,
         ("game", "leave") => handle_leave(ctx, command, api, &guild_id).await,
         ("game", "parametres") => handle_show_params(ctx, command, api).await,
+        ("game", "refresh") => game_portal::handle_game_refresh(ctx, command, api).await,
+        ("game", "recreate") => game_portal::handle_game_recreate(ctx, command, api).await,
         _ => reply(ctx, command, "Sous-commande inconnue.").await,
     }
 }

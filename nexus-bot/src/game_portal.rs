@@ -24,7 +24,7 @@
 use std::sync::Arc;
 
 use serenity::all::{
-    ButtonStyle, ChannelId, ChannelType, Colour, ComponentInteraction, Context, CreateActionRow,
+    ButtonStyle, ChannelId, ChannelType, CommandInteraction, Colour, ComponentInteraction, Context, CreateActionRow,
     CreateButton, CreateChannel, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse,
     CreateInteractionResponseFollowup, CreateInteractionResponseMessage, CreateMessage,
     EditChannel, EditInteractionResponse, EditMessage, EditRole, GetMessages, GuildId, MessageId,
@@ -1972,6 +1972,8 @@ async fn on_started(ctx: &Context, api: &ApiClient, guild_id: GuildId, server_id
         if channel_exists(ctx, existing).await {
             // Salon existant : on en profite pour forcer la mise a jour du panel
             // s'il y a eu un changement de code ou une desynchro.
+            // On met a jour JUSTE la carte d'inscription (celle avec les boutons) car c'est
+            // la seule qui change (nombre d'inscrits, statut IP).
             let (game_name, _) = game_name_and_role(api, &server).await;
             let cover_url = api
                 .get_game_template(&server.template_id)
@@ -2018,7 +2020,7 @@ async fn on_started(ctx: &Context, api: &ApiClient, guild_id: GuildId, server_id
                             .edit(
                                 &ctx.http,
                                 serenity::builder::EditMessage::new()
-                                    .embed(embed)
+                                    .embed(embed.clone())
                                     .components(panel_rows(server_id, server.ip_revealed)),
                             )
                             .await;
@@ -2179,7 +2181,30 @@ async fn on_started(ctx: &Context, api: &ApiClient, guild_id: GuildId, server_id
 /// Le marquage a lieu DES QUE L'ANNONCE EST PARTIE, avant le panneau : un
 /// panneau rate se rejoue sans dommage, une annonce publiee deux fois se voit.
 
-/// Publie le panneau d'inscription dans un salon et l'epingle.
+/// Message de présentation du jeu (bot expliquant l'événement).
+fn build_bot_intro_embed(game_name: &str, server_name: &str) -> CreateEmbed {
+    CreateEmbed::new()
+        .title(format!("🎮 Bienvenue à la soirée {game_name}"))
+        .description(format!(
+            "**{}** — Une partie est en préparation !\n\n\
+             Consulte les sections ci-dessous :\n\
+             📜 **Règlement** → Lois de la soirée\n\
+             ⚙️ **Paramètres** → Configuration du serveur\n\
+             ✅ **Inscription** → Boutons pour rejoindre",
+            server_name
+        ))
+        .color(0x5865f2)
+        .footer(CreateEmbedFooter::new("Game Portal | Nexus"))
+        .timestamp(serenity::model::Timestamp::now())
+}
+
+/// Publie le panneau d'inscription dans un salon, en sections séparées et épinglées.
+///
+/// Ordre :
+/// 1. Message du bot (présentation)
+/// 2. Carte du règlement
+/// 3. Carte(s) des paramètres (paginées, sans mot de passe)
+/// 4. Carte d'inscription (sans IP)
 ///
 /// UNE SEULE IMPLEMENTATION pour l'ouverture d'une session et pour sa remise en
 /// etat : un panneau republie par la commande de resynchronisation doit etre
@@ -2220,20 +2245,62 @@ pub(crate) async fn poster_le_panneau(
         .map(|t| t.config_schema.as_slice())
         .unwrap_or_default();
     let specs = format_specs_summary(server, config);
-    let options_summary = format_options_summary(config, schema, false);
 
-    let embed = build_public_panel_embed_full(
+    // 1. Message du bot (présentation)
+    let intro_embed = build_bot_intro_embed(&game_name, &server.name);
+    let msg = text_ch
+        .send_message(&ctx.http, CreateMessage::new().embed(intro_embed))
+        .await;
+    if let Ok(m) = &msg {
+        let _ = text_ch.pin(&ctx.http, m.id).await;
+    }
+
+    // 2. Carte du règlement (si existe)
+    if let Some(reglement) = server.rules.as_deref().map(str::trim).filter(|r| !r.is_empty()) {
+        let embed = format_rules_embed(reglement);
+        let msg = text_ch
+            .send_message(&ctx.http, CreateMessage::new().embed(embed))
+            .await;
+        if let Ok(m) = &msg {
+            let _ = text_ch.pin(&ctx.http, m.id).await;
+        }
+    }
+
+    // 3. Cartes des paramètres (paginées, sans mot de passe)
+    let options = registration_options(config, schema);
+    if !options.is_empty() {
+        let options_pages = build_options_pages(
+            &game_name,
+            &server.name,
+            &options,
+            Some(&specs),
+            schedule.as_ref().map(|_| format_schedule_summary(
+                schedule.as_ref(),
+                server.ip_reveal_at.as_deref(),
+                server.closes_at.as_deref(),
+            )).as_deref(),
+            None,
+        );
+        for page_embeds in options_pages {
+            let mut message = CreateMessage::new();
+            for embed in page_embeds {
+                message = message.embed(embed);
+            }
+            let msg = text_ch.send_message(&ctx.http, message).await;
+            if let Ok(m) = &msg {
+                let _ = text_ch.pin(&ctx.http, m.id).await;
+            }
+        }
+    }
+
+    // 4. Carte d'inscription (boutons, inscrits, pas d'IP affichée)
+    let embed = build_public_panel_embed(
         &game_name,
         &server.name,
         &registered_user_ids,
         server.ip_reveal_at.as_deref(),
         server.ip_revealed,
         cover_url.as_deref(),
-        schedule.as_ref(),
-        server.rules.as_deref(),
-        server.closes_at.as_deref(),
-        Some(&specs),
-        options_summary.as_deref(),
     );
     let msg = text_ch
         .send_message(
@@ -2604,6 +2671,7 @@ async fn on_ip_reveal(ctx: &Context, api: &ApiClient, server_id: &str) {
     }
 
     // Le panneau public indique seulement que le serveur est ouvert.
+    // On met a jour JUSTE le message avec les boutons d'inscription.
     let user_ids: Vec<String> = api
         .list_server_registrations(server_id)
         .await
@@ -2620,16 +2688,30 @@ async fn on_ip_reveal(ctx: &Context, api: &ApiClient, server_id: &str) {
         cover_url.as_deref(),
     );
     if let Ok(pins) = text_ch.pins(&ctx.http).await {
-        if let Some(m) = pins.into_iter().find(|m| !m.embeds.is_empty()) {
-            let _ = text_ch
-                .edit_message(
-                    &ctx.http,
-                    m.id,
-                    EditMessage::new()
-                        .embed(embed)
-                        .components(panel_rows(server_id, true)),
-                )
-                .await;
+        for m in pins {
+            let has_register_buttons = m.components.iter().any(|row| {
+                row.components.iter().any(|c| {
+                    if let serenity::model::application::ActionRowComponent::Button(b) = c {
+                        if let serenity::all::ButtonKind::NonLink { custom_id, .. } = &b.data {
+                            return custom_id.starts_with(REGISTER_PREFIX)
+                                && custom_id.contains(server_id);
+                        }
+                    }
+                    false
+                })
+            });
+            if has_register_buttons {
+                let _ = text_ch
+                    .edit_message(
+                        &ctx.http,
+                        m.id,
+                        EditMessage::new()
+                            .embed(embed)
+                            .components(panel_rows(server_id, true)),
+                    )
+                    .await;
+                break;
+            }
         }
     }
 
@@ -2720,6 +2802,182 @@ fn schedule_opening_soon(
                     .await;
             }
         });
+    }
+}
+
+// ── Commandes de gestion des cartes ──
+
+/// Commande `/game refresh` : met a jour les cartes existantes d'une session.
+pub async fn handle_game_refresh(ctx: &Context, cmd: &CommandInteraction, api: &ApiClient) {
+    let channel_id = cmd.channel_id;
+
+    // Retrouve le server_id depuis le topic du salon.
+    let server_id = match session_du_salon(ctx, channel_id).await {
+        Some(id) => id,
+        None => {
+            let _ = cmd
+                .create_response(
+                    &ctx.http,
+                    CreateInteractionResponse::Message(
+                        CreateInteractionResponseMessage::new()
+                            .content("❌ Ce salon n'est pas un salon de session de jeu.")
+                            .ephemeral(true),
+                    ),
+                )
+                .await;
+            return;
+        }
+    };
+
+    let _ = cmd
+        .create_response(
+            &ctx.http,
+            CreateInteractionResponse::Defer(CreateInteractionResponseMessage::new().ephemeral(true)),
+        )
+        .await;
+
+    // Recupere les donnees du serveur et met a jour la carte d'inscription.
+    match api.get_game_server(&server_id).await {
+        Ok(detail) => {
+            let server = detail.server;
+            let (game_name, _) = game_name_and_role(api, &server).await;
+            let cover_url = api
+                .get_game_template(&server.template_id)
+                .await
+                .ok()
+                .and_then(|template| {
+                    public_cover_url_for_status(
+                        template.cover_image_url.as_deref(),
+                        etat_affiche(&server),
+                    )
+                });
+            let registered_user_ids: Vec<String> = api
+                .list_server_registrations(&server.id)
+                .await
+                .unwrap_or_default()
+                .into_iter()
+                .map(|r| r.user_id)
+                .collect();
+
+            let embed = build_public_panel_embed(
+                &game_name,
+                &server.name,
+                &registered_user_ids,
+                server.ip_reveal_at.as_deref(),
+                server.ip_revealed,
+                cover_url.as_deref(),
+            );
+
+            // Trouve et met a jour le message avec les boutons d'inscription.
+            if let Ok(pins) = channel_id.pins(&ctx.http).await {
+                for m in pins {
+                    let has_register_buttons = m.components.iter().any(|row| {
+                        row.components.iter().any(|c| {
+                            if let serenity::model::application::ActionRowComponent::Button(b) = c {
+                                if let serenity::all::ButtonKind::NonLink { custom_id, .. } = &b.data {
+                                    return custom_id.starts_with(REGISTER_PREFIX)
+                                        && custom_id.contains(&server_id);
+                                }
+                            }
+                            false
+                        })
+                    });
+                    if has_register_buttons {
+                        let _ = channel_id
+                            .edit_message(
+                                &ctx.http,
+                                m.id,
+                                EditMessage::new()
+                                    .embed(embed.clone())
+                                    .components(panel_rows(&server.id, server.ip_revealed)),
+                            )
+                            .await;
+                        break;
+                    }
+                }
+            }
+
+            let _ = cmd
+                .edit_response(
+                    &ctx.http,
+                    EditInteractionResponse::new()
+                        .content("✅ Cartes rafraîchies avec succès."),
+                )
+                .await;
+        }
+        Err(e) => {
+            let _ = cmd
+                .edit_response(
+                    &ctx.http,
+                    EditInteractionResponse::new()
+                        .content(format!("❌ Erreur : {e}")),
+                )
+                .await;
+        }
+    }
+}
+
+/// Commande `/game recreate` : supprime et recrée toutes les cartes d'une session.
+pub async fn handle_game_recreate(ctx: &Context, cmd: &CommandInteraction, api: &ApiClient) {
+    let channel_id = cmd.channel_id;
+
+    // Retrouve le server_id depuis le topic du salon.
+    let server_id = match session_du_salon(ctx, channel_id).await {
+        Some(id) => id,
+        None => {
+            let _ = cmd
+                .create_response(
+                    &ctx.http,
+                    CreateInteractionResponse::Message(
+                        CreateInteractionResponseMessage::new()
+                            .content("❌ Ce salon n'est pas un salon de session de jeu.")
+                            .ephemeral(true),
+                    ),
+                )
+                .await;
+            return;
+        }
+    };
+
+    let _ = cmd
+        .create_response(
+            &ctx.http,
+            CreateInteractionResponse::Defer(CreateInteractionResponseMessage::new().ephemeral(true)),
+        )
+        .await;
+
+    // Supprime tous les anciens messages epingles du bot.
+    if let Ok(pins) = channel_id.pins(&ctx.http).await {
+        for msg in pins {
+            if msg.author.bot {
+                let _ = channel_id.delete_message(&ctx.http, msg.id).await;
+            }
+        }
+    }
+
+    // Recupere le serveur et renvoie les 4 sections fraîches.
+    match api.get_game_server(&server_id).await {
+        Ok(detail) => {
+            let server = detail.server;
+            let _ = poster_le_panneau(ctx, api, channel_id, &server).await;
+
+            let _ = cmd
+                .edit_response(
+                    &ctx.http,
+                    EditInteractionResponse::new()
+                        .content("✅ Toutes les cartes ont été recréées."),
+                )
+                .await;
+        }
+        Err(e) => {
+            let _ = cmd
+                .edit_response(
+                    &ctx.http,
+                    EditInteractionResponse::new()
+                        .content(format!("❌ Erreur : {e}")),
+                )
+                .await;
+        }
     }
 }
 

@@ -180,7 +180,7 @@ pub async fn load_game_portal_config(
     Ok(GamePortalConfig {
         enabled: parse_bool(find(&entries, "enabled"), true),
         max_servers_per_guild: parse_i32(find(&entries, "max_servers_per_guild"), 5),
-        max_memory_total_mb: parse_i32(find(&entries, "max_memory_total_mb"), 8192),
+        max_memory_total_mb: parse_i32(find(&entries, "max_memory_total_mb"), 32768),
         port_range_start,
         port_range_end,
         rcon_port_range_start,

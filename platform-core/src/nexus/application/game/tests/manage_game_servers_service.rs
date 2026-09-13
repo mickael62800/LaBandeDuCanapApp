@@ -1648,3 +1648,140 @@ async fn test_upload_init_files_failure() {
         .await;
     assert!(res.is_err());
 }
+
+#[tokio::test]
+async fn test_upload_init_files_injects_zomboid_sandbox() {
+    struct RecordingUploadRuntime {
+        uploaded: Mutex<Vec<(String, String)>>,
+    }
+    #[async_trait::async_trait]
+    impl ContainerRuntime for RecordingUploadRuntime {
+        async fn archive_volume(
+            &self,
+            _volume: &str,
+            _nom_fichier: &str,
+        ) -> Result<VolumeArchive, DomainError> {
+            unimplemented!()
+        }
+        fn is_operational(&self) -> bool {
+            true
+        }
+        async fn ensure_network(&self, _: &str) -> Result<(), DomainError> {
+            Ok(())
+        }
+        async fn ensure_volume(&self, _: &str) -> Result<(), DomainError> {
+            Ok(())
+        }
+        async fn pull_image_if_missing(&self, _: &str) -> Result<(), DomainError> {
+            Ok(())
+        }
+        async fn create_container(&self, _: &ContainerSpec) -> Result<String, DomainError> {
+            Ok("cid".into())
+        }
+        async fn start_container(&self, _: &str) -> Result<(), DomainError> {
+            Ok(())
+        }
+        async fn upload_file_to_container(
+            &self,
+            _: &str,
+            path: &str,
+            content: &str,
+        ) -> Result<(), DomainError> {
+            self.uploaded
+                .lock()
+                .unwrap()
+                .push((path.to_string(), content.to_string()));
+            Ok(())
+        }
+        async fn stop_container(&self, _: &str, _: u32) -> Result<(), DomainError> {
+            Ok(())
+        }
+        async fn restart_container(&self, _: &str, _: u32) -> Result<(), DomainError> {
+            Ok(())
+        }
+        async fn remove_container(&self, _: &str) -> Result<(), DomainError> {
+            Ok(())
+        }
+        async fn remove_volume(&self, _: &str) -> Result<(), DomainError> {
+            Ok(())
+        }
+        async fn remove_image(&self, _: &str, _: bool) -> Result<bool, DomainError> {
+            Ok(true)
+        }
+        async fn inspect(&self, _: &str) -> Result<Option<ContainerStatus>, DomainError> {
+            Ok(None)
+        }
+        async fn stats(&self, _: &str) -> Result<ContainerStats, DomainError> {
+            Ok(ContainerStats::default())
+        }
+        async fn logs(&self, _: &str, _: u32) -> Result<Vec<String>, DomainError> {
+            Ok(vec![])
+        }
+        async fn list_managed_containers(&self) -> Result<Vec<ManagedContainer>, DomainError> {
+            Ok(vec![])
+        }
+    }
+
+    struct CustomConfigRepo {
+        config: HashMap<String, String>,
+    }
+    #[async_trait::async_trait]
+    impl GameServerConfigRepository for CustomConfigRepo {
+        async fn get_all(&self, _: Uuid) -> Result<HashMap<String, String>, DomainError> {
+            Ok(self.config.clone())
+        }
+        async fn upsert(&self, _: Uuid, _: &str, _: &str, _: Option<&str>) -> Result<(), DomainError> {
+            Ok(())
+        }
+        async fn delete(&self, _: Uuid, _: &str) -> Result<(), DomainError> {
+            Ok(())
+        }
+        async fn replace_all(
+            &self,
+            _: Uuid,
+            _: HashMap<String, String>,
+            _: Option<&str>,
+        ) -> Result<(), DomainError> {
+            Ok(())
+        }
+    }
+
+    let mut cfg = HashMap::new();
+    cfg.insert("SERVER_NAME".to_string(), "MonServeurZomboid".to_string());
+    cfg.insert(
+        "SANDBOX_CharacterFreePoints".to_string(),
+        "18".to_string(),
+    );
+
+    let runtime = Arc::new(RecordingUploadRuntime {
+        uploaded: Mutex::new(Vec::new()),
+    });
+
+    let tmpl = sample_template("project-zomboid", TemplatePortProtocol::Udp, false);
+
+    let service = ManageGameServersService {
+        server_repo: Arc::new(DummyServerRepo),
+        template_repo: Arc::new(DummyTemplateRepo),
+        config_repo: Arc::new(CustomConfigRepo { config: cfg }),
+        audit_repo: Arc::new(DummyAuditRepo),
+        port_allocator: Arc::new(DummyPortAllocator),
+        container_runtime: runtime.clone(),
+        rcon_client: Arc::new(DummyRconClient),
+        bot_config: Arc::new(DummyBotConfig),
+    };
+
+    let res = service
+        .upload_init_files(Uuid::new_v4(), "cid", &tmpl)
+        .await;
+    assert!(res.is_ok());
+
+    let uploads = runtime.uploaded.lock().unwrap().clone();
+    assert_eq!(uploads.len(), 1);
+    let (path, content) = &uploads[0];
+    assert_eq!(
+        path,
+        "/home/steam/Zomboid/Server/MonServeurZomboid_SandboxVars.lua"
+    );
+    assert!(content.contains("CharacterFreePoints = 18,"));
+}
+

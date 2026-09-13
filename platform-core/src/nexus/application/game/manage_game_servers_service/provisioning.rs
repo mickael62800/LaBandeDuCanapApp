@@ -420,7 +420,12 @@ impl ManageGameServersService {
         cid: &str,
         template: &GameTemplate,
     ) -> Result<(), DomainError> {
-        if template.init_files.is_empty() {
+        let is_zomboid = template
+            .slug
+            .to_ascii_lowercase()
+            .starts_with("project-zomboid");
+
+        if template.init_files.is_empty() && !is_zomboid {
             return Ok(());
         }
         let overrides = self.config_repo.get_all(id).await.unwrap_or_default();
@@ -442,6 +447,23 @@ impl ManageGameServersService {
                     )
                     .await?;
                 return Err(e);
+            }
+        }
+
+        // BAC A SABLE (PROJECT ZOMBOID) : DEPOSE AVANT CHAQUE DEMARRAGE.
+        //
+        // Project Zomboid lit `_SandboxVars.lua` une seule fois, au lancement.
+        // L'injecter ici garantit que les reglages (creations initiales ou
+        // modifications sur serveur arrete/recree) sont ecrits avant que le jeu ne lise.
+        if let Some((chemin, contenu)) = zomboid_sandbox_pour(template, &overrides) {
+            if let Err(e) = self
+                .container_runtime
+                .upload_file_to_container(cid, &chemin, &contenu)
+                .await
+            {
+                warn!(error = %e, server_id = %id, "bac a sable non ecrit, reglages par defaut");
+            } else {
+                info!(server_id = %id, chemin = %chemin, "bac a sable Zomboid depose");
             }
         }
         Ok(())

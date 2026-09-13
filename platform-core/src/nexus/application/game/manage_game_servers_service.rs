@@ -807,30 +807,6 @@ impl ManageGameServersUseCase for ManageGameServersService {
                     return Err(e);
                 }
             };
-            // BAC A SABLE : DEPOSE AVANT LE PREMIER DEMARRAGE.
-            //
-            // Project Zomboid lit `SandboxVars.lua` une seule fois, au
-            // lancement, et n'y revient jamais. L'ecrire apres le demarrage
-            // n'aurait donc aucun effet avant le redemarrage suivant.
-            //
-            // Le conteneur est cree mais pas encore lance : le volume est
-            // monte, rien ne le lit, c'est la seule fenetre ou le fichier peut
-            // etre pose sans course.
-            //
-            // Best-effort : un bac a sable non ecrit donne une partie aux
-            // reglages par defaut, ce qui reste jouable. Refuser de demarrer
-            // pour autant priverait la soiree de son serveur.
-            if let Some((chemin, contenu)) = zomboid_sandbox_pour(&template, &overrides) {
-                if let Err(e) = self
-                    .container_runtime
-                    .upload_file_to_container(&cid, &chemin, &contenu)
-                    .await
-                {
-                    warn!(error = %e, server_id = %id, "bac a sable non ecrit, reglages par defaut");
-                } else {
-                    info!(server_id = %id, chemin = %chemin, "bac a sable Zomboid depose");
-                }
-            }
 
             // Succes create : on persiste TOUTES les ressources ensemble
             // (ports, volume, rcon, container). Avant ce point rien n'est
@@ -1457,7 +1433,7 @@ mod tests;
 /// `None` pour tout autre jeu que Project Zomboid : c'est ce qui permet
 /// d'appeler cette fonction sans condition au moment de creer un conteneur, et
 /// d'y brancher un second jeu plus tard sans toucher a l'appelant.
-fn zomboid_sandbox_pour(
+pub(super) fn zomboid_sandbox_pour(
     template: &GameTemplate,
     config: &HashMap<String, String>,
 ) -> Option<(String, String)> {
